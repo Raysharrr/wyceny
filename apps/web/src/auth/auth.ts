@@ -13,6 +13,14 @@ import * as schema from "../db/schema";
  *
  * Minimal (walking skeleton, YAGNI): email/password only, no OAuth, no email
  * verification, no password reset.
+ *
+ * Closed system (ADR-013, ~5 trusted internal employees): `disableSignUp:
+ * true` closes the public `POST /api/auth/sign-up/email` endpoint. Per
+ * Better Auth's `sign-up/email` route source, this same flag also gates
+ * server-side `auth.api.signUpEmail(...)` calls (both paths run through the
+ * same endpoint handler) — so `scripts/seed.ts` creates demo users via the
+ * internal adapter (`auth.$context`) instead, using Better Auth's own
+ * password hasher directly. See seed.ts for details.
  */
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -21,6 +29,7 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    disableSignUp: true,
   },
   user: {
     additionalFields: {

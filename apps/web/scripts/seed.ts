@@ -6,10 +6,20 @@ import * as schema from "../src/db/schema";
 
 /**
  * Seeds the two demo users required by Task 6 (Better Auth + roles):
- * one `admin` (Aneta) and one `rzeczoznawca` (Zenon). Uses Better Auth's
- * own sign-up API so passwords are hashed exactly as at real sign-in time.
+ * one `admin` (Aneta) and one `rzeczoznawca` (Zenon).
  *
- * Idempotent: safe to re-run. Skips sign-up if the email already exists,
+ * Public sign-up is disabled (`emailAndPassword.disableSignUp: true` in
+ * `auth.ts` — closed system, ADR-013): `POST /api/auth/sign-up/email` is
+ * closed to the public, and per Better Auth's own `sign-up/email` route
+ * source, `disableSignUp` gates the *shared* endpoint handler that also
+ * backs `auth.api.signUpEmail(...)`, so that server-side call is blocked
+ * too. Instead this creates the user + credential account directly via
+ * Better Auth's internal adapter (`auth.$context`), hashing the password
+ * with Better Auth's OWN hasher (`ctx.password.hash`) — the same hasher
+ * `signUpEmail` uses internally — so the resulting hash is login-compatible.
+ * No hand-rolled hashing.
+ *
+ * Idempotent: safe to re-run. Skips creation if the email already exists,
  * and always re-asserts the intended role afterwards (in case a previous
  * partial run left the wrong role, or the account default changes).
  *
@@ -36,16 +46,27 @@ async function seedUser(demo: (typeof DEMO_USERS)[number]) {
   const [existing] = await db.select().from(schema.user).where(eq(schema.user.email, demo.email));
 
   if (!existing) {
-    await auth.api.signUpEmail({
-      body: { name: demo.name, email: demo.email, password: demo.password },
+    const ctx = await auth.$context;
+    const hashedPassword = await ctx.password.hash(demo.password);
+    const createdUser = await ctx.internalAdapter.createUser({
+      email: demo.email,
+      name: demo.name,
+      emailVerified: false,
+      role: demo.role,
+    });
+    await ctx.internalAdapter.linkAccount({
+      userId: createdUser.id,
+      providerId: "credential",
+      accountId: createdUser.id,
+      password: hashedPassword,
     });
     console.log(`created ${demo.role} ${demo.email}`);
   } else {
-    console.log(`${demo.role} ${demo.email} already exists, skipping sign-up`);
+    console.log(`${demo.role} ${demo.email} already exists, skipping creation`);
   }
 
-  // Sign-up always lands on the additionalFields default ("rzeczoznawca");
-  // re-assert the intended role explicitly so re-runs stay correct.
+  // Belt-and-suspenders: re-assert the intended role in case a previous
+  // partial run left it wrong.
   await db.update(schema.user).set({ role: demo.role }).where(eq(schema.user.email, demo.email));
 }
 
