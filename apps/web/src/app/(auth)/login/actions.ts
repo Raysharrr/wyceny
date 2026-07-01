@@ -34,5 +34,5 @@ export async function signInAction(_prevState: SignInState, formData: FormData):
     throw error;
   }
 
-  redirect("/");
+  redirect("/wyceny");
 }

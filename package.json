@@ -16,5 +16,10 @@
   "packageManager": "pnpm@10.29.3",
   "devDependencies": {
     "turbo": "^2.10.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "zod": "4.4.3"
+    }
   }
 }
