@@ -9,6 +9,16 @@ import { user } from "./auth-schema";
 // Auth config changes.
 export * from "./auth-schema";
 
+// Persistent backing store for PortStorage (Task 11a — replaces the
+// in-memory adapter so doc links survive serverless invocations). Stub docs
+// are plain text; a future binary/PDF slice should move `content` to object
+// storage (e.g. Vercel Blob) behind the same PortStorage interface.
+export const document = pgTable("document", {
+  key: text("key").primaryKey(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
 export const wycena = pgTable("wycena", {
   id: uuid("id").primaryKey().defaultRandom(),
   address: text("address").notNull(),

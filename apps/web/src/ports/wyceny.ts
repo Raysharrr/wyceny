@@ -36,4 +36,13 @@ export interface PortWyceny {
   create(input: NewWycenaInput): Promise<Wycena>;
   listForUser(user: SessionUser): Promise<Wycena[]>;
   get(id: string, user: SessionUser): Promise<Wycena | null>;
+  /**
+   * Looks up the Wycena whose `docUrl` matches the given PortStorage key,
+   * applying the same ownership rule as `get` (admin → any; rzeczoznawca →
+   * only their own). Returns `null` both when no such Wycena exists and
+   * when it exists but isn't visible to `user` — callers must not
+   * distinguish the two (no existence leak). Backs the `/api/docs/[key]`
+   * auth gate (Task 11a).
+   */
+  getByDocKey(key: string, user: SessionUser): Promise<Wycena | null>;
 }
