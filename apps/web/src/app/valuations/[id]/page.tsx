@@ -38,7 +38,7 @@ export default async function WycenaViewPage({ params }: { params: Promise<{ id:
         <h1 className="text-xl font-semibold text-foreground">Nie znaleziono wyceny</h1>
         <p className="text-sm text-muted-foreground">Wycena nie istnieje albo nie masz do niej dostępu.</p>
         <Button asChild variant="outline">
-          <Link href="/wyceny">Wróć do listy wycen</Link>
+          <Link href="/valuations">Wróć do listy wycen</Link>
         </Button>
       </div>
     );
@@ -48,7 +48,7 @@ export default async function WycenaViewPage({ params }: { params: Promise<{ id:
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
       <div className="flex flex-col gap-2">
         <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          <Link href="/wyceny" className="hover:text-primary">
+          <Link href="/valuations" className="hover:text-primary">
             Wyceny
           </Link>{" "}
           / Operat

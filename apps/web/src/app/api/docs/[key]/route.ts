@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/auth/session";
-import { storage, wycenyRepository } from "@/app/wyceny/_deps";
+import { storage, wycenyRepository } from "@/app/valuations/_deps";
 
 const TEXT_HEADERS = { "Content-Type": "text/plain; charset=utf-8" };
 

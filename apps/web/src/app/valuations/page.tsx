@@ -43,7 +43,7 @@ export default async function WycenyListPage() {
           </h1>
         </div>
         <Button asChild>
-          <Link href="/wyceny/new">
+          <Link href="/valuations/new">
             <Plus data-icon="inline-start" />
             Nowa wycena
           </Link>
@@ -81,7 +81,7 @@ export default async function WycenyListPage() {
               {wyceny.map((w) => (
                 <TableRow key={w.id}>
                   <TableCell className="px-4">
-                    <Link href={`/wyceny/${w.id}`} className="font-medium text-foreground hover:text-primary">
+                    <Link href={`/valuations/${w.id}`} className="font-medium text-foreground hover:text-primary">
                       {w.address}
                     </Link>
                   </TableCell>
