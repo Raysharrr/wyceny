@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { storage, worker, wycenyRepository } from "@/app/wyceny/_deps";
+import { storage, worker, wycenyRepository } from "@/app/valuations/_deps";
 
 export type CreateWycenaInput = {
   address: string;
@@ -13,7 +13,7 @@ export type CreateWycenaInput = {
 export type CreateWycenaResult = { error: string } | undefined;
 
 /**
- * Server Action backing `wyceny/new` (Task 9 — the E2E climax). Crosses
+ * Server Action backing `valuations/new` (Task 9 — the E2E climax). Crosses
  * every boundary built so far: session (T6) → PortWorker over HTTP (T4) →
  * PortStorage (T8) → PortWyceny/Postgres (T5), with ownership isolation
  * (T7) applied on every later read.
@@ -63,5 +63,5 @@ export async function createWycena(input: CreateWycenaInput): Promise<CreateWyce
     ownerId: session.user.id,
   });
 
-  redirect(`/wyceny/${created.id}`);
+  redirect(`/valuations/${created.id}`);
 }
