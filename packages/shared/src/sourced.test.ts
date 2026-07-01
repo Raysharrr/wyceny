@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sourced, isBlocking } from "./sourced.js";
+import { sourced, isBlocking } from "./sourced";
 
 describe("sourced", () => {
   it("wraps a value with provenance, default status confirmed", () => {
