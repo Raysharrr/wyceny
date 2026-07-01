@@ -26,7 +26,7 @@ export type NewWycenaInput = {
   ownerId: string;
 };
 
-/** Session user shape used by the repo now; `role` is used for access control in Task 7. */
+/** Session user shape used by the repo; `role` drives ownership isolation (F-8, ADR-013). */
 export type SessionUser = {
   id: string;
   role: "admin" | "rzeczoznawca";
