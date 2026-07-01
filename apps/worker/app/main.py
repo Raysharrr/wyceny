@@ -9,7 +9,7 @@ Local run:
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.slownie import to_slownie
+from app.amount_in_words import to_amount_in_words
 
 app = FastAPI(title="wyceny-worker")
 
@@ -19,14 +19,14 @@ def health() -> dict[str, bool]:
     return {"ok": True}
 
 
-class SlownieRequest(BaseModel):
+class AmountInWordsRequest(BaseModel):
     amount: float
 
 
-class SlownieResponse(BaseModel):
+class AmountInWordsResponse(BaseModel):
     words: str
 
 
-@app.post("/slownie")
-def slownie(request: SlownieRequest) -> SlownieResponse:
-    return SlownieResponse(words=to_slownie(request.amount))
+@app.post("/amount-in-words")
+def amount_in_words(request: AmountInWordsRequest) -> AmountInWordsResponse:
+    return AmountInWordsResponse(words=to_amount_in_words(request.amount))

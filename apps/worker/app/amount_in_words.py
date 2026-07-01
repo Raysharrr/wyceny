@@ -47,8 +47,8 @@ def _grosz_form(n: int) -> str:
     return "groszy"
 
 
-def to_slownie(amount: float) -> str:
-    """Format a PLN amount as Polish words: "<złote słownie> złotych <grosze słownie> groszy".
+def to_amount_in_words(amount: float) -> str:
+    """Format a PLN amount as Polish words: "<złote words> złotych <grosze words> groszy".
 
     F-11: returns words only — the caller must never surface the raw
     numeric amount alongside this string.
