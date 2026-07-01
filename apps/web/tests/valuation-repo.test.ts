@@ -2,13 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
-import { wycenyRepo } from "../src/adapters/wyceny-drizzle";
-import { assertNotSigned } from "../src/domain/wycena";
-import type { NewWycenaInput, Wycena } from "../src/ports/wyceny";
+import { valuationRepo } from "../src/adapters/valuation-drizzle";
+import { assertNotSigned } from "../src/domain/valuation";
+import type { NewValuationInput, Valuation } from "../src/ports/valuation";
 
-const owner = { id: "user-test-1", role: "rzeczoznawca" as const };
+const owner = { id: "user-test-1", role: "appraiser" as const };
 
-const repo = wycenyRepo(db);
+const repo = valuationRepo(db);
 
 beforeAll(async () => {
   await migrate(db, { migrationsFolder: "./drizzle" });
@@ -22,13 +22,13 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe("wycenyRepo (integration, real Postgres)", () => {
-  it("creates a Wycena and gets it back with the same fields, status w_toku", async () => {
-    const input: NewWycenaInput = {
+describe("valuationRepo (integration, real Postgres)", () => {
+  it("creates a Valuation and gets it back with the same fields, status in_progress", async () => {
+    const input: NewValuationInput = {
       address: "ul. Testowa 1, Warszawa",
       area: 54.3,
       stubWr: 1044400,
-      slownie: "milion czterdzieści cztery tysiące czterysta złotych",
+      amountInWords: "milion czterdzieści cztery tysiące czterysta złotych",
       docUrl: null,
       ownerId: owner.id,
     };
@@ -36,7 +36,7 @@ describe("wycenyRepo (integration, real Postgres)", () => {
     const created = await repo.create(input);
 
     expect(created.id).toBeTruthy();
-    expect(created.status).toBe("w_toku");
+    expect(created.status).toBe("in_progress");
     expect(created.createdAt).toBeInstanceOf(Date);
     expect(created).toMatchObject(input);
 
@@ -44,12 +44,12 @@ describe("wycenyRepo (integration, real Postgres)", () => {
 
     expect(fetched).not.toBeNull();
     expect(fetched?.id).toBe(created.id);
-    expect(fetched?.status).toBe("w_toku");
+    expect(fetched?.status).toBe("in_progress");
     expect(fetched).toMatchObject(input);
   });
 
-  it("listForUser returns only wyceny owned by that user", async () => {
-    const other = { id: "user-test-2", role: "rzeczoznawca" as const };
+  it("listForUser returns only valuations owned by that user", async () => {
+    const other = { id: "user-test-2", role: "appraiser" as const };
     await db
       .insert(schema.user)
       .values({ id: other.id, name: "Other Owner", email: "other@example.test", role: other.role })
@@ -59,7 +59,7 @@ describe("wycenyRepo (integration, real Postgres)", () => {
       address: "ul. Moja 1",
       area: 10,
       stubWr: 100000,
-      slownie: null,
+      amountInWords: null,
       docUrl: null,
       ownerId: owner.id,
     });
@@ -67,7 +67,7 @@ describe("wycenyRepo (integration, real Postgres)", () => {
       address: "ul. Cudza 2",
       area: 20,
       stubWr: 200000,
-      slownie: null,
+      amountInWords: null,
       docUrl: null,
       ownerId: other.id,
     });
@@ -78,20 +78,20 @@ describe("wycenyRepo (integration, real Postgres)", () => {
     expect(list.every((w) => w.ownerId === owner.id)).toBe(true);
   });
 
-  it("throws when assertNotSigned is called on a podpisany Wycena (write-once, F-7)", async () => {
+  it("throws when assertNotSigned is called on a signed Valuation (write-once, F-7)", async () => {
     const created = await repo.create({
       address: "ul. Podpisana 2, Kraków",
       area: 40,
       stubWr: 500000,
-      slownie: null,
+      amountInWords: null,
       docUrl: null,
       ownerId: owner.id,
     });
 
     // No update/sign method exists (YAGNI) — simulate loading an already-signed
-    // Wycena from persistence to prove the domain invariant holds regardless
-    // of where the record came from.
-    const signed: Wycena = { ...created, status: "podpisany" };
+    // Valuation from persistence to prove the domain invariant holds
+    // regardless of where the record came from.
+    const signed: Valuation = { ...created, status: "signed" };
 
     expect(() => assertNotSigned(signed)).toThrow();
     expect(() => assertNotSigned(created)).not.toThrow();

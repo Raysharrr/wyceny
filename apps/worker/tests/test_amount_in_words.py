@@ -4,8 +4,8 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_slownie_returns_polish_words_not_number():
-    r = client.post("/slownie", json={"amount": 1044400})
+def test_amount_in_words_returns_polish_words_not_number():
+    r = client.post("/amount-in-words", json={"amount": 1044400})
     assert r.status_code == 200
     words = r.json()["words"]
     assert "tysięcy" in words or "tysiące" in words

@@ -6,7 +6,7 @@ describe("PortWorker contract (F-11)", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ words: "milion czterdzieści cztery tysiące czterysta złotych" }) }) as any;
     const w = httpWorker("http://worker.test");
-    const res = await w.slownie(1044400);
+    const res = await w.amountInWords(1044400);
     expect(typeof res).toBe("string");
     expect(res).not.toBe("1044400");
     expect(res).toContain("złot");

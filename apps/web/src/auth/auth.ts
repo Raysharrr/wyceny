@@ -34,13 +34,13 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       role: {
-        type: ["admin", "rzeczoznawca"],
+        type: ["admin", "appraiser"],
         required: true,
         input: false,
         // Least privilege: any future sign-up (none exists yet — no
         // registration page, YAGNI) defaults to the non-admin role. The seed
         // script promotes the admin demo user explicitly after creation.
-        defaultValue: "rzeczoznawca",
+        defaultValue: "appraiser",
       },
     },
   },

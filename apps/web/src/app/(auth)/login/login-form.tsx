@@ -18,7 +18,7 @@ const DEMO_ACCOUNTS = [
     password: "Admin123!",
   },
   {
-    role: "rzeczoznawca" as const,
+    role: "appraiser" as const,
     label: "Rzeczoznawca (Zenon)",
     email: "zenon@wyceny.test",
     password: "Rzeczoznawca123!",
