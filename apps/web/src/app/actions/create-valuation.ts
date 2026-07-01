@@ -39,7 +39,7 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
   }
 
   // STUB: replaced by the real KCS engine in the next slice
-  const stubWr = Math.round(area) * 10000;
+  const stubWr = Math.max(1, Math.round(area)) * 10000;
 
   let amountInWords: string;
   let docUrl: string;

@@ -186,12 +186,8 @@ Web runs at <http://localhost:3000>, worker at <http://localhost:8000>. Log in w
 
 Carried forward from the walking-skeleton build (full history in `.superpowers/sdd/`):
 
-- **`worker-http.ts` doesn't check `response.ok`** — a non-2xx worker response currently persists `amountInWords = undefined` instead of failing loudly. Fix before the response is load-bearing.
-- **"Słownie" (amount-in-words) grammar bug**: `_fix_missing_leading_jeden` in `apps/worker/app/amount_in_words.py` only fixes a *leading* bare thousand/million unit (e.g. `1000` → "tysiąc" → "jeden tysiąc"), not an *interior* one — e.g. `1 001 000` renders as "...milion tysiąc" instead of "...milion jeden tysiąc". Narrow but real; matters once real (non-stub) amounts flow through, since this text lands verbatim on a legal document.
-- **Git-driven CI/CD is not connected** — Vercel and Railway deploys are currently triggered manually (`vercel --prod`, Railway MCP deploy), pending GitHub App OAuth grants for both platforms. CI (lint/test/build/fitness functions) runs on every push regardless; only the *deploy* step is manual.
-- **F-10 dependency-cruiser gaps**: runs without a `tsconfig`, so `@/`-alias imports aren't resolved/caught by the forbidden-import rule (only relative-path imports are checked today).
-- **Malformed valuation IDs crash**: a non-UUID `/valuations/[id]` currently produces a raw Postgres error instead of a friendly 404.
-- **`stubWr` rounds to 0** for `0 < area < 0.5`, violating the "always positive" expectation — dies naturally once the real engine replaces the stub formula.
+- **Vercel is git-connected; Railway is not** — merging to `main` auto-deploys the web app to production (Vercel's GitHub integration; Root Directory `apps/web`, build command `next build`). The worker on Railway is still deployed manually (`railway up`) — it isn't wired to git yet, so a worker change needs an explicit deploy step after merge.
+- **RLS covers reads only**: the Postgres RLS policy on `valuation` (`drizzle/0003_wycena_rls.sql` / `0005_english_domain_rename.sql`) is `FOR SELECT` only — `app_role` only has `GRANT SELECT`, and `create()` runs as the superuser pool connection (no role switch). Ownership on writes is enforced at the app layer today, not by an INSERT/UPDATE RLS policy; adding one is deferred.
 - Full backlog with more detail: `.superpowers/sdd/progress.md` in the [wiki repo](https://github.com/make-it-simple-rayshar/wyceny) (this app repo's own `.superpowers/sdd/` holds per-task briefs/reports and the English-ification report).
 
 ## More docs
