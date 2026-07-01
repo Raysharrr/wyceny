@@ -36,6 +36,13 @@
       "when": 1782907202295,
       "tag": "0004_add_document_table",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782916354000,
+      "tag": "0005_english_domain_rename",
+      "breakpoints": true
     }
   ]
 }
