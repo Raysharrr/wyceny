@@ -16,7 +16,7 @@ import { httpWorker } from "../src/adapters/worker-http";
 describe("F-1 golden WR harness (stub pipeline shape)", () => {
   it("stubWr is a positive number, amountInWords is a non-empty Polish string, and the two are never confused", async () => {
     const area = 104.44;
-    const stubWr = Math.round(area) * 10000; // mirrors create-valuation.ts's stub formula
+    const stubWr = Math.max(1, Math.round(area)) * 10000; // mirrors create-valuation.ts's stub formula
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ words: "milion czterdzieści cztery tysiące czterysta złotych" }) }) as any;
