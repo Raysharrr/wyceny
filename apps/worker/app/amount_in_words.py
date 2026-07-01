@@ -16,15 +16,26 @@ _THOUSAND_UNITS = ("miliard", "milion", "tysiąc")
 
 
 def _fix_missing_leading_jeden(words: str) -> str:
-    """num2words(1000, lang="pl") == "tysiąc", not "jeden tysiąc".
+    """num2words(1000, lang="pl") == "tysiąc", not "jeden tysiąc" — and the
+    same gap shows up mid-string too: num2words(1_001_000) == "milion
+    tysiąc" (should be "jeden milion jeden tysiąc"), because BOTH the
+    million and the thousand component have an implicit count of one.
 
-    Prepend "jeden" when the cardinal words start with a bare thousand/
-    million/billion unit (multiplier of exactly one).
+    Insert "jeden" before every bare occurrence of a thousand/million/
+    billion unit (multiplier of exactly one) — leading or interior — since
+    a bare scale word only ever appears in num2words' pl output when its
+    own count is exactly 1 (count 2-4 uses the plural nominative form,
+    e.g. "tysiące"; count 5+ uses the genitive plural, e.g. "tysięcy";
+    neither is a plain match against `_THOUSAND_UNITS`, so this never
+    fires on an already-counted unit).
     """
-    for unit in _THOUSAND_UNITS:
-        if words == unit or words.startswith(unit + " "):
-            return "jeden " + words
-    return words
+    tokens = words.split(" ")
+    fixed: list[str] = []
+    for i, token in enumerate(tokens):
+        if token in _THOUSAND_UNITS and (i == 0 or tokens[i - 1] != "jeden"):
+            fixed.append("jeden")
+        fixed.append(token)
+    return " ".join(fixed)
 
 
 def _zloty_form(n: int) -> str:
