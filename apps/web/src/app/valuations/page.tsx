@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getSession } from "@/auth/session";
+import { signOutAction } from "@/app/actions/sign-out";
 import { wycenyRepository } from "./_deps";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -42,12 +43,19 @@ export default async function WycenyListPage() {
             {isAdmin ? "Wszystkie wyceny biura" : "Twoje wyceny"}
           </h1>
         </div>
-        <Button asChild>
-          <Link href="/valuations/new">
-            <Plus data-icon="inline-start" />
-            Nowa wycena
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild>
+            <Link href="/valuations/new">
+              <Plus data-icon="inline-start" />
+              Nowa wycena
+            </Link>
+          </Button>
+          <form action={signOutAction}>
+            <Button type="submit" variant="outline">
+              Wyloguj
+            </Button>
+          </form>
+        </div>
       </div>
 
       <Card className="border-none bg-primary/5 py-3 ring-1 ring-primary/15">
