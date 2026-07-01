@@ -8,13 +8,15 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "dev": "turbo run dev --parallel"
+    "dev": "turbo run dev --parallel",
+    "depcruise": "depcruise --config .dependency-cruiser.cjs apps/web/src packages/shared/src"
   },
   "keywords": [],
   "author": "",
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.29.3",
   "devDependencies": {
+    "dependency-cruiser": "^18.0.0",
     "turbo": "^2.10.2"
   },
   "pnpm": {
