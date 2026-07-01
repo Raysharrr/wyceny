@@ -1,0 +1,5 @@
+# Railway/nixpacks build dependencies for the worker service.
+# Mirrors pyproject.toml [project.dependencies]; local dev + CI use uv/pyproject.
+fastapi>=0.138.2
+num2words>=0.5.14
+uvicorn[standard]>=0.49.0
