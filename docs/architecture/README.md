@@ -60,7 +60,7 @@ sequenceDiagram
     participant PS as PortStorage<br/>(storage-pg.ts)
     participant DB as Postgres<br/>(valuation + document tables)
 
-    rect rgb(240, 248, 255)
+    rect rgba(90, 150, 255, 0.12)
     Note over U,DB: Create a valuation (stub WR) — createValuation Server Action
     U->>Web: submit "new valuation" form (address, area)
     Web->>Auth: getSession()
@@ -85,7 +85,7 @@ sequenceDiagram
     Web-->>U: redirect /valuations/{id}
     end
 
-    rect rgb(245, 245, 220)
+    rect rgba(210, 180, 40, 0.12)
     Note over U,DB: List + view — ownership isolation (F-8)
     U->>Web: GET /valuations
     Web->>Auth: getSession()
@@ -98,7 +98,7 @@ sequenceDiagram
     Web-->>U: rendered list (role-scoped)
     end
 
-    rect rgb(255, 240, 240)
+    rect rgba(255, 90, 90, 0.12)
     Note over U,DB: Serve the generated document — ownership-checked route
     U->>Web: GET /api/docs/{key}
     Web->>Auth: getSession()
