@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
-import { wycenyRepo } from "../src/adapters/wyceny-drizzle";
+import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { pgStorage } from "../src/adapters/storage-pg";
-import type { SessionUser } from "../src/ports/wyceny";
+import type { SessionUser } from "../src/ports/valuation";
 
 /**
  * Ownership auth gate on `/api/docs/[key]` (Task 11a). `getSession` reads
@@ -18,16 +18,16 @@ vi.mock("@/auth/session", () => ({ getSession: getSessionMock }));
 
 const { GET } = await import("../src/app/api/docs/[key]/route");
 
-const rzeczoznawcaA: SessionUser = { id: "user-docs-a", role: "rzeczoznawca" };
-const rzeczoznawcaB: SessionUser = { id: "user-docs-b", role: "rzeczoznawca" };
+const appraiserA: SessionUser = { id: "user-docs-a", role: "appraiser" };
+const appraiserB: SessionUser = { id: "user-docs-b", role: "appraiser" };
 const admin: SessionUser = { id: "user-docs-admin", role: "admin" };
 
-const repo = wycenyRepo(db);
+const repo = valuationRepo(db);
 const storage = pgStorage(db);
 
 beforeAll(async () => {
   await migrate(db, { migrationsFolder: "./drizzle" });
-  for (const u of [rzeczoznawcaA, rzeczoznawcaB, admin]) {
+  for (const u of [appraiserA, appraiserB, admin]) {
     await db
       .insert(schema.user)
       .values({ id: u.id, name: u.id, email: `${u.id}@example.test`, role: u.role })
@@ -52,7 +52,7 @@ describe("/api/docs/[key] — access control (Task 11a)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("owner (A) -> 200 + correct content; another rzeczoznawca (B) -> 404 (not found, not 'not yours'); admin -> 200", async () => {
+  it("owner (A) -> 200 + correct content; another appraiser (B) -> 404 (not found, not 'not yours'); admin -> 200", async () => {
     const key = "doc-route-1";
     const content = "Operat (stub) — dokument nalezacy do A";
     const docUrl = await storage.put(key, content);
@@ -61,19 +61,19 @@ describe("/api/docs/[key] — access control (Task 11a)", () => {
       address: "ul. Docs-Route 1",
       area: 12,
       stubWr: 120000,
-      slownie: null,
+      amountInWords: null,
       docUrl,
-      ownerId: rzeczoznawcaA.id,
+      ownerId: appraiserA.id,
     });
 
     const request = new Request(`http://test${docUrl}`);
 
-    getSessionMock.mockResolvedValue({ user: rzeczoznawcaA });
+    getSessionMock.mockResolvedValue({ user: appraiserA });
     const resA = await GET(request, paramsFor(key));
     expect(resA.status).toBe(200);
     expect(await resA.text()).toBe(content);
 
-    getSessionMock.mockResolvedValue({ user: rzeczoznawcaB });
+    getSessionMock.mockResolvedValue({ user: appraiserB });
     const resB = await GET(request, paramsFor(key));
     expect(resB.status).toBe(404);
 
@@ -83,8 +83,8 @@ describe("/api/docs/[key] — access control (Task 11a)", () => {
     expect(await resAdmin.text()).toBe(content);
   });
 
-  it("a key with no owning Wycena visible to the caller -> 404, even with a valid session", async () => {
-    getSessionMock.mockResolvedValue({ user: rzeczoznawcaA });
+  it("a key with no owning Valuation visible to the caller -> 404, even with a valid session", async () => {
+    getSessionMock.mockResolvedValue({ user: appraiserA });
 
     const res = await GET(new Request("http://test/api/docs/never-created"), paramsFor("never-created"));
 
