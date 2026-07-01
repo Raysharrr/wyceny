@@ -8,6 +8,20 @@
       "when": 1782896134154,
       "tag": "0000_goofy_mandrill",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782897440498,
+      "tag": "0001_heavy_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782897717420,
+      "tag": "0002_shallow_karma",
+      "breakpoints": true
     }
   ]
 }

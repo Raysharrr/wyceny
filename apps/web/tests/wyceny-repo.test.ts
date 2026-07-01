@@ -13,8 +13,8 @@ const repo = wycenyRepo(db);
 beforeAll(async () => {
   await migrate(db, { migrationsFolder: "./drizzle" });
   await db
-    .insert(schema.users)
-    .values({ id: owner.id, email: "test@example.test", role: owner.role })
+    .insert(schema.user)
+    .values({ id: owner.id, name: "Test Owner", email: "test@example.test", role: owner.role })
     .onConflictDoNothing();
 });
 
@@ -51,8 +51,8 @@ describe("wycenyRepo (integration, real Postgres)", () => {
   it("listForUser returns only wyceny owned by that user", async () => {
     const other = { id: "user-test-2", role: "rzeczoznawca" as const };
     await db
-      .insert(schema.users)
-      .values({ id: other.id, email: "other@example.test", role: other.role })
+      .insert(schema.user)
+      .values({ id: other.id, name: "Other Owner", email: "other@example.test", role: other.role })
       .onConflictDoNothing();
 
     const mine = await repo.create({
