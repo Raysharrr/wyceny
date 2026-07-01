@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  # CI-only dummy values — never real secrets. `apps/web`'s db client and
+  # Better Auth config throw at import time if these are unset, and that
+  # happens during `next build` (page-data collection), not just at
+  # runtime, so they're needed job-wide.
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/wyceny
+  BETTER_AUTH_SECRET: ci-dummy-secret-not-a-real-secret-0123456789abcdef
+  BETTER_AUTH_URL: http://localhost:3000
+  WORKER_URL: http://localhost:8000
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wyceny
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wyceny"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Belt-and-suspenders: the integration tests already call Drizzle's
+      # `migrate()` in their own `beforeAll` (see apps/web/tests/*.test.ts),
+      # which is idempotent and would apply the schema anyway. Running it
+      # explicitly here fails the build fast, with a clear step name, if the
+      # Postgres service or migrations are broken — instead of failing deep
+      # inside `turbo run test`.
+      - name: Apply Drizzle migrations
+        working-directory: apps/web
+        run: pnpm exec drizzle-kit migrate
+
+      # --env-mode=loose: Turborepo's default *strict* env mode only passes
+      # through env vars declared in turbo.json, which would silently drop
+      # DATABASE_URL/BETTER_AUTH_*/WORKER_URL set above (confirmed locally:
+      # without it, web:test fails with "DATABASE_URL is not set" even
+      # though the job env clearly has it — local dev never hits this
+      # because vitest/Next.js load `.env` directly via dotenv, which CI
+      # has no equivalent of). No real secrets involved, so loose mode here
+      # is safe.
+      - name: Lint, typecheck, test, build (turbo)
+        run: pnpm turbo lint typecheck test build --env-mode=loose
+
+      - name: F-9 — no PII/secrets in VCS
+        run: bash scripts/check-no-pii.sh
+
+      - name: F-10 — dependency rule (dependency-cruiser)
+        run: pnpm depcruise
+
+      - name: Set up Python + uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Worker tests (F-11)
+        working-directory: apps/worker
+        run: uv run pytest -q
