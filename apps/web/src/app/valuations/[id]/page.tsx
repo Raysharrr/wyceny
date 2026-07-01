@@ -17,6 +17,25 @@ const currencyFormatter = new Intl.NumberFormat("pl-PL", {
   maximumFractionDigits: 0,
 });
 
+// RFC 4122-shaped (any version/variant) — the `id` route param is
+// user-controlled and Postgres' `uuid` column rejects anything else with a
+// raw "invalid input syntax for type uuid" error. Validate before it ever
+// reaches the repo query, so a malformed id renders the same friendly
+// not-found state as a well-formed-but-unknown/inaccessible one.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function NotFound() {
+  return (
+    <div className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-3 px-6 py-24 text-center">
+      <h1 className="text-xl font-semibold text-foreground">Nie znaleziono wyceny</h1>
+      <p className="text-sm text-muted-foreground">Wycena nie istnieje albo nie masz do niej dostępu.</p>
+      <Button asChild variant="outline">
+        <Link href="/valuations">Wróć do listy wycen</Link>
+      </Button>
+    </div>
+  );
+}
+
 /**
  * View page (Task 9) — RSC. `PortValuation.get` enforces ownership isolation
  * (T7): a non-owner appraiser gets `null` back, not the row — shown here as
@@ -30,18 +49,14 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
     redirect("/login");
   }
 
+  if (!UUID_RE.test(id)) {
+    return <NotFound />;
+  }
+
   const valuation = await valuationRepository.get(id, session.user);
 
   if (!valuation) {
-    return (
-      <div className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-3 px-6 py-24 text-center">
-        <h1 className="text-xl font-semibold text-foreground">Nie znaleziono wyceny</h1>
-        <p className="text-sm text-muted-foreground">Wycena nie istnieje albo nie masz do niej dostępu.</p>
-        <Button asChild variant="outline">
-          <Link href="/valuations">Wróć do listy wycen</Link>
-        </Button>
-      </div>
-    );
+    return <NotFound />;
   }
 
   return (
