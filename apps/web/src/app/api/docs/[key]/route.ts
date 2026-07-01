@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/auth/session";
-import { storage, wycenyRepository } from "@/app/valuations/_deps";
+import { storage, valuationRepository } from "@/app/valuations/_deps";
 
 const TEXT_HEADERS = { "Content-Type": "text/plain; charset=utf-8" };
 
@@ -12,10 +12,10 @@ const TEXT_HEADERS = { "Content-Type": "text/plain; charset=utf-8" };
  *
  * `PortStorage.put` returns URLs shaped `/api/docs/${key}` — this route is
  * what makes those links resolve. Access control: the caller must have a
- * session, AND the Wycena that owns this doc key must be visible to them
- * under the same ownership rule as `PortWyceny.get` (admin → any;
- * rzeczoznawca → only their own, F-8). No session → 401. No visible
- * owning Wycena (doesn't exist, or exists but isn't theirs) → 404 in both
+ * session, AND the Valuation that owns this doc key must be visible to them
+ * under the same ownership rule as `PortValuation.get` (admin → any;
+ * appraiser → only their own, F-8). No session → 401. No visible owning
+ * Valuation (doesn't exist, or exists but isn't theirs) → 404 in both
  * cases, deliberately — distinguishing them would leak existence of other
  * users' docs.
  */
@@ -27,8 +27,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ key
     return new NextResponse("Wymagane zalogowanie.", { status: 401, headers: TEXT_HEADERS });
   }
 
-  const wycena = await wycenyRepository.getByDocKey(key, session.user);
-  if (!wycena) {
+  const valuation = await valuationRepository.getByDocKey(key, session.user);
+  if (!valuation) {
     return new NextResponse("Nie znaleziono dokumentu.", { status: 404, headers: TEXT_HEADERS });
   }
 

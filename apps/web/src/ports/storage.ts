@@ -1,5 +1,5 @@
 /**
- * Port for document storage (the generated operat).
+ * Port for document storage (the generated appraisal report).
  *
  * Pure interface — no imports, no I/O. Application code depends on this
  * abstraction, never on a concrete adapter (F-10).

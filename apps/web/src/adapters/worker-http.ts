@@ -5,8 +5,8 @@ import type { PortWorker } from "../ports/worker";
  */
 export function httpWorker(baseUrl: string): PortWorker {
   return {
-    async slownie(amount: number): Promise<string> {
-      const response = await fetch(`${baseUrl}/slownie`, {
+    async amountInWords(amount: number): Promise<string> {
+      const response = await fetch(`${baseUrl}/amount-in-words`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount }),

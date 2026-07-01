@@ -10,7 +10,7 @@ import { auth } from "@/auth/auth";
  * whose `nextCookies` plugin clears the session cookie automatically.
  *
  * Exists mainly so the demo/walking-skeleton build can switch between the
- * seeded admin/rzeczoznawca accounts without clearing cookies by hand.
+ * seeded admin/appraiser accounts without clearing cookies by hand.
  */
 export async function signOutAction(): Promise<void> {
   await auth.api.signOut({ headers: await headers() });

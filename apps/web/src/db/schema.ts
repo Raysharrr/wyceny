@@ -19,19 +19,19 @@ export const document = pgTable("document", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 
-export const wycena = pgTable("wycena", {
+export const valuation = pgTable("valuation", {
   id: uuid("id").primaryKey().defaultRandom(),
   address: text("address").notNull(),
   area: doublePrecision("area").notNull(),
   stubWr: doublePrecision("stub_wr").notNull(),
-  slownie: text("slownie"),
+  amountInWords: text("amount_in_words"),
   docUrl: text("doc_url"),
   ownerId: text("owner_id")
     .notNull()
     .references(() => user.id),
-  status: text("status", { enum: ["w_toku", "podpisany"] })
+  status: text("status", { enum: ["in_progress", "signed"] })
     .notNull()
-    .default("w_toku"),
+    .default("in_progress"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
     .notNull()
     .defaultNow(),

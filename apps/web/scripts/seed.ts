@@ -6,7 +6,7 @@ import * as schema from "../src/db/schema";
 
 /**
  * Seeds the two demo users required by Task 6 (Better Auth + roles):
- * one `admin` (Aneta) and one `rzeczoznawca` (Zenon).
+ * one `admin` (Aneta) and one `appraiser` (Zenon).
  *
  * Public sign-up is disabled (`emailAndPassword.disableSignUp: true` in
  * `auth.ts` — closed system, ADR-013): `POST /api/auth/sign-up/email` is
@@ -24,8 +24,8 @@ import * as schema from "../src/db/schema";
  * partial run left the wrong role, or the account default changes).
  *
  * Demo credentials (local/dev only — not for production data):
- *   admin:        aneta@wyceny.test / Admin123!
- *   rzeczoznawca: zenon@wyceny.test / Rzeczoznawca123!
+ *   admin:     aneta@wyceny.test / Admin123!
+ *   appraiser: zenon@wyceny.test / Rzeczoznawca123!
  */
 const DEMO_USERS = [
   {
@@ -35,7 +35,7 @@ const DEMO_USERS = [
     password: "Admin123!",
   },
   {
-    role: "rzeczoznawca" as const,
+    role: "appraiser" as const,
     name: "Zenon",
     email: "zenon@wyceny.test",
     password: "Rzeczoznawca123!",

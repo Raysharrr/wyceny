@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { NewWycenaForm } from "./new-wycena-form";
+import { NewValuationForm } from "./new-valuation-form";
 
-export default async function NewWycenaPage() {
+export default async function NewValuationPage() {
   const session = await getSession();
   if (!session) {
     redirect("/login");
@@ -17,7 +17,7 @@ export default async function NewWycenaPage() {
           Podaj adres nieruchomości i powierzchnię — wartość rynkową i operat przygotuje system.
         </p>
       </div>
-      <NewWycenaForm />
+      <NewValuationForm />
     </div>
   );
 }

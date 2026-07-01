@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { auth } from "./auth";
 
-export type Role = "admin" | "rzeczoznawca";
+export type Role = "admin" | "appraiser";
 
 export type SessionUser = {
   id: string;

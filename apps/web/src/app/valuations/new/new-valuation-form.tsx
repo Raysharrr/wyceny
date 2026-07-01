@@ -7,7 +7,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { createWycena } from "@/app/actions/create-wycena";
+import { createValuation } from "@/app/actions/create-valuation";
 
 const formSchema = z.object({
   address: z.string().trim().min(1, "Podaj adres nieruchomości."),
@@ -24,12 +24,13 @@ type FormInput = z.input<typeof formSchema>;
 type FormOutput = z.output<typeof formSchema>;
 
 /**
- * Create-wycena form (Task 9). Client-side validation via
- * react-hook-form + zod; submission calls the `createWycena` Server Action
- * directly. On success the action redirects (thrown `redirect()` propagates
- * uncaught); on failure it returns `{ error }`, shown below the fields.
+ * Create-valuation form (Task 9). Client-side validation via
+ * react-hook-form + zod; submission calls the `createValuation` Server
+ * Action directly. On success the action redirects (thrown `redirect()`
+ * propagates uncaught); on failure it returns `{ error }`, shown below the
+ * fields.
  */
-export function NewWycenaForm() {
+export function NewValuationForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
@@ -43,7 +44,7 @@ export function NewWycenaForm() {
 
   const onSubmit = handleSubmit(async (values) => {
     setSubmitError(null);
-    const result = await createWycena(values);
+    const result = await createValuation(values);
     if (result?.error) {
       setSubmitError(result.error);
     }

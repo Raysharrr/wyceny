@@ -3,7 +3,7 @@ import type { PortStorage } from "../ports/storage";
 // Keyed on `globalThis`, not a plain module-level variable: Next.js bundles
 // Server Actions and Route Handlers into separate chunks, each of which can
 // get its own evaluation of this module (confirmed empirically in Task 9's
-// E2E — a module-level `Map` here meant the create-wycena action's `put`
+// E2E — a module-level `Map` here meant the create-valuation action's `put`
 // and the `/api/docs/[key]` route's `get` landed in two different Maps,
 // producing a 404 for every freshly-created doc). `globalThis` is the one
 // thing guaranteed to be shared across chunks within a single process.

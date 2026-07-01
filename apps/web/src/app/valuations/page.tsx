@@ -7,11 +7,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getSession } from "@/auth/session";
 import { signOutAction } from "@/app/actions/sign-out";
-import { wycenyRepository } from "./_deps";
+import { valuationRepository } from "./_deps";
 
 const STATUS_LABEL: Record<string, string> = {
-  w_toku: "W toku",
-  podpisany: "Podpisany",
+  in_progress: "W toku",
+  signed: "Podpisany",
 };
 
 const currencyFormatter = new Intl.NumberFormat("pl-PL", {
@@ -21,18 +21,18 @@ const currencyFormatter = new Intl.NumberFormat("pl-PL", {
 });
 
 /**
- * List page (Task 9) — RSC. Reads `PortWyceny.listForUser`, which enforces
- * ownership isolation (T7): a rzeczoznawca sees only their own wyceny, an
- * admin sees all.
+ * List page (Task 9) — RSC. Reads `PortValuation.listForUser`, which
+ * enforces ownership isolation (T7): an appraiser sees only their own
+ * valuations, an admin sees all.
  */
-export default async function WycenyListPage() {
+export default async function ValuationsListPage() {
   const session = await getSession();
   if (!session) {
     redirect("/login");
   }
 
   const isAdmin = session.user.role === "admin";
-  const wyceny = await wycenyRepository.listForUser(session.user);
+  const valuations = await valuationRepository.listForUser(session.user);
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
@@ -66,7 +66,7 @@ export default async function WycenyListPage() {
         </CardContent>
       </Card>
 
-      {wyceny.length === 0 ? (
+      {valuations.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-1 py-10 text-center text-sm text-muted-foreground">
             <p>Brak wycen do wyświetlenia.</p>
@@ -86,20 +86,20 @@ export default async function WycenyListPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {wyceny.map((w) => (
-                <TableRow key={w.id}>
+              {valuations.map((v) => (
+                <TableRow key={v.id}>
                   <TableCell className="px-4">
-                    <Link href={`/valuations/${w.id}`} className="font-medium text-foreground hover:text-primary">
-                      {w.address}
+                    <Link href={`/valuations/${v.id}`} className="font-medium text-foreground hover:text-primary">
+                      {v.address}
                     </Link>
                   </TableCell>
                   <TableCell className="px-4">
-                    <Badge variant={w.status === "podpisany" ? "default" : "secondary"}>
-                      {STATUS_LABEL[w.status] ?? w.status}
+                    <Badge variant={v.status === "signed" ? "default" : "secondary"}>
+                      {STATUS_LABEL[v.status] ?? v.status}
                     </Badge>
                   </TableCell>
                   <TableCell className="px-4 text-right tabular-nums">
-                    {currencyFormatter.format(w.stubWr)}
+                    {currencyFormatter.format(v.stubWr)}
                   </TableCell>
                 </TableRow>
               ))}

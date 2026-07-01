@@ -1,5 +1,6 @@
 /**
- * Port for the worker service (Python, num2words-backed /slownie endpoint).
+ * Port for the worker service (Python, num2words-backed /amount-in-words
+ * endpoint).
  *
  * Pure interface — no imports, no I/O. Application code depends on this
  * abstraction, never on a concrete adapter (F-10).
@@ -11,5 +12,5 @@ export interface PortWorker {
    *
    * Always resolves to the words string — never the raw number (F-11).
    */
-  slownie(amount: number): Promise<string>;
+  amountInWords(amount: number): Promise<string>;
 }
