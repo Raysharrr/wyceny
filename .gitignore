@@ -1,0 +1,25 @@
+# Node / pnpm
+node_modules/
+.next/
+dist/
+.turbo/
+.pnpm-store/
+*.tsbuildinfo
+
+# Env files
+.env*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
