@@ -29,7 +29,7 @@ export function LoginForm() {
   const [state, formAction, pending] = useActionState(signInAction, initialState);
 
   return (
-    <div className="flex w-full max-w-sm flex-col gap-6">
+    <div className="flex w-full max-w-md flex-col gap-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Zaloguj się</CardTitle>
@@ -70,7 +70,7 @@ export function LoginForm() {
                 <form action={formAction}>
                   <input type="hidden" name="email" value={account.email} />
                   <input type="hidden" name="password" value={account.password} />
-                  <Button type="submit" variant="outline" disabled={pending} className="w-full">
+                  <Button type="submit" variant="outline" disabled={pending} className="w-full px-2 text-xs">
                     Zaloguj jako {account.role === "admin" ? "administrator" : "rzeczoznawca"}
                   </Button>
                 </form>
