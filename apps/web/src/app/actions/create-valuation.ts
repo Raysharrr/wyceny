@@ -32,7 +32,16 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
   // Authoritative validation — same schema as the client resolver.
   const parsed = valuationFormSchema.safeParse(input);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane formularza." };
+    const firstIssue = parsed.error.issues[0];
+    // zod v4's built-in `invalid_type` message is English ("Invalid input:
+    // expected string, received number") — only reachable for structurally
+    // malformed payloads that bypass the client (adversarial input, since
+    // the client's resolver already runs this same schema). All other
+    // issues carry our own Polish messages (see valuation-form-schema.ts)
+    // and must pass through unchanged.
+    const message =
+      firstIssue?.code === "invalid_type" ? "Nieprawidłowe dane formularza." : firstIssue?.message;
+    return { error: message ?? "Nieprawidłowe dane formularza." };
   }
   const { address, area, comparables, features } = parsed.data;
 
