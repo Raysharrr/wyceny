@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
@@ -20,5 +20,11 @@ export default defineConfig({
     // can collide (e.g. duplicate `CREATE ROLE`). Running files sequentially
     // avoids that race — safe here since there's no per-file perf pressure.
     fileParallelism: false,
+    // e2e/*.spec.ts are Playwright specs (run via `pnpm e2e`, not vitest) —
+    // Playwright's test() isn't compatible with vitest's runner, and
+    // without this exclude vitest's default *.spec.ts glob picks them up
+    // and fails with "Playwright Test did not expect test() to be called
+    // here".
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });
