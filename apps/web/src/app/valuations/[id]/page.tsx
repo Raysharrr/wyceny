@@ -100,7 +100,7 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
       {valuation.docUrl ? (
         <Button asChild variant="outline" className="w-fit">
           <a href={valuation.docUrl} target="_blank" rel="noreferrer">
-            Otwórz dokument operatu (stub)
+            Otwórz dokument operatu
           </a>
         </Button>
       ) : null}

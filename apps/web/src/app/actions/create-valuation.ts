@@ -4,11 +4,10 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository } from "@/app/valuations/_deps";
+import { valuationFormSchema, type ValuationFormValues } from "@/lib/valuation-form-schema";
+import { computeKcs, type KcsInput } from "@/domain/kcs";
 
-export type CreateValuationInput = {
-  address: string;
-  area: number;
-};
+export type CreateValuationInput = ValuationFormValues;
 
 export type CreateValuationResult = { error: string } | undefined;
 
@@ -16,7 +15,9 @@ export type CreateValuationResult = { error: string } | undefined;
  * Server Action backing `valuations/new` (Task 9 — the E2E climax). Crosses
  * every boundary built so far: session (T6) → PortWorker over HTTP (T4) →
  * PortStorage (T8) → PortValuation/Postgres (T5), with ownership isolation
- * (T7) applied on every later read.
+ * (T7) applied on every later read. KCS Task 4 makes the engine live: the
+ * shared schema is the authoritative re-check (same rules as the client
+ * resolver, Task 3), and `computeKcs` now computes the WR.
  *
  * Returns `{ error }` for recoverable failures (bad input, worker/storage
  * down) so the client form can show a Polish message. On success it never
@@ -28,24 +29,26 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     redirect("/login");
   }
 
-  const address = input.address?.trim() ?? "";
-  const area = Number(input.area);
-
-  if (!address) {
-    return { error: "Podaj adres nieruchomości." };
+  // Authoritative validation — same schema as the client resolver.
+  const parsed = valuationFormSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane formularza." };
   }
-  if (!Number.isFinite(area) || area <= 0) {
-    return { error: "Powierzchnia musi być większa od zera." };
-  }
+  const { address, area, comparables, features } = parsed.data;
 
-  // STUB: replaced by the real KCS engine in the next slice
-  const wr = Math.max(1, Math.round(area)) * 10000;
+  // % → fractions at the action boundary; the engine works in fractions.
+  const kcsInput: KcsInput = {
+    area,
+    comparables,
+    features: features.map((f) => ({ name: f.name, weight: f.weightPct / 100, rating: f.rating })),
+  };
+  const { wr } = computeKcs(kcsInput);
 
   let amountInWords: string;
   let docUrl: string;
   try {
     amountInWords = await worker.amountInWords(wr);
-    const doc = `Operat (stub)\nAdres: ${address}\nPowierzchnia: ${area} m²\nWR: ${wr}\nSłownie: ${amountInWords}`;
+    const doc = `Operat\nAdres: ${address}\nPowierzchnia: ${area} m²\nWR: ${wr}\nSłownie: ${amountInWords}`;
     docUrl = await storage.put(randomUUID(), doc);
   } catch (error) {
     console.error("createValuation: worker/storage failure", error);
@@ -59,7 +62,7 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     address,
     area,
     wr,
-    inputs: null,
+    inputs: kcsInput,
     amountInWords,
     docUrl,
     ownerId: session.user.id,

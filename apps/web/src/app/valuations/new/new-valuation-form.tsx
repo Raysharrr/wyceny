@@ -70,9 +70,9 @@ function toInputValue(value: unknown): string {
  * redirects (thrown `redirect()` propagates uncaught); on failure it
  * returns `{ error }`, shown below the fields.
  *
- * The form now collects comparable transactions and weighted features, but
- * — until Task 4 swaps the engine — the action still computes the stub and
- * ignores these extra fields structurally.
+ * The form collects comparable transactions and weighted features; the
+ * action (KCS Task 4) validates them with the same schema and feeds them
+ * to the KCS engine to compute the WR.
  */
 export function NewValuationForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
