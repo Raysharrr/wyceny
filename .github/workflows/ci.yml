@@ -51,6 +51,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Format check (prettier)
+        run: pnpm format:check
+
       # Belt-and-suspenders: the integration tests already call Drizzle's
       # `migrate()` in their own `beforeAll` (see apps/web/tests/*.test.ts),
       # which is idempotent and would apply the schema anyway. Running it
