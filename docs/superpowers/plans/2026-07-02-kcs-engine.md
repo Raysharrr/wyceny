@@ -807,6 +807,33 @@ Record the URL of the created valuation for the wiki entry.
 
 ---
 
+### Task 6a: Exhaustive browser QA (controller as the user) + UI audit vs mockup
+
+**Files:** none in-repo (QA report goes to `.superpowers/sdd/qa-report.md`); fixes, if found, become fix-subagent dispatches.
+
+Run by the CONTROLLER (not a subagent) with browser tools against production (after Task 6) — the controller acts as a real user, clicking through the app.
+
+- [ ] **Step 1: Golden + happy paths**
+  - Golden: full Kościelna entry (Task 6 Step 4 table) → **1 044 400 zł** + „jeden milion czterdzieści cztery tysiące czterysta złotych zero groszy" + breakdown (ΣUi 1,111; 14 580,32 zł/m²).
+  - Login/logout both roles (`aneta@wyceny.test` admin, `zenon@wyceny.test` appraiser); appraiser sees only own valuations, admin sees all (F-8 behavioral check).
+  - Simple happy path: 3 comparables, default features → plausible WR, detail page complete, document opens with owner auth.
+  - Live stats (Cmin/Cmax/Cśr) update while typing prices; weights warning appears/disappears.
+- [ ] **Step 2: Corner cases** — each must show a Polish error or sane behavior, never a crash/blank screen:
+  - fewer than 3 comparables (rows removed / empty prices)
+  - price `0`, negative, non-numeric, huge (`999999999`)
+  - weights summing to 99 / 101 / one weight 100 rest 0 / weight 40.05 (tolerance edge)
+  - area `0`, negative, comma decimal (`71,63` — PL keyboard habit)
+  - legacy valuation (pre-slice, `inputs NULL`) → detail renders without breakdown, no error
+  - direct URL access to another user's valuation and document as appraiser → not-found state, no existence leak
+  - browser back/refresh mid-form; double-click submit (no duplicate valuation)
+- [ ] **Step 3: UI audit vs mockup v3-r4** (`raw/interactive-mockup/Wyceny - Makieta MVP (standalone) - v3-r4-2026-06-30.html` in the wiki repo):
+  - layout/visual conformance where implemented: green accent, clean layout, table structure of Próba/Cechy/breakdown mirroring mockup steps 3-5 (reduced scope is fine — annotate deliberate gaps)
+  - Polish copy with full diacritics everywhere; no English UI leaks
+  - **NO mockup-only annotations in production UI**: the mockup contains client-demo notes („to robi AI", „propozycja AI", „to robi ktoś inny", „to się bierze stąd", 🤖 tags, source explanations). Production must contain NONE of these — grep the codebase (`git grep -n "robi AI\|propozycja AI\|bierze stąd\|🤖" apps/web/src`) AND visually scan every screen.
+- [ ] **Step 4: Report + fixes** — write findings to `.superpowers/sdd/qa-report.md` (severity-tagged). Dispatch ONE fix subagent for all Critical/Important findings, re-verify in browser, append outcomes. Minor findings → ledger (final review triages).
+
+---
+
 ### Task 7: Wiki docs + roadmap (S6 — wiki repo, Polish)
 
 **Files (wiki repo `~/Development/wyceny`):**
