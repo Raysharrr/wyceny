@@ -1,0 +1,28 @@
+{
+  "name": "Kościelna — reference operat (spike 2026-05-14)",
+  "input": {
+    "area": 71.63,
+    "comparables": [
+      { "date": "2024-07", "area": 63.27, "pricePerM2": 14698.91 },
+      { "date": "2024-06", "area": 61.35, "pricePerM2": 12061.94 },
+      { "date": "2024-04", "area": 76.41, "pricePerM2": 12629.24 },
+      { "date": "2024-07", "area": 62.44, "pricePerM2": 12652.15 },
+      { "date": "2024-10", "area": 61.62, "pricePerM2": 12788.06 },
+      { "date": "2024-09", "area": 70.02, "pricePerM2": 14852.9 },
+      { "date": "2025-02", "area": 61.51, "pricePerM2": 13168.59 },
+      { "date": "2025-02", "area": 64.28, "pricePerM2": 14452.4 },
+      { "date": "2025-06", "area": 71.65, "pricePerM2": 12281.93 },
+      { "date": "2025-12", "area": 70.76, "pricePerM2": 13566.99 },
+      { "date": "2025-11", "area": 62.15, "pricePerM2": 12228.48 },
+      { "date": "2025-11", "area": 74.37, "pricePerM2": 12101.65 }
+    ],
+    "features": [
+      { "name": "standard wykończenia", "weight": 0.4, "rating": "lepsza" },
+      { "name": "położenie na piętrze", "weight": 0.3, "rating": "lepsza" },
+      { "name": "powierzchnia", "weight": 0.1, "rating": "gorsza" },
+      { "name": "pomieszczenia dodatkowe", "weight": 0.1, "rating": "lepsza" },
+      { "name": "lokalizacja", "weight": 0.1, "rating": "lepsza" }
+    ]
+  },
+  "expected": { "csr": 13123.6, "sumUi": 1.111, "unitValue": 14580.32, "wr": 1044400 }
+}
