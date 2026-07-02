@@ -94,3 +94,58 @@ jobs:
       - name: Worker tests (F-11)
         working-directory: apps/worker
         run: uv run pytest -q
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: ci
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/wyceny
+      BETTER_AUTH_SECRET: ci-dummy-secret-not-a-real-secret-0123456789abcdef
+      BETTER_AUTH_URL: http://localhost:3000
+      WORKER_URL: http://localhost:8000
+      CI: "true"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wyceny
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wyceny"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Set up Python + uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Migrate + seed
+        working-directory: apps/web
+        run: pnpm exec drizzle-kit migrate && pnpm seed
+      - name: Start worker
+        working-directory: apps/worker
+        run: uv run uvicorn app.main:app --port 8000 &
+      - name: Build web
+        run: pnpm turbo build --filter=web --env-mode=loose
+      - name: Install Playwright browsers
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Smoke E2E
+        working-directory: apps/web
+        run: pnpm e2e
