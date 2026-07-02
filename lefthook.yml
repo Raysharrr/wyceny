@@ -1,0 +1,14 @@
+# Local gates. Staged-files-only for speed; CI runs the full, authoritative
+# versions of these checks. eslint intentionally stays CI-only (per-package
+# flat-config resolution across the monorepo makes staged-file eslint
+# unreliable; `turbo lint` covers it).
+pre-commit:
+  jobs:
+    - name: prettier
+      run: pnpm exec prettier --check {staged_files}
+      glob: "*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml,css}"
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm exec commitlint --edit {1}

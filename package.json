@@ -11,14 +11,18 @@
     "dev": "turbo run dev --parallel",
     "depcruise": "depcruise --config .dependency-cruiser.cjs apps/web/src packages/shared/src",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "prepare": "lefthook install"
   },
   "keywords": [],
   "author": "",
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.29.3",
   "devDependencies": {
+    "@commitlint/cli": "^21.2.0",
+    "@commitlint/config-conventional": "^21.2.0",
     "dependency-cruiser": "^18.0.0",
+    "lefthook": "^2.1.9",
     "prettier": "^3.9.4",
     "turbo": "^2.10.2"
   },
