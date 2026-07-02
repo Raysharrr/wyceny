@@ -15,7 +15,7 @@ kolejnych slice'ów (począwszy od KCS) przechodziły przez nie od pierwszego dn
 |---|---|
 | CI (GitHub Actions) | ✅ turbo lint+typecheck+test+build, F-9 (PII), F-10 (depcruise), pytest workera, migracje Drizzle |
 | vitest (web, shared) | ✅ jest |
-| eslint | ⚠️ `apps/web/eslint.config.mjs` istnieje, ale skrypt `lint` = `echo` — bramka pusta |
+| eslint | ⚠️ `apps/web` OK (config + realny skrypt); **`packages/shared`** ma `lint` = `echo "no lint configured yet"` — bramka pusta |
 | prettier | ❌ brak |
 | lefthook + commitlint | ❌ brak hooks |
 | playwright (E2E) | ❌ brak |
@@ -29,8 +29,8 @@ kolejnych slice'ów (począwszy od KCS) przechodziły przez nie od pierwszego dn
 2. **prettier**: config w root (jeden dla monorepo), skrypt `format` / `format:check`,
    **jednorazowe sformatowanie całego repo jako osobny commit** (`style: format repo with prettier`),
    krok `format:check` w CI.
-3. **eslint w `apps/web`**: podpiąć realny `eslint` pod skrypt `lint` (config już istnieje);
-   naprawić ewentualne findings lub jawnie je wyciszyć z uzasadnieniem.
+3. **eslint w `packages/shared`**: dodać flat config (typescript-eslint, minimalny — to czysty
+   TS bez Reacta) i podpiąć realny `eslint` pod skrypt `lint` (dziś `echo`); naprawić findings.
 4. **playwright**: `@playwright/test` w `apps/web`, **jeden smoke E2E** pokrywający krytyczną
    ścieżkę obecnej appki: login → utwórz wycenę (adres+pow) → strona szczegółów pokazuje WR.
    Osobny job w CI (postgres service + migracje + build + `next start` + worker FastAPI przez
