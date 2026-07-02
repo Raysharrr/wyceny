@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { KcsInput } from "../domain/kcs";
 import { newValuation } from "../domain/valuation";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
@@ -7,6 +8,16 @@ import type { NewValuationInput, PortValuation, SessionUser, Valuation } from ".
 /** True when `user` is allowed to see `row`, per the F-8 ownership rule. */
 function canSee(row: Valuation, user: SessionUser): boolean {
   return user.role === "admin" || row.ownerId === user.id;
+}
+
+/**
+ * Narrows a raw Drizzle row to {@link Valuation}. `inputs` is an untyped
+ * `jsonb` column at the schema level (the schema stays free of domain
+ * types, F-10) — this is the one place its shape is asserted back to
+ * `KcsInput | null`, since only the caller who wrote the row knows it.
+ */
+function toValuation(row: typeof schema.valuation.$inferSelect): Valuation {
+  return { ...row, inputs: row.inputs as KcsInput | null };
 }
 
 type Tx = Parameters<Parameters<NodePgDatabase<typeof schema>["transaction"]>[0]>[0];
@@ -46,17 +57,18 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
     async create(input: NewValuationInput): Promise<Valuation> {
       const toInsert = newValuation(input);
       const [row] = await db.insert(schema.valuation).values(toInsert).returning();
-      return row;
+      return toValuation(row);
     },
 
     async listForUser(user: SessionUser): Promise<Valuation[]> {
       return db.transaction(async (tx) => {
         await setAppRole(tx, user);
 
-        if (user.role === "admin") {
-          return tx.select().from(schema.valuation);
-        }
-        return tx.select().from(schema.valuation).where(eq(schema.valuation.ownerId, user.id));
+        const rows =
+          user.role === "admin"
+            ? await tx.select().from(schema.valuation)
+            : await tx.select().from(schema.valuation).where(eq(schema.valuation.ownerId, user.id));
+        return rows.map(toValuation);
       });
     },
 
@@ -65,8 +77,9 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         await setAppRole(tx, user);
 
         const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
-        if (!row || !canSee(row, user)) return null;
-        return row;
+        if (!row) return null;
+        const valuation = toValuation(row);
+        return canSee(valuation, user) ? valuation : null;
       });
     },
 
@@ -79,8 +92,9 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           .select()
           .from(schema.valuation)
           .where(eq(schema.valuation.docUrl, docUrl));
-        if (!row || !canSee(row, user)) return null;
-        return row;
+        if (!row) return null;
+        const valuation = toValuation(row);
+        return canSee(valuation, user) ? valuation : null;
       });
     },
   };

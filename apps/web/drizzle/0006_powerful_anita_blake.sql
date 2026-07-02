@@ -1,0 +1,1 @@
+ALTER TABLE "valuation" ADD COLUMN "inputs" jsonb;

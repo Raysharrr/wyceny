@@ -112,7 +112,7 @@ export default async function ValuationsListPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="px-4 text-right tabular-nums">
-                    {currencyFormatter.format(v.stubWr)}
+                    {currencyFormatter.format(v.wr)}
                   </TableCell>
                 </TableRow>
               ))}

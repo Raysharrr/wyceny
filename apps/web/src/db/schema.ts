@@ -1,4 +1,4 @@
-import { doublePrecision, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { doublePrecision, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth-schema";
 
 // Better Auth owns `user`/`session`/`account`/`verification` (ADR-013). This
@@ -23,7 +23,12 @@ export const valuation = pgTable("valuation", {
   id: uuid("id").primaryKey().defaultRandom(),
   address: text("address").notNull(),
   area: doublePrecision("area").notNull(),
-  stubWr: doublePrecision("stub_wr").notNull(),
+  // ponytail: TS field renamed stubWr→wr, physical column stays "stub_wr" —
+  // a real RENAME needs drizzle-kit's interactive prompt; rename rides along
+  // with the next schema-reshaping migration.
+  wr: doublePrecision("stub_wr").notNull(),
+  // Full KcsInput snapshot for reproducibility (F-3). NULL = stub-era row.
+  inputs: jsonb("inputs"),
   amountInWords: text("amount_in_words"),
   docUrl: text("doc_url"),
   ownerId: text("owner_id")

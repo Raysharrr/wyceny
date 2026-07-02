@@ -2,14 +2,19 @@
  * Port for the Valuation repository.
  *
  * Pure interface — no imports, no I/O. Application code depends on this
- * abstraction, never on a concrete adapter (F-10).
+ * abstraction, never on a concrete adapter (F-10). The one exception is this
+ * type-only import of `KcsInput` — it stays pure because type imports are
+ * erased at compile time (no runtime dependency, no I/O).
  */
+
+import type { KcsInput } from "../domain/kcs";
 
 export type Valuation = {
   id: string;
   address: string;
   area: number;
-  stubWr: number;
+  wr: number;
+  inputs: KcsInput | null;
   amountInWords: string | null;
   docUrl: string | null;
   ownerId: string;
@@ -20,7 +25,8 @@ export type Valuation = {
 export type NewValuationInput = {
   address: string;
   area: number;
-  stubWr: number;
+  wr: number;
+  inputs: KcsInput | null;
   amountInWords: string | null;
   docUrl: string | null;
   ownerId: string;

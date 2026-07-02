@@ -27,7 +27,8 @@ describe("valuationRepo (integration, real Postgres)", () => {
     const input: NewValuationInput = {
       address: "ul. Testowa 1, Warszawa",
       area: 54.3,
-      stubWr: 1044400,
+      wr: 1044400,
+      inputs: null,
       amountInWords: "milion czterdzieści cztery tysiące czterysta złotych",
       docUrl: null,
       ownerId: owner.id,
@@ -58,7 +59,8 @@ describe("valuationRepo (integration, real Postgres)", () => {
     const mine = await repo.create({
       address: "ul. Moja 1",
       area: 10,
-      stubWr: 100000,
+      wr: 100000,
+      inputs: null,
       amountInWords: null,
       docUrl: null,
       ownerId: owner.id,
@@ -66,7 +68,8 @@ describe("valuationRepo (integration, real Postgres)", () => {
     await repo.create({
       address: "ul. Cudza 2",
       area: 20,
-      stubWr: 200000,
+      wr: 200000,
+      inputs: null,
       amountInWords: null,
       docUrl: null,
       ownerId: other.id,
@@ -82,7 +85,8 @@ describe("valuationRepo (integration, real Postgres)", () => {
     const created = await repo.create({
       address: "ul. Podpisana 2, Kraków",
       area: 40,
-      stubWr: 500000,
+      wr: 500000,
+      inputs: null,
       amountInWords: null,
       docUrl: null,
       ownerId: owner.id,
@@ -95,5 +99,24 @@ describe("valuationRepo (integration, real Postgres)", () => {
 
     expect(() => assertNotSigned(signed)).toThrow();
     expect(() => assertNotSigned(created)).not.toThrow();
+  });
+
+  it("persists and returns the KCS inputs snapshot (F-3 at the app level)", async () => {
+    const created = await repo.create({
+      address: "ul. Kościelna 33A, Poznań",
+      area: 71.63,
+      wr: 1_044_400,
+      inputs: {
+        area: 71.63,
+        comparables: [{ date: "2024-07", area: 63.27, pricePerM2: 14698.91 }],
+        features: [{ name: "standard wykończenia", weight: 1, rating: "lepsza" }],
+      },
+      amountInWords: null,
+      docUrl: null,
+      ownerId: owner.id,
+    });
+    const fetched = await repo.get(created.id, owner);
+    expect(fetched?.wr).toBe(1_044_400);
+    expect(fetched?.inputs?.comparables[0]?.pricePerM2).toBe(14698.91);
   });
 });

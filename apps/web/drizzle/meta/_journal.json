@@ -43,6 +43,13 @@
       "when": 1782916354000,
       "tag": "0005_english_domain_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782976248545,
+      "tag": "0006_powerful_anita_blake",
+      "breakpoints": true
     }
   ]
 }

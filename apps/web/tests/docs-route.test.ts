@@ -60,7 +60,8 @@ describe("/api/docs/[key] — access control (Task 11a)", () => {
     await repo.create({
       address: "ul. Docs-Route 1",
       area: 12,
-      stubWr: 120000,
+      wr: 120000,
+      inputs: null,
       amountInWords: null,
       docUrl,
       ownerId: appraiserA.id,

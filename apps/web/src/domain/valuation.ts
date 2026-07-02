@@ -17,7 +17,8 @@ export function newValuation(input: NewValuationInput): Omit<Valuation, "id" | "
   return {
     address: input.address,
     area: input.area,
-    stubWr: input.stubWr,
+    wr: input.wr,
+    inputs: input.inputs,
     amountInWords: input.amountInWords,
     docUrl: input.docUrl,
     ownerId: input.ownerId,

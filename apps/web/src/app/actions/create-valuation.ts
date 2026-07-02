@@ -39,13 +39,13 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
   }
 
   // STUB: replaced by the real KCS engine in the next slice
-  const stubWr = Math.max(1, Math.round(area)) * 10000;
+  const wr = Math.max(1, Math.round(area)) * 10000;
 
   let amountInWords: string;
   let docUrl: string;
   try {
-    amountInWords = await worker.amountInWords(stubWr);
-    const doc = `Operat (stub)\nAdres: ${address}\nPowierzchnia: ${area} m²\nWR: ${stubWr}\nSłownie: ${amountInWords}`;
+    amountInWords = await worker.amountInWords(wr);
+    const doc = `Operat (stub)\nAdres: ${address}\nPowierzchnia: ${area} m²\nWR: ${wr}\nSłownie: ${amountInWords}`;
     docUrl = await storage.put(randomUUID(), doc);
   } catch (error) {
     console.error("createValuation: worker/storage failure", error);
@@ -58,7 +58,8 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
   const created = await valuationRepository.create({
     address,
     area,
-    stubWr,
+    wr,
+    inputs: null,
     amountInWords,
     docUrl,
     ownerId: session.user.id,

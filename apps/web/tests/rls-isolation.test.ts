@@ -23,7 +23,8 @@ function valuationInput(ownerId: string, address: string): NewValuationInput {
   return {
     address,
     area: 33.3,
-    stubWr: 333000,
+    wr: 333000,
+    inputs: null,
     amountInWords: null,
     docUrl: null,
     ownerId,
