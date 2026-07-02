@@ -13,10 +13,10 @@ architectural boundary works in production. The valuation engine, document, and 
 
 ## Two repos (know which is which)
 
-| | Repo | Local | Role |
-|---|---|---|---|
-| **Wiki** (knowledge / command center) | `make-it-simple-rayshar/wyceny` | `~/Development/wyceny` | Roadmap, ADRs, PRD, plans (`docs/superpowers/`), skills (`plan-pipeline`, `build-slice`), SDD ledger (`.superpowers/sdd/`). **`main` is PROTECTED — requires PR + signed commits.** |
-| **App** (code — THIS repo) | `Raysharrr/wyceny` | `~/Development/wyceny-app` | Monorepo (pnpm + Turborepo): `apps/web` (Next 16 → Vercel) + `apps/worker` (FastAPI → Railway) + `packages/shared`. |
+|                                       | Repo                            | Local                      | Role                                                                                                                                                                                |
+| ------------------------------------- | ------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Wiki** (knowledge / command center) | `make-it-simple-rayshar/wyceny` | `~/Development/wyceny`     | Roadmap, ADRs, PRD, plans (`docs/superpowers/`), skills (`plan-pipeline`, `build-slice`), SDD ledger (`.superpowers/sdd/`). **`main` is PROTECTED — requires PR + signed commits.** |
+| **App** (code — THIS repo)            | `Raysharrr/wyceny`              | `~/Development/wyceny-app` | Monorepo (pnpm + Turborepo): `apps/web` (Next 16 → Vercel) + `apps/worker` (FastAPI → Railway) + `packages/shared`.                                                                 |
 
 `CLAUDE.md` in both repos cross-links. Product decisions land in the **wiki** first (ADR),
 then code here.
@@ -72,7 +72,7 @@ stored (pg) + served with ownership auth → list with role isolation → view.
 
 ## What's next (in order)
 
-1. **KCS valuation engine slice** (wiki roadmap NOW): the real *Kwota Cen Średnich*
+1. **KCS valuation engine slice** (wiki roadmap NOW): the real _Kwota Cen Średnich_
    comparative-approach engine — deterministic, golden-tested (**F-1** = `1 044 400`),
    determinism (**F-2**), reproducibility (**F-3**). Replaces `stubWr`
    (`app/actions/create-valuation.ts`). The proven spike is in the wiki
@@ -84,6 +84,7 @@ stored (pg) + served with ownership auth → list with role isolation → view.
 ## Open backlog (this app repo)
 
 Mostly cleared during the iteration session. Still open:
+
 - **RLS is SELECT-only** — add INSERT/UPDATE policies + role-switch on writes when the
   first real mutation/sign endpoint lands. (Today's only write, `create`, goes through the
   app layer; no exposed mutation beyond it.)
@@ -103,7 +104,7 @@ Full per-task history + backlog: wiki `.superpowers/sdd/progress.md`.
 ## How to resume (future agent)
 
 1. Read: this file → app `README.md` → `docs/architecture/` → wiki `roadmap.md` (NOW item)
-   + the auto-loaded project memory.
+   - the auto-loaded project memory.
 2. To build the next slice: invoke **`/build-slice`** — it reads the wiki roadmap NOW item
    and runs the delivery cycle (brainstorm → writing-plans → subagent-driven-development
    TDD → CI + fitness functions → deploy → docs).

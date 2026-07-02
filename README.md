@@ -6,25 +6,26 @@ This repo is the **application code**. Architecture decisions, product/domain co
 
 ## Status: walking skeleton (Slice 0) — deployed and live
 
-This repo currently implements a **walking skeleton**: the thinnest possible end-to-end slice that crosses *every* architectural boundary the real product will need — authentication, database, file storage, the web↔worker service boundary, CI fitness functions, and production deployment — with the actual valuation logic, document generation, and AI integration replaced by stubs. The goal of a walking skeleton is to prove the whole envelope works before building features inside it; see [`docs/architecture/`](docs/architecture/) for why this pattern was chosen.
+This repo currently implements a **walking skeleton**: the thinnest possible end-to-end slice that crosses _every_ architectural boundary the real product will need — authentication, database, file storage, the web↔worker service boundary, CI fitness functions, and production deployment — with the actual valuation logic, document generation, and AI integration replaced by stubs. The goal of a walking skeleton is to prove the whole envelope works before building features inside it; see [`docs/architecture/`](docs/architecture/) for why this pattern was chosen.
 
 **Deployed and live:**
+
 - Web: <https://wyceny-mu.vercel.app>
 - Worker: <https://worker-production-c672.up.railway.app>
 - Demo users: `aneta@wyceny.test` / `Admin123!` (admin), `zenon@wyceny.test` / `Rzeczoznawca123!` (appraiser)
 
 ## Tech stack
 
-| Layer | Choice |
-|---|---|
-| Web framework | Next.js 16 (App Router, React Server Components, Server Actions) |
-| Auth | Better Auth (self-hosted, Drizzle adapter, sessions in our own Postgres) — [ADR-013](docs/architecture/adr/ADR-013-auth-better-auth.md) |
-| Database | Postgres, via Drizzle ORM, with Row-Level Security as defense-in-depth |
-| UI | shadcn/ui + Tailwind CSS |
-| Worker service | Python / FastAPI (`num2words` for Polish amount-in-words formatting) |
-| Monorepo tooling | pnpm workspaces + Turborepo |
-| CI | GitHub Actions |
-| Hosting | Vercel (web) + Railway (worker + Postgres) |
+| Layer            | Choice                                                                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Web framework    | Next.js 16 (App Router, React Server Components, Server Actions)                                                                        |
+| Auth             | Better Auth (self-hosted, Drizzle adapter, sessions in our own Postgres) — [ADR-013](docs/architecture/adr/ADR-013-auth-better-auth.md) |
+| Database         | Postgres, via Drizzle ORM, with Row-Level Security as defense-in-depth                                                                  |
+| UI               | shadcn/ui + Tailwind CSS                                                                                                                |
+| Worker service   | Python / FastAPI (`num2words` for Polish amount-in-words formatting)                                                                    |
+| Monorepo tooling | pnpm workspaces + Turborepo                                                                                                             |
+| CI               | GitHub Actions                                                                                                                          |
+| Hosting          | Vercel (web) + Railway (worker + Postgres)                                                                                              |
 
 ## What works now (de facto, verified live)
 
@@ -32,10 +33,10 @@ The full flow below runs end-to-end in production:
 
 1. **Log in** (Better Auth, email/password, closed sign-up — 5 trusted internal users).
 2. **Create a valuation** (address + area) via a Server Action.
-3. The Server Action calls the **worker over HTTP** (`PortWorker` → `apps/worker` `/amount-in-words`) to convert the (stub) valuation result into Polish words — e.g. *"pięćset czterdzieści tysięcy złotych zero groszy"*.
+3. The Server Action calls the **worker over HTTP** (`PortWorker` → `apps/worker` `/amount-in-words`) to convert the (stub) valuation result into Polish words — e.g. _"pięćset czterdzieści tysięcy złotych zero groszy"_.
 4. The generated (stub) document text is **stored in Postgres** (`PortStorage`) and served back through an **ownership-checked** route, `/api/docs/[key]`.
 5. The valuation is **persisted** (`PortValuation` → Drizzle/Postgres).
-6. **List + view** valuations with **role-based isolation**: an appraiser sees only their own; an admin sees all. Enforced at the app layer *and* by Postgres RLS (defense-in-depth, both independently tested).
+6. **List + view** valuations with **role-based isolation**: an appraiser sees only their own; an admin sees all. Enforced at the app layer _and_ by Postgres RLS (defense-in-depth, both independently tested).
 
 See [`docs/architecture/README.md`](docs/architecture/README.md#current-e2e-flow-deployed-working) for the full Mermaid sequence diagram of this flow, or the copy below.
 
@@ -124,13 +125,13 @@ sequenceDiagram
 
 Five architectural invariants are enforced automatically on every push/PR (`.github/workflows/ci.yml`). Full table (all 12, active + deferred) in [`docs/architecture/README.md`](docs/architecture/README.md#fitness-functions-f-1f-12).
 
-| # | What | Where |
-|---|---|---|
-| F-1 | Golden WR harness (pins the create→worker→save pipeline shape) | `apps/web/tests/golden-wr.test.ts` |
-| F-8 | Owner isolation (appraiser sees own, admin sees all) — app-layer + Postgres RLS | `apps/web/tests/rls-isolation.test.ts`, `docs-route.test.ts` |
-| F-9 | No PII/secrets committed (PESEL, land-register numbers, signed PDFs) | `scripts/check-no-pii.sh` |
-| F-10 | Hexagonal dependency rule (`domain/`/`packages/shared` never import adapters) | `.dependency-cruiser.cjs` |
-| F-11 | Worker never returns a valuation-result field — words/data only | `apps/web/tests/worker-contract.test.ts`, `apps/worker/tests/test_amount_in_words.py` |
+| #    | What                                                                            | Where                                                                                 |
+| ---- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| F-1  | Golden WR harness (pins the create→worker→save pipeline shape)                  | `apps/web/tests/golden-wr.test.ts`                                                    |
+| F-8  | Owner isolation (appraiser sees own, admin sees all) — app-layer + Postgres RLS | `apps/web/tests/rls-isolation.test.ts`, `docs-route.test.ts`                          |
+| F-9  | No PII/secrets committed (PESEL, land-register numbers, signed PDFs)            | `scripts/check-no-pii.sh`                                                             |
+| F-10 | Hexagonal dependency rule (`domain/`/`packages/shared` never import adapters)   | `.dependency-cruiser.cjs`                                                             |
+| F-11 | Worker never returns a valuation-result field — words/data only                 | `apps/web/tests/worker-contract.test.ts`, `apps/worker/tests/test_amount_in_words.py` |
 
 ## Monorepo layout
 

@@ -11,15 +11,15 @@ kolejnych slice'ów (począwszy od KCS) przechodziły przez nie od pierwszego dn
 
 ## Stan zastany (audyt 2026-07-01)
 
-| Element | Stan |
-|---|---|
-| CI (GitHub Actions) | ✅ turbo lint+typecheck+test+build, F-9 (PII), F-10 (depcruise), pytest workera, migracje Drizzle |
-| vitest (web, shared) | ✅ jest |
-| eslint | ⚠️ `apps/web` OK (config + realny skrypt); **`packages/shared`** ma `lint` = `echo "no lint configured yet"` — bramka pusta |
-| prettier | ❌ brak |
-| lefthook + commitlint | ❌ brak hooks |
-| playwright (E2E) | ❌ brak |
-| ruff (worker Python) | ❌ brak w CI |
+| Element               | Stan                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| CI (GitHub Actions)   | ✅ turbo lint+typecheck+test+build, F-9 (PII), F-10 (depcruise), pytest workera, migracje Drizzle                           |
+| vitest (web, shared)  | ✅ jest                                                                                                                     |
+| eslint                | ⚠️ `apps/web` OK (config + realny skrypt); **`packages/shared`** ma `lint` = `echo "no lint configured yet"` — bramka pusta |
+| prettier              | ❌ brak                                                                                                                     |
+| lefthook + commitlint | ❌ brak hooks                                                                                                               |
+| playwright (E2E)      | ❌ brak                                                                                                                     |
+| ruff (worker Python)  | ❌ brak w CI                                                                                                                |
 
 ## Zakres
 

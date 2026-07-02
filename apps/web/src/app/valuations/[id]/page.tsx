@@ -28,7 +28,9 @@ function NotFound() {
   return (
     <div className="mx-auto flex w-full max-w-lg flex-1 flex-col items-center justify-center gap-3 px-6 py-24 text-center">
       <h1 className="text-xl font-semibold text-foreground">Nie znaleziono wyceny</h1>
-      <p className="text-sm text-muted-foreground">Wycena nie istnieje albo nie masz do niej dostępu.</p>
+      <p className="text-sm text-muted-foreground">
+        Wycena nie istnieje albo nie masz do niej dostępu.
+      </p>
       <Button asChild variant="outline">
         <Link href="/valuations">Wróć do listy wycen</Link>
       </Button>
@@ -84,7 +86,9 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
           </div>
           <div className="flex flex-col gap-0.5">
             <p className="text-xs text-muted-foreground">Wartość rynkowa (WR)</p>
-            <p className="text-base font-medium text-foreground">{currencyFormatter.format(valuation.stubWr)}</p>
+            <p className="text-base font-medium text-foreground">
+              {currencyFormatter.format(valuation.stubWr)}
+            </p>
           </div>
           <div className="flex flex-col gap-0.5 sm:col-span-2">
             <p className="text-xs text-muted-foreground">Kwota słownie</p>

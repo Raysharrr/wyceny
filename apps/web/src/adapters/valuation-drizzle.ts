@@ -75,7 +75,10 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       return db.transaction(async (tx) => {
         await setAppRole(tx, user);
 
-        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.docUrl, docUrl));
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.docUrl, docUrl));
         if (!row || !canSee(row, user)) return null;
         return row;
       });

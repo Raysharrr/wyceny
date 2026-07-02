@@ -86,7 +86,10 @@ describe("/api/docs/[key] — access control (Task 11a)", () => {
   it("a key with no owning Valuation visible to the caller -> 404, even with a valid session", async () => {
     getSessionMock.mockResolvedValue({ user: appraiserA });
 
-    const res = await GET(new Request("http://test/api/docs/never-created"), paramsFor("never-created"));
+    const res = await GET(
+      new Request("http://test/api/docs/never-created"),
+      paramsFor("never-created"),
+    );
 
     expect(res.status).toBe(404);
   });

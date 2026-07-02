@@ -23,10 +23,12 @@
 ### Task 1: Prettier — config, repo-wide format, CI gate
 
 **Files:**
+
 - Create: `.prettierrc.json`, `.prettierignore`
 - Modify: `package.json` (root — devDeps + scripts), `.github/workflows/ci.yml` (new step after "Install dependencies")
 
 **Interfaces:**
+
 - Produces: root scripts `format` (`prettier --write .`) and `format:check` (`prettier --check .`) — Task 3's lefthook and CI rely on `format:check`; the whole repo is prettier-clean after this task.
 
 - [ ] **Step 1: Install prettier at the workspace root**
@@ -100,8 +102,8 @@ git commit -m "style: format repo with prettier"
 In `.github/workflows/ci.yml`, after the "Install dependencies" step (line 51-52), insert:
 
 ```yaml
-      - name: Format check (prettier)
-        run: pnpm format:check
+- name: Format check (prettier)
+  run: pnpm format:check
 ```
 
 - [ ] **Step 9: Commit**
@@ -116,10 +118,12 @@ git commit -m "ci: add prettier format gate"
 ### Task 2: Real eslint in `packages/shared`
 
 **Files:**
+
 - Create: `packages/shared/eslint.config.mjs`
 - Modify: `packages/shared/package.json` (devDeps + `lint` script — currently `echo "no lint configured yet"`)
 
 **Interfaces:**
+
 - Consumes: nothing new.
 - Produces: `pnpm turbo lint` now actually lints `packages/shared` (plain TS, no React). CI's existing "Lint, typecheck, test, build (turbo)" step (`ci.yml:72-73`) picks it up with no CI change.
 
@@ -134,10 +138,7 @@ pnpm --filter shared add -D eslint typescript-eslint
 ```js
 import tseslint from "typescript-eslint";
 
-export default tseslint.config(
-  { ignores: ["dist/**"] },
-  ...tseslint.configs.recommended,
-);
+export default tseslint.config({ ignores: ["dist/**"] }, ...tseslint.configs.recommended);
 ```
 
 - [ ] **Step 3: Point the `lint` script at eslint**
@@ -176,10 +177,12 @@ git commit -m "chore: wire real eslint for packages/shared"
 ### Task 3: lefthook + commitlint — local gates
 
 **Files:**
+
 - Create: `lefthook.yml`, `commitlint.config.mjs`
 - Modify: root `package.json` (devDeps + `prepare` script)
 
 **Interfaces:**
+
 - Consumes: `format:check`-style prettier binary from Task 1 (runs `prettier --check` on staged files directly).
 - Produces: git hooks active for every later task and slice — non-conventional commit messages and unformatted staged files are rejected locally. CI unchanged (it is the authoritative gate already).
 
@@ -262,9 +265,11 @@ Expected: hooks run and the commit succeeds.
 ### Task 4: ruff for the worker — lint + format gate in CI
 
 **Files:**
+
 - Modify: `apps/worker/pyproject.toml` (dev group + `[tool.ruff]`), `.github/workflows/ci.yml` (step before "Worker tests (F-11)")
 
 **Interfaces:**
+
 - Produces: `uv run ruff check .` and `uv run ruff format --check .` clean in `apps/worker`; CI enforces both.
 
 - [ ] **Step 1: Add ruff to the dev group**
@@ -301,9 +306,9 @@ uv run pytest -q   # expected: PASS — formatting must not change behavior
 In `.github/workflows/ci.yml`, after "Set up Python + uv" (line 81-85) and **before** "Worker tests (F-11)", insert:
 
 ```yaml
-      - name: Worker lint (ruff)
-        working-directory: apps/worker
-        run: uv run ruff check . && uv run ruff format --check .
+- name: Worker lint (ruff)
+  working-directory: apps/worker
+  run: uv run ruff check . && uv run ruff format --check .
 ```
 
 - [ ] **Step 5: Commit**
@@ -318,10 +323,12 @@ git commit -m "chore: add ruff lint and format gate for worker"
 ### Task 5: Playwright smoke E2E + CI job
 
 **Files:**
+
 - Create: `apps/web/playwright.config.ts`, `apps/web/e2e/smoke.spec.ts`
 - Modify: `apps/web/package.json` (devDep + `e2e` script), `.github/workflows/ci.yml` (new `e2e` job), `apps/web/.gitignore` (playwright artifacts)
 
 **Interfaces:**
+
 - Consumes: seeded demo user from `apps/web/scripts/seed.ts` (`aneta@wyceny.test` / `Admin123!`); login form ids `#email`/`#password`, button text `Zaloguj się` (`apps/web/src/app/(auth)/login/login-form.tsx:41-54`); new-valuation form ids `#address`/`#area`, button `Utwórz wycenę` (`new-valuation-form.tsx`).
 - Produces: `pnpm --filter web e2e` runs 1 smoke test against a production build. **NOTE for the KCS slice:** when próba/cechy become required form fields, `e2e/smoke.spec.ts` MUST be extended in the same task that changes the form.
 
@@ -414,60 +421,60 @@ Expected: `1 passed`. Kill the background uvicorn afterwards.
 In `.github/workflows/ci.yml`, add a second job after `ci` (same indentation level as `jobs.ci`). It reuses the same env/service pattern as the `ci` job — copy the `env:` block values exactly:
 
 ```yaml
-  e2e:
-    runs-on: ubuntu-latest
-    needs: ci
-    env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/wyceny
-      BETTER_AUTH_SECRET: ci-dummy-secret-not-a-real-secret-0123456789abcdef
-      BETTER_AUTH_URL: http://localhost:3000
-      WORKER_URL: http://localhost:8000
-      CI: "true"
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: wyceny
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d wyceny"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: "pnpm"
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Set up Python + uv
-        uses: astral-sh/setup-uv@v8.2.0
-        with:
-          python-version: "3.12"
-          enable-cache: true
-      - name: Migrate + seed
-        working-directory: apps/web
-        run: pnpm exec drizzle-kit migrate && pnpm seed
-      - name: Start worker
-        working-directory: apps/worker
-        run: uv run uvicorn app.main:app --port 8000 &
-      - name: Build web
-        run: pnpm turbo build --filter=web --env-mode=loose
-      - name: Install Playwright browsers
-        working-directory: apps/web
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Smoke E2E
-        working-directory: apps/web
-        run: pnpm e2e
+e2e:
+  runs-on: ubuntu-latest
+  needs: ci
+  env:
+    DATABASE_URL: postgres://postgres:postgres@localhost:5432/wyceny
+    BETTER_AUTH_SECRET: ci-dummy-secret-not-a-real-secret-0123456789abcdef
+    BETTER_AUTH_URL: http://localhost:3000
+    WORKER_URL: http://localhost:8000
+    CI: "true"
+  services:
+    postgres:
+      image: postgres:16
+      env:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: wyceny
+      ports:
+        - 5432:5432
+      options: >-
+        --health-cmd "pg_isready -U postgres -d wyceny"
+        --health-interval 5s
+        --health-timeout 5s
+        --health-retries 20
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v6
+    - name: Set up Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: "22"
+        cache: "pnpm"
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+    - name: Set up Python + uv
+      uses: astral-sh/setup-uv@v8.2.0
+      with:
+        python-version: "3.12"
+        enable-cache: true
+    - name: Migrate + seed
+      working-directory: apps/web
+      run: pnpm exec drizzle-kit migrate && pnpm seed
+    - name: Start worker
+      working-directory: apps/worker
+      run: uv run uvicorn app.main:app --port 8000 &
+    - name: Build web
+      run: pnpm turbo build --filter=web --env-mode=loose
+    - name: Install Playwright browsers
+      working-directory: apps/web
+      run: pnpm exec playwright install --with-deps chromium
+    - name: Smoke E2E
+      working-directory: apps/web
+      run: pnpm e2e
 ```
 
 - [ ] **Step 7: Commit and push — verify CI green end-to-end**

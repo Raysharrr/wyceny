@@ -18,8 +18,11 @@ describe("F-1 golden WR harness (stub pipeline shape)", () => {
     const area = 104.44;
     const stubWr = Math.max(1, Math.round(area)) * 10000; // mirrors create-valuation.ts's stub formula
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ words: "milion czterdzieści cztery tysiące czterysta złotych" }) }) as any;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ words: "milion czterdzieści cztery tysiące czterysta złotych" }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
 
     const worker = httpWorker("http://worker.test");
     const amountInWords = await worker.amountInWords(stubWr);

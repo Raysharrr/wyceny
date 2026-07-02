@@ -4,7 +4,14 @@ import { Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getSession } from "@/auth/session";
 import { signOutAction } from "@/app/actions/sign-out";
 import { valuationRepository } from "./_deps";
@@ -38,7 +45,9 @@ export default async function ValuationsListPage() {
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-10">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Wyceny</p>
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Wyceny
+          </p>
           <h1 className="text-2xl font-semibold text-foreground">
             {isAdmin ? "Wszystkie wyceny biura" : "Twoje wyceny"}
           </h1>
@@ -71,7 +80,8 @@ export default async function ValuationsListPage() {
           <CardContent className="flex flex-col items-center gap-1 py-10 text-center text-sm text-muted-foreground">
             <p>Brak wycen do wyświetlenia.</p>
             <p>
-              Kliknij „Nowa wycena”, aby utworzyć{isAdmin ? " pierwszy operat biura" : " swój pierwszy operat"}.
+              Kliknij „Nowa wycena”, aby utworzyć
+              {isAdmin ? " pierwszy operat biura" : " swój pierwszy operat"}.
             </p>
           </CardContent>
         </Card>
@@ -89,7 +99,10 @@ export default async function ValuationsListPage() {
               {valuations.map((v) => (
                 <TableRow key={v.id}>
                   <TableCell className="px-4">
-                    <Link href={`/valuations/${v.id}`} className="font-medium text-foreground hover:text-primary">
+                    <Link
+                      href={`/valuations/${v.id}`}
+                      className="font-medium text-foreground hover:text-primary"
+                    >
                       {v.address}
                     </Link>
                   </TableCell>

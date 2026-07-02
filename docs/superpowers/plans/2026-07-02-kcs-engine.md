@@ -27,10 +27,12 @@
 ### Task 1: Pure engine + Kościelna fixture + F-1/F-2/F-3 tests
 
 **Files:**
+
 - Create: `apps/web/src/domain/kcs.ts`, `apps/web/tests/fixtures/koscielna.json`
 - Rewrite: `apps/web/tests/golden-wr.test.ts` (replaces the stub-pipeline harness)
 
 **Interfaces:**
+
 - Produces: `computeKcs(input: KcsInput): KcsResult` and types `Comparable { date?: string; area?: number; pricePerM2: number }`, `FeatureRating = "gorsza" | "przecietna" | "lepsza"`, `Feature { name: string; weight: number; rating: FeatureRating }`, `KcsInput { comparables: Comparable[]; area: number; features: Feature[] }`, `KcsResult { csr, cmin, cmax, vmin, vmax, ui: FeatureShare[], sumUi, unitValue, wrUnrounded, wr }` with `FeatureShare = Feature & { value: number }`. Tasks 2-5 import these from `@/domain/kcs`.
 
 - [ ] **Step 1: Create the fixture `apps/web/tests/fixtures/koscielna.json`**
@@ -220,7 +222,8 @@ export function computeKcs(input: KcsInput): KcsResult {
 
   const ui: FeatureShare[] = input.features.map((f) => ({
     ...f,
-    value: f.rating === "lepsza" ? f.weight * vmax : f.rating === "gorsza" ? f.weight * vmin : f.weight,
+    value:
+      f.rating === "lepsza" ? f.weight * vmax : f.rating === "gorsza" ? f.weight * vmin : f.weight,
   }));
   const sumUi = roundTo(
     ui.reduce((sum, share) => sum + share.value, 0),
@@ -252,11 +255,13 @@ git commit -m "feat: KCS engine with operat rounding convention and F-1/F-2/F-3 
 ### Task 2: Rename `stubWr`→`wr` in code + persist `inputs` snapshot (jsonb)
 
 **Files:**
+
 - Modify: `apps/web/src/db/schema.ts`, `apps/web/src/ports/valuation.ts`, `apps/web/src/domain/valuation.ts`, `apps/web/src/app/actions/create-valuation.ts`, `apps/web/src/app/valuations/page.tsx`, `apps/web/src/app/valuations/[id]/page.tsx`, `apps/web/tests/valuation-repo.test.ts`, `apps/web/tests/rls-isolation.test.ts`, `apps/web/tests/docs-route.test.ts`
 - Create: one generated Drizzle migration (via `drizzle-kit generate`)
 - Check-only: `apps/web/src/adapters/` (the drizzle adapter maps rows generically; `pnpm --filter web typecheck` will reveal if it needs a touch)
 
 **Interfaces:**
+
 - Consumes: `KcsInput` type from Task 1 (`@/domain/kcs`).
 - Produces: `Valuation.wr: number`, `Valuation.inputs: KcsInput | null`, `NewValuationInput.wr: number`, `NewValuationInput.inputs: KcsInput | null`. DB column `inputs jsonb` (nullable — legacy stub-era rows stay `NULL`, no backfill). Tasks 3-5 rely on these names.
 
@@ -372,10 +377,12 @@ git commit -m "feat: rename stubWr to wr and persist KCS inputs snapshot (jsonb)
 ### Task 3: Validation schema + form sections (Próba + Cechy) — still stub-powered
 
 **Files:**
+
 - Create: `apps/web/src/lib/valuation-form-schema.ts`, `apps/web/tests/valuation-form-schema.test.ts`
 - Modify: `apps/web/src/app/valuations/new/new-valuation-form.tsx`, `apps/web/e2e/smoke.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `FeatureRating` from `@/domain/kcs`.
 - Produces: `valuationFormSchema` (zod) + `ValuationFormValues` — Task 4's action validates with the SAME schema. Form field ids for E2E: `#address`, `#area`, `#comparable-date-{i}`, `#comparable-area-{i}`, `#comparable-price-{i}`, `#feature-weight-{i}`, rating buttons `aria-label="{feature name}: {gorsza|przeciętna|lepsza}"`. Buttons: `Dodaj transakcję`, `Usuń` (per row), submit `Utwórz wycenę`.
 - **Behavior note:** after this task the form COLLECTS comparables/features and sends them, but the action still computes the stub (extra fields are accepted structurally and ignored). Every commit stays green; the engine swap is Task 4.
@@ -410,7 +417,10 @@ describe("valuationFormSchema", () => {
   });
 
   it("rejects fewer than 3 comparables", () => {
-    const r = valuationFormSchema.safeParse({ ...valid, comparables: valid.comparables.slice(0, 2) });
+    const r = valuationFormSchema.safeParse({
+      ...valid,
+      comparables: valid.comparables.slice(0, 2),
+    });
     expect(r.success).toBe(false);
   });
 
@@ -511,10 +521,10 @@ Keep the existing component conventions (Controller + Field/FieldLabel/FieldErro
 The form now requires ≥3 comparables. Extend the creation section (between filling `#area` and clicking `Utwórz wycenę`):
 
 ```ts
-  const prices = ["12000", "13000", "14000"];
-  for (const [i, price] of prices.entries()) {
-    await page.locator(`#comparable-price-${i}`).fill(price);
-  }
+const prices = ["12000", "13000", "14000"];
+for (const [i, price] of prices.entries()) {
+  await page.locator(`#comparable-price-${i}`).fill(price);
+}
 ```
 
 (Default features already sum to 100% — no interaction needed.)
@@ -538,10 +548,12 @@ git commit -m "feat: valuation form collects comparables and features with share
 ### Task 4: Swap the stub for the engine in the Server Action
 
 **Files:**
+
 - Modify: `apps/web/src/app/actions/create-valuation.ts`
 - Create: `apps/web/tests/kcs-reproducibility.test.ts`
 
 **Interfaces:**
+
 - Consumes: `computeKcs`, `KcsInput` (Task 1); `valuationFormSchema`, `ValuationFormValues` (Task 3); `wr`/`inputs` repo fields (Task 2).
 - Produces: `createValuation(input: ValuationFormValues)` — validates with the shared schema, computes the engine, persists `wr` + `inputs`. The stub formula is GONE.
 
@@ -622,21 +634,21 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
 Downstream unchanged except: `worker.amountInWords(wr)`, doc text drops the `(stub)` marker:
 
 ```ts
-    const doc = `Operat\nAdres: ${address}\nPowierzchnia: ${area} m²\nWR: ${wr}\nSłownie: ${amountInWords}`;
+const doc = `Operat\nAdres: ${address}\nPowierzchnia: ${area} m²\nWR: ${wr}\nSłownie: ${amountInWords}`;
 ```
 
 and persistence:
 
 ```ts
-  const created = await valuationRepository.create({
-    address,
-    area,
-    wr,
-    inputs: kcsInput,
-    amountInWords,
-    docUrl,
-    ownerId: session.user.id,
-  });
+const created = await valuationRepository.create({
+  address,
+  area,
+  wr,
+  inputs: kcsInput,
+  amountInWords,
+  docUrl,
+  ownerId: session.user.id,
+});
 ```
 
 Also update the detail page's document button label (`valuations/[id]/page.tsx:99`): `Otwórz dokument operatu (stub)` → `Otwórz dokument operatu`.
@@ -660,9 +672,11 @@ git commit -m "feat: server action computes WR with the KCS engine and persists 
 ### Task 5: Detail page — operat calculation breakdown (T2/T3/T4)
 
 **Files:**
+
 - Modify: `apps/web/src/app/valuations/[id]/page.tsx`, `apps/web/e2e/smoke.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `computeKcs`, `Valuation.inputs` (null for legacy rows).
 - Produces: a „Rozbicie obliczeń" card on the detail page — the mockup step-5 "zero black box" tables, server-rendered (RSC, no `"use client"`).
 
@@ -671,7 +685,9 @@ git commit -m "feat: server action computes WR with the KCS engine and persists 
 After the existing summary `Card`, when `valuation.inputs` is non-null, recompute and render (all RSC — pure function call on the server):
 
 ```tsx
-{valuation.inputs ? <KcsBreakdown inputs={valuation.inputs} /> : null}
+{
+  valuation.inputs ? <KcsBreakdown inputs={valuation.inputs} /> : null;
+}
 ```
 
 with a co-located server component in the same file:
@@ -680,7 +696,11 @@ with a co-located server component in the same file:
 import { computeKcs, type KcsInput } from "@/domain/kcs";
 
 const plnPerM2 = new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" });
-const RATING_LABEL: Record<string, string> = { gorsza: "gorsza", przecietna: "przeciętna", lepsza: "lepsza" };
+const RATING_LABEL: Record<string, string> = {
+  gorsza: "gorsza",
+  przecietna: "przeciętna",
+  lepsza: "lepsza",
+};
 
 function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
   const r = computeKcs(inputs);
@@ -691,11 +711,26 @@ function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-semibold text-foreground">Ceny jednostkowe próby (T2)</h2>
           <dl className="grid grid-cols-2 gap-1 text-sm sm:grid-cols-5">
-            <div><dt className="text-xs text-muted-foreground">Cmin</dt><dd>{plnPerM2.format(r.cmin)}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Cmax</dt><dd>{plnPerM2.format(r.cmax)}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Cśr</dt><dd>{plnPerM2.format(r.csr)}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Vmin</dt><dd>{r.vmin.toFixed(3)}</dd></div>
-            <div><dt className="text-xs text-muted-foreground">Vmax</dt><dd>{r.vmax.toFixed(3)}</dd></div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Cmin</dt>
+              <dd>{plnPerM2.format(r.cmin)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Cmax</dt>
+              <dd>{plnPerM2.format(r.cmax)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Cśr</dt>
+              <dd>{plnPerM2.format(r.csr)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Vmin</dt>
+              <dd>{r.vmin.toFixed(3)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Vmax</dt>
+              <dd>{r.vmax.toFixed(3)}</dd>
+            </div>
           </dl>
         </section>
         {/* T3 — współczynniki korygujące */}
@@ -720,7 +755,9 @@ function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
                 </tr>
               ))}
               <tr className="border-t border-border font-medium">
-                <td className="py-1" colSpan={3}>Suma współczynników (ΣUi)</td>
+                <td className="py-1" colSpan={3}>
+                  Suma współczynników (ΣUi)
+                </td>
                 <td className="py-1 text-right tabular-nums">{r.sumUi.toFixed(3)}</td>
               </tr>
             </tbody>
@@ -750,7 +787,7 @@ function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
 After the existing WR-visible assertions add:
 
 ```ts
-  await expect(page.getByText("Suma współczynników (ΣUi)")).toBeVisible();
+await expect(page.getByText("Suma współczynników (ΣUi)")).toBeVisible();
 ```
 
 - [ ] **Step 3: Full check**
@@ -794,16 +831,16 @@ Git-driven CD is still not wired (OAuth grants pending on the user side) — dep
 
 On https://wyceny-mu.vercel.app: log in, create a valuation with the full Kościelna dataset — address `ul. Kościelna 33A, Poznań`, area `71.63`, the 12 comparables from the fixture, and the 6 default feature rows set so they reproduce the fixture's 5 weighted features (the engine only reads weight+rating; names are labels):
 
-| Row (UI) | Waga | Ocena |
-|---|---|---|
-| standard wykończenia | 40 | lepsza |
-| położenie na piętrze | 30 | lepsza |
-| lokalizacja | 10 | lepsza |
-| powierzchnia użytkowa | 10 | gorsza |
-| pomieszczenia przynależne | 10 | lepsza |
-| dodatkowe | 0 | przeciętna |
-Expected on the detail page: **Wartość rynkowa (WR): 1 044 400,00 zł**, „Kwota słownie: jeden milion czterdzieści cztery tysiące czterysta złotych zero groszy", breakdown shows ΣUi = 1,111 and 14 580,32 zł/m².
-Record the URL of the created valuation for the wiki entry.
+| Row (UI)                                                                                                                                                                                                          | Waga | Ocena      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ---------- |
+| standard wykończenia                                                                                                                                                                                              | 40   | lepsza     |
+| położenie na piętrze                                                                                                                                                                                              | 30   | lepsza     |
+| lokalizacja                                                                                                                                                                                                       | 10   | lepsza     |
+| powierzchnia użytkowa                                                                                                                                                                                             | 10   | gorsza     |
+| pomieszczenia przynależne                                                                                                                                                                                         | 10   | lepsza     |
+| dodatkowe                                                                                                                                                                                                         | 0    | przeciętna |
+| Expected on the detail page: **Wartość rynkowa (WR): 1 044 400,00 zł**, „Kwota słownie: jeden milion czterdzieści cztery tysiące czterysta złotych zero groszy", breakdown shows ΣUi = 1,111 and 14 580,32 zł/m². |
+| Record the URL of the created valuation for the wiki entry.                                                                                                                                                       |
 
 ---
 
@@ -837,6 +874,7 @@ Run by the CONTROLLER (not a subagent) with browser tools against production (af
 ### Task 7: Wiki docs + roadmap (S6 — wiki repo, Polish)
 
 **Files (wiki repo `~/Development/wyceny`):**
+
 - Modify: `wiki/log.md`, `wiki/timeline.md`, `wiki/roadmap.md`, `wiki/index.md`
 - Create: `wiki/topics/tech/kcs-engine-slice.md`
 

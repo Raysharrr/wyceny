@@ -12,7 +12,9 @@ export function httpWorker(baseUrl: string): PortWorker {
         body: JSON.stringify({ amount }),
       });
       if (!response.ok) {
-        throw new Error(`worker /amount-in-words responded ${response.status} ${response.statusText}`);
+        throw new Error(
+          `worker /amount-in-words responded ${response.status} ${response.statusText}`,
+        );
       }
       const data = (await response.json()) as { words: string };
       return data.words;

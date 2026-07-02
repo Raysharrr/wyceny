@@ -33,7 +33,9 @@ export function LoginForm() {
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Zaloguj się</CardTitle>
-          <CardDescription>Wprowadź adres e-mail i hasło, aby uzyskać dostęp do wycen.</CardDescription>
+          <CardDescription>
+            Wprowadź adres e-mail i hasło, aby uzyskać dostęp do wycen.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form action={formAction} className="flex flex-col gap-4">
@@ -43,7 +45,13 @@ export function LoginForm() {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="password">Hasło</Label>
-              <Input id="password" name="password" type="password" autoComplete="current-password" required />
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+              />
             </div>
             {state.error ? (
               <p role="alert" className="text-sm text-destructive">
@@ -70,7 +78,12 @@ export function LoginForm() {
                 <form action={formAction}>
                   <input type="hidden" name="email" value={account.email} />
                   <input type="hidden" name="password" value={account.password} />
-                  <Button type="submit" variant="outline" disabled={pending} className="w-full px-2 text-xs">
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={pending}
+                    className="w-full px-2 text-xs"
+                  >
                     Zaloguj jako {account.role === "admin" ? "administrator" : "rzeczoznawca"}
                   </Button>
                 </form>

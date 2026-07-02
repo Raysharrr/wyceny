@@ -14,7 +14,10 @@ export type SignInState = {
  * verification + session creation to Better Auth; the `nextCookies` plugin
  * on `auth` sets the session cookie automatically on success.
  */
-export async function signInAction(_prevState: SignInState, formData: FormData): Promise<SignInState> {
+export async function signInAction(
+  _prevState: SignInState,
+  formData: FormData,
+): Promise<SignInState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
 

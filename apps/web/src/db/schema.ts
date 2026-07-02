@@ -32,7 +32,5 @@ export const valuation = pgTable("valuation", {
   status: text("status", { enum: ["in_progress", "signed"] })
     .notNull()
     .default("in_progress"),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });

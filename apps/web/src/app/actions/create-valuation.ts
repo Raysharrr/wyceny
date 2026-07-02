@@ -50,7 +50,8 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
   } catch (error) {
     console.error("createValuation: worker/storage failure", error);
     return {
-      error: "Nie udało się przygotować operatu — worker lub magazyn dokumentów są niedostępne. Spróbuj ponownie.",
+      error:
+        "Nie udało się przygotować operatu — worker lub magazyn dokumentów są niedostępne. Spróbuj ponownie.",
     };
   }
 
