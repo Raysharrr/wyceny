@@ -29,4 +29,5 @@ test("login → create valuation → detail shows WR", async ({ page }) => {
   // comparables render their own zł/m² prices on this page, DOM-order
   // .first() could silently match the wrong element.
   await expect(page.getByTestId("wr-value")).toBeVisible();
+  await expect(page.getByText("Suma współczynników (ΣUi)")).toBeVisible();
 });
