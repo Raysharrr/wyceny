@@ -14,11 +14,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "echo \"no lint configured yet\"",
+    "lint": "eslint src",
     "test": "vitest run"
   },
   "devDependencies": {
+    "eslint": "^9.39.4",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.62.1",
     "vitest": "^4.1.9"
   }
 }
