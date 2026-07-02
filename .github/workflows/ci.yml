@@ -19,6 +19,7 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -97,13 +98,8 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: ci
-    env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/wyceny
-      BETTER_AUTH_SECRET: ci-dummy-secret-not-a-real-secret-0123456789abcdef
-      BETTER_AUTH_URL: http://localhost:3000
-      WORKER_URL: http://localhost:8000
-      CI: "true"
     services:
       postgres:
         image: postgres:16
@@ -140,9 +136,19 @@ jobs:
         run: pnpm exec drizzle-kit migrate && pnpm seed
       - name: Start worker
         working-directory: apps/worker
-        run: uv run uvicorn app.main:app --port 8000 &
+        run: |
+          uv sync
+          nohup uv run uvicorn app.main:app --port 8000 > /tmp/worker.log 2>&1 &
+      - name: Wait for worker
+        run: |
+          curl --retry 30 --retry-delay 2 --retry-connrefused --fail --silent http://localhost:8000/health || (cat /tmp/worker.log; exit 1)
       - name: Build web
         run: pnpm turbo build --filter=web --env-mode=loose
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Playwright browsers
         working-directory: apps/web
         run: pnpm exec playwright install --with-deps chromium
