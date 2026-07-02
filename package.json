@@ -9,7 +9,9 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "dev": "turbo run dev --parallel",
-    "depcruise": "depcruise --config .dependency-cruiser.cjs apps/web/src packages/shared/src"
+    "depcruise": "depcruise --config .dependency-cruiser.cjs apps/web/src packages/shared/src",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "keywords": [],
   "author": "",
@@ -17,6 +19,7 @@
   "packageManager": "pnpm@10.29.3",
   "devDependencies": {
     "dependency-cruiser": "^18.0.0",
+    "prettier": "^3.9.4",
     "turbo": "^2.10.2"
   },
   "pnpm": {

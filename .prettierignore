@@ -1,0 +1,9 @@
+node_modules
+.next
+.turbo
+dist
+build
+pnpm-lock.yaml
+apps/web/src/db/migrations
+apps/worker
+.superpowers
