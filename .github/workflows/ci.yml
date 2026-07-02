@@ -87,6 +87,10 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
+      - name: Worker lint (ruff)
+        working-directory: apps/worker
+        run: uv run ruff check . && uv run ruff format --check .
+
       - name: Worker tests (F-11)
         working-directory: apps/worker
         run: uv run pytest -q
