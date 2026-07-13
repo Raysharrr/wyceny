@@ -12,7 +12,7 @@
     "depcruise": "depcruise --config .dependency-cruiser.cjs apps/web/src packages/shared/src",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install || true"
   },
   "keywords": [],
   "author": "",
