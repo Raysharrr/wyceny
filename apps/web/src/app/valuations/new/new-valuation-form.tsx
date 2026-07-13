@@ -47,7 +47,10 @@ const emptyComparable: FormInput["comparables"][number] = {
   pricePerM2: "",
 };
 
-const numberFormatter = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
+const numberFormatter = new Intl.NumberFormat("pl-PL", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 function formatStat(value: number | null): string {
   return value === null ? "—" : `${numberFormatter.format(value)} zł/m²`;

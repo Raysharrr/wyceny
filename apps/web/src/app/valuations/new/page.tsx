@@ -9,7 +9,7 @@ export default async function NewValuationPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
       <div className="flex flex-col gap-1">
         <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Wyceny</p>
         <h1 className="text-2xl font-semibold text-foreground">Nowa wycena</h1>
