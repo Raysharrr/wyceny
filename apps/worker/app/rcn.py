@@ -19,11 +19,19 @@ MUST pass a real `today_month` — never trust the caller to have pre-filtered
 dates.
 """
 
+import json
 import re
+import urllib.parse
+import urllib.request
 
 POOL_N = 19
 AREA_BAND_PCT = 0.30
 DATE_WINDOW_MONTHS = 24
+
+# I/O constants — copied verbatim from tools/spike/2026-05-14-kcs/spike.py (lines 24-26).
+WFS_URL = "https://mapy.geoportal.gov.pl/wss/service/rcn"
+NOMINATIM = "https://nominatim.openstreetmap.org/search"
+USER_AGENT = "wyceny-spike/1.0 (contact: czekala.michal@gmail.com)"
 
 
 def parse_gml(gml: str) -> list[dict]:
@@ -108,3 +116,64 @@ def select_sample(transactions: list[dict], subject_area: float, today_month: st
 
     pool.sort(key=lambda t: t["date"], reverse=True)
     return pool[:POOL_N]
+
+
+def fetch_rcn(
+    bbox: tuple[float, float, float, float], count: int = 5000, sort: str = "dok_data D"
+) -> str:
+    """Fetch raw GML from the GUGiK RCN WFS endpoint for a lat/lon bbox.
+
+    Port of the spike's `fetch_rcn_wgs84` (tools/spike/2026-05-14-kcs/spike.py,
+    lines 159-181). `count=5000` + `sortBy=dok_data D` (newest first) is the
+    spike-proven combination — smaller counts return a quasi-random subset
+    dominated by ancient records. Timeout is 30s (the plan's override of the
+    spike's 180s — spike-measured p95 is far below that).
+    """
+    lat_min, lon_min, lat_max, lon_max = bbox
+    params = {
+        "service": "WFS",
+        "version": "2.0.0",
+        "request": "GetFeature",
+        "typenames": "ms:lokale",
+        "count": str(count),
+        "srsName": "EPSG:2180",
+        "bbox": f"{lat_min},{lon_min},{lat_max},{lon_max},EPSG:4326",
+    }
+    if sort:
+        params["sortBy"] = sort
+    url = f"{WFS_URL}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return resp.read().decode("utf-8")
+
+
+def geocode(address: str) -> tuple[float, float]:
+    """Geocode a Polish address ("Miasto, ul. Nazwa nr") via Nominatim.
+
+    Port of the spike's `geocode_nominatim` (tools/spike/2026-05-14-kcs/spike.py,
+    lines 220-248). Nominatim dislikes the "ul." prefix and "City, street" order,
+    so a structured street/city query is tried first, with a `q=` fallback for
+    addresses that don't match the expected shape.
+    """
+    match = re.match(r"^([^,]+),\s*(?:ul\.|pl\.|al\.|os\.)?\s*(.+)$", address)
+    if match:
+        city, street = match.group(1).strip(), match.group(2).strip()
+    else:
+        city, street = "Poznań", address.replace("ul.", "").strip()
+
+    params = {"street": street, "city": city, "country": "Poland", "format": "json", "limit": 1}
+    url = f"{NOMINATIM}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read())
+
+    if not data:
+        params2 = {"q": f"{street}, {city}", "format": "json", "limit": 1, "countrycodes": "pl"}
+        url2 = f"{NOMINATIM}?{urllib.parse.urlencode(params2)}"
+        req2 = urllib.request.Request(url2, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req2, timeout=30) as resp2:
+            data = json.loads(resp2.read())
+        if not data:
+            raise RuntimeError(f"Nominatim nic nie znalazł (struct ani q): {address}")
+
+    return float(data[0]["lat"]), float(data[0]["lon"])
