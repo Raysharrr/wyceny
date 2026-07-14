@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { KcsInput } from "../domain/kcs";
-import { newValuation } from "../domain/valuation";
+import { approveValuation, confirmSampleProvenance, newValuation } from "../domain/valuation";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -98,12 +98,37 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       });
     },
 
-    async confirmSample(): Promise<Valuation | null> {
-      throw new Error("confirmSample: implemented in the next task");
+    // Both mutations run on the superuser pool connection, same trust path
+    // as create (app_role/RLS stays read-only, F-8 unchanged); ownership is
+    // enforced app-level below. ponytail: load→domain→update without a row
+    // lock — single-user-per-valuation flow (ADR-012, Scalability=L); add
+    // SELECT ... FOR UPDATE if concurrent editing ever arrives.
+    async confirmSample(id: string, user: SessionUser): Promise<Valuation | null> {
+      const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+      if (!row) return null;
+      const valuation = toValuation(row);
+      if (valuation.ownerId !== user.id) return null;
+      const updated = confirmSampleProvenance(valuation);
+      const [saved] = await db
+        .update(schema.valuation)
+        .set({ inputs: updated.inputs })
+        .where(eq(schema.valuation.id, id))
+        .returning();
+      return toValuation(saved);
     },
 
-    async approve(): Promise<Valuation | null> {
-      throw new Error("approve: implemented in the next task");
+    async approve(id: string, user: SessionUser): Promise<Valuation | null> {
+      const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+      if (!row) return null;
+      const valuation = toValuation(row);
+      if (valuation.ownerId !== user.id) return null;
+      const updated = approveValuation(valuation, new Date());
+      const [saved] = await db
+        .update(schema.valuation)
+        .set({ status: updated.status, approvedAt: updated.approvedAt })
+        .where(eq(schema.valuation.id, id))
+        .returning();
+      return toValuation(saved);
     },
   };
 }

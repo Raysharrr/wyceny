@@ -88,4 +88,36 @@ describe("F-5: sample snapshot provenance round-trips (RCN comparables + sampleM
     }
     expect(fetchedInputs.sampleMeta).toEqual(sampleMeta);
   });
+
+  it("F-5: inline row status + scalar provenance map round-trip through the inputs jsonb", async () => {
+    const comparables = fixture.input.comparables.map((c, i) => ({
+      ...c,
+      source: "rcn" as const,
+      transactionId: `koscielna-prov-${i}`,
+      status: "to_verify" as const,
+    }));
+    const provenance = {
+      address: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      area: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      weights: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      ratings: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      geocode: { source: "geokoder" as const, status: "to_verify" as const },
+    };
+    const input: KcsInput = { ...fixture.input, comparables, provenance };
+
+    const created = await repo.create({
+      address: "ul. Kościelna 33A, Poznań",
+      area: input.area,
+      wr: computeKcs(input).wr,
+      inputs: input,
+      amountInWords: null,
+      docUrl: null,
+      ownerId: owner.id,
+    });
+    const fetched = await repo.get(created.id, adminUser);
+    expect(fetched!.inputs!.comparables.every((c) => c.status === "to_verify")).toBe(true);
+    expect(fetched!.inputs!.provenance).toEqual(provenance);
+    // Provenance never changes the number: WR identical with and without it.
+    expect(computeKcs(fetched!.inputs!).wr).toBe(computeKcs(fixture.input).wr);
+  });
 });

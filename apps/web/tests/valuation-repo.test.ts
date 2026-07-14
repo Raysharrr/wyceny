@@ -3,19 +3,63 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
-import { assertNotSigned } from "../src/domain/valuation";
-import type { NewValuationInput, Valuation } from "../src/ports/valuation";
+import { ApprovalBlockedError, assertNotSigned } from "../src/domain/valuation";
+import type { KcsInput } from "../src/domain/kcs";
+import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
 
-const owner = { id: "user-test-1", role: "appraiser" as const };
+const appraiserA: SessionUser = { id: "user-test-1", role: "appraiser" };
+const appraiserB: SessionUser = { id: "user-test-2", role: "appraiser" };
+const admin: SessionUser = { id: "user-test-admin", role: "admin" };
 
 const repo = valuationRepo(db);
 
+function valuationInput(ownerId: string, address: string): NewValuationInput {
+  return {
+    address,
+    area: 33.3,
+    wr: 333000,
+    inputs: null,
+    amountInWords: null,
+    docUrl: null,
+    ownerId,
+  };
+}
+
+function approvableInputs(): KcsInput {
+  return {
+    area: 50,
+    comparables: Array.from({ length: 12 }, (_, i) => ({
+      pricePerM2: 10_000 + i,
+      source: "rcn" as const,
+      transactionId: `tx-${i}`,
+      status: "to_verify" as const,
+    })),
+    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    sampleMeta: {
+      lat: 52.4,
+      lon: 16.9,
+      fetchedAt: "2026-07-14T09:00:00.000Z",
+      source: "rcn-wfs-gugik",
+      query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D" },
+    },
+    provenance: {
+      address: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      area: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      weights: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      ratings: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      geocode: { source: "geokoder" as const, status: "to_verify" as const },
+    },
+  };
+}
+
 beforeAll(async () => {
   await migrate(db, { migrationsFolder: "./drizzle" });
-  await db
-    .insert(schema.user)
-    .values({ id: owner.id, name: "Test Owner", email: "test@example.test", role: owner.role })
-    .onConflictDoNothing();
+  for (const u of [appraiserA, appraiserB, admin]) {
+    await db
+      .insert(schema.user)
+      .values({ id: u.id, name: u.id, email: `${u.id}@example.test`, role: u.role })
+      .onConflictDoNothing();
+  }
 });
 
 afterAll(async () => {
@@ -31,7 +75,7 @@ describe("valuationRepo (integration, real Postgres)", () => {
       inputs: null,
       amountInWords: "milion czterdzieści cztery tysiące czterysta złotych",
       docUrl: null,
-      ownerId: owner.id,
+      ownerId: appraiserA.id,
     };
 
     const created = await repo.create(input);
@@ -41,7 +85,7 @@ describe("valuationRepo (integration, real Postgres)", () => {
     expect(created.createdAt).toBeInstanceOf(Date);
     expect(created).toMatchObject(input);
 
-    const fetched = await repo.get(created.id, owner);
+    const fetched = await repo.get(created.id, appraiserA);
 
     expect(fetched).not.toBeNull();
     expect(fetched?.id).toBe(created.id);
@@ -50,12 +94,6 @@ describe("valuationRepo (integration, real Postgres)", () => {
   });
 
   it("listForUser returns only valuations owned by that user", async () => {
-    const other = { id: "user-test-2", role: "appraiser" as const };
-    await db
-      .insert(schema.user)
-      .values({ id: other.id, name: "Other Owner", email: "other@example.test", role: other.role })
-      .onConflictDoNothing();
-
     const mine = await repo.create({
       address: "ul. Moja 1",
       area: 10,
@@ -63,7 +101,7 @@ describe("valuationRepo (integration, real Postgres)", () => {
       inputs: null,
       amountInWords: null,
       docUrl: null,
-      ownerId: owner.id,
+      ownerId: appraiserA.id,
     });
     await repo.create({
       address: "ul. Cudza 2",
@@ -72,13 +110,13 @@ describe("valuationRepo (integration, real Postgres)", () => {
       inputs: null,
       amountInWords: null,
       docUrl: null,
-      ownerId: other.id,
+      ownerId: appraiserB.id,
     });
 
-    const list = await repo.listForUser(owner);
+    const list = await repo.listForUser(appraiserA);
 
     expect(list.some((w) => w.id === mine.id)).toBe(true);
-    expect(list.every((w) => w.ownerId === owner.id)).toBe(true);
+    expect(list.every((w) => w.ownerId === appraiserA.id)).toBe(true);
   });
 
   it("throws when assertNotSigned is called on a signed Valuation (write-once, F-7)", async () => {
@@ -89,7 +127,7 @@ describe("valuationRepo (integration, real Postgres)", () => {
       inputs: null,
       amountInWords: null,
       docUrl: null,
-      ownerId: owner.id,
+      ownerId: appraiserA.id,
     });
 
     // No update/sign method exists (YAGNI) — simulate loading an already-signed
@@ -113,10 +151,86 @@ describe("valuationRepo (integration, real Postgres)", () => {
       },
       amountInWords: null,
       docUrl: null,
-      ownerId: owner.id,
+      ownerId: appraiserA.id,
     });
-    const fetched = await repo.get(created.id, owner);
+    const fetched = await repo.get(created.id, appraiserA);
     expect(fetched?.wr).toBe(1_044_400);
     expect(fetched?.inputs?.comparables[0]?.pricePerM2).toBe(14698.91);
+  });
+});
+
+describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
+  it("confirmSample flips rcn rows + geocode to confirmed and persists", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 1"),
+      inputs: approvableInputs(),
+    });
+    const confirmed = await repo.confirmSample(created.id, appraiserA);
+    expect(confirmed).not.toBeNull();
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread!.inputs!.comparables.every((c) => c.status === "confirmed")).toBe(true);
+    expect(reread!.inputs!.provenance!.geocode!.status).toBe("confirmed");
+  });
+
+  it("confirmSample is owner-only: another appraiser AND a non-owner admin get null", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 2"),
+      inputs: approvableInputs(),
+    });
+    expect(await repo.confirmSample(created.id, appraiserB)).toBeNull();
+    expect(await repo.confirmSample(created.id, admin)).toBeNull();
+  });
+
+  it("approve rejects an unconfirmed draft with ApprovalBlockedError (server-side gate — API bypass impossible)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 3"),
+      inputs: approvableInputs(),
+    });
+    await expect(repo.approve(created.id, appraiserA)).rejects.toThrow(ApprovalBlockedError);
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread!.status).toBe("in_progress");
+    expect(reread!.approvedAt).toBeNull();
+  });
+
+  it("approve succeeds after confirmSample: status approved + approvedAt persisted", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 4"),
+      inputs: approvableInputs(),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    const approved = await repo.approve(created.id, appraiserA);
+    expect(approved!.status).toBe("approved");
+    expect(approved!.approvedAt).toBeInstanceOf(Date);
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread!.status).toBe("approved");
+    expect(reread!.approvedAt).toBeInstanceOf(Date);
+  });
+
+  it("an approved valuation refuses further mutations (write-once at approval)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 5"),
+      inputs: approvableInputs(),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.approve(created.id, appraiserA);
+    await expect(repo.confirmSample(created.id, appraiserA)).rejects.toThrow(/not a draft/i);
+    await expect(repo.approve(created.id, appraiserA)).rejects.toThrow(/not a draft/i);
+  });
+
+  it("approve blocks below 12 transactions even when all rows are confirmed", async () => {
+    const inputs = approvableInputs();
+    inputs.comparables = inputs.comparables.slice(0, 11).map((c) => ({
+      ...c,
+      status: "confirmed" as const,
+    }));
+    inputs.provenance = {
+      ...inputs.provenance!,
+      geocode: { source: "geokoder", status: "confirmed" },
+    };
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 6"),
+      inputs,
+    });
+    await expect(repo.approve(created.id, appraiserA)).rejects.toThrow(ApprovalBlockedError);
   });
 });
