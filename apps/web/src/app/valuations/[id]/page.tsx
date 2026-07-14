@@ -135,8 +135,12 @@ function ProvenanceBadge({ source, status }: { source?: string; status?: string 
       </Badge>
     );
   }
-  if (source === "rcn") {
+  if (source === "rcn" && status === "confirmed") {
     return <Badge variant="secondary">RCN — potwierdzone</Badge>;
+  }
+  if (source === "rcn") {
+    // Legacy rows: source=rcn but no status — never claim verification that never happened.
+    return <Badge variant="outline">RCN</Badge>;
   }
   if (status) {
     return <Badge variant="secondary">Rzeczoznawca</Badge>;
