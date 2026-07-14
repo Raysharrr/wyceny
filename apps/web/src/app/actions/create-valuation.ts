@@ -43,13 +43,18 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
       firstIssue?.code === "invalid_type" ? "Nieprawidłowe dane formularza." : firstIssue?.message;
     return { error: message ?? "Nieprawidłowe dane formularza." };
   }
-  const { address, area, comparables, features } = parsed.data;
+  const { address, area, comparables, features, sampleMeta } = parsed.data;
 
   // % → fractions at the action boundary; the engine works in fractions.
+  // `comparables` keep whatever provenance (source/transactionId) the
+  // schema validated — the engine ignores those fields (F-5). `sampleMeta`
+  // is normalized to `null` when absent so every stored snapshot has the
+  // same shape (manual-only submissions vs. RCN-seeded ones).
   const kcsInput: KcsInput = {
     area,
     comparables,
     features: features.map((f) => ({ name: f.name, weight: f.weightPct / 100, rating: f.rating })),
+    sampleMeta: sampleMeta ?? null,
   };
   const { wr } = computeKcs(kcsInput);
 

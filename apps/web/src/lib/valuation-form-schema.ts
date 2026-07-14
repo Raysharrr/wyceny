@@ -11,12 +11,30 @@ export const comparableSchema = z.object({
   date: z.string().trim().optional(),
   area: z.coerce.number().positive("Powierzchnia musi być większa od zera.").optional(),
   pricePerM2: z.coerce.number().positive("Cena zł/m² musi być większa od zera."),
+  // Provenance (F-5) — set when a comparable came from the RCN auto-fetch
+  // rather than manual entry. Optional so manual-only submissions keep
+  // validating exactly as before.
+  source: z.enum(["rcn", "manual"]).optional(),
+  transactionId: z.string().optional(),
 });
 
 export const featureSchema = z.object({
   name: z.string().trim().min(1, "Podaj nazwę cechy."),
   weightPct: z.coerce.number().min(0, "Waga nie może być ujemna."),
   rating: z.enum(["gorsza", "przecietna", "lepsza"]),
+});
+
+/** Mirrors `SampleMeta` from `@/ports/sample` — the RCN fetch's provenance for the whole sample (F-5). */
+export const sampleMetaSchema = z.object({
+  lat: z.number(),
+  lon: z.number(),
+  fetchedAt: z.string(),
+  source: z.string(),
+  query: z.object({
+    bbox: z.array(z.number()),
+    count: z.number(),
+    sort: z.string(),
+  }),
 });
 
 export const valuationFormSchema = z.object({
@@ -30,6 +48,7 @@ export const valuationFormSchema = z.object({
       (features) => Math.abs(features.reduce((sum, f) => sum + f.weightPct, 0) - 100) <= 0.1,
       "Suma wag musi wynosić 100%.",
     ),
+  sampleMeta: sampleMetaSchema.optional(),
 });
 
 export type ValuationFormValues = z.infer<typeof valuationFormSchema>;

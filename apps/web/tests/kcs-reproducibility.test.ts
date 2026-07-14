@@ -50,3 +50,42 @@ describe("F-3: stored inputs snapshot reproduces the stored WR", () => {
     expect(fetched!.wr).toBe(1_044_400);
   });
 });
+
+describe("F-5: sample snapshot provenance round-trips (RCN comparables + sampleMeta)", () => {
+  it("create → read: comparables keep source/transactionId, sampleMeta.fetchedAt exists, length >= 12", async () => {
+    const sampleMeta = {
+      lat: 52.4064,
+      lon: 16.9252,
+      fetchedAt: "2026-07-14T09:00:00.000Z",
+      source: "rcn-wfs-gugik",
+      query: { bbox: [52.39, 16.9, 52.42, 16.95], count: 5000, sort: "dok_data D" },
+    };
+    const comparables = fixture.input.comparables.map((c, i) => ({
+      ...c,
+      source: "rcn" as const,
+      transactionId: `koscielna-${i}`,
+    }));
+    const input: KcsInput = { ...fixture.input, comparables, sampleMeta };
+
+    const wr = computeKcs(input).wr;
+    const created = await repo.create({
+      address: "ul. Kościelna 33A, Poznań",
+      area: input.area,
+      wr,
+      inputs: input,
+      amountInWords: null,
+      docUrl: null,
+      ownerId: owner.id,
+    });
+
+    const fetched = await repo.get(created.id, adminUser);
+    expect(fetched?.inputs).toBeTruthy();
+    const fetchedInputs = fetched!.inputs!;
+    expect(fetchedInputs.comparables.length).toBeGreaterThanOrEqual(12);
+    for (const c of fetchedInputs.comparables) {
+      expect(c.source).toBe("rcn");
+      expect(c.transactionId).toBeTruthy();
+    }
+    expect(fetchedInputs.sampleMeta?.fetchedAt).toBe(sampleMeta.fetchedAt);
+  });
+});

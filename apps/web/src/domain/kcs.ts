@@ -15,6 +15,8 @@
  * would yield 1 043 900 for Kościelna instead of the operat's 1 044 400.
  */
 
+import type { SampleMeta } from "../ports/sample";
+
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
 
 export type Comparable = {
@@ -24,6 +26,10 @@ export type Comparable = {
   area?: number;
   /** Unit price in zł/m² — the only field the engine consumes. */
   pricePerM2: number;
+  /** Provenance: RCN auto-fetch vs manual entry — display/audit metadata only (F-5). */
+  source?: "rcn" | "manual";
+  /** RCN transaction id when source === "rcn" — display/audit metadata only. */
+  transactionId?: string;
 };
 
 export type Feature = {
@@ -38,6 +44,8 @@ export type KcsInput = {
   /** Usable area of the subject property, m². */
   area: number;
   features: Feature[];
+  /** RCN fetch provenance for the whole sample (F-5) — display/audit metadata only; computeKcs never reads this. */
+  sampleMeta?: SampleMeta | null;
 };
 
 export type FeatureShare = Feature & {

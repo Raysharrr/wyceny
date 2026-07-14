@@ -50,3 +50,41 @@ describe("valuationFormSchema", () => {
     expect(valuationFormSchema.safeParse({ ...valid, features }).success).toBe(true);
   });
 });
+
+describe("valuationFormSchema — RCN provenance (F-5)", () => {
+  const sampleMeta = {
+    lat: 52.4064,
+    lon: 16.9252,
+    fetchedAt: "2026-07-14T09:00:00.000Z",
+    source: "rcn-wfs-gugik",
+    query: { bbox: [52.39, 16.9, 52.42, 16.95], count: 5000, sort: "dok_data D" },
+  };
+
+  it("accepts provenance fields on a comparable (source + transactionId)", () => {
+    const comparables = [
+      ...valid.comparables.slice(0, 2),
+      { ...valid.comparables[2], source: "rcn", transactionId: "abc-123" },
+    ];
+    expect(valuationFormSchema.safeParse({ ...valid, comparables }).success).toBe(true);
+  });
+
+  it("rejects an unknown source value", () => {
+    const comparables = [
+      ...valid.comparables.slice(0, 2),
+      { ...valid.comparables[2], source: "bogus" },
+    ];
+    expect(valuationFormSchema.safeParse({ ...valid, comparables }).success).toBe(false);
+  });
+
+  it("keeps validating a manual comparable without provenance fields (backward compatible)", () => {
+    expect(valuationFormSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it("accepts an optional sampleMeta object", () => {
+    expect(valuationFormSchema.safeParse({ ...valid, sampleMeta }).success).toBe(true);
+  });
+
+  it("still validates when sampleMeta is absent", () => {
+    expect(valuationFormSchema.safeParse(valid).success).toBe(true);
+  });
+});
