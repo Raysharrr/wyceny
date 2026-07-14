@@ -97,6 +97,10 @@ export function NewValuationForm() {
       area: "",
       comparables: [{ ...emptyComparable }, { ...emptyComparable }, { ...emptyComparable }],
       features: DEFAULT_FEATURES,
+      // Registered up front (rather than left implicit) so the RCN fetch's
+      // `setValue("sampleMeta", ...)` below writes a known field instead of
+      // relying on RHF to create it on first write.
+      sampleMeta: undefined,
     },
   });
 
@@ -154,7 +158,7 @@ export function NewValuationForm() {
           transactionId: t.transactionId,
         })),
       );
-      setValue("sampleMeta", result.proposal.meta);
+      setValue("sampleMeta", result.proposal.meta, { shouldDirty: true, shouldValidate: true });
     } finally {
       setIsFetchingSample(false);
     }

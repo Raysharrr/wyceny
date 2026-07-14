@@ -2,6 +2,12 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { NewValuationForm } from "./new-valuation-form";
 
+// The "Pobierz próbę z RCN" button calls a live worker fetch (typically
+// 5-10s, worst case ~25s per the worker's own timeouts) — raise the
+// platform's function timeout so it never cuts the request off before the
+// worker's Polish error message has a chance to surface.
+export const maxDuration = 60;
+
 export default async function NewValuationPage() {
   const session = await getSession();
   if (!session) {
