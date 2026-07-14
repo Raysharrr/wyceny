@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { createValuation } from "@/app/actions/create-valuation";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
+import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 import {
   DEFAULT_FEATURES,
   valuationFormSchema,
@@ -346,9 +347,10 @@ export function NewValuationForm() {
           </p>
         ) : null}
 
-        {comparablesCount < 12 ? (
+        {comparablesCount < REQUIRED_SAMPLE_SIZE ? (
           <p className="text-sm text-amber-600 dark:text-amber-500">
-            Operat wymaga co najmniej 12 transakcji — masz {comparablesCount}.
+            Operat wymaga co najmniej {REQUIRED_SAMPLE_SIZE} transakcji — masz {comparablesCount}.
+            Szkic można zapisać, ale zatwierdzenie operatu będzie zablokowane.
           </p>
         ) : null}
 
@@ -459,7 +461,7 @@ export function NewValuationForm() {
       ) : null}
 
       <Button type="submit" disabled={isSubmitting} className="w-fit">
-        {isSubmitting ? "Tworzenie…" : "Utwórz wycenę"}
+        {isSubmitting ? "Zapisywanie…" : "Zapisz szkic"}
       </Button>
     </form>
   );

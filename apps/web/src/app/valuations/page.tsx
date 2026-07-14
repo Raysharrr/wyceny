@@ -17,7 +17,8 @@ import { signOutAction } from "@/app/actions/sign-out";
 import { valuationRepository } from "./_deps";
 
 const STATUS_LABEL: Record<string, string> = {
-  in_progress: "W toku",
+  in_progress: "Szkic",
+  approved: "Zatwierdzony",
   signed: "Podpisany",
 };
 
@@ -107,7 +108,7 @@ export default async function ValuationsListPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="px-4">
-                    <Badge variant={v.status === "signed" ? "default" : "secondary"}>
+                    <Badge variant={v.status === "in_progress" ? "secondary" : "default"}>
                       {STATUS_LABEL[v.status] ?? v.status}
                     </Badge>
                   </TableCell>
