@@ -1,6 +1,15 @@
 import type { PortSampleProposal, SampleProposal } from "../ports/sample";
 
 /**
+ * Prefix of the fallback error message thrown below when the worker's error
+ * response has no `detail` (i.e. not a Polish user-facing message). Exported
+ * so callers (e.g. `get-sample-proposal.ts`) can distinguish "this is the
+ * worker's Polish detail" from "this is our own English fallback" without
+ * duplicating the literal — keeps the two in sync if the wording changes.
+ */
+export const WORKER_RESPONDED_PREFIX = "worker /sample-proposal responded";
+
+/**
  * HTTP adapter for {@link PortSampleProposal}, backed by the Python worker's
  * `/sample-proposal` endpoint (RCN WFS integration).
  */
@@ -25,7 +34,7 @@ export function httpSampleProposal(baseUrl: string): PortSampleProposal {
           // no JSON body — fall back below
         }
         throw new Error(
-          detail ?? `worker /sample-proposal responded ${response.status} ${response.statusText}`,
+          detail ?? `${WORKER_RESPONDED_PREFIX} ${response.status} ${response.statusText}`,
         );
       }
       return (await response.json()) as SampleProposal;

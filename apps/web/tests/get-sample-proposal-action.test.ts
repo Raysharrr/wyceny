@@ -14,6 +14,7 @@ vi.mock("@/app/valuations/_deps");
 
 import { getSampleProposal } from "../src/app/actions/get-sample-proposal";
 import { sampleProposal } from "@/app/valuations/_deps";
+import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
 import type { SampleProposal } from "@/ports/sample";
 
 const fetchProposalMock = vi.mocked(sampleProposal.fetchProposal);
@@ -57,7 +58,7 @@ describe("getSampleProposal", () => {
 
   it("adapter throw with the status-text fallback -> generic Polish { error }", async () => {
     fetchProposalMock.mockRejectedValue(
-      new Error("worker /sample-proposal responded 500 Internal Server Error"),
+      new Error(`${WORKER_RESPONDED_PREFIX} 500 Internal Server Error`),
     );
 
     const result = await getSampleProposal(validInput);

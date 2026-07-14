@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { sampleProposal } from "@/app/valuations/_deps";
+import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 import type { SampleProposal } from "@/ports/sample";
 
@@ -46,7 +47,7 @@ export async function getSampleProposal(
     return { proposal };
   } catch (error) {
     const message = error instanceof Error ? error.message : undefined;
-    if (message && !message.startsWith("worker /sample-proposal responded")) {
+    if (message && !message.startsWith(WORKER_RESPONDED_PREFIX)) {
       return { error: message };
     }
     return { error: GENERIC_ERROR };

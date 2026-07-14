@@ -52,7 +52,7 @@ describe("F-3: stored inputs snapshot reproduces the stored WR", () => {
 });
 
 describe("F-5: sample snapshot provenance round-trips (RCN comparables + sampleMeta)", () => {
-  it("create → read: comparables keep source/transactionId, sampleMeta.fetchedAt exists, length >= 12", async () => {
+  it("create → read: comparables keep source/transactionId, sampleMeta round-trips fully, length >= 12", async () => {
     const sampleMeta = {
       lat: 52.4064,
       lon: 16.9252,
@@ -86,6 +86,6 @@ describe("F-5: sample snapshot provenance round-trips (RCN comparables + sampleM
       expect(c.source).toBe("rcn");
       expect(c.transactionId).toBeTruthy();
     }
-    expect(fetchedInputs.sampleMeta?.fetchedAt).toBe(sampleMeta.fetchedAt);
+    expect(fetchedInputs.sampleMeta).toEqual(sampleMeta);
   });
 });
