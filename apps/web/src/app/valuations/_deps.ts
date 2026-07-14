@@ -1,6 +1,7 @@
 import { db } from "@/db/client";
 import { valuationRepo } from "@/adapters/valuation-drizzle";
 import { httpWorker } from "@/adapters/worker-http";
+import { httpSampleProposal } from "@/adapters/sample-http";
 import { pgStorage } from "@/adapters/storage-pg";
 
 /**
@@ -15,4 +16,5 @@ import { pgStorage } from "@/adapters/storage-pg";
  */
 export const valuationRepository = valuationRepo(db);
 export const worker = httpWorker(process.env.WORKER_URL ?? "http://localhost:8000");
+export const sampleProposal = httpSampleProposal(process.env.WORKER_URL ?? "http://localhost:8000");
 export const storage = pgStorage(db);
