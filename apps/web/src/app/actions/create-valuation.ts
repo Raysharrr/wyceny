@@ -6,6 +6,7 @@ import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository } from "@/app/valuations/_deps";
 import { valuationFormSchema, type ValuationFormValues } from "@/lib/valuation-form-schema";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
+import { assignProvenance } from "@/lib/assign-provenance";
 
 export type CreateValuationInput = ValuationFormValues;
 
@@ -43,18 +44,21 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
       firstIssue?.code === "invalid_type" ? "Nieprawidłowe dane formularza." : firstIssue?.message;
     return { error: message ?? "Nieprawidłowe dane formularza." };
   }
-  const { address, area, comparables, features, sampleMeta } = parsed.data;
+  const { address, area, features, sampleMeta } = parsed.data;
 
-  // % → fractions at the action boundary; the engine works in fractions.
-  // `comparables` keep whatever provenance (source/transactionId) the
-  // schema validated — the engine ignores those fields (F-5). `sampleMeta`
-  // is normalized to `null` when absent so every stored snapshot has the
-  // same shape (manual-only submissions vs. RCN-seeded ones).
+  // Assign provenance statuses server-side: rcn rows get to_verify, manual
+  // rows get confirmed. This is the ACL of ADR-010 — statuses are born here,
+  // server-side only, never trusted from the client. % → fractions at the
+  // action boundary; the engine works in fractions. `sampleMeta` is normalized
+  // to `null` when absent so every stored snapshot has the same shape
+  // (manual-only submissions vs. RCN-seeded ones).
+  const { comparables: sourcedComparables, provenance } = assignProvenance(parsed.data);
   const kcsInput: KcsInput = {
     area,
-    comparables,
+    comparables: sourcedComparables,
     features: features.map((f) => ({ name: f.name, weight: f.weightPct / 100, rating: f.rating })),
     sampleMeta: sampleMeta ?? null,
+    provenance,
   };
   const { wr } = computeKcs(kcsInput);
 
