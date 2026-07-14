@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createValuation } from "@/app/actions/create-valuation";
+import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import {
   DEFAULT_FEATURES,
   valuationFormSchema,
@@ -79,11 +80,15 @@ function toInputValue(value: unknown): string {
  */
 export function NewValuationForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isFetchingSample, setIsFetchingSample] = useState(false);
+  const [fetchSampleError, setFetchSampleError] = useState<string | null>(null);
 
   const {
     control,
     handleSubmit,
     setValue,
+    getValues,
+    trigger,
     formState: { isSubmitting, errors },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(valuationFormSchema),
@@ -99,6 +104,7 @@ export function NewValuationForm() {
     fields: comparableFields,
     append: appendComparable,
     remove: removeComparable,
+    replace: replaceComparables,
   } = useFieldArray({ control, name: "comparables" });
 
   const { fields: featureFields } = useFieldArray({ control, name: "features" });
@@ -115,11 +121,44 @@ export function NewValuationForm() {
     ? validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length
     : null;
 
+  const comparablesCount = (comparables ?? []).length;
+
   const weightSum = (features ?? []).reduce((sum, f) => sum + (Number(f?.weightPct) || 0), 0);
   const weightsBalanced = Math.abs(weightSum - 100) <= 0.1;
 
   const comparablesError = errors.comparables?.root?.message ?? errors.comparables?.message;
   const featuresError = errors.features?.root?.message ?? errors.features?.message;
+
+  const onFetchSample = async () => {
+    setFetchSampleError(null);
+    const isValid = await trigger(["address", "area"]);
+    if (!isValid) return;
+
+    setIsFetchingSample(true);
+    try {
+      const { address, area } = getValues();
+      const result = await getSampleProposal({ address, area: Number(area) });
+      if ("error" in result) {
+        setFetchSampleError(result.error);
+        return;
+      }
+      // Rows stay fully editable after this — a hand-edited row keeps
+      // `source: "rcn"` even though its values no longer match the fetch;
+      // reconciling edited-vs-fetched fidelity is a later gating-slice concern.
+      replaceComparables(
+        result.proposal.transactions.slice(0, 12).map((t) => ({
+          date: t.date,
+          area: String(t.area),
+          pricePerM2: String(t.pricePerM2),
+          source: "rcn" as const,
+          transactionId: t.transactionId,
+        })),
+      );
+      setValue("sampleMeta", result.proposal.meta);
+    } finally {
+      setIsFetchingSample(false);
+    }
+  };
 
   const onSubmit = handleSubmit(async (values) => {
     setSubmitError(null);
@@ -276,14 +315,38 @@ export function NewValuationForm() {
           </p>
         ) : null}
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-fit"
-          onClick={() => appendComparable({ ...emptyComparable })}
-        >
-          Dodaj transakcję
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-fit"
+            onClick={() => appendComparable({ ...emptyComparable })}
+          >
+            Dodaj transakcję
+          </Button>
+          <Button
+            type="button"
+            id="fetch-sample"
+            variant="outline"
+            className="w-fit"
+            disabled={isFetchingSample}
+            onClick={onFetchSample}
+          >
+            {isFetchingSample ? "Pobieranie…" : "Pobierz próbę z RCN"}
+          </Button>
+        </div>
+
+        {fetchSampleError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {fetchSampleError}
+          </p>
+        ) : null}
+
+        {comparablesCount < 12 ? (
+          <p className="text-sm text-amber-600 dark:text-amber-500">
+            Operat wymaga co najmniej 12 transakcji — masz {comparablesCount}.
+          </p>
+        ) : null}
 
         <div className="flex flex-wrap gap-4 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
           <p>
