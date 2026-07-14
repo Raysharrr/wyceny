@@ -18,7 +18,8 @@ export type Valuation = {
   amountInWords: string | null;
   docUrl: string | null;
   ownerId: string;
-  status: "in_progress" | "signed";
+  status: "in_progress" | "approved" | "signed";
+  approvedAt: Date | null;
   createdAt: Date;
 };
 
@@ -51,4 +52,17 @@ export interface PortValuation {
    * auth gate (Task 11a).
    */
   getByDocKey(key: string, user: SessionUser): Promise<Valuation | null>;
+  /**
+   * Confirms sample provenance on a draft (rcn rows + geocode → confirmed).
+   * Owner-only (admin included only if they own it). Returns null when the
+   * valuation doesn't exist or the user isn't the owner; throws for
+   * status violations (not a draft).
+   */
+  confirmSample(id: string, user: SessionUser): Promise<Valuation | null>;
+  /**
+   * Approves a draft — re-runs the F-4 gate server-side (never trusts the
+   * client). Same null/throw contract as confirmSample; additionally throws
+   * ApprovalBlockedError when the gate fails.
+   */
+  approve(id: string, user: SessionUser): Promise<Valuation | null>;
 }

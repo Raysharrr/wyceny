@@ -34,8 +34,11 @@ export const valuation = pgTable("valuation", {
   ownerId: text("owner_id")
     .notNull()
     .references(() => user.id),
-  status: text("status", { enum: ["in_progress", "signed"] })
+  status: text("status", { enum: ["in_progress", "approved", "signed"] })
     .notNull()
     .default("in_progress"),
+  // Set exactly once by the approve mutation (F-4 gate passed). NULL = draft
+  // or legacy signed-era row.
+  approvedAt: timestamp("approved_at", { withTimezone: true, mode: "date" }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });

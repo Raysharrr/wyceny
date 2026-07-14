@@ -50,6 +50,13 @@
       "when": 1782976248545,
       "tag": "0006_powerful_anita_blake",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784056397700,
+      "tag": "0007_valuation_approval",
+      "breakpoints": true
     }
   ]
 }

@@ -97,5 +97,13 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         return canSee(valuation, user) ? valuation : null;
       });
     },
+
+    async confirmSample(): Promise<Valuation | null> {
+      throw new Error("confirmSample: implemented in the next task");
+    },
+
+    async approve(): Promise<Valuation | null> {
+      throw new Error("approve: implemented in the next task");
+    },
   };
 }
