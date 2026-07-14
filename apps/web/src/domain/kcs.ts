@@ -15,7 +15,9 @@
  * would yield 1 043 900 for Kościelna instead of the operat's 1 044 400.
  */
 
+import type { ProvenanceStatus } from "@wyceny/shared";
 import type { SampleMeta } from "../ports/sample";
+import type { InputsProvenance } from "./provenance";
 
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
 
@@ -30,6 +32,13 @@ export type Comparable = {
   source?: "rcn" | "manual";
   /** RCN transaction id when source === "rcn" — display/audit metadata only. */
   transactionId?: string;
+  /**
+   * Provenance status (F-4) — assigned ONLY at the web ACL on draft save
+   * (rcn rows enter as "to_verify", manual as "confirmed"); flipped to
+   * "confirmed" by the confirm-sample mutation. Optional so legacy
+   * snapshots keep parsing. The engine ignores it (like source/transactionId).
+   */
+  status?: ProvenanceStatus;
 };
 
 export type Feature = {
@@ -46,6 +55,8 @@ export type KcsInput = {
   features: Feature[];
   /** RCN fetch provenance for the whole sample (F-5) — display/audit metadata only; computeKcs never reads this. */
   sampleMeta?: SampleMeta | null;
+  /** Scalar provenance map (F-4) — see domain/provenance.ts. Optional: legacy snapshots lack it. */
+  provenance?: InputsProvenance | null;
 };
 
 export type FeatureShare = Feature & {
