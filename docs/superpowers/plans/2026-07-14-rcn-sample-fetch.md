@@ -208,8 +208,9 @@ def test_returns_transactions_with_meta_and_never_wr(happy_io):
     assert body["meta"]["source"] == "rcn-wfs-gugik"
     assert body["meta"]["query"]["count"] == 5000
     assert "fetchedAt" in body["meta"]
-    # F-11: no market-value anywhere in the payload
-    assert "wr" not in r.text.lower().replace("pricepersqm", "")
+    # F-11: no market-value key anywhere in the payload (worker must never compute WR)
+    assert '"wr"' not in r.text.lower()
+    assert "marketvalue" not in r.text.lower()
 
 
 def test_too_few_candidates_returns_polish_502(monkeypatch):
