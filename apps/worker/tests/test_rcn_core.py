@@ -103,3 +103,27 @@ def test_select_is_deterministic():
     a = select_sample(pool, subject_area=70.0, today_month="2026-07")
     b = select_sample(list(pool), subject_area=70.0, today_month="2026-07")
     assert a == b
+
+
+def test_parse_address_city_first():
+    from app.rcn import parse_address
+
+    assert parse_address("Poznań, ul. Kościelna 33A") == ("Poznań", "Kościelna 33A")
+
+
+def test_parse_address_street_first():
+    from app.rcn import parse_address
+
+    assert parse_address("ul. Kościelna 33A, Poznań") == ("Poznań", "Kościelna 33A")
+
+
+def test_parse_address_street_first_without_prefix():
+    from app.rcn import parse_address
+
+    assert parse_address("Kościelna 33A, Poznań") == ("Poznań", "Kościelna 33A")
+
+
+def test_parse_address_no_comma_defaults_to_poznan():
+    from app.rcn import parse_address
+
+    assert parse_address("ul. Kościelna 33A") == ("Poznań", "Kościelna 33A")

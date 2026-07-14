@@ -147,19 +147,40 @@ def fetch_rcn(
         return resp.read().decode("utf-8")
 
 
+_STREET_PREFIXES = ("ul.", "pl.", "al.", "os.")
+
+
+def parse_address(address: str) -> tuple[str, str]:
+    """Split an address into (city, street), accepting both comma orders.
+
+    The spike assumed "Miasto, ul. Nazwa nr", but the web form's placeholder
+    (and real users) use "ul. Nazwa nr, Miasto" — 2026-07-14 prod QA caught
+    street-first input geocoding to nothing. A part that carries a street
+    prefix or a house number is treated as the street regardless of order.
+    """
+    match = re.match(r"^([^,]+),\s*(.+)$", address)
+    if not match:
+        return "Poznań", re.sub(r"^(ul\.|pl\.|al\.|os\.)\s*", "", address.strip())
+    first, second = match.group(1).strip(), match.group(2).strip()
+
+    def looks_like_street(part: str) -> bool:
+        return part.lower().startswith(_STREET_PREFIXES) or any(ch.isdigit() for ch in part)
+
+    if looks_like_street(first) and not looks_like_street(second):
+        first, second = second, first
+    street = re.sub(r"^(ul\.|pl\.|al\.|os\.)\s*", "", second)
+    return first, street
+
+
 def geocode(address: str) -> tuple[float, float]:
-    """Geocode a Polish address ("Miasto, ul. Nazwa nr") via Nominatim.
+    """Geocode a Polish address via Nominatim (both "Miasto, ulica" and "ulica, Miasto").
 
     Port of the spike's `geocode_nominatim` (tools/spike/2026-05-14-kcs/spike.py,
-    lines 220-248). Nominatim dislikes the "ul." prefix and "City, street" order,
-    so a structured street/city query is tried first, with a `q=` fallback for
-    addresses that don't match the expected shape.
+    lines 220-248). Nominatim dislikes the "ul." prefix, so a structured
+    street/city query is tried first, with a `q=` fallback for addresses
+    that don't match the expected shape.
     """
-    match = re.match(r"^([^,]+),\s*(?:ul\.|pl\.|al\.|os\.)?\s*(.+)$", address)
-    if match:
-        city, street = match.group(1).strip(), match.group(2).strip()
-    else:
-        city, street = "Poznań", address.replace("ul.", "").strip()
+    city, street = parse_address(address)
 
     params = {"street": street, "city": city, "country": "Poland", "format": "json", "limit": 1}
     url = f"{NOMINATIM}?{urllib.parse.urlencode(params)}"
