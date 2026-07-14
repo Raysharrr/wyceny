@@ -5,10 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getSession } from "@/auth/session";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
+import { approvalGate } from "@/domain/provenance";
 import { valuationRepository } from "../_deps";
+import { ValuationActions } from "./valuation-actions";
 
 const STATUS_LABEL: Record<string, string> = {
-  in_progress: "W toku",
+  in_progress: "Szkic",
+  approved: "Zatwierdzony",
   signed: "Podpisany",
 };
 
@@ -124,6 +127,67 @@ function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
   );
 }
 
+function ProvenanceBadge({ source, status }: { source?: string; status?: string }) {
+  if (source === "rcn" && status === "to_verify") {
+    return (
+      <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-500">
+        RCN — do weryfikacji
+      </Badge>
+    );
+  }
+  if (source === "rcn") {
+    return <Badge variant="secondary">RCN — potwierdzone</Badge>;
+  }
+  if (status) {
+    return <Badge variant="secondary">Rzeczoznawca</Badge>;
+  }
+  return null; // legacy snapshot without provenance — render as before
+}
+
+function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3 pt-6">
+        <h2 className="text-sm font-medium text-foreground">
+          Próba ({inputs.comparables.length} transakcji)
+        </h2>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th className="py-1 font-normal">#</th>
+              <th className="py-1 font-normal">Cena zł/m²</th>
+              <th className="py-1 font-normal">Pochodzenie</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inputs.comparables.map((c, i) => (
+              <tr key={c.transactionId ?? i} className="border-t border-border">
+                <td className="py-1">{i + 1}</td>
+                <td className="py-1 tabular-nums">{plnPerM2.format(c.pricePerM2)}</td>
+                <td className="py-1">
+                  <ProvenanceBadge source={c.source} status={c.status} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {inputs.provenance ? (
+          <p className="text-xs text-muted-foreground">
+            Adres, powierzchnia, wagi i oceny: rzeczoznawca (potwierdzone)
+            {inputs.provenance.geocode
+              ? ` · geokodowanie: ${
+                  inputs.provenance.geocode.status === "confirmed"
+                    ? "potwierdzone"
+                    : "do weryfikacji"
+                }`
+              : ""}
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 /**
  * View page (Task 9) — RSC. `PortValuation.get` enforces ownership isolation
  * (T7): a non-owner appraiser gets `null` back, not the row — shown here as
@@ -147,6 +211,14 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
     return <NotFound />;
   }
 
+  const isDraft = valuation.status === "in_progress";
+  const gate = isDraft && valuation.inputs ? approvalGate(valuation.inputs) : null;
+  const hasToVerify =
+    isDraft && valuation.inputs
+      ? valuation.inputs.comparables.some((c) => c.status === "to_verify") ||
+        valuation.inputs.provenance?.geocode?.status === "to_verify"
+      : false;
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
       <div className="flex flex-col gap-2">
@@ -158,7 +230,10 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold text-foreground">{valuation.address}</h1>
-          <Badge variant={valuation.status === "signed" ? "default" : "secondary"}>
+          <Badge
+            data-testid="valuation-status"
+            variant={valuation.status === "in_progress" ? "secondary" : "default"}
+          >
             {STATUS_LABEL[valuation.status] ?? valuation.status}
           </Badge>
         </div>
@@ -184,6 +259,41 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
       </Card>
 
       {valuation.inputs ? <KcsBreakdown inputs={valuation.inputs} /> : null}
+
+      {valuation.inputs ? <ComparablesProvenance inputs={valuation.inputs} /> : null}
+
+      {isDraft ? (
+        <Card>
+          <CardContent className="flex flex-col gap-3 pt-6">
+            {gate && !gate.ok ? (
+              <div data-testid="gate-blockers" className="flex flex-col gap-1">
+                <p className="text-sm font-medium text-foreground">
+                  Zatwierdzenie zablokowane — do wyjaśnienia:
+                </p>
+                <ul className="list-disc pl-5 text-sm text-amber-600 dark:text-amber-500">
+                  {gate.blockers.map((b) => (
+                    <li key={b.path}>{b.label}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <ValuationActions
+              id={valuation.id}
+              hasToVerify={hasToVerify}
+              gateOk={gate?.ok === true}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {valuation.status === "approved" && valuation.approvedAt ? (
+        <p className="text-sm text-muted-foreground">
+          Zatwierdzono:{" "}
+          {new Intl.DateTimeFormat("pl-PL", { dateStyle: "long", timeStyle: "short" }).format(
+            valuation.approvedAt,
+          )}
+        </p>
+      ) : null}
 
       {valuation.docUrl ? (
         <Button asChild variant="outline" className="w-fit">
