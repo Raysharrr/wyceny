@@ -51,7 +51,13 @@ def docx_to_pdf(docx: bytes, timeout_s: int = 120) -> bytes:
                 timeout=timeout_s,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            raise ConversionError(f"soffice failed: {exc}") from exc
+            # CalledProcessError always carries stderr (capture_output=True);
+            # TimeoutExpired may have None — include it only when present.
+            stderr = getattr(exc, "stderr", None)
+            message = f"soffice failed: {exc}"
+            if stderr:
+                message += f"; stderr: {stderr!r}"
+            raise ConversionError(message) from exc
         pdf = Path(tmp) / "input.pdf"
         if not pdf.exists():
             raise ConversionError("soffice produced no PDF output")

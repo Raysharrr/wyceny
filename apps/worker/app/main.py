@@ -8,7 +8,7 @@ Local run:
 
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Body, FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 import app.rcn as rcn
@@ -23,9 +23,13 @@ def health() -> dict[str, bool]:
     return {"ok": True}
 
 
+# Plain `def` (not async): Starlette runs sync handlers in a threadpool, so the
+# blocking soffice subprocess (up to 120 s) never parks the event loop — /health
+# and concurrent requests stay responsive on the single-worker uvicorn.
 @app.post("/convert-to-pdf")
-async def convert_to_pdf(request: Request) -> Response:
-    docx = await request.body()
+def convert_to_pdf(docx: bytes = Body(default=b"")) -> Response:
+    # Default b"" (not required `...`): an empty body must hit our 400 below,
+    # not FastAPI's generic 422 field-required validation error.
     if not docx:
         raise HTTPException(status_code=400, detail="Puste żądanie — oczekiwano pliku DOCX.")
     try:
