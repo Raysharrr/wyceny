@@ -1,0 +1,92 @@
+import { describe, expect, it } from "vitest";
+import PizZip from "pizzip";
+import { computeKcs, type KcsInput } from "../src/domain/kcs";
+import { buildDocumentModel } from "../src/domain/document-model";
+import { OPERAT_SECTIONS } from "../src/domain/operat-sections";
+import { renderOperatDocx } from "../src/adapters/docx-render";
+
+/**
+ * F-12 (completeness leg): render the REAL production template with
+ * synthetic golden data and assert ≥19 sections, no unresolved tags, no
+ * "undefined", the amount-in-words present, and — anti-literal — nothing
+ * from the source Kościelna operat leaks into someone else's document.
+ * Pure JS render, no network, no LibreOffice needed here.
+ */
+function goldenInputs(): KcsInput {
+  return {
+    area: 48.2,
+    comparables: Array.from({ length: 12 }, (_, i) => ({
+      pricePerM2: 10_000 + i * 50,
+      date: `2025-0${(i % 9) + 1}-15`,
+      area: 40 + i,
+      source: "manual" as const,
+      status: "confirmed" as const,
+    })),
+    features: [
+      { name: "standard wykończenia", weight: 0.4, rating: "przecietna" as const },
+      { name: "położenie na piętrze", weight: 0.3, rating: "lepsza" as const },
+      { name: "lokalizacja", weight: 0.3, rating: "gorsza" as const },
+    ],
+    sampleMeta: null,
+    provenance: null,
+  };
+}
+
+function renderGolden(): string {
+  const inputs = goldenInputs();
+  const model = buildDocumentModel({
+    address: "ul. Przykładowa 5, Poznań",
+    area: 48.2,
+    purpose: "informacyjny",
+    kwNumber: "KW-TEST-9",
+    client: "p. Anna Przykładowa",
+    inspectionDate: "2026-06-30",
+    approvedAt: new Date("2026-07-15T09:00:00Z"),
+    inputs,
+    kcs: computeKcs(inputs),
+    amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+  });
+  const docx = renderOperatDocx(model);
+  const zip = new PizZip(docx);
+  return zip.files["word/document.xml"]
+    .asText()
+    .replace(/<[^>]+>/g, "")
+    .replace(/\u00A0/g, " "); // NBSP -> regular space (escape sequence, not a pasted literal)
+}
+
+describe("F-12: rendered operat completeness (real template, golden data)", () => {
+  const text = renderGolden();
+
+  it("contains every canonical section heading (≥19)", () => {
+    expect(OPERAT_SECTIONS.length).toBeGreaterThanOrEqual(19);
+    for (const heading of OPERAT_SECTIONS) {
+      expect(text, `missing section "${heading}"`).toContain(heading);
+    }
+  });
+
+  it("has no unresolved template tags and no 'undefined'", () => {
+    expect(text).not.toContain("undefined");
+    expect(text).not.toMatch(/\{[a-z_#/.]+\}/i);
+  });
+
+  it("contains the injected amount-in-words and the masked month format", () => {
+    expect(text).toContain("czterysta osiemdziesiąt tysięcy złotych");
+    expect(text).toContain("2025-01");
+    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}/); // full dates never render
+  });
+
+  it("renders all 12 transaction rows", () => {
+    expect(text).toContain("10 000,00");
+    expect(text).toContain("10 550,00");
+  });
+
+  it("anti-literal: nothing from the source operat leaks into a synthetic operat", () => {
+    for (const lit of ["Kościeln", "Rajewsk", "1 044 400", "PO1P"]) {
+      expect(text, `source literal "${lit}" leaked`).not.toContain(lit);
+    }
+  });
+
+  it("omits the credit clause for a non-credit purpose", () => {
+    expect(text).not.toContain("kredytodawc");
+  });
+});
