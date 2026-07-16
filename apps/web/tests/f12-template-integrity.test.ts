@@ -49,6 +49,14 @@ const FORBIDDEN_LITERALS = [
   "14 580,32", // Tabela 4 wartość na 1 m2 -> {cena_1m2}
   "1 044 388,32", // Tabela 4 wartość rynkowa (dokładna) -> {wr_dokladna}
   "1 044 400,00", // wartość rynkowa po zaokrągleniu -> {wr}
+  // Task 2 fix: sample transaction figures baked into §11/§13 prose — source
+  // DATA (would render as false content in every other operat), not boilerplate.
+  "675 000", // §11 general-market total price min
+  "740 000", // §11 sample total price min
+  "1 040 000", // §11 total price max (appears in both paragraphs)
+  "844 421", // §11 general-market average total
+  "874 333", // §11 sample average total
+  "18 169", // §13 offer-price range max
 ];
 
 const REQUIRED_PLACEHOLDERS = [
