@@ -33,6 +33,14 @@ export async function approveValuation(id: string): Promise<ApproveValuationResu
     return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
   }
 
+  // Status guard BEFORE any generation work: re-invoking approve on an
+  // already-approved valuation must not regenerate (= overwrite) the stored
+  // operat files — they are a frozen artifact. Without this, the overwrite
+  // would happen and only then `assertDraft` inside repo.approve would fail.
+  if (valuation.status !== "in_progress") {
+    return { error: "Wycena jest już zatwierdzona." };
+  }
+
   // Fail fast with the first blocker before any expensive generation work.
   if (valuation.inputs) {
     const gate = approvalGate(valuation.inputs);
