@@ -1560,7 +1560,7 @@ In `new-valuation-form.tsx`: extend `defaultValues` with `purpose: "" as never, 
 />
 ```
 
-`kwNumber` and `client`: exact clones of the `address` block (Input + placeholders `np. PO1P/00012345/6` — NO, placeholder text must not be KW-shaped either, F-9 greps source; use `numer księgi wieczystej`). `inspectionDate`: same pattern with `<Input id="inspectionDate" type="date" {...field} />`.
+`kwNumber` and `client`: exact clones of the `address` block (Input + placeholders — NOTE: placeholder text must not be KW-shaped either, F-9 greps source; use `numer księgi wieczystej`). `inspectionDate`: same pattern with `<Input id="inspectionDate" type="date" {...field} />`.
 
 - [ ] **Step 4: Run tests, full verification + commit**
 
