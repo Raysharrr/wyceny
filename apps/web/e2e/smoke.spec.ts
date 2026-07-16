@@ -43,7 +43,9 @@ test("draft with 3 transactions: WR visible, approval blocked by F-4 gate", asyn
   await expect(page.getByTestId("approve-button")).toBeDisabled();
 });
 
-test("draft with 12 manual transactions: approve → Zatwierdzony", async ({ page }) => {
+test("draft with 12 manual transactions: approve → Zatwierdzony + operat PDF/DOCX", async ({
+  page,
+}) => {
   await login(page);
   const prices = Array.from({ length: 12 }, (_, i) => String(12_000 + i * 100));
   await fillDraft(page, prices);
@@ -53,6 +55,18 @@ test("draft with 12 manual transactions: approve → Zatwierdzony", async ({ pag
   await expect(page.getByTestId("approve-button")).toBeEnabled();
   await page.getByTestId("approve-button").click();
 
-  await expect(page.getByTestId("valuation-status")).toHaveText("Zatwierdzony");
+  await expect(page.getByTestId("valuation-status")).toHaveText("Zatwierdzony", {
+    timeout: 30_000, // generation incl. LibreOffice conversion
+  });
   await expect(page.getByText("Zatwierdzono:")).toBeVisible();
+
+  const iframe = page.locator('iframe[title="Operat szacunkowy (PDF)"]');
+  await expect(iframe).toBeVisible();
+  const pdfUrl = await iframe.getAttribute("src");
+  const pdfResponse = await page.request.get(pdfUrl!);
+  expect(pdfResponse.status()).toBe(200);
+  expect(pdfResponse.headers()["content-type"]).toBe("application/pdf");
+  expect((await pdfResponse.body()).subarray(0, 5).toString()).toBe("%PDF-");
+
+  await expect(page.getByRole("link", { name: "Pobierz DOCX" })).toBeVisible();
 });
