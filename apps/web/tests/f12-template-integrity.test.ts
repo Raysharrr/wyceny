@@ -37,6 +37,7 @@ function templateText(): string {
 const FORBIDDEN_LITERALS = [
   "Kościeln", // any case form of the source street/property
   "Rajewsk", // source clients' surname
+  "mieszalnego", // source heading typo (should read "mieszkalnego") — regression-proof
   "7163/468337", // source building share
   "26.03.2026",
   "01.04.2026",
@@ -116,5 +117,15 @@ describe("F-12: template integrity (operat-szablon.docx)", () => {
     for (const heading of OPERAT_SECTIONS) {
       expect(text, `missing section heading "${heading}"`).toContain(heading);
     }
+  });
+
+  it("carries no source-operat metadata in docProps/core.xml", () => {
+    // docxtemplater preserves non-document parts verbatim, so whatever sits
+    // in the template's file properties ships into EVERY generated operat.
+    const zip = new PizZip(fs.readFileSync(TEMPLATE));
+    const core = zip.files["docProps/core.xml"].asText();
+    expect(core, "source author leaks into generated documents").not.toContain("Audytor");
+    expect(core, "source last-modified-by leaks into generated documents").not.toContain("Ksobiak");
+    expect(core, "source lastPrinted timestamp must be scrubbed").not.toContain("cp:lastPrinted");
   });
 });

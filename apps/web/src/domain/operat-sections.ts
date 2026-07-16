@@ -23,7 +23,7 @@ export const OPERAT_SECTIONS: readonly string[] = [
   "11. Analiza i charakterystyka rynku",
   "12. Określenie wartości rynkowej prawa własności nieruchomości lokalowej, wg stanu                aktualnego",
   "12.1. Ustalenie cech rynkowych oraz ich wag",
-  "12.2. Charakterystyka wycenianego lokalu mieszalnego i lokali przyjętych do porównań w aspekcie cech rynkowych",
+  "12.2. Charakterystyka wycenianego lokalu mieszkalnego i lokali przyjętych do porównań w aspekcie cech rynkowych",
   "12.3. Ustalenie wielkości współczynników ze względu na cechy różnicujące",
   "13. Uzasadnienie wyniku",
   "14. Zastrzeżenia i klauzule",
