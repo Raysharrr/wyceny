@@ -22,9 +22,16 @@ function templateXml(): string {
     .join("\n");
 }
 
-/** Visible text only — strips XML tags so placeholder checks match what docxtemplater parses. */
+/**
+ * Visible text only — strips XML tags so placeholder checks match what
+ * docxtemplater parses. NBSP (U+00A0, used as the thousands separator in the
+ * source KCS tables) is normalized to a normal space so FORBIDDEN_LITERALS can
+ * be written with ordinary spaces.
+ */
 function templateText(): string {
-  return templateXml().replace(/<[^>]+>/g, "");
+  return templateXml()
+    .replace(/<[^>]+>/g, "")
+    .replace(/ /g, " ");
 }
 
 const FORBIDDEN_LITERALS = [
@@ -34,6 +41,14 @@ const FORBIDDEN_LITERALS = [
   "26.03.2026",
   "01.04.2026",
   "korelacji", // the r² methodology sentence must be gone
+  // Task 2: KCS values now parameterized (Tabela 2/3/4 + §11 sample prose).
+  // Written with normal spaces; templateText() normalizes NBSP→space.
+  "12 061,94", // Tabela 2 cena minimalna -> {cena_min}
+  "14 852,90", // Tabela 2 cena maksymalna -> {cena_max}
+  "13 123,60", // Tabela 2 / Tabela 4 cena średnia -> {cena_sr}
+  "14 580,32", // Tabela 4 wartość na 1 m2 -> {cena_1m2}
+  "1 044 388,32", // Tabela 4 wartość rynkowa (dokładna) -> {wr_dokladna}
+  "1 044 400,00", // wartość rynkowa po zaokrągleniu -> {wr}
 ];
 
 const REQUIRED_PLACEHOLDERS = [
@@ -46,8 +61,22 @@ const REQUIRED_PLACEHOLDERS = [
   "{data_sporzadzenia}",
   "{wr}",
   "{wr_slownie}",
+  "{wr_dokladna}",
+  "{cena_min}",
+  "{cena_max}",
+  "{cena_sr}",
+  "{polozenie_sr}",
+  "{vmin}",
+  "{vmax}",
+  "{suma_ui}",
+  "{cena_1m2}",
   "{#transakcje}",
   "{/transakcje}",
+  "{#cechy}",
+  "{/cechy}",
+  "{#opis_cmin}",
+  "{#opis_cmax}",
+  "{#opis_przedmiot}",
   "{#kredyt}",
   "{/kredyt}",
 ];
