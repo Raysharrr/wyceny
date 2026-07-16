@@ -1,17 +1,42 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * Focused unit test of `createValuation`'s REJECTION paths only. Validation
- * runs before any I/O (worker call, storage write, DB insert), so these
- * cases never touch the database — only the session lookup is mocked.
- * (See create-valuation.ts's authoritative-validation comment and the
- * `invalid_type` → generic Polish message fix it documents.)
+ * Focused unit test of `createValuation`. Two groups:
+ *
+ *  - REJECTION paths: validation runs before any I/O (worker call, storage
+ *    write, DB insert), so these cases never touch `_deps` — only the
+ *    session lookup needs mocking. (See create-valuation.ts's
+ *    authoritative-validation comment and the `invalid_type` → generic
+ *    Polish message fix it documents.)
+ *  - SUCCESS path (Slice 4): document generation was removed from create —
+ *    `worker`/`storage` must NOT be called, and the repo receives the four
+ *    new document fields with `amountInWords`/`docUrl`/`docxUrl` all `null`
+ *    (documents are generated at approval, not draft creation). `_deps` is
+ *    automocked (mirrors get-sample-proposal-action.test.ts's style) so
+ *    `valuationRepository.create`/`worker.amountInWords`/`storage.put`
+ *    become controllable `vi.fn()`s and no real Postgres/HTTP call ever
+ *    leaves the test process. `next/navigation`'s `redirect` is mocked to a
+ *    no-op spy — the real one throws (`NEXT_REDIRECT`) to interrupt
+ *    rendering, which only makes sense inside an actual Next.js request.
  */
 vi.mock("@/auth/session", () => ({
   getSession: vi.fn(async () => ({ user: { id: "test-user", role: "appraiser" } })),
 }));
 
+vi.mock("@/app/valuations/_deps");
+
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn(),
+}));
+
+import { redirect } from "next/navigation";
 import { createValuation, type CreateValuationInput } from "../src/app/actions/create-valuation";
+import { storage, valuationRepository, worker } from "@/app/valuations/_deps";
+
+const createMock = vi.mocked(valuationRepository.create);
+const amountInWordsMock = vi.mocked(worker.amountInWords);
+const storagePutMock = vi.mocked(storage.put);
+const redirectMock = vi.mocked(redirect);
 
 const valid: CreateValuationInput = {
   address: "ul. Kościelna 33A, Poznań",
@@ -29,6 +54,10 @@ const valid: CreateValuationInput = {
     { name: "pomieszczenia przynależne", weightPct: 4, rating: "przecietna" },
     { name: "dodatkowe", weightPct: 6, rating: "przecietna" },
   ],
+  purpose: "sprzedaz",
+  kwNumber: "KW-TEST-1",
+  client: "p. Jan Testowy",
+  inspectionDate: "2026-07-01",
 };
 
 describe("createValuation — authoritative validation (rejection paths)", () => {
@@ -48,6 +77,13 @@ describe("createValuation — authoritative validation (rejection paths)", () =>
     expect(result).toEqual({ error: "Suma wag musi wynosić 100%." });
   });
 
+  it("rejects a missing purpose", async () => {
+    const withoutPurpose: Record<string, unknown> = { ...valid };
+    delete withoutPurpose.purpose;
+    const result = await createValuation(withoutPurpose as unknown as CreateValuationInput);
+    expect(result).toEqual({ error: "Wybierz cel wyceny." });
+  });
+
   it("rejects a structurally malformed payload with the generic Polish message, not zod's English default", async () => {
     const malformed = {
       address: 123,
@@ -58,5 +94,57 @@ describe("createValuation — authoritative validation (rejection paths)", () =>
 
     const result = await createValuation(malformed);
     expect(result).toEqual({ error: "Nieprawidłowe dane formularza." });
+  });
+});
+
+describe("createValuation — success path (Slice 4: no document generation at draft time)", () => {
+  beforeEach(() => {
+    createMock.mockReset();
+    amountInWordsMock.mockReset();
+    storagePutMock.mockReset();
+    redirectMock.mockReset();
+  });
+
+  it("persists the four document fields, skips worker/storage, and redirects to the new valuation", async () => {
+    createMock.mockResolvedValue({
+      id: "valuation-test-1",
+      address: valid.address,
+      area: valid.area,
+      wr: 1000000,
+      inputs: null,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: valid.purpose,
+      kwNumber: valid.kwNumber,
+      client: valid.client,
+      inspectionDate: valid.inspectionDate,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      createdAt: new Date("2026-07-15T00:00:00.000Z"),
+    });
+
+    await createValuation(valid);
+
+    expect(amountInWordsMock).not.toHaveBeenCalled();
+    expect(storagePutMock).not.toHaveBeenCalled();
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: valid.address,
+        area: valid.area,
+        amountInWords: null,
+        docUrl: null,
+        docxUrl: null,
+        purpose: valid.purpose,
+        kwNumber: valid.kwNumber,
+        client: valid.client,
+        inspectionDate: valid.inspectionDate,
+        ownerId: "test-user",
+      }),
+    );
+
+    expect(redirectMock).toHaveBeenCalledWith("/valuations/valuation-test-1");
   });
 });

@@ -17,6 +17,10 @@ const valid = {
     { name: "pomieszczenia przynależne", weightPct: 4, rating: "przecietna" },
     { name: "dodatkowe", weightPct: 6, rating: "przecietna" },
   ],
+  purpose: "sprzedaz",
+  kwNumber: "KW-TEST-1",
+  client: "p. Jan Testowy",
+  inspectionDate: "2026-07-01",
 };
 
 describe("valuationFormSchema", () => {
@@ -48,6 +52,47 @@ describe("valuationFormSchema", () => {
   it("accepts weights within the ±0.1 p.p. tolerance", () => {
     const features = valid.features.map((f, i) => (i === 0 ? { ...f, weightPct: 40.05 } : f));
     expect(valuationFormSchema.safeParse({ ...valid, features }).success).toBe(true);
+  });
+});
+
+describe("valuationFormSchema — document fields (Slice 4)", () => {
+  const base = {
+    address: "ul. Testowa 1",
+    area: 50,
+    comparables: [{ pricePerM2: 10000 }, { pricePerM2: 11000 }, { pricePerM2: 12000 }],
+    features: [{ name: "cecha", weightPct: 100, rating: "przecietna" }],
+  };
+
+  it("requires the four document fields with Polish messages", () => {
+    const missing = valuationFormSchema.safeParse(base);
+    expect(missing.success).toBe(false);
+
+    const full = valuationFormSchema.safeParse({
+      ...base,
+      purpose: "sprzedaz",
+      kwNumber: "KW-TEST-1",
+      client: "p. Jan Testowy",
+      inspectionDate: "2026-07-01",
+    });
+    expect(full.success).toBe(true);
+  });
+
+  it("rejects an unknown purpose", () => {
+    const parsed = valuationFormSchema.shape.purpose.safeParse("wynajem");
+    expect(parsed.success).toBe(false);
+  });
+
+  it("surfaces the Polish message (not zod v4's English default) for a missing/empty/unknown purpose", () => {
+    // zod v4's z.enum routes every non-matching value — including an absent
+    // key — through `invalid_value`, which honours the schema's `message`
+    // option. Asserted for all three shapes the field can arrive in
+    // (absent key, "" from the select's placeholder option, and a bogus
+    // string) so a future zod upgrade that changes this routing is caught.
+    for (const input of [undefined, "", "wynajem"]) {
+      const parsed = valuationFormSchema.shape.purpose.safeParse(input);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]?.message).toBe("Wybierz cel wyceny.");
+    }
   });
 });
 

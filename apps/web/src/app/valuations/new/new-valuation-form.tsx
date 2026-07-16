@@ -17,7 +17,9 @@ import {
 } from "@/components/ui/table";
 import { createValuation } from "@/app/actions/create-valuation";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
+import { PURPOSE_LABEL } from "@/domain/document-model";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { cn } from "@/lib/utils";
 import {
   DEFAULT_FEATURES,
   valuationFormSchema,
@@ -102,6 +104,14 @@ export function NewValuationForm() {
       // `setValue("sampleMeta", ...)` below writes a known field instead of
       // relying on RHF to create it on first write.
       sampleMeta: undefined,
+      // `purpose` has no empty-string member in its enum — the placeholder
+      // "— wybierz —" option below IS the empty string, so the select
+      // starts on it and zod's required-enum message fires until the user
+      // picks a real value.
+      purpose: "" as never,
+      kwNumber: "",
+      client: "",
+      inspectionDate: "",
     },
   });
 
@@ -211,6 +221,69 @@ export function NewValuationForm() {
                 value={toInputValue(field.value)}
                 onChange={(e) => field.onChange(e.target.value)}
               />
+              <FieldError errors={[fieldState.error]} />
+            </Field>
+          )}
+        />
+        <Controller
+          control={control}
+          name="purpose"
+          render={({ field, fieldState }) => (
+            <Field data-invalid={!!fieldState.error}>
+              <FieldLabel htmlFor="purpose">Cel wyceny</FieldLabel>
+              <select
+                id="purpose"
+                {...field}
+                aria-invalid={!!fieldState.error}
+                className={cn(
+                  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+                )}
+              >
+                <option value="">— wybierz —</option>
+                {Object.entries(PURPOSE_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <FieldError errors={[fieldState.error]} />
+            </Field>
+          )}
+        />
+        <Controller
+          control={control}
+          name="kwNumber"
+          render={({ field, fieldState }) => (
+            <Field data-invalid={!!fieldState.error}>
+              <FieldLabel htmlFor="kwNumber">Numer księgi wieczystej</FieldLabel>
+              <Input
+                id="kwNumber"
+                placeholder="np. numer księgi wieczystej"
+                autoComplete="off"
+                {...field}
+              />
+              <FieldError errors={[fieldState.error]} />
+            </Field>
+          )}
+        />
+        <Controller
+          control={control}
+          name="client"
+          render={({ field, fieldState }) => (
+            <Field data-invalid={!!fieldState.error}>
+              <FieldLabel htmlFor="client">Zamawiający wycenę</FieldLabel>
+              <Input id="client" placeholder="np. Jan Kowalski" autoComplete="off" {...field} />
+              <FieldError errors={[fieldState.error]} />
+            </Field>
+          )}
+        />
+        <Controller
+          control={control}
+          name="inspectionDate"
+          render={({ field, fieldState }) => (
+            <Field data-invalid={!!fieldState.error}>
+              <FieldLabel htmlFor="inspectionDate">Data oględzin</FieldLabel>
+              <Input id="inspectionDate" type="date" {...field} />
               <FieldError errors={[fieldState.error]} />
             </Field>
           )}

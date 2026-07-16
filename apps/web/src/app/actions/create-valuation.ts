@@ -1,9 +1,8 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { storage, worker, valuationRepository } from "@/app/valuations/_deps";
+import { valuationRepository } from "@/app/valuations/_deps";
 import { valuationFormSchema, type ValuationFormValues } from "@/lib/valuation-form-schema";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
 import { assignProvenance } from "@/lib/assign-provenance";
@@ -14,15 +13,20 @@ export type CreateValuationResult = { error: string } | undefined;
 
 /**
  * Server Action backing `valuations/new` (Task 9 — the E2E climax). Crosses
- * every boundary built so far: session (T6) → PortWorker over HTTP (T4) →
- * PortStorage (T8) → PortValuation/Postgres (T5), with ownership isolation
- * (T7) applied on every later read. KCS Task 4 makes the engine live: the
- * shared schema is the authoritative re-check (same rules as the client
- * resolver, Task 3), and `computeKcs` now computes the WR.
+ * every boundary built so far: session (T6) → PortValuation/Postgres (T5),
+ * with ownership isolation (T7) applied on every later read. KCS Task 4
+ * makes the engine live: the shared schema is the authoritative re-check
+ * (same rules as the client resolver, Task 3), and `computeKcs` now
+ * computes the WR.
  *
- * Returns `{ error }` for recoverable failures (bad input, worker/storage
- * down) so the client form can show a Polish message. On success it never
- * returns — `redirect()` throws, which must propagate uncaught.
+ * Document generation (worker `amountInWords` + storage write) was removed
+ * here in Slice 4 — a draft has no document artifacts. Those are produced
+ * at APPROVAL time instead (spec §3), so `amountInWords`/`docUrl`/`docxUrl`
+ * are always `null` on create.
+ *
+ * Returns `{ error }` for recoverable failures (bad input) so the client
+ * form can show a Polish message. On success it never returns —
+ * `redirect()` throws, which must propagate uncaught.
  */
 export async function createValuation(input: CreateValuationInput): Promise<CreateValuationResult> {
   const session = await getSession();
@@ -44,7 +48,8 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
       firstIssue?.code === "invalid_type" ? "Nieprawidłowe dane formularza." : firstIssue?.message;
     return { error: message ?? "Nieprawidłowe dane formularza." };
   }
-  const { address, area, features, sampleMeta } = parsed.data;
+  const { address, area, features, sampleMeta, purpose, kwNumber, client, inspectionDate } =
+    parsed.data;
 
   // Assign provenance statuses server-side: rcn rows get to_verify, manual
   // rows get confirmed. This is the ACL of ADR-010 — statuses are born here,
@@ -62,27 +67,19 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
   };
   const { wr } = computeKcs(kcsInput);
 
-  let amountInWords: string;
-  let docUrl: string;
-  try {
-    amountInWords = await worker.amountInWords(wr);
-    const doc = `Operat\nAdres: ${address}\nPowierzchnia: ${area} m²\nWR: ${wr}\nSłownie: ${amountInWords}`;
-    docUrl = await storage.put(randomUUID(), doc);
-  } catch (error) {
-    console.error("createValuation: worker/storage failure", error);
-    return {
-      error:
-        "Nie udało się przygotować operatu — worker lub magazyn dokumentów są niedostępne. Spróbuj ponownie.",
-    };
-  }
-
   const created = await valuationRepository.create({
     address,
     area,
     wr,
     inputs: kcsInput,
-    amountInWords,
-    docUrl,
+    // Document artifacts are generated at APPROVAL (spec §3) — a draft has none.
+    amountInWords: null,
+    docUrl: null,
+    docxUrl: null,
+    purpose,
+    kwNumber,
+    client,
+    inspectionDate,
     ownerId: session.user.id,
   });
 

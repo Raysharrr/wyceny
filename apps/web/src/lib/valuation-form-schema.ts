@@ -49,6 +49,12 @@ export const valuationFormSchema = z.object({
       "Suma wag musi wynosić 100%.",
     ),
   sampleMeta: sampleMetaSchema.optional(),
+  purpose: z.enum(["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"], {
+    message: "Wybierz cel wyceny.",
+  }),
+  kwNumber: z.string().trim().min(1, "Podaj numer księgi wieczystej."),
+  client: z.string().trim().min(1, "Podaj zamawiającego wycenę."),
+  inspectionDate: z.string().min(1, "Podaj datę oględzin."),
 });
 
 export type ValuationFormValues = z.infer<typeof valuationFormSchema>;
