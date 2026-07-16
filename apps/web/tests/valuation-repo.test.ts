@@ -21,6 +21,13 @@ function valuationInput(ownerId: string, address: string): NewValuationInput {
     inputs: null,
     amountInWords: null,
     docUrl: null,
+    // Document fields present by default so gate-passing approvals also clear
+    // the document-field blockers (spec §4); the legacy-draft test overrides
+    // them to null.
+    purpose: "sprzedaz",
+    kwNumber: "KW-TEST-1",
+    client: "p. Jan Testowy",
+    inspectionDate: "2026-07-01",
     ownerId,
   };
 }
@@ -232,5 +239,48 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inputs,
     });
     await expect(repo.approve(created.id, appraiserA)).rejects.toThrow(ApprovalBlockedError);
+  });
+
+  it("approve blocks when document fields are missing (legacy draft)", async () => {
+    // A draft with a passing F-4 gate (confirmed sample) but null document
+    // fields must still be refused — with a blocker naming path "purpose".
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 7"),
+      inputs: approvableInputs(),
+      purpose: null,
+      kwNumber: null,
+      client: null,
+      inspectionDate: null,
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    try {
+      await repo.approve(created.id, appraiserA);
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApprovalBlockedError);
+      expect((e as ApprovalBlockedError).blockers.map((b) => b.path)).toContain("purpose");
+    }
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread!.status).toBe("in_progress");
+    expect(reread!.approvedAt).toBeNull();
+  });
+
+  it("approve persists docUrl + docxUrl when passed", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 8"),
+      inputs: approvableInputs(),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    const updated = await repo.approve(created.id, appraiserA, {
+      docUrl: "/api/docs/operat-x.pdf",
+      docxUrl: "/api/docs/operat-x.docx",
+    });
+    expect(updated?.docUrl).toBe("/api/docs/operat-x.pdf");
+    expect(updated?.docxUrl).toBe("/api/docs/operat-x.docx");
+    expect(updated?.status).toBe("approved");
+
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread?.docUrl).toBe("/api/docs/operat-x.pdf");
+    expect(reread?.docxUrl).toBe("/api/docs/operat-x.docx");
   });
 });

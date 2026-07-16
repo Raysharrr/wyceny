@@ -1,4 +1,5 @@
 import { approvalGate, type Blocker } from "./provenance";
+import { documentFieldBlockers } from "./document-model";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
 
 /**
@@ -80,16 +81,31 @@ export function confirmSampleProvenance(v: Valuation): Valuation {
 
 /**
  * The approve mutation — F-4 gate as aggregate invariant (ADR-012). A draft
- * without a snapshot can never pass (default-deny).
+ * without a snapshot can never pass (default-deny). The gate is merged with
+ * the document-field blockers (spec §4): approval also requires the four
+ * operat header fields (purpose/kw/client/inspection date), so a legacy draft
+ * missing them is refused. When `docs` are supplied (the approve action has
+ * generated + stored the operat), the returned Valuation carries the URLs —
+ * this is the only place `docUrl`/`docxUrl` are set on approval.
  */
-export function approveValuation(v: Valuation, now: Date): Valuation {
+export function approveValuation(
+  v: Valuation,
+  now: Date,
+  docs?: { docUrl: string; docxUrl: string },
+): Valuation {
   assertDraft(v);
   if (!v.inputs) {
     throw new ApprovalBlockedError([{ path: "inputs", label: "Brak danych wejściowych operatu." }]);
   }
   const gate = approvalGate(v.inputs);
-  if (!gate.ok) {
-    throw new ApprovalBlockedError(gate.blockers);
+  const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(v)];
+  if (blockers.length > 0) {
+    throw new ApprovalBlockedError(blockers);
   }
-  return { ...v, status: "approved", approvedAt: now };
+  return {
+    ...v,
+    status: "approved",
+    approvedAt: now,
+    ...(docs ? { docUrl: docs.docUrl, docxUrl: docs.docxUrl } : {}),
+  };
 }

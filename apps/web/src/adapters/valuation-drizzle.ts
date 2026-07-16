@@ -117,15 +117,27 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       return toValuation(saved);
     },
 
-    async approve(id: string, user: SessionUser): Promise<Valuation | null> {
+    async approve(
+      id: string,
+      user: SessionUser,
+      docs?: { docUrl: string; docxUrl: string },
+    ): Promise<Valuation | null> {
       const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
       if (!row) return null;
       const valuation = toValuation(row);
       if (valuation.ownerId !== user.id) return null;
-      const updated = approveValuation(valuation, new Date());
+      // Re-runs the full gate (F-4 + document fields) in the domain — this is
+      // the atomic status flip; a caller that stored files first but fails
+      // here leaves harmless orphan files (same keys, overwritten on retry).
+      const updated = approveValuation(valuation, new Date(), docs);
       const [saved] = await db
         .update(schema.valuation)
-        .set({ status: updated.status, approvedAt: updated.approvedAt })
+        .set({
+          status: updated.status,
+          approvedAt: updated.approvedAt,
+          docUrl: updated.docUrl,
+          docxUrl: updated.docxUrl,
+        })
         .where(eq(schema.valuation.id, id))
         .returning();
       return toValuation(saved);

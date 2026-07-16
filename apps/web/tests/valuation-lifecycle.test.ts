@@ -15,7 +15,7 @@ const confirmedScalars: InputsProvenance = {
   ratings: { source: "rzeczoznawca", status: "confirmed" },
 };
 
-function draftWith(inputs: KcsInput | null): Valuation {
+function draftWith(inputs: KcsInput | null, overrides: Partial<Valuation> = {}): Valuation {
   return {
     id: "v-1",
     address: "ul. Testowa 1, Poznań",
@@ -25,14 +25,18 @@ function draftWith(inputs: KcsInput | null): Valuation {
     amountInWords: null,
     docUrl: null,
     docxUrl: null,
-    purpose: null,
-    kwNumber: null,
-    client: null,
-    inspectionDate: null,
+    // Document fields present by default so the gate-passing tests also clear
+    // the document-field blockers (spec §4). The legacy-draft test overrides
+    // them to null to prove approval blocks on a missing purpose/kw/etc.
+    purpose: "sprzedaz",
+    kwNumber: "KW-TEST-1",
+    client: "p. Jan Testowy",
+    inspectionDate: "2026-07-01",
     ownerId: "owner-1",
     status: "in_progress",
     approvedAt: null,
     createdAt: new Date("2026-07-14T10:00:00Z"),
+    ...overrides,
   };
 }
 
@@ -112,5 +116,35 @@ describe("approveValuation", () => {
       status: "approved" as const,
     };
     expect(() => approveValuation(approved, now)).toThrow(/draft/i);
+  });
+
+  it("blocks a legacy draft missing document fields, naming purpose (spec §4)", () => {
+    const legacy = confirmSampleProvenance(
+      draftWith(rcnInputs(), {
+        purpose: null,
+        kwNumber: null,
+        client: null,
+        inspectionDate: null,
+      }),
+    );
+    try {
+      approveValuation(legacy, now);
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApprovalBlockedError);
+      expect((e as ApprovalBlockedError).blockers.map((b) => b.path)).toContain("purpose");
+    }
+  });
+
+  it("persists docUrl + docxUrl when passed, alongside status approved", () => {
+    const confirmed = confirmSampleProvenance(draftWith(rcnInputs()));
+    const approved = approveValuation(confirmed, now, {
+      docUrl: "/api/docs/operat-x.pdf",
+      docxUrl: "/api/docs/operat-x.docx",
+    });
+    expect(approved.status).toBe("approved");
+    expect(approved.approvedAt).toBe(now);
+    expect(approved.docUrl).toBe("/api/docs/operat-x.pdf");
+    expect(approved.docxUrl).toBe("/api/docs/operat-x.docx");
   });
 });

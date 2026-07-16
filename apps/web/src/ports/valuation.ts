@@ -72,9 +72,16 @@ export interface PortValuation {
    */
   confirmSample(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
-   * Approves a draft — re-runs the F-4 gate server-side (never trusts the
-   * client). Same null/throw contract as confirmSample; additionally throws
-   * ApprovalBlockedError when the gate fails.
+   * Approves a draft — re-runs the F-4 gate AND the document-field check
+   * server-side (never trusts the client). Same null/throw contract as
+   * confirmSample; additionally throws ApprovalBlockedError when either the
+   * gate or a required document field fails. When `docs` are supplied (the
+   * approve action has generated + stored the operat), their URLs are
+   * persisted atomically with the status flip (Slice 4, spec §3).
    */
-  approve(id: string, user: SessionUser): Promise<Valuation | null>;
+  approve(
+    id: string,
+    user: SessionUser,
+    docs?: { docUrl: string; docxUrl: string },
+  ): Promise<Valuation | null>;
 }

@@ -6,8 +6,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getSession } from "@/auth/session";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
 import { approvalGate } from "@/domain/provenance";
+import { documentFieldBlockers } from "@/domain/document-model";
 import { valuationRepository } from "../_deps";
 import { ValuationActions } from "./valuation-actions";
+
+// The approve Server Action invoked from this page generates the operat
+// (DOCX render + LibreOffice PDF conversion in the worker), which can exceed
+// the default serverless function timeout. Page-level route config covers the
+// Server Actions defined for / invoked from this route (Next 16.2.9).
+export const maxDuration = 60;
 
 const STATUS_LABEL: Record<string, string> = {
   in_progress: "Szkic",
@@ -217,6 +224,11 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
 
   const isDraft = valuation.status === "in_progress";
   const gate = isDraft && valuation.inputs ? approvalGate(valuation.inputs) : null;
+  const fieldBlockers = isDraft ? documentFieldBlockers(valuation) : [];
+  // Approval requires BOTH the F-4 provenance gate and the document-field
+  // check (spec §4) — the button is enabled only when neither has a blocker.
+  const allBlockers = [...(gate && !gate.ok ? gate.blockers : []), ...fieldBlockers];
+  const gateOk = gate?.ok === true && fieldBlockers.length === 0;
   const hasToVerify =
     isDraft && valuation.inputs
       ? valuation.inputs.comparables.some((c) => c.status === "to_verify") ||
@@ -269,23 +281,19 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
       {isDraft ? (
         <Card>
           <CardContent className="flex flex-col gap-3 pt-6">
-            {gate && !gate.ok ? (
+            {allBlockers.length > 0 ? (
               <div data-testid="gate-blockers" className="flex flex-col gap-1">
                 <p className="text-sm font-medium text-foreground">
                   Zatwierdzenie zablokowane — do wyjaśnienia:
                 </p>
                 <ul className="list-disc pl-5 text-sm text-amber-600 dark:text-amber-500">
-                  {gate.blockers.map((b) => (
+                  {allBlockers.map((b) => (
                     <li key={b.path}>{b.label}</li>
                   ))}
                 </ul>
               </div>
             ) : null}
-            <ValuationActions
-              id={valuation.id}
-              hasToVerify={hasToVerify}
-              gateOk={gate?.ok === true}
-            />
+            <ValuationActions id={valuation.id} hasToVerify={hasToVerify} gateOk={gateOk} />
           </CardContent>
         </Card>
       ) : null}
@@ -299,7 +307,20 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
         </p>
       ) : null}
 
-      {valuation.docUrl ? (
+      {valuation.docUrl?.endsWith(".pdf") ? (
+        <div className="flex flex-col gap-2">
+          <iframe
+            title="Operat szacunkowy (PDF)"
+            src={valuation.docUrl}
+            className="h-[80vh] w-full rounded-md border"
+          />
+          {valuation.docxUrl ? (
+            <Button asChild variant="outline" className="w-fit">
+              <a href={valuation.docxUrl}>Pobierz DOCX</a>
+            </Button>
+          ) : null}
+        </div>
+      ) : valuation.docUrl ? (
         <Button asChild variant="outline" className="w-fit">
           <a href={valuation.docUrl} target="_blank" rel="noreferrer">
             Otwórz dokument operatu
