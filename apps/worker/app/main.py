@@ -6,6 +6,7 @@ Local run:
     uv run uvicorn app.main:app --reload
 """
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import Body, FastAPI, HTTPException, Response
@@ -35,6 +36,10 @@ def convert_to_pdf(docx: bytes = Body(default=b"")) -> Response:
     try:
         pdf = docx_to_pdf(docx)
     except ConversionError as exc:
+        # Handled HTTPExceptions are never logged by FastAPI — without this
+        # line a conversion failure (incl. the soffice stderr the
+        # ConversionError carries) leaves no trace in Railway logs.
+        logging.getLogger("uvicorn.error").error("convert-to-pdf failed: %s", exc)
         raise HTTPException(
             status_code=502,
             detail="Konwersja DOCX do PDF nie powiodła się — spróbuj ponownie.",
