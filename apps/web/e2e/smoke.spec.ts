@@ -15,6 +15,10 @@ async function fillDraft(page: import("@playwright/test").Page, prices: string[]
   await page.goto("/valuations/new");
   await page.locator("#address").fill("ul. Testowa 1, Poznań");
   await page.locator("#area").fill("54.3");
+  await page.locator("#purpose").selectOption("sprzedaz");
+  await page.locator("#kwNumber").fill("KW-TEST-1");
+  await page.locator("#client").fill("p. Test Testowy");
+  await page.locator("#inspectionDate").fill("2026-07-01");
   // The form starts with 3 rows; add the rest.
   for (let i = 3; i < prices.length; i++) {
     await page.getByRole("button", { name: "Dodaj transakcję" }).click();
