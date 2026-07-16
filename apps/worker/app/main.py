@@ -8,11 +8,12 @@ Local run:
 
 from datetime import UTC, datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 
 import app.rcn as rcn
 from app.amount_in_words import to_amount_in_words
+from app.convert import ConversionError, docx_to_pdf
 
 app = FastAPI(title="wyceny-worker")
 
@@ -20,6 +21,21 @@ app = FastAPI(title="wyceny-worker")
 @app.get("/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
+
+
+@app.post("/convert-to-pdf")
+async def convert_to_pdf(request: Request) -> Response:
+    docx = await request.body()
+    if not docx:
+        raise HTTPException(status_code=400, detail="Puste żądanie — oczekiwano pliku DOCX.")
+    try:
+        pdf = docx_to_pdf(docx)
+    except ConversionError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Konwersja DOCX do PDF nie powiodła się — spróbuj ponownie.",
+        ) from exc
+    return Response(content=pdf, media_type="application/pdf")
 
 
 class AmountInWordsRequest(BaseModel):

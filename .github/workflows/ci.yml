@@ -92,7 +92,13 @@ jobs:
         working-directory: apps/worker
         run: uv run ruff check . && uv run ruff format --check .
 
-      - name: Worker tests (F-11)
+      - name: Ensure LibreOffice + Carlito (F-12 conversion tests)
+        run: |
+          if ! command -v soffice >/dev/null; then sudo apt-get update && sudo apt-get install -y libreoffice-writer; fi
+          if ! fc-list | grep -qi carlito; then sudo apt-get install -y fonts-crosextra-carlito; fi
+          soffice --version
+
+      - name: Worker tests (F-5, F-11, F-12)
         working-directory: apps/worker
         run: uv run pytest -q
 
@@ -134,6 +140,11 @@ jobs:
       - name: Migrate + seed
         working-directory: apps/web
         run: pnpm exec drizzle-kit migrate && pnpm seed
+      - name: Ensure LibreOffice + Carlito (F-12 conversion tests)
+        run: |
+          if ! command -v soffice >/dev/null; then sudo apt-get update && sudo apt-get install -y libreoffice-writer; fi
+          if ! fc-list | grep -qi carlito; then sudo apt-get install -y fonts-crosextra-carlito; fi
+          soffice --version
       - name: Start worker
         working-directory: apps/worker
         run: |
