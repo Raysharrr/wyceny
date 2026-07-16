@@ -7,7 +7,7 @@ import {
   formatPln,
 } from "../src/domain/document-model";
 
-const NBSP = " ";
+const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
 
 /** Synthetic inputs with FULL transaction dates and RCN ids — masking must strip both. */
 function syntheticInputs(): KcsInput {

@@ -33,7 +33,7 @@ const RATING_TEXT: Record<FeatureRating, string> = {
   gorsza: "wartość najniższa cechy",
 };
 
-const NBSP = " ";
+const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
 
 /** `1044400` → `"1 044 400,00"` (NBSP thousands separator — matches the source operat). */
 export function formatPln(value: number): string {
