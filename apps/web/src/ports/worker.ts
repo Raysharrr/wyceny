@@ -13,4 +13,10 @@ export interface PortWorker {
    * Always resolves to the words string — never the raw number (F-11).
    */
   amountInWords(amount: number): Promise<string>;
+
+  /**
+   * Converts a rendered DOCX to PDF (LibreOffice runs worker-side, ADR-009).
+   * Takes and returns file bytes only — never computed values (F-11).
+   */
+  convertToPdf(docx: Buffer): Promise<Buffer>;
 }

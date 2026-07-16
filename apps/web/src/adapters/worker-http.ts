@@ -19,5 +19,20 @@ export function httpWorker(baseUrl: string): PortWorker {
       const data = (await response.json()) as { words: string };
       return data.words;
     },
+    async convertToPdf(docx: Buffer): Promise<Buffer> {
+      const response = await fetch(`${baseUrl}/convert-to-pdf`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+        body: new Uint8Array(docx),
+      });
+      if (!response.ok) {
+        throw new Error(
+          `worker /convert-to-pdf responded ${response.status} ${response.statusText}`,
+        );
+      }
+      return Buffer.from(await response.arrayBuffer());
+    },
   };
 }
