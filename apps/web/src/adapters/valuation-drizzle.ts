@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { KcsInput } from "../domain/kcs";
 import { approveValuation, confirmSampleProvenance, newValuation } from "../domain/valuation";
@@ -91,7 +91,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         const [row] = await tx
           .select()
           .from(schema.valuation)
-          .where(eq(schema.valuation.docUrl, docUrl));
+          .where(or(eq(schema.valuation.docUrl, docUrl), eq(schema.valuation.docxUrl, docUrl)));
         if (!row) return null;
         const valuation = toValuation(row);
         return canSee(valuation, user) ? valuation : null;

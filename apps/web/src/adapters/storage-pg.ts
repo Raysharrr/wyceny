@@ -10,19 +10,27 @@ import type { PortStorage } from "../ports/storage";
  * which is required before this app can deploy (a fresh invocation would
  * otherwise lose every doc a prior invocation stored, 404-ing every link).
  *
- * Stub docs are plain text, stored directly in the `document` table. A
- * future binary/PDF slice should move `content` to object storage (e.g.
- * Vercel Blob) behind this same `PortStorage` interface — callers never
- * change.
+ * Stub docs are plain text; PDF/DOCX artifacts (Slice 4) are binary — both
+ * are stored directly in the `document` table, in one of `content` (text)
+ * or `contentBytes` (bytea), chosen by `Buffer.isBuffer(data)`. Exactly one
+ * of the two is set per row; `get` prefers `contentBytes` when present.
  */
 export function pgStorage(db: NodePgDatabase<typeof schema>): PortStorage {
   return {
     async put(key: string, data: Buffer | string): Promise<string> {
-      const content = Buffer.isBuffer(data) ? data.toString() : data;
+      const isBinary = Buffer.isBuffer(data);
+      const values = {
+        key,
+        content: isBinary ? null : (data as string),
+        contentBytes: isBinary ? (data as Buffer) : null,
+      };
       await db
         .insert(schema.document)
-        .values({ key, content })
-        .onConflictDoUpdate({ target: schema.document.key, set: { content } });
+        .values(values)
+        .onConflictDoUpdate({
+          target: schema.document.key,
+          set: { content: values.content, contentBytes: values.contentBytes },
+        });
       return `/api/docs/${encodeURIComponent(key)}`;
     },
 
@@ -30,6 +38,12 @@ export function pgStorage(db: NodePgDatabase<typeof schema>): PortStorage {
       const [row] = await db.select().from(schema.document).where(eq(schema.document.key, key));
       if (!row) {
         throw new Error(`Storage: key not found: ${key}`);
+      }
+      if (row.contentBytes) {
+        return Buffer.from(row.contentBytes);
+      }
+      if (row.content == null) {
+        throw new Error(`Storage: empty row for key: ${key}`);
       }
       return Buffer.from(row.content);
     },

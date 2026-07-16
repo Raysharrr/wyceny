@@ -1,5 +1,21 @@
-import { doublePrecision, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  customType,
+  date,
+  doublePrecision,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "./auth-schema";
+
+/** drizzle 0.45 has no native bytea — minimal customType (context7-verified pattern). */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 // Better Auth owns `user`/`session`/`account`/`verification` (ADR-013). This
 // file is `schema:` for both drizzle-kit and the Better Auth Drizzle adapter,
@@ -15,7 +31,9 @@ export * from "./auth-schema";
 // storage (e.g. Vercel Blob) behind the same PortStorage interface.
 export const document = pgTable("document", {
   key: text("key").primaryKey(),
-  content: text("content").notNull(),
+  // Text stubs (legacy) — exactly one of content/contentBytes is set per row.
+  content: text("content"),
+  contentBytes: bytea("content_bytes"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 
@@ -31,6 +49,12 @@ export const valuation = pgTable("valuation", {
   inputs: jsonb("inputs"),
   amountInWords: text("amount_in_words"),
   docUrl: text("doc_url"),
+  docxUrl: text("docx_url"),
+  // Slice 4 document fields — nullable for legacy rows; approval blocks when missing.
+  purpose: text("purpose", { enum: ["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"] }),
+  kwNumber: text("kw_number"),
+  client: text("client"),
+  inspectionDate: date("inspection_date"),
   ownerId: text("owner_id")
     .notNull()
     .references(() => user.id),

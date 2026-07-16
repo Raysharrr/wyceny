@@ -94,4 +94,38 @@ describe("/api/docs/[key] — access control (Task 11a)", () => {
 
     expect(res.status).toBe(404);
   });
+
+  it("serves .pdf inline as application/pdf and .docx as attachment", async () => {
+    const pdfKey = "doc-route-2.pdf";
+    const pdfBytes = Buffer.from("%PDF-1.7 fake");
+    const pdfUrl = await storage.put(pdfKey, pdfBytes);
+    const docxKey = "doc-route-2.docx";
+    const docxUrl = await storage.put(docxKey, Buffer.from("PK-fake"));
+
+    await repo.create({
+      address: "ul. Docs-Route 2",
+      area: 10,
+      wr: 100000,
+      inputs: null,
+      amountInWords: null,
+      docUrl: pdfUrl,
+      docxUrl,
+      ownerId: appraiserA.id,
+    });
+
+    getSessionMock.mockResolvedValue({ user: appraiserA });
+
+    const pdfRes = await GET(new Request(`http://test${pdfUrl}`), paramsFor(pdfKey));
+    expect(pdfRes.status).toBe(200);
+    expect(pdfRes.headers.get("content-type")).toBe("application/pdf");
+    expect(pdfRes.headers.get("content-disposition")).toBe("inline");
+
+    // the DOCX key authorizes via docxUrl (OR-match in getByDocKey)
+    const docxRes = await GET(new Request(`http://test${docxUrl}`), paramsFor(docxKey));
+    expect(docxRes.status).toBe(200);
+    expect(docxRes.headers.get("content-type")).toBe(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    expect(docxRes.headers.get("content-disposition")).toContain("attachment");
+  });
 });

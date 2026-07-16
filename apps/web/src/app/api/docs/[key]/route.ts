@@ -3,6 +3,27 @@ import { getSession } from "@/auth/session";
 import { storage, valuationRepository } from "@/app/valuations/_deps";
 
 const TEXT_HEADERS = { "Content-Type": "text/plain; charset=utf-8" };
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/**
+ * Success-path Content-Type/-Disposition, derived from the key's file
+ * extension (Slice 4 adds real PDF/DOCX artifacts alongside legacy text
+ * stubs). PDF renders inline in the browser; DOCX downloads as an
+ * attachment (browsers can't render it inline); anything else keeps the
+ * original plain-text stub behavior.
+ */
+function successHeaders(key: string): Record<string, string> {
+  if (key.endsWith(".pdf")) {
+    return { "Content-Type": "application/pdf", "Content-Disposition": "inline" };
+  }
+  if (key.endsWith(".docx")) {
+    return {
+      "Content-Type": DOCX_MIME,
+      "Content-Disposition": 'attachment; filename="operat.docx"',
+    };
+  }
+  return TEXT_HEADERS; // legacy text stubs
+}
 
 /**
  * Doc-serving route (Task 9; access-controlled in Task 11a now that
@@ -34,7 +55,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ key
 
   try {
     const data = await storage.get(key);
-    return new NextResponse(new Uint8Array(data), { status: 200, headers: TEXT_HEADERS });
+    return new NextResponse(new Uint8Array(data), { status: 200, headers: successHeaders(key) });
   } catch {
     return new NextResponse("Nie znaleziono dokumentu.", { status: 404, headers: TEXT_HEADERS });
   }

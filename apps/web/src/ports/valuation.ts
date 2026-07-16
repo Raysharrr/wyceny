@@ -17,6 +17,12 @@ export type Valuation = {
   inputs: KcsInput | null;
   amountInWords: string | null;
   docUrl: string | null;
+  docxUrl: string | null;
+  purpose: "sprzedaz" | "zabezpieczenie_kredytu" | "informacyjny" | null;
+  kwNumber: string | null;
+  client: string | null;
+  /** ISO date string (YYYY-MM-DD). */
+  inspectionDate: string | null;
   ownerId: string;
   status: "in_progress" | "approved" | "signed";
   approvedAt: Date | null;
@@ -30,6 +36,11 @@ export type NewValuationInput = {
   inputs: KcsInput | null;
   amountInWords: string | null;
   docUrl: string | null;
+  docxUrl?: string | null;
+  purpose?: Valuation["purpose"];
+  kwNumber?: string | null;
+  client?: string | null;
+  inspectionDate?: string | null;
   ownerId: string;
 };
 
@@ -44,7 +55,8 @@ export interface PortValuation {
   listForUser(user: SessionUser): Promise<Valuation[]>;
   get(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
-   * Looks up the Valuation whose `docUrl` matches the given PortStorage key,
+   * Looks up the Valuation whose `docUrl` OR `docxUrl` matches the given
+   * PortStorage key (Slice 4 adds a second, DOCX, artifact per Valuation),
    * applying the same ownership rule as `get` (admin → any; appraiser →
    * only their own). Returns `null` both when no such Valuation exists and
    * when it exists but isn't visible to `user` — callers must not
