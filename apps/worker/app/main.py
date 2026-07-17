@@ -13,6 +13,7 @@ from fastapi import Body, FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 import app.rcn as rcn
+import app.subject as subject
 from app.amount_in_words import to_amount_in_words
 from app.convert import ConversionError, docx_to_pdf
 
@@ -133,5 +134,116 @@ def sample_proposal(request: SampleProposalRequest) -> SampleProposalResponse:
             fetchedAt=datetime.now(UTC).isoformat(),
             source="rcn-wfs-gugik",
             query=SampleProposalQuery(bbox=list(bbox), count=5000, sort="dok_data D"),
+        ),
+    )
+
+
+class SubjectProposalRequest(BaseModel):
+    address: str
+
+
+class SubjectParcel(BaseModel):
+    parcelId: str
+    obreb: str
+    arkusz: str
+    nrDzialki: str
+    powEwidHa: float | None
+    uzytek: str
+
+
+class SubjectBuilding(BaseModel):
+    rodzaj: str
+    kondygnacjeNadziemne: int | None
+    kondygnacjePodziemne: int | None
+
+
+class SubjectMpzp(BaseModel):
+    symbol: str
+    nazwaPlanu: str
+    uchwala: str
+    dataUchwaly: str
+    publikator: str
+
+
+class SubjectMeta(BaseModel):
+    x: float
+    y: float
+    teryt: str
+    fetchedAt: str
+    source: str
+    mpzpAbsent: bool
+
+
+class SubjectProposalResponse(BaseModel):
+    parcel: SubjectParcel
+    building: SubjectBuilding | None
+    mpzp: SubjectMpzp | None
+    meta: SubjectMeta
+
+
+OUT_OF_COVERAGE_DETAIL = "Dane przedmiotu dostępne na razie dla Poznania — wpisz dane ręcznie."
+SUBJECT_FAILED_DETAIL = (
+    "Nie udało się pobrać danych przedmiotu — spróbuj ponownie albo wpisz dane ręcznie."
+)
+
+
+@app.post("/subject-proposal")
+def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse:
+    try:
+        geo = subject.geocode_address(request.address)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=SUBJECT_FAILED_DETAIL) from exc
+
+    # 422 = out of MVP coverage (decision 9: non-retryable, distinct from 502)
+    if not subject.is_poznan(geo.get("teryt")):
+        raise HTTPException(status_code=422, detail=OUT_OF_COVERAGE_DETAIL)
+
+    try:
+        x, y = geo["x"], geo["y"]
+        parcel_ref = subject.fetch_parcel_by_xy(x, y)
+        parcel = subject.parcel_from_xml(subject.fetch_egib_xml("dzialki", x, y))
+        if parcel is None:
+            raise RuntimeError("EGiB nie zwrocilo dzialki")
+        building = subject.building_from_xml(subject.fetch_egib_xml("budynki", x, y))
+        wkt_2180 = subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 2180)
+        function = subject.pick_mpzp_function(wkt_2180, subject.fetch_mpzp_functions(wkt_2180))
+        lon, lat = subject.centroid_4326(subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 4326))
+        plan = subject.pick_plan(lon, lat, subject.fetch_plans())
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=SUBJECT_FAILED_DETAIL) from exc
+
+    mpzp = None
+    if function or plan:
+        mpzp = SubjectMpzp(
+            symbol=(function or {}).get("symbol", ""),
+            nazwaPlanu=(plan or {}).get("nazwa", ""),
+            uchwala=(plan or {}).get("uchwala", ""),
+            dataUchwaly=(plan or {}).get("data", ""),
+            publikator=(plan or {}).get("publ", ""),
+        )
+    return SubjectProposalResponse(
+        parcel=SubjectParcel(
+            parcelId=parcel["parcel_id"],
+            obreb=parcel["obreb"],
+            arkusz=parcel["arkusz"],
+            nrDzialki=parcel["nr_dzialki"],
+            powEwidHa=parcel["pow_ewid_ha"],
+            uzytek=parcel["uzytek"],
+        ),
+        building=SubjectBuilding(
+            rodzaj=building["rodzaj"],
+            kondygnacjeNadziemne=building["kondygnacje_nadziemne"],
+            kondygnacjePodziemne=building["kondygnacje_podziemne"],
+        )
+        if building
+        else None,
+        mpzp=mpzp,
+        meta=SubjectMeta(
+            x=x,
+            y=y,
+            teryt=geo["teryt"],
+            fetchedAt=datetime.now(UTC).isoformat(),
+            source="geopoz-gugik",
+            mpzpAbsent=mpzp is None,
         ),
     )
