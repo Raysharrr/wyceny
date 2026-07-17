@@ -16,5 +16,11 @@ export default defineConfig({
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // Belt-and-suspenders alongside the CI workflow's job-level env: keeps
+    // the auto-fetch off if someone runs `pnpm start` locally with a build
+    // that already baked in the guard (see new-valuation-form.tsx's
+    // `onAddressBlur`). NEXT_PUBLIC_* is inlined at `next build` time, so
+    // this alone does NOT retroactively disable a build made without it.
+    env: { NEXT_PUBLIC_SUBJECT_AUTOFETCH: "off" },
   },
 });

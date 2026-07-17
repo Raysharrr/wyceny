@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
@@ -17,14 +17,17 @@ import {
 } from "@/components/ui/table";
 import { createValuation } from "@/app/actions/create-valuation";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
+import { getSubjectData } from "@/app/actions/get-subject-data";
 import { PURPOSE_LABEL } from "@/domain/document-model";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_FEATURES,
   valuationFormSchema,
   type ValuationFormValues,
 } from "@/lib/valuation-form-schema";
+import { SubjectSection, type SubjectFetchState } from "./subject-section";
 
 type FormInput = z.input<typeof valuationFormSchema>;
 type FormOutput = z.output<typeof valuationFormSchema>;
@@ -85,6 +88,8 @@ export function NewValuationForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isFetchingSample, setIsFetchingSample] = useState(false);
   const [fetchSampleError, setFetchSampleError] = useState<string | null>(null);
+  const [subjectFetch, setSubjectFetch] = useState<SubjectFetchState>({ status: "idle" });
+  const lastFetchedAddress = useRef<string | null>(null);
 
   const {
     control,
@@ -104,6 +109,8 @@ export function NewValuationForm() {
       // `setValue("sampleMeta", ...)` below writes a known field instead of
       // relying on RHF to create it on first write.
       sampleMeta: undefined,
+      subject: { ...EMPTY_SUBJECT },
+      subjectMeta: undefined,
       // `purpose` has no empty-string member in its enum — the placeholder
       // "— wybierz —" option below IS the empty string, so the select
       // starts on it and zod's required-enum message fires until the user
@@ -143,6 +150,40 @@ export function NewValuationForm() {
 
   const comparablesError = errors.comparables?.root?.message ?? errors.comparables?.message;
   const featuresError = errors.features?.root?.message ?? errors.features?.message;
+
+  // Decision 8 (hard reset): address is the section key for "Dane
+  // przedmiotu" — every fetch (including a retry) wipes the whole subject
+  // section first, including any manually-edited fields, rather than
+  // merging. A stale field from a previous address is worse than an empty
+  // one; the fetched proposal always stays fully editable afterwards.
+  const fetchSubject = async (address: string) => {
+    setValue("subject", { ...EMPTY_SUBJECT });
+    setValue("subjectMeta", undefined);
+    setSubjectFetch({ status: "loading" });
+    const result = await getSubjectData({ address });
+    if ("proposal" in result) {
+      setValue("subject", proposalToSubjectValues(result.proposal), { shouldValidate: true });
+      setValue("subjectMeta", result.proposal.meta, { shouldDirty: true });
+      const p = result.proposal;
+      setSubjectFetch({
+        status: "done",
+        summary: `obręb ${p.parcel.obreb}, dz. ${p.parcel.nrDzialki}${p.mpzp ? `, MPZP ${p.mpzp.symbol}` : ", brak MPZP"}`,
+      });
+    } else if ("outOfCoverage" in result) {
+      setSubjectFetch({ status: "outOfCoverage", message: result.outOfCoverage });
+    } else {
+      setSubjectFetch({ status: "error", message: result.error });
+    }
+  };
+
+  const onAddressBlur = async () => {
+    if (process.env.NEXT_PUBLIC_SUBJECT_AUTOFETCH === "off") return; // e2e: no network in CI
+    const address = getValues("address")?.trim();
+    if (!address || address === lastFetchedAddress.current) return;
+    if (!(await trigger("address"))) return;
+    lastFetchedAddress.current = address;
+    await fetchSubject(address);
+  };
 
   const onFetchSample = async () => {
     setFetchSampleError(null);
@@ -197,6 +238,10 @@ export function NewValuationForm() {
                 placeholder="np. ul. Wierzbięcice 12/4, Poznań"
                 autoComplete="off"
                 {...field}
+                onBlur={() => {
+                  field.onBlur();
+                  void onAddressBlur();
+                }}
               />
               <FieldError errors={[fieldState.error]} />
             </Field>
@@ -289,6 +334,15 @@ export function NewValuationForm() {
           )}
         />
       </FieldGroup>
+
+      <SubjectSection
+        control={control}
+        fetchState={subjectFetch}
+        onRetry={() => {
+          lastFetchedAddress.current = null;
+          void onAddressBlur();
+        }}
+      />
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">

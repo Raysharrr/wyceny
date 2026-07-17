@@ -106,6 +106,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: ci
+    env:
+      # NEXT_PUBLIC_* is inlined at `next build` time, so this must be set
+      # before the "Build web" step below, not just at "Smoke E2E" — keeps
+      # the address-blur EGiB/MPZP auto-fetch off so the e2e job stays
+      # network-free (see subject-section.tsx's `onAddressBlur` guard).
+      NEXT_PUBLIC_SUBJECT_AUTOFETCH: "off"
     services:
       postgres:
         image: postgres:16
