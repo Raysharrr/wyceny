@@ -3,6 +3,7 @@
 from app.subject import (
     building_from_xml,
     is_poznan,
+    normalize_uug_address,
     parcel_from_xml,
     parse_geopoz_fields,
     pick_mpzp_function,
@@ -136,3 +137,36 @@ def test_is_poznan_teryt_prefix():
     assert is_poznan("306401") is True
     assert is_poznan("146501") is False
     assert is_poznan(None) is False
+
+
+# UUG geokoder contract pinned live 2026-07-17 (subject-proposal hotfix):
+# city must come first; "ul."/"pl."/"al."/"os." prefix is tolerated but optional;
+# an apartment suffix ("33/36") makes the lookup return no result.
+
+
+def test_normalize_uug_address_strips_apartment_and_ul_prefix_street_first():
+    # exact bug-report case: expected user input (form placeholder shape) that
+    # UUG rejected outright ("Blad zapytania.")
+    assert normalize_uug_address("ul. Kościelna 33/36, Poznań") == "Poznań, Kościelna 33"
+
+
+def test_normalize_uug_address_reorders_street_first_to_city_first():
+    assert normalize_uug_address("Kościelna 33, Poznań") == "Poznań, Kościelna 33"
+
+
+def test_normalize_uug_address_already_city_first_is_unchanged():
+    assert normalize_uug_address("Poznań, Kościelna 33") == "Poznań, Kościelna 33"
+
+
+def test_normalize_uug_address_strips_apartment_city_first():
+    assert normalize_uug_address("Poznań, Kościelna 33/36") == "Poznań, Kościelna 33"
+
+
+def test_normalize_uug_address_strips_apartment_with_letter_suffix():
+    assert normalize_uug_address("Poznań, Głogowska 33A/5") == "Poznań, Głogowska 33A"
+
+
+def test_normalize_uug_address_no_comma_defaults_city_to_poznan():
+    # no city given -> falls back to rcn.parse_address's Poznań default (documented,
+    # matches the app's Poznań-only MVP coverage gate, see is_poznan)
+    assert normalize_uug_address("Kościelna 33") == "Poznań, Kościelna 33"

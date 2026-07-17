@@ -24,7 +24,26 @@ import urllib.request
 from shapely import wkt as shapely_wkt
 from shapely.geometry import Point, shape
 
+from app.rcn import parse_address
+
 # --- pure core -------------------------------------------------------------
+
+_APARTMENT_RX = re.compile(r"(\d+[A-Za-z]?)/\w+$")
+
+
+def normalize_uug_address(address: str) -> str:
+    """Normalize a user-typed address into the shape the UUG geokoder accepts.
+
+    Pinned live against the UUG geokoder 2026-07-17 (subject-proposal hotfix):
+    city must come first, "ul."/"pl."/"al."/"os." prefixes are tolerated but
+    optional, and an apartment suffix ("33/36") makes the lookup return no
+    result. Reuses rcn.parse_address (Slice 2) for the city/street split and
+    prefix strip, then strips the apartment part.
+    """
+    city, street = parse_address(address)
+    street = _APARTMENT_RX.sub(r"\1", street)
+    return f"{city}, {street}"
+
 
 GEOPOZ_FIELD_RX = re.compile(r"<([A-Z_][A-Z0-9_]*)>([^<]*)</\1>")
 
@@ -135,7 +154,8 @@ def _get(url: str) -> str:
 
 
 def geocode_address(address: str) -> dict:
-    url = GEOKODER_URL + "?" + urllib.parse.urlencode({"request": "GetAddress", "address": address})
+    query = normalize_uug_address(address)
+    url = GEOKODER_URL + "?" + urllib.parse.urlencode({"request": "GetAddress", "address": query})
     results = json.loads(_get(url)).get("results") or {}
     first = results.get("1")
     if not first:
