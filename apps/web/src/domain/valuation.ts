@@ -82,8 +82,11 @@ export function confirmSampleProvenance(v: Valuation): Valuation {
 /**
  * Mirrors `confirmSampleProvenance` for the subject snapshot's provenance
  * groups (EGiB/MPZP): flips `ewidencja`/`mpzp` from to_verify to confirmed.
+ * Draft-only (F-7) like its sibling; unlike it, a missing inputs snapshot
+ * is a no-op here rather than a throw — there is no subject data to confirm.
  */
 export function confirmSubjectProvenance(valuation: Valuation): Valuation {
+  assertDraft(valuation);
   if (!valuation.inputs?.provenance) return valuation;
   const provenance = { ...valuation.inputs.provenance };
   if (provenance.ewidencja) provenance.ewidencja = { ...provenance.ewidencja, status: "confirmed" };

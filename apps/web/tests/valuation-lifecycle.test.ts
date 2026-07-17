@@ -125,6 +125,17 @@ describe("confirmSubjectProvenance", () => {
     const v = confirmSubjectProvenance(legacy);
     expect(v.inputs).toEqual(legacy.inputs);
   });
+
+  it("throws when the valuation is not a draft (mirrors confirmSampleProvenance's guard — F-7)", () => {
+    const approved = { ...draftWith(subjectInputs()), status: "approved" as const };
+    expect(() => confirmSubjectProvenance(approved)).toThrow(/draft/i);
+  });
+
+  it("no-op when there is no inputs snapshot at all", () => {
+    const legacy = draftWith(null);
+    const v = confirmSubjectProvenance(legacy);
+    expect(v.inputs).toBeNull();
+  });
 });
 
 describe("approveValuation", () => {
