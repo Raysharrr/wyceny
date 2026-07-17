@@ -90,6 +90,11 @@ export function NewValuationForm() {
   const [fetchSampleError, setFetchSampleError] = useState<string | null>(null);
   const [subjectFetch, setSubjectFetch] = useState<SubjectFetchState>({ status: "idle" });
   const lastFetchedAddress = useRef<string | null>(null);
+  // Guards against out-of-order responses: if the address changes again (or
+  // a retry fires) before an in-flight fetch resolves, only the LATEST
+  // fetch's result may write into the form — an older response arriving
+  // late must not clobber a newer one (or a manual hard reset in between).
+  const fetchSeq = useRef(0);
 
   const {
     control,
@@ -157,10 +162,12 @@ export function NewValuationForm() {
   // merging. A stale field from a previous address is worse than an empty
   // one; the fetched proposal always stays fully editable afterwards.
   const fetchSubject = async (address: string) => {
+    const seq = ++fetchSeq.current;
     setValue("subject", { ...EMPTY_SUBJECT });
     setValue("subjectMeta", undefined);
     setSubjectFetch({ status: "loading" });
     const result = await getSubjectData({ address });
+    if (seq !== fetchSeq.current) return; // stale response — a newer fetch owns the section
     if ("proposal" in result) {
       setValue("subject", proposalToSubjectValues(result.proposal), { shouldValidate: true });
       setValue("subjectMeta", result.proposal.meta, { shouldDirty: true });

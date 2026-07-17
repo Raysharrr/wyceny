@@ -149,7 +149,7 @@ export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionP
                 onBlur={field.onBlur}
                 ref={field.ref}
                 value={toInputValue(field.value)}
-                onChange={(e) => field.onChange(e.target.value)}
+                onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
               />
               <FieldError errors={[fieldState.error]} />
             </Field>
@@ -172,7 +172,7 @@ export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionP
                 onBlur={field.onBlur}
                 ref={field.ref}
                 value={toInputValue(field.value)}
-                onChange={(e) => field.onChange(e.target.value)}
+                onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
               />
               <FieldError errors={[fieldState.error]} />
             </Field>
@@ -195,7 +195,7 @@ export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionP
                 onBlur={field.onBlur}
                 ref={field.ref}
                 value={toInputValue(field.value)}
-                onChange={(e) => field.onChange(e.target.value)}
+                onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
               />
               <FieldError errors={[fieldState.error]} />
             </Field>
@@ -217,7 +217,7 @@ export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionP
                 onBlur={field.onBlur}
                 ref={field.ref}
                 value={toInputValue(field.value)}
-                onChange={(e) => field.onChange(e.target.value)}
+                onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
               />
               <FieldDescription>
                 Brak w publicznej ewidencji — uzupełnij z dokumentacji lub oględzin.
