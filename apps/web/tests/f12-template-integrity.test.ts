@@ -58,6 +58,8 @@ const FORBIDDEN_LITERALS = [
   "844 421", // §11 general-market average total
   "874 333", // §11 sample average total
   "18 169", // §13 offer-price range max
+  // Task 7: source-operat plan symbol must never be baked into the template.
+  "4MW/U",
 ];
 
 const REQUIRED_PLACEHOLDERS = [
@@ -88,6 +90,20 @@ const REQUIRED_PLACEHOLDERS = [
   "{#opis_przedmiot}",
   "{#kredyt}",
   "{/kredyt}",
+  // Task 7: EGiB facts block (8.2) + MPZP variants (9)
+  "{obreb}",
+  "{arkusz}",
+  "{nr_dzialki}",
+  "{pow_dzialki}",
+  "{uzytek}",
+  "{budynek_rodzaj}",
+  "{kondygnacje}",
+  "{rok_budowy}",
+  "{przeznaczenie_studium}",
+  "{#mpzp}",
+  "{/mpzp}",
+  "{#mpzp_brak}",
+  "{/mpzp_brak}",
 ];
 
 describe("F-12: template integrity (operat-szablon.docx)", () => {
