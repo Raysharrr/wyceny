@@ -34,6 +34,8 @@ const RATING_TEXT: Record<FeatureRating, string> = {
 };
 
 const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
+const DASH = "—";
+const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 
 /** `1044400` → `"1 044 400,00"` (NBSP thousands separator — matches the source operat). */
 export function formatPln(value: number): string {
@@ -54,13 +56,13 @@ export function formatDatePl(iso: string): string {
 
 /** F-12 masking: full transaction date → month only; absent → em dash. */
 function maskMonth(date: string | undefined): string {
-  return date && /^\d{4}-\d{2}/.test(date) ? date.slice(0, 7) : "—";
+  return date && /^\d{4}-\d{2}/.test(date) ? date.slice(0, 7) : DASH;
 }
 
 /** Best-effort city from the subject address ("ul. X 1, Poznań" → "Poznań"). */
 function cityFromAddress(address: string): string {
   const afterComma = address.split(",").pop()?.trim();
-  return afterComma && afterComma.length > 0 ? afterComma : "—";
+  return afterComma && afterComma.length > 0 ? afterComma : DASH;
 }
 
 export type TransactionRow = {
@@ -80,6 +82,15 @@ export type FeatureRow = {
   ui_przedmiot: string;
 };
 
+/** Section 9 MPZP block (§`{#mpzp}`) — only present when a plan resolved. */
+export type MpzpBlock = {
+  symbol: string;
+  nazwa: string;
+  uchwala: string;
+  data: string;
+  publ: string;
+};
+
 export type DocumentModel = {
   adres: string;
   powierzchnia: string;
@@ -88,6 +99,21 @@ export type DocumentModel = {
   klient: string;
   data_ogledzin: string;
   data_sporzadzenia: string;
+  // EGiB/building facts (section 8.2) — from the auto-fetched subject snapshot;
+  // dashes when no subject was fetched (legacy manual-entry inputs).
+  obreb: string;
+  arkusz: string;
+  nr_dzialki: string;
+  pow_dzialki: string;
+  uzytek: string;
+  budynek_rodzaj: string;
+  kondygnacje: string;
+  rok_budowy: string;
+  // Section 9 MPZP variants — `{#mpzp}`/`{#mpzp_brak}` are mutually exclusive,
+  // enforced here (never both, never neither, when a subject is present).
+  mpzp: MpzpBlock | null;
+  mpzp_brak: boolean;
+  przeznaczenie_studium: string;
   wr: string;
   wr_slownie: string;
   wr_dokladna: string;
@@ -142,6 +168,14 @@ export type BuildDocumentInput = {
 export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
   const { kcs, inputs } = input;
   const city = cityFromAddress(input.address);
+  const subject = inputs.subject ?? null;
+  // `{#mpzp}` only when a subject was fetched, MPZP isn't flagged absent, and
+  // at least one plan field resolved — keeps it mutually exclusive with
+  // `mpzp_brak` (Task 7 review note: the template doesn't enforce this itself).
+  const hasMpzp =
+    subject != null &&
+    subject.mpzpAbsent !== true &&
+    Boolean(subject.mpzpSymbol || subject.mpzpNazwa || subject.mpzpUchwala);
   return {
     adres: input.address,
     powierzchnia: formatNumber(input.area, 2),
@@ -150,6 +184,27 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     klient: input.client,
     data_ogledzin: formatDatePl(input.inspectionDate),
     data_sporzadzenia: formatDatePl(input.approvedAt.toISOString()),
+    obreb: subject?.obreb || DASH,
+    arkusz: subject?.arkusz || DASH,
+    nr_dzialki: subject?.nrDzialki || DASH,
+    pow_dzialki: subject?.powEwidHa != null ? formatNumber(subject.powEwidHa, 4) : DASH,
+    uzytek: subject?.uzytek || DASH,
+    budynek_rodzaj: subject?.budynekRodzaj || DASH,
+    kondygnacje: subject
+      ? `${subject.kondygnacjeNadziemne ?? DASH} / ${subject.kondygnacjePodziemne ?? DASH}`
+      : DASH,
+    rok_budowy: subject?.rokBudowy != null ? String(subject.rokBudowy) : ROK_BUDOWY_BD,
+    mpzp: hasMpzp
+      ? {
+          symbol: subject.mpzpSymbol ?? "",
+          nazwa: subject.mpzpNazwa ?? "",
+          uchwala: subject.mpzpUchwala ?? "",
+          data: subject.mpzpData ? formatDatePl(subject.mpzpData) : "",
+          publ: subject.mpzpPubl ?? "",
+        }
+      : null,
+    mpzp_brak: subject?.mpzpAbsent === true,
+    przeznaczenie_studium: subject?.przeznaczenieStudium || DASH,
     wr: formatPln(kcs.wr),
     wr_slownie: input.amountInWords,
     wr_dokladna: formatPln(kcs.wrUnrounded),

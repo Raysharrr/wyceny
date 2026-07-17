@@ -4,6 +4,7 @@ import { computeKcs, type KcsInput } from "../src/domain/kcs";
 import { buildDocumentModel } from "../src/domain/document-model";
 import { OPERAT_SECTIONS } from "../src/domain/operat-sections";
 import { renderOperatDocx } from "../src/adapters/docx-render";
+import type { SubjectSnapshot } from "../src/domain/subject-snapshot";
 
 /**
  * F-12 (completeness leg): render the REAL production template with
@@ -12,7 +13,7 @@ import { renderOperatDocx } from "../src/adapters/docx-render";
  * from the source Kościelna operat leaks into someone else's document.
  * Pure JS render, no network, no LibreOffice needed here.
  */
-function goldenInputs(): KcsInput {
+function goldenInputs(subject?: SubjectSnapshot): KcsInput {
   return {
     area: 48.2,
     comparables: Array.from({ length: 12 }, (_, i) => ({
@@ -29,11 +30,37 @@ function goldenInputs(): KcsInput {
     ],
     sampleMeta: null,
     provenance: null,
+    subject,
   };
 }
 
-function renderGolden(): string {
-  const inputs = goldenInputs();
+/** Subject snapshot with a resolved MPZP — drives the `{#mpzp}` section-9 variant. */
+const SUBJECT_WITH_MPZP: SubjectSnapshot = {
+  obreb: "Jeżyce",
+  arkusz: "10",
+  nrDzialki: "161",
+  powEwidHa: 0.0772,
+  uzytek: "B",
+  budynekRodzaj: "budynki mieszkalne",
+  kondygnacjeNadziemne: 6,
+  kondygnacjePodziemne: 1,
+  mpzpAbsent: false,
+  mpzpSymbol: "1MW/U",
+  mpzpNazwa: "Plan Testowy",
+  mpzpUchwala: "I/1/2020",
+  mpzpData: "2020-01-01",
+  mpzpPubl: "Rocznik 2020, poz. 1",
+};
+
+/** Subject snapshot with no MPZP — drives the `{#mpzp_brak}` section-9 variant. */
+const SUBJECT_NO_MPZP: SubjectSnapshot = {
+  obreb: "Łazarz",
+  mpzpAbsent: true,
+  przeznaczenieStudium: "zabudowa (studium)",
+};
+
+function renderGolden(subject?: SubjectSnapshot): string {
+  const inputs = goldenInputs(subject);
   const model = buildDocumentModel({
     address: "ul. Przykładowa 5, Poznań",
     area: 48.2,
@@ -55,7 +82,7 @@ function renderGolden(): string {
 }
 
 describe("F-12: rendered operat completeness (real template, golden data)", () => {
-  const text = renderGolden();
+  const text = renderGolden(SUBJECT_WITH_MPZP);
 
   it("contains every canonical section heading (≥19)", () => {
     expect(OPERAT_SECTIONS.length).toBeGreaterThanOrEqual(19);
@@ -88,5 +115,44 @@ describe("F-12: rendered operat completeness (real template, golden data)", () =
 
   it("omits the credit clause for a non-credit purpose", () => {
     expect(text).not.toContain("kredytodawc");
+  });
+
+  it("renders the EGiB facts block and the mpzp variant when a plan exists", () => {
+    expect(text).toContain("obręb Jeżyce");
+    expect(text).toContain("działka nr 161");
+    expect(text).toContain("symbol przeznaczenia 1MW/U");
+    expect(text).toContain("uchwała nr I/1/2020");
+    expect(text).not.toContain("brak obowiązującego miejscowego planu");
+  });
+});
+
+describe("F-12: rendered operat — legacy, no subject fetched", () => {
+  // Pre-slice valuations never fetched a subject snapshot; buildDocumentModel
+  // must still render section 9's intro-only paragraph, no facts, no crash.
+  const text = renderGolden();
+
+  it("has no unresolved template tags and no 'undefined'", () => {
+    expect(text).not.toContain("undefined");
+    expect(text).not.toMatch(/\{[a-z_#/.]+\}/i);
+  });
+
+  it("renders neither mpzp variant", () => {
+    expect(text).not.toContain("symbol przeznaczenia");
+    expect(text).not.toContain("brak obowiązującego miejscowego planu");
+  });
+});
+
+describe("F-12: rendered operat — mpzp absent variant", () => {
+  const text = renderGolden(SUBJECT_NO_MPZP);
+
+  it("has no unresolved template tags and no 'undefined'", () => {
+    expect(text).not.toContain("undefined");
+    expect(text).not.toMatch(/\{[a-z_#/.]+\}/i);
+  });
+
+  it("renders the brak sentence and studium text, omitting the plan sentence", () => {
+    expect(text).toContain("brak obowiązującego miejscowego planu");
+    expect(text).toContain("zabudowa (studium)");
+    expect(text).not.toContain("symbol przeznaczenia");
   });
 });

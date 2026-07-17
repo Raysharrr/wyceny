@@ -30,12 +30,12 @@ function syntheticInputs(): KcsInput {
   };
 }
 
-function buildModel() {
+function goldenInput() {
   const inputs = syntheticInputs();
-  return buildDocumentModel({
+  return {
     address: "ul. Testowa 7, Poznań",
     area: 54.3,
-    purpose: "sprzedaz",
+    purpose: "sprzedaz" as const,
     kwNumber: "KW-TEST-1",
     client: "p. Test Testowy",
     inspectionDate: "2026-07-01",
@@ -43,7 +43,11 @@ function buildModel() {
     inputs,
     kcs: computeKcs(inputs),
     amountInWords: "sto tysięcy złotych zero groszy",
-  });
+  };
+}
+
+function buildModel() {
+  return buildDocumentModel(goldenInput());
 }
 
 describe("F-12: professional-secrecy masking in the document model", () => {
@@ -110,6 +114,98 @@ describe("F-12: professional-secrecy masking in the document model", () => {
     expect(model.opis_cmin).toHaveLength(2);
     expect(model.opis_cmin[0]).toContain("wartość najniższa");
     expect(model.opis_cmax[0]).toContain("wartość najwyższa");
+  });
+});
+
+describe("F-12: subject snapshot mapped into document facts + mpzp variants", () => {
+  it("maps subject snapshot into document fields", () => {
+    const model = buildDocumentModel({
+      ...goldenInput(),
+      inputs: {
+        ...syntheticInputs(),
+        subject: {
+          obreb: "Jeżyce",
+          arkusz: "10",
+          nrDzialki: "161",
+          powEwidHa: 0.0772,
+          uzytek: "B",
+          budynekRodzaj: "budynki mieszkalne",
+          kondygnacjeNadziemne: 6,
+          kondygnacjePodziemne: 1,
+          mpzpAbsent: false,
+          mpzpSymbol: "1MW/U",
+          mpzpNazwa: "Plan Testowy",
+          mpzpUchwala: "I/1/2020",
+          mpzpData: "2020-01-01",
+          mpzpPubl: "Rocznik 2020, poz. 1",
+        },
+      },
+    });
+    expect(model.obreb).toBe("Jeżyce");
+    expect(model.pow_dzialki).toBe("0,0772");
+    expect(model.kondygnacje).toBe("6 / 1");
+    expect(model.rok_budowy).toBe("b.d. (brak w publicznej ewidencji)");
+    expect(model.mpzp).toEqual({
+      symbol: "1MW/U",
+      nazwa: "Plan Testowy",
+      uchwala: "I/1/2020",
+      data: "01.01.2020",
+      publ: "Rocznik 2020, poz. 1",
+    });
+    expect(model.mpzp_brak).toBe(false);
+  });
+
+  it("mpzp absent renders brak variant fields", () => {
+    const model = buildDocumentModel({
+      ...goldenInput(),
+      inputs: {
+        ...syntheticInputs(),
+        subject: {
+          obreb: "Łazarz",
+          mpzpAbsent: true,
+          przeznaczenieStudium: "zabudowa mieszkaniowa (studium)",
+        },
+      },
+    });
+    expect(model.mpzp).toBeNull();
+    expect(model.mpzp_brak).toBe(true);
+    expect(model.przeznaczenie_studium).toBe("zabudowa mieszkaniowa (studium)");
+  });
+
+  it("legacy inputs without subject render dashes and neither mpzp variant", () => {
+    const model = buildDocumentModel(goldenInput());
+    expect(model.obreb).toBe("—");
+    expect(model.mpzp).toBeNull();
+    expect(model.mpzp_brak).toBe(false);
+  });
+
+  it("rok budowy set renders the year", () => {
+    const model = buildDocumentModel({
+      ...goldenInput(),
+      inputs: { ...syntheticInputs(), subject: { rokBudowy: 1938 } },
+    });
+    expect(model.rok_budowy).toBe("1938");
+  });
+
+  it("never leaks the subject snapshot's raw iso mpzp date, transactionId or to_verify status", () => {
+    const model = buildDocumentModel({
+      ...goldenInput(),
+      inputs: {
+        ...syntheticInputs(),
+        subject: {
+          obreb: "Jeżyce",
+          mpzpAbsent: false,
+          mpzpSymbol: "1MW/U",
+          mpzpData: "2020-01-01",
+        },
+      },
+    });
+    const json = JSON.stringify(model);
+    expect(json).not.toMatch(/\d{4}-\d{2}-\d{2}/); // no full ISO date survives, incl. mpzp.data
+    expect(json).not.toContain("rcn-tx-");
+    expect(json).not.toContain("transactionId");
+    expect(json).not.toContain("to_verify");
+    expect(model.mpzp?.data).toBe("01.01.2020");
   });
 });
 
