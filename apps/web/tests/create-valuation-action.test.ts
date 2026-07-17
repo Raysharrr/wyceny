@@ -32,6 +32,7 @@ vi.mock("next/navigation", () => ({
 import { redirect } from "next/navigation";
 import { createValuation, type CreateValuationInput } from "../src/app/actions/create-valuation";
 import { storage, valuationRepository, worker } from "@/app/valuations/_deps";
+import { EMPTY_SUBJECT } from "../src/lib/subject-form";
 
 const createMock = vi.mocked(valuationRepository.create);
 const amountInWordsMock = vi.mocked(worker.amountInWords);
@@ -192,6 +193,120 @@ describe("createValuation — success path (Slice 4: no document generation at d
             ewidencja: { source: "ewidencja", status: "to_verify" },
             mpzp: { source: "mpzp", status: "to_verify" },
           }),
+        }),
+      }),
+    );
+  });
+
+  it("drops an untouched subject section — no snapshot persisted, no ewidencja/mpzp provenance (Fix A)", async () => {
+    createMock.mockResolvedValue({
+      id: "valuation-test-3",
+      address: valid.address,
+      area: valid.area,
+      wr: 1000000,
+      inputs: null,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: valid.purpose,
+      kwNumber: valid.kwNumber,
+      client: valid.client,
+      inspectionDate: valid.inspectionDate,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      createdAt: new Date("2026-07-17T00:00:00.000Z"),
+    });
+
+    // Mirrors what the untouched "Dane przedmiotu" section actually submits —
+    // RHF seeds `defaultValues.subject` with `EMPTY_SUBJECT`, no `subjectMeta`.
+    // Cast: `EMPTY_SUBJECT` is typed as the schema's pre-coercion input shape
+    // (numeric fields are `unknown`), while `CreateValuationInput` expects the
+    // post-coercion output shape — both describe the same runtime object.
+    const untouched: CreateValuationInput = {
+      ...valid,
+      subject: { ...EMPTY_SUBJECT } as CreateValuationInput["subject"],
+    };
+
+    await createValuation(untouched);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputs: expect.objectContaining({ subject: null, subjectMeta: null }),
+      }),
+    );
+    const call = createMock.mock.calls[0][0] as { inputs: { provenance: Record<string, unknown> } };
+    expect(call.inputs.provenance).not.toHaveProperty("ewidencja");
+    expect(call.inputs.provenance).not.toHaveProperty("mpzp");
+  });
+
+  it("persists a subject with only rokBudowy set — a single non-empty field is enough (Fix A)", async () => {
+    createMock.mockResolvedValue({
+      id: "valuation-test-4",
+      address: valid.address,
+      area: valid.area,
+      wr: 1000000,
+      inputs: null,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: valid.purpose,
+      kwNumber: valid.kwNumber,
+      client: valid.client,
+      inspectionDate: valid.inspectionDate,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      createdAt: new Date("2026-07-17T00:00:00.000Z"),
+    });
+
+    const rokBudowyOnly: CreateValuationInput = {
+      ...valid,
+      subject: { ...EMPTY_SUBJECT, rokBudowy: 1938 } as CreateValuationInput["subject"],
+    };
+
+    await createValuation(rokBudowyOnly);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputs: expect.objectContaining({
+          subject: expect.objectContaining({ rokBudowy: 1938 }),
+        }),
+      }),
+    );
+  });
+
+  it("persists a subject with only mpzpAbsent: true set — a lone true flag is non-empty (Fix A)", async () => {
+    createMock.mockResolvedValue({
+      id: "valuation-test-5",
+      address: valid.address,
+      area: valid.area,
+      wr: 1000000,
+      inputs: null,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: valid.purpose,
+      kwNumber: valid.kwNumber,
+      client: valid.client,
+      inspectionDate: valid.inspectionDate,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      createdAt: new Date("2026-07-17T00:00:00.000Z"),
+    });
+
+    const mpzpAbsentOnly: CreateValuationInput = {
+      ...valid,
+      subject: { ...EMPTY_SUBJECT, mpzpAbsent: true } as CreateValuationInput["subject"],
+    };
+
+    await createValuation(mpzpAbsentOnly);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputs: expect.objectContaining({
+          subject: expect.objectContaining({ mpzpAbsent: true }),
         }),
       }),
     );

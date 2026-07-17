@@ -179,6 +179,47 @@ describe("F-12: subject snapshot mapped into document facts + mpzp variants", ()
     expect(model.mpzp_brak).toBe(false);
   });
 
+  it("pins the 'neither' state (mpzp null, mpzp_brak false) to legacy subject-null inputs (Fix C)", () => {
+    // Legacy: subject explicitly null (pre-EGiB/MPZP inputs — and, with Fix A
+    // in place, what an untouched "Dane przedmiotu" section resolves to).
+    const legacy = buildDocumentModel({
+      ...goldenInput(),
+      inputs: { ...syntheticInputs(), subject: null },
+    });
+    expect(legacy.mpzp).toBeNull();
+    expect(legacy.mpzp_brak).toBe(false);
+
+    // A persisted, non-empty subject with plan info resolves to the `mpzp` variant.
+    const withMpzp = buildDocumentModel({
+      ...goldenInput(),
+      inputs: {
+        ...syntheticInputs(),
+        subject: { obreb: "Jeżyce", mpzpAbsent: false, mpzpSymbol: "1MW/U" },
+      },
+    });
+    expect(withMpzp.mpzp).not.toBeNull();
+    expect(withMpzp.mpzp_brak).toBe(false);
+
+    // A persisted, non-empty subject flagged mpzpAbsent resolves to the `mpzp_brak` variant.
+    const withMpzpAbsent = buildDocumentModel({
+      ...goldenInput(),
+      inputs: { ...syntheticInputs(), subject: { obreb: "Łazarz", mpzpAbsent: true } },
+    });
+    expect(withMpzpAbsent.mpzp).toBeNull();
+    expect(withMpzpAbsent.mpzp_brak).toBe(true);
+
+    // Residual edge case Fix A makes rare but doesn't eliminate at the model
+    // layer: a non-empty subject (e.g. only rokBudowy) with mpzpAbsent falsy
+    // and zero mpzp fields still yields neither variant — current behavior,
+    // asserted as-is rather than endorsed as ideal.
+    const nonEmptyNoMpzpInfo = buildDocumentModel({
+      ...goldenInput(),
+      inputs: { ...syntheticInputs(), subject: { rokBudowy: 1938 } },
+    });
+    expect(nonEmptyNoMpzpInfo.mpzp).toBeNull();
+    expect(nonEmptyNoMpzpInfo.mpzp_brak).toBe(false);
+  });
+
   it("rok budowy set renders the year", () => {
     const model = buildDocumentModel({
       ...goldenInput(),
@@ -206,6 +247,23 @@ describe("F-12: subject snapshot mapped into document facts + mpzp variants", ()
     expect(json).not.toContain("transactionId");
     expect(json).not.toContain("to_verify");
     expect(model.mpzp?.data).toBe("01.01.2020");
+  });
+
+  it("mpzpData free-text (Polish format, not schema-ISO) passes through raw rather than 'undefined.undefined.…' (Fix B)", () => {
+    const model = buildDocumentModel({
+      ...goldenInput(),
+      inputs: {
+        ...syntheticInputs(),
+        subject: {
+          obreb: "Jeżyce",
+          mpzpAbsent: false,
+          mpzpSymbol: "1MW/U",
+          mpzpData: "26.02.2019",
+        },
+      },
+    });
+    expect(model.mpzp?.data).toBe("26.02.2019");
+    expect(JSON.stringify(model)).not.toContain("undefined");
   });
 });
 

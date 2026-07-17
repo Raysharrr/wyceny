@@ -48,9 +48,16 @@ export function formatNumber(value: number, dp: number): string {
   return frac ? `${grouped},${frac}` : grouped;
 }
 
-/** ISO date (or full ISO datetime) → `DD.MM.YYYY`. */
+/**
+ * ISO date (or full ISO datetime) → `DD.MM.YYYY`. Defensive: `mpzpData` is
+ * free-text (subjectSchema only validates it when non-empty, and legacy
+ * inputs predate that validation), so a non-ISO value passes through raw
+ * rather than producing `undefined.undefined.<raw>`.
+ */
 export function formatDatePl(iso: string): string {
-  const [y, m, d] = iso.slice(0, 10).split("-");
+  const trimmed = iso.trim();
+  if (!/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed;
+  const [y, m, d] = trimmed.slice(0, 10).split("-");
   return `${d}.${m}.${y}`;
 }
 

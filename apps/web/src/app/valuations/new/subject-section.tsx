@@ -44,11 +44,15 @@ const TEXT_FIELDS = [
   { name: "subject.budynekRodzaj", id: "subject-budynek-rodzaj", label: "Rodzaj budynku" },
 ] as const;
 
-const MPZP_FIELDS = [
+// `mpzpData` is rendered separately as a `type="date"` input (mirroring
+// `inspectionDate`), so it's split out of this generic-text-field list.
+const MPZP_FIELDS_BEFORE_DATE = [
   { name: "subject.mpzpSymbol", id: "subject-mpzp-symbol", label: "Symbol MPZP" },
   { name: "subject.mpzpNazwa", id: "subject-mpzp-nazwa", label: "Nazwa planu" },
   { name: "subject.mpzpUchwala", id: "subject-mpzp-uchwala", label: "Uchwała" },
-  { name: "subject.mpzpData", id: "subject-mpzp-data", label: "Data uchwały" },
+] as const;
+
+const MPZP_FIELDS_AFTER_DATE = [
   { name: "subject.mpzpPubl", id: "subject-mpzp-publ", label: "Publikator" },
 ] as const;
 
@@ -259,20 +263,49 @@ export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionP
             )}
           />
         ) : (
-          MPZP_FIELDS.map(({ name, id, label }) => (
+          <>
+            {MPZP_FIELDS_BEFORE_DATE.map(({ name, id, label }) => (
+              <Controller
+                key={name}
+                control={control}
+                name={name}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={!!fieldState.error}>
+                    <FieldLabel htmlFor={id}>{label}</FieldLabel>
+                    <Input id={id} autoComplete="off" {...field} />
+                    <FieldError errors={[fieldState.error]} />
+                  </Field>
+                )}
+              />
+            ))}
+
             <Controller
-              key={name}
               control={control}
-              name={name}
+              name="subject.mpzpData"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor={id}>{label}</FieldLabel>
-                  <Input id={id} autoComplete="off" {...field} />
+                  <FieldLabel htmlFor="subject-mpzp-data">Data uchwały</FieldLabel>
+                  <Input id="subject-mpzp-data" type="date" {...field} />
                   <FieldError errors={[fieldState.error]} />
                 </Field>
               )}
             />
-          ))
+
+            {MPZP_FIELDS_AFTER_DATE.map(({ name, id, label }) => (
+              <Controller
+                key={name}
+                control={control}
+                name={name}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={!!fieldState.error}>
+                    <FieldLabel htmlFor={id}>{label}</FieldLabel>
+                    <Input id={id} autoComplete="off" {...field} />
+                    <FieldError errors={[fieldState.error]} />
+                  </Field>
+                )}
+              />
+            ))}
+          </>
         )}
       </FieldGroup>
     </section>

@@ -6,6 +6,7 @@ import { valuationRepository } from "@/app/valuations/_deps";
 import { valuationFormSchema, type ValuationFormValues } from "@/lib/valuation-form-schema";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
 import { assignProvenance } from "@/lib/assign-provenance";
+import { isEmptySubject } from "@/lib/subject-form";
 
 export type CreateValuationInput = ValuationFormValues;
 
@@ -61,20 +62,31 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     inspectionDate,
   } = parsed.data;
 
+  // An untouched "Dane przedmiotu" section still submits a truthy object
+  // (RHF seeds `defaultValues.subject` with `EMPTY_SUBJECT`) — treat it as
+  // absent so no snapshot/provenance is persisted for data nobody touched.
+  const subjectTouched = !isEmptySubject(subject);
+  const effectiveSubject = subjectTouched ? subject : undefined;
+  const effectiveSubjectMeta = subjectTouched ? subjectMeta : undefined;
+
   // Assign provenance statuses server-side: rcn rows get to_verify, manual
   // rows get confirmed. This is the ACL of ADR-010 — statuses are born here,
   // server-side only, never trusted from the client. % → fractions at the
   // action boundary; the engine works in fractions. `sampleMeta` is normalized
   // to `null` when absent so every stored snapshot has the same shape
   // (manual-only submissions vs. RCN-seeded ones).
-  const { comparables: sourcedComparables, provenance } = assignProvenance(parsed.data);
+  const { comparables: sourcedComparables, provenance } = assignProvenance({
+    ...parsed.data,
+    subject: effectiveSubject,
+    subjectMeta: effectiveSubjectMeta,
+  });
   const kcsInput: KcsInput = {
     area,
     comparables: sourcedComparables,
     features: features.map((f) => ({ name: f.name, weight: f.weightPct / 100, rating: f.rating })),
     sampleMeta: sampleMeta ?? null,
-    subject: subject ?? null,
-    subjectMeta: subjectMeta ?? null,
+    subject: effectiveSubject ?? null,
+    subjectMeta: effectiveSubjectMeta ?? null,
     provenance,
   };
   const { wr } = computeKcs(kcsInput);

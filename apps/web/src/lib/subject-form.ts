@@ -33,6 +33,23 @@ export const EMPTY_SUBJECT: SubjectFormValues = {
   przeznaczenieStudium: "",
 };
 
+type SubjectFieldValues = Partial<Record<keyof SubjectFormValues, unknown>>;
+
+/**
+ * True when every field is empty/undefined/false — an untouched "Dane
+ * przedmiotu" section still submits a truthy object (RHF always seeds
+ * `defaultValues.subject` with `EMPTY_SUBJECT`, it has no concept of "no
+ * value" for a section), so the action boundary can't tell "untouched" from
+ * "filled" by truthiness alone. Used to avoid persisting an empty snapshot
+ * and stamping ewidencja/mpzp provenance for data nobody touched.
+ */
+export function isEmptySubject(subject: SubjectFieldValues | null | undefined): boolean {
+  if (!subject) return true;
+  return Object.values(subject).every(
+    (value) => value === undefined || value === "" || value === false,
+  );
+}
+
 /**
  * Flattens a `SubjectProposal` (nested parcel/building/mpzp from the
  * EGiB/MPZP auto-fetch) into the flat `subject` form shape. Starts from

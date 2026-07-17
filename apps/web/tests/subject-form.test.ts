@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_SUBJECT, proposalToSubjectValues } from "../src/lib/subject-form";
+import { EMPTY_SUBJECT, isEmptySubject, proposalToSubjectValues } from "../src/lib/subject-form";
 
 const proposal = {
   parcel: {
@@ -59,5 +59,33 @@ describe("proposalToSubjectValues", () => {
     expect(EMPTY_SUBJECT.powEwidHa).toBeUndefined();
     expect(EMPTY_SUBJECT.rokBudowy).toBeUndefined();
     expect(EMPTY_SUBJECT.obreb).toBe("");
+  });
+});
+
+describe("isEmptySubject (Fix A)", () => {
+  it("is empty for null/undefined", () => {
+    expect(isEmptySubject(null)).toBe(true);
+    expect(isEmptySubject(undefined)).toBe(true);
+  });
+
+  it("is empty for EMPTY_SUBJECT (the untouched-section shape)", () => {
+    expect(isEmptySubject(EMPTY_SUBJECT)).toBe(true);
+  });
+
+  it("is empty when mpzpAbsent is false or undefined and everything else is empty", () => {
+    expect(isEmptySubject({ ...EMPTY_SUBJECT, mpzpAbsent: false })).toBe(true);
+    expect(isEmptySubject({ ...EMPTY_SUBJECT, mpzpAbsent: undefined })).toBe(true);
+  });
+
+  it("is non-empty when a single string field is set", () => {
+    expect(isEmptySubject({ ...EMPTY_SUBJECT, obreb: "Jeżyce" })).toBe(false);
+  });
+
+  it("is non-empty when a single numeric field is set", () => {
+    expect(isEmptySubject({ ...EMPTY_SUBJECT, rokBudowy: 1938 })).toBe(false);
+  });
+
+  it("is non-empty when mpzpAbsent is true, even with everything else empty", () => {
+    expect(isEmptySubject({ ...EMPTY_SUBJECT, mpzpAbsent: true })).toBe(false);
   });
 });

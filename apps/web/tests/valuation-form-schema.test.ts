@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { valuationFormSchema } from "../src/lib/valuation-form-schema";
+import { subjectSchema, valuationFormSchema } from "../src/lib/valuation-form-schema";
 
 const valid = {
   address: "ul. Kościelna 33A, Poznań",
@@ -131,5 +131,24 @@ describe("valuationFormSchema — RCN provenance (F-5)", () => {
 
   it("still validates when sampleMeta is absent", () => {
     expect(valuationFormSchema.safeParse(valid).success).toBe(true);
+  });
+});
+
+describe("subjectSchema — mpzpData (Fix B)", () => {
+  it("rejects a Polish free-text date with the Polish message", () => {
+    const r = subjectSchema.safeParse({ mpzpData: "26.02.2019" });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues[0]?.message).toBe("Podaj datę w formacie RRRR-MM-DD.");
+    }
+  });
+
+  it("accepts an ISO YYYY-MM-DD date", () => {
+    expect(subjectSchema.safeParse({ mpzpData: "2019-02-26" }).success).toBe(true);
+  });
+
+  it("accepts an empty or absent mpzpData", () => {
+    expect(subjectSchema.safeParse({ mpzpData: "" }).success).toBe(true);
+    expect(subjectSchema.safeParse({}).success).toBe(true);
   });
 });

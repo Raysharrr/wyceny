@@ -61,7 +61,10 @@ export const subjectSchema = z.object({
   mpzpSymbol: z.string().optional(),
   mpzpNazwa: z.string().optional(),
   mpzpUchwala: z.string().optional(),
-  mpzpData: z.string().optional(),
+  mpzpData: z
+    .string()
+    .optional()
+    .refine((v) => !v || /^\d{4}-\d{2}-\d{2}$/.test(v), "Podaj datę w formacie RRRR-MM-DD."),
   mpzpPubl: z.string().optional(),
   przeznaczenieStudium: z.string().optional(),
 });
