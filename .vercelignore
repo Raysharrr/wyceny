@@ -3,3 +3,5 @@ apps/worker/.venv
 .superpowers
 apps/web/test-results
 apps/web/playwright-report
+.turbo
+apps/web/.next
