@@ -38,13 +38,17 @@ FUNCTIONS_GEOJSON = {
     "features": [
         {  # covers the whole parcel -> must win
             "properties": {"FUNKCJA": "4MW/U", "GRUPA": "mieszkalnictwo"},
-            "geometry": {"type": "Polygon",
-                         "coordinates": [[[-5, -5], [15, -5], [15, 15], [-5, 15], [-5, -5]]]},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[-5, -5], [15, -5], [15, 15], [-5, 15], [-5, -5]]],
+            },
         },
         {  # disjoint -> overlap 0
             "properties": {"FUNKCJA": "KD-L", "GRUPA": "komunikacja"},
-            "geometry": {"type": "Polygon",
-                         "coordinates": [[[20, 20], [30, 20], [30, 30], [20, 30], [20, 20]]]},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[20, 20], [30, 20], [30, 30], [20, 30], [20, 20]]],
+            },
         },
     ]
 }
@@ -52,12 +56,19 @@ FUNCTIONS_GEOJSON = {
 PLANS_GEOJSON = {
     "features": [
         {
-            "properties": {"kod_planu": "Sec", "nazwa": "Testowo - Północ",
-                           "uchw_zatw": "VII/84/VIII/2019", "data_zatw": "2019-02-26",
-                           "publ_dz_urz": "Rocznik 2019, poz. 2776"},
-            "geometry": {"type": "Polygon",
-                         "coordinates": [[[16.89, 52.40], [16.92, 52.40], [16.92, 52.43],
-                                          [16.89, 52.43], [16.89, 52.40]]]},
+            "properties": {
+                "kod_planu": "Sec",
+                "nazwa": "Testowo - Północ",
+                "uchw_zatw": "VII/84/VIII/2019",
+                "data_zatw": "2019-02-26",
+                "publ_dz_urz": "Rocznik 2019, poz. 2776",
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [[16.89, 52.40], [16.92, 52.40], [16.92, 52.43], [16.89, 52.43], [16.89, 52.40]]
+                ],
+            },
         }
     ]
 }
@@ -109,8 +120,12 @@ def test_pick_mpzp_function_no_features_returns_none():
 
 def test_pick_plan_point_in_polygon():
     plan = pick_plan(16.905, 52.416, PLANS_GEOJSON)
-    assert plan == {"nazwa": "Testowo - Północ", "uchwala": "VII/84/VIII/2019",
-                    "data": "2019-02-26", "publ": "Rocznik 2019, poz. 2776"}
+    assert plan == {
+        "nazwa": "Testowo - Północ",
+        "uchwala": "VII/84/VIII/2019",
+        "data": "2019-02-26",
+        "publ": "Rocznik 2019, poz. 2776",
+    }
 
 
 def test_pick_plan_outside_returns_none():

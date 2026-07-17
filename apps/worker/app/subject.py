@@ -144,8 +144,12 @@ def geocode_address(address: str) -> dict:
 
 
 def fetch_parcel_by_xy(x: float, y: float) -> dict:
-    url = ULDK_URL + "?" + urllib.parse.urlencode(
-        {"request": "GetParcelByXY", "xy": f"{x},{y},2180", "result": "id,region,parcel"}
+    url = (
+        ULDK_URL
+        + "?"
+        + urllib.parse.urlencode(
+            {"request": "GetParcelByXY", "xy": f"{x},{y},2180", "result": "id,region,parcel"}
+        )
     )
     lines = _get(url).strip().splitlines()
     if not lines or lines[0] != "0" or len(lines) < 2:
@@ -155,8 +159,12 @@ def fetch_parcel_by_xy(x: float, y: float) -> dict:
 
 
 def fetch_parcel_wkt(parcel_id: str, srid: int) -> str:
-    url = ULDK_URL + "?" + urllib.parse.urlencode(
-        {"request": "GetParcelById", "id": parcel_id, "result": "geom_wkt", "srid": str(srid)}
+    url = (
+        ULDK_URL
+        + "?"
+        + urllib.parse.urlencode(
+            {"request": "GetParcelById", "id": parcel_id, "result": "geom_wkt", "srid": str(srid)}
+        )
     )
     raw = _get(url).strip()
     match = re.search(r"(MULTIPOLYGON\s*\(.*\)|POLYGON\s*\(\(.*\)\))", raw, re.DOTALL)
@@ -168,12 +176,20 @@ def fetch_parcel_wkt(parcel_id: str, srid: int) -> str:
 def fetch_egib_xml(layer: str, x: float, y: float) -> str:
     half = 50.0
     params = {
-        "SERVICE": "WMS", "VERSION": "1.3.0", "REQUEST": "GetFeatureInfo",
-        "LAYERS": layer, "QUERY_LAYERS": layer, "CRS": "EPSG:2180",
+        "SERVICE": "WMS",
+        "VERSION": "1.3.0",
+        "REQUEST": "GetFeatureInfo",
+        "LAYERS": layer,
+        "QUERY_LAYERS": layer,
+        "CRS": "EPSG:2180",
         # WMS 1.3.0 + EPSG:2180 axis order is (northing, easting) -> y before x
         "BBOX": f"{y - half},{x - half},{y + half},{x + half}",
-        "WIDTH": "256", "HEIGHT": "256", "I": "128", "J": "128",
-        "INFO_FORMAT": "text/xml", "FEATURE_COUNT": "10",
+        "WIDTH": "256",
+        "HEIGHT": "256",
+        "I": "128",
+        "J": "128",
+        "INFO_FORMAT": "text/xml",
+        "FEATURE_COUNT": "10",
     }
     return _get(GEOPOZ_WMS_URL + "?" + urllib.parse.urlencode(params))
 
@@ -181,10 +197,14 @@ def fetch_egib_xml(layer: str, x: float, y: float) -> str:
 def fetch_mpzp_functions(parcel_wkt_2180: str) -> dict:
     minx, miny, maxx, maxy = shapely_wkt.loads(parcel_wkt_2180).bounds
     params = {
-        "service": "WFS", "version": "2.0.0", "request": "GetFeature",
-        "typeNames": "mpzp_poznan:mpzp_funkcje", "srsName": "EPSG:2180",
+        "service": "WFS",
+        "version": "2.0.0",
+        "request": "GetFeature",
+        "typeNames": "mpzp_poznan:mpzp_funkcje",
+        "srsName": "EPSG:2180",
         "bbox": f"{minx},{miny},{maxx},{maxy},EPSG:2180",
-        "outputFormat": "application/json", "count": "50",
+        "outputFormat": "application/json",
+        "count": "50",
     }
     return json.loads(_get(GEOPOZ_WFS_URL + "?" + urllib.parse.urlencode(params)))
 
