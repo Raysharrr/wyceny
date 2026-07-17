@@ -25,11 +25,16 @@ export function httpSubjectProposal(baseUrl: string): PortSubjectData {
         // Non-retryable: address outside the supported EGiB/MPZP coverage
         // area. The worker's Polish `detail` tells the user to fill data
         // manually instead.
-        const body = (await response.json()) as { detail?: string };
+        let detail: string | undefined;
+        try {
+          const body = (await response.json()) as { detail?: string };
+          detail = body.detail;
+        } catch {
+          // no JSON body — fall back below
+        }
         return {
           kind: "outOfCoverage",
-          message:
-            body.detail ?? "Auto-pobieranie danych przedmiotu jest niedostępne dla tego adresu.",
+          message: detail ?? "Auto-pobieranie danych przedmiotu jest niedostępne dla tego adresu.",
         };
       }
       if (!response.ok) {

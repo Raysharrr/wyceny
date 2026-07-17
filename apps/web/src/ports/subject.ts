@@ -11,14 +11,17 @@ export interface SubjectParcel {
   obreb: string;
   arkusz: string;
   nrDzialki: string;
-  powEwidHa: number;
+  // Worker's `_to_float` returns None when EGiB omits the field — unlike
+  // the string fields above, which the worker defaults to "".
+  powEwidHa: number | null;
   uzytek: string;
 }
 
 export interface SubjectBuilding {
   rodzaj: string;
-  kondygnacjeNadziemne: number;
-  kondygnacjePodziemne: number;
+  // Worker's `_to_int` returns None when EGiB omits the field.
+  kondygnacjeNadziemne: number | null;
+  kondygnacjePodziemne: number | null;
 }
 
 export interface SubjectMpzp {
