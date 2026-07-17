@@ -45,12 +45,32 @@ Aneta przepisywała ręcznie do realnego operatu — a wygenerowany PDF ma te da
 1. **Zasięg:** Poznań-only (GEOPOZ) w tym slice; port źródło-agnostyczny, KIEG = przyszły adapter
    (switch po TERYT/gminie). User potwierdził: „na potrzeby MVP może być Poznań, ale switch musi
    być prosty — dokładnie adapter".
-2. **UX:** auto-fetch na blur/walidacji pola adresu + obowiązkowy indykator; merge-policy „nie
-   nadpisuj pól dotkniętych przez usera"; retry = fallback ręczny. RCN bez zmian (przycisk).
+2. **UX:** auto-fetch na blur/walidacji pola adresu + obowiązkowy indykator; retry = fallback
+   ręczny. RCN bez zmian (przycisk).
 3. **Brak MPZP:** adnotacja automatyczna + opcjonalne ręczne pole „przeznaczenie wg studium/WZ"
    (ręczne = `confirmed`); szablon renderuje wariant sekcji 9.
 4. **Rok budowy:** tylko ręczne, opcjonalne; brak wartości → „b.d." w operacie (wymóg usera:
    udokumentować, że może go nie być). Bez styku z cechami/F-6 (poza zakresem).
+
+## Decyzje z grilla specu (2026-07-17, z userem)
+
+5. **Szablon:** dane budynku (rodzaj, kondygnacje, rok budowy) renderują się w **bloku faktów
+   sekcji 8.2** razem z danymi działki i nr KW; proza 8.3 zostaje nietkniętym stubem — slice LLM
+   napisze ją później z potwierdzonych faktów. (W realnym operacie rok budowy siedział w prozie
+   8.3 — świadomie przenosimy do 8.2 jako fakt ewidencyjny.)
+6. **Budynek vs lokal:** działka+budynek wystarczy w tym slice; blok 8.2 dostaje stałą adnotację
+   „udział w nieruchomości wspólnej — wg odpisu KW" (dane lokalowe = slice KW/odpis).
+7. **Lookup budynku:** punktowy (punkt adresowy geokodera) + fallback ręczny. Known limitation:
+   punkt może nie trafić w obrys (pola puste) albo budynek formalnie leży na sąsiedniej działce
+   (Kościelna: działka 161, budynek `…162.1`) — edytowalne pola + F-4 to łapią.
+8. **Zmiana adresu = twardy reset sekcji** „Dane przedmiotu" (adres jest kluczem sekcji): czyści
+   też pola ręczne (rok budowy, studium/WZ) i fetchuje od zera. BEZ merge-policy — świadomie
+   zaakceptowany koszt: poprawka literówki w adresie kasuje ręczny wkład sekcji.
+9. **Dwa stany niepowodzenia fetchu:** „poza zasięgiem" (adres spoza Poznania — neutralna
+   informacja, bez retry) vs „błąd" (sieć/upstream — amber + „Spróbuj ponownie"); odpowiedź
+   workera musi je rozróżniać.
+10. **Brak MPZP = pełnoprawny blocker F-4:** stan „brak obowiązującego planu" wymaga świadomego
+    potwierdzenia przez rzeczoznawcę, jak każde inne auto-ustalenie (Must-Legal).
 
 ## Architektura (lustro wzorca RCN — Slice 2/3)
 
@@ -69,9 +89,11 @@ adres (blur) → server action getSubjectData (session-gated)
 ```
 
 - **Worker:** czysty rdzeń `apps/worker/app/subject.py` (parsery: XML GEOPOZ dialekt `<TAG>`,
-  GeoJSON WFS, PIP/przecięcia poligonów) + cienki endpoint w `main.py`. Błędy → 502 z polskim
-  `detail` (wzorzec `/sample-proposal`); adres poza Poznaniem (TERYT gminy z geokodera nie zaczyna się
-  od `3064`) → 502 „Dane przedmiotu dostępne na razie dla Poznania — wpisz dane ręcznie". Nowa zależność workera: `shapely`
+  GeoJSON WFS, PIP/przecięcia poligonów) + cienki endpoint w `main.py`. Dwa rozróżnialne stany
+  niepowodzenia (decyzja 9): adres poza Poznaniem (TERYT gminy z geokodera nie zaczyna się od
+  `3064`) → odpowiedź „poza zasięgiem" (nie-retryowalna, polski komunikat „Dane przedmiotu
+  dostępne na razie dla Poznania — wpisz dane ręcznie"); błąd sieci/upstreamu → 502 z polskim
+  `detail` (wzorzec `/sample-proposal`, retryowalny). Nowa zależność workera: `shapely`
   (algorytm max-przecięcia udowodniony w spike'u `mpzp_resolver.py`: Kościelna → 4MW/U = 100%).
 - **Web:** port + adapter z klasyfikacją błędów `WORKER_RESPONDED_PREFIX`; server action;
   auto-trigger z debounce na blur adresu; komponent paska stanu.
@@ -99,17 +121,21 @@ mpzpAbsent: boolean, query: {...} }` — reprodukowalność (wzorzec `sampleMeta
 - Nowa sekcja formularza „Dane przedmiotu" (RSC + `"use client"` dla interakcji, jak sekcje Próba/
   Cechy): pola auto-wypełniane, edytowalne; rok budowy z hintem „brak w publicznej ewidencji —
   uzupełnij z dokumentacji/oględzin"; przy `mpzpAbsent` pole „przeznaczenie wg studium/decyzji WZ".
-- Pasek stanu fetchu: `⏳ Pobieram dane działki i MPZP…` → `✓ Pobrano: {obręb, dz., symbol} — do
-potwierdzenia` → `⚠ Nie udało się pobrać — [Spróbuj ponownie]`. Amber, nieblokujący.
-- Merge-policy: re-fetch (zmiana adresu) nadpisuje tylko pola nietknięte przez usera lub wciąż
-  `to_verify`; dotknięte/`confirmed` zostają.
+- Pasek stanu fetchu, cztery stany: `⏳ Pobieram dane działki i MPZP…` → `✓ Pobrano: {obręb, dz.,
+symbol} — do potwierdzenia` / `ℹ Auto-pobieranie dostępne na razie dla Poznania — wpisz dane
+ręcznie` (poza zasięgiem, bez retry) / `⚠ Nie udało się pobrać — [Spróbuj ponownie]` (amber,
+  nieblokujący).
+- Zmiana adresu = twardy reset sekcji „Dane przedmiotu" (decyzja 8): czyści wszystkie pola sekcji
+  (też ręczne) i odpala fetch od zera. Bez merge-policy.
 - Strona operatu: badge prowenancji per pole (istniejący wzorzec) + bulk „Potwierdź dane
   przedmiotu" (wzorzec „Potwierdź próbę z RCN", owner-only).
 
 ## Szablon i generator (F-12)
 
-- Placeholdery sekcji **8.2** (obręb, arkusz, nr działki, pow. ewidencyjna, użytek, rodzaj budynku,
-  kondygnacje, rok budowy z fallbackiem „b.d. — brak w publicznej ewidencji") i **9** (wariant
+- Sekcja **8.2** = **blok faktów ewidencyjnych** (decyzje 5–6): działka (obręb, arkusz, nr, pow.
+  ewidencyjna, użytek) + budynek (rodzaj, kondygnacje, rok budowy z fallbackiem „b.d. — brak
+  w publicznej ewidencji") + `{nr_kw}` + stała adnotacja „udział w nieruchomości wspólnej — wg
+  odpisu KW". Sekcja **9** (wariant
   warunkowy docxtemplater: `{#hasMpzp}` symbol/nazwa/uchwała/data/publikator `{/hasMpzp}` /
   `{^hasMpzp}` adnotacja „brak obowiązującego MPZP" + przeznaczenie wg studium/WZ `{/hasMpzp}`).
 - Szablon regenerowany WYŁĄCZNIE przez `build_template.py` (wiki-repo
@@ -127,8 +153,8 @@ potwierdzenia` → `⚠ Nie udało się pobrać — [Spróbuj ponownie]`. Amber,
   budynki, GeoJSON WFS funkcje, wycinek warstwy planów poznan.pl; przeskanowane pod PII — spike już
   to zrobił: odpowiedzi EGiB nie zawierały danych osobowych, `check-no-pii.sh` pilnuje w CI).
   Przypadki: happy path Kościelna, brak MPZP (Głogowska 40), adres poza Poznaniem, błąd upstreamu.
-- Web vitest: merge-policy, blockery F-4 z polami przedmiotu, `buildDocumentModel` oba warianty,
-  schema formularza.
+- Web vitest: twardy reset sekcji przy zmianie adresu, blockery F-4 z polami przedmiotu (w tym
+  potwierdzenie „braku planu"), `buildDocumentModel` oba warianty, schema formularza.
 - Playwright smoke: bez sieci — auto-fetch przy niedostępnym workerze degraduje się do amber+wpis
   ręczny, ścieżka ręczna przechodzi jak dotąd (graceful degradation jest częścią kontraktu).
 
