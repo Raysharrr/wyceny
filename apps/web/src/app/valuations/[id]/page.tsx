@@ -155,6 +155,116 @@ function ProvenanceBadge({ source, status }: { source?: string; status?: string 
   return null; // legacy snapshot without provenance — render as before
 }
 
+function GroupProvenanceBadge({ label, status }: { label: string; status?: string }) {
+  if (status === "to_verify") {
+    return (
+      <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-500">
+        {label} — do weryfikacji
+      </Badge>
+    );
+  }
+  if (status === "confirmed") {
+    return <Badge variant="secondary">{label} — potwierdzone</Badge>;
+  }
+  return null;
+}
+
+/**
+ * Auto-fetched EGiB/MPZP subject snapshot (Task 6) — rendered only when a
+ * subject snapshot exists (manual-only submissions never fetched one).
+ */
+function SubjectCard({ inputs }: { inputs: KcsInput }) {
+  const subject = inputs.subject;
+  if (!subject) return null;
+  const provenance = inputs.provenance;
+
+  const kondygnacje =
+    subject.kondygnacjeNadziemne != null || subject.kondygnacjePodziemne != null
+      ? `${subject.kondygnacjeNadziemne ?? "—"} / ${subject.kondygnacjePodziemne ?? "—"}`
+      : "—";
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium text-foreground">Dane przedmiotu</h2>
+          <div className="flex flex-wrap gap-2">
+            <GroupProvenanceBadge label="EGiB" status={provenance?.ewidencja?.status} />
+            <GroupProvenanceBadge label="MPZP" status={provenance?.mpzp?.status} />
+          </div>
+        </div>
+        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+          <div>
+            <dt className="text-xs text-muted-foreground">Obręb</dt>
+            <dd>{subject.obreb ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Arkusz</dt>
+            <dd>{subject.arkusz ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Nr działki</dt>
+            <dd>{subject.nrDzialki ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Pow. ewidencyjna [ha]</dt>
+            <dd>{subject.powEwidHa ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Użytek</dt>
+            <dd>{subject.uzytek ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Rodzaj budynku</dt>
+            <dd>{subject.budynekRodzaj ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Kondygnacje (nad/podziemne)</dt>
+            <dd>{kondygnacje}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Rok budowy</dt>
+            <dd>{subject.rokBudowy ?? "b.d."}</dd>
+          </div>
+        </dl>
+        {subject.mpzpAbsent ? (
+          <div className="flex flex-col gap-0.5 text-sm">
+            <p className="font-medium text-foreground">Brak obowiązującego MPZP</p>
+            {subject.przeznaczenieStudium ? (
+              <p className="text-muted-foreground">
+                Przeznaczenie wg studium/WZ: {subject.przeznaczenieStudium}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-xs text-muted-foreground">Symbol MPZP</dt>
+              <dd>{subject.mpzpSymbol ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Nazwa MPZP</dt>
+              <dd>{subject.mpzpNazwa ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Uchwała</dt>
+              <dd>{subject.mpzpUchwala ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Data uchwały</dt>
+              <dd>{subject.mpzpData ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Publikator</dt>
+              <dd>{subject.mpzpPubl ?? "—"}</dd>
+            </div>
+          </dl>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
   return (
     <Card>
@@ -234,6 +344,11 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
       ? valuation.inputs.comparables.some((c) => c.status === "to_verify") ||
         valuation.inputs.provenance?.geocode?.status === "to_verify"
       : false;
+  const hasSubjectToVerify =
+    isDraft && valuation.inputs
+      ? valuation.inputs.provenance?.ewidencja?.status === "to_verify" ||
+        valuation.inputs.provenance?.mpzp?.status === "to_verify"
+      : false;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
@@ -278,6 +393,8 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
 
       {valuation.inputs ? <ComparablesProvenance inputs={valuation.inputs} /> : null}
 
+      {valuation.inputs?.subject ? <SubjectCard inputs={valuation.inputs} /> : null}
+
       {isDraft ? (
         <Card>
           <CardContent className="flex flex-col gap-3 pt-6">
@@ -293,7 +410,12 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
                 </ul>
               </div>
             ) : null}
-            <ValuationActions id={valuation.id} hasToVerify={hasToVerify} gateOk={gateOk} />
+            <ValuationActions
+              id={valuation.id}
+              hasToVerify={hasToVerify}
+              hasSubjectToVerify={hasSubjectToVerify}
+              gateOk={gateOk}
+            />
           </CardContent>
         </Card>
       ) : null}

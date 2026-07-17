@@ -147,4 +147,53 @@ describe("createValuation — success path (Slice 4: no document generation at d
 
     expect(redirectMock).toHaveBeenCalledWith("/valuations/valuation-test-1");
   });
+
+  it("persists the subject/subjectMeta snapshot with ewidencja provenance to_verify (Task 6)", async () => {
+    createMock.mockResolvedValue({
+      id: "valuation-test-2",
+      address: valid.address,
+      area: valid.area,
+      wr: 1000000,
+      inputs: null,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: valid.purpose,
+      kwNumber: valid.kwNumber,
+      client: valid.client,
+      inspectionDate: valid.inspectionDate,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      createdAt: new Date("2026-07-17T00:00:00.000Z"),
+    });
+
+    const withSubject: CreateValuationInput = {
+      ...valid,
+      subject: { obreb: "Jeżyce", nrDzialki: "161" },
+      subjectMeta: {
+        x: 1,
+        y: 2,
+        teryt: "306401",
+        fetchedAt: "2026-07-14T09:00:00.000Z",
+        source: "geopoz-gugik",
+        mpzpAbsent: false,
+      },
+    };
+
+    await createValuation(withSubject);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputs: expect.objectContaining({
+          subject: withSubject.subject,
+          subjectMeta: withSubject.subjectMeta,
+          provenance: expect.objectContaining({
+            ewidencja: { source: "ewidencja", status: "to_verify" },
+            mpzp: { source: "mpzp", status: "to_verify" },
+          }),
+        }),
+      }),
+    );
+  });
 });

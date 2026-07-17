@@ -3,20 +3,24 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { confirmSample } from "@/app/actions/confirm-sample";
+import { confirmSubject } from "@/app/actions/confirm-subject";
 import { approveValuation } from "@/app/actions/approve-valuation";
 
 /**
- * Draft-only action bar. `gateOk`/`hasToVerify` are computed server-side by
- * the RSC (approvalGate) — the disabled state is UX sugar; the actions
- * re-check everything server-side (F-4 is an invariant, not UI).
+ * Draft-only action bar. `gateOk`/`hasToVerify`/`hasSubjectToVerify` are
+ * computed server-side by the RSC (approvalGate) — the disabled state is UX
+ * sugar; the actions re-check everything server-side (F-4 is an invariant,
+ * not UI).
  */
 export function ValuationActions({
   id,
   hasToVerify,
+  hasSubjectToVerify,
   gateOk,
 }: {
   id: string;
   hasToVerify: boolean;
+  hasSubjectToVerify: boolean;
   gateOk: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +48,17 @@ export function ValuationActions({
             onClick={() => run(confirmSample)}
           >
             {isPending ? "Potwierdzanie…" : "Potwierdź próbę z RCN"}
+          </Button>
+        ) : null}
+        {hasSubjectToVerify ? (
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="confirm-subject-button"
+            disabled={isPending}
+            onClick={() => run(confirmSubject)}
+          >
+            {isPending ? "Potwierdzanie…" : "Potwierdź dane przedmiotu"}
           </Button>
         ) : null}
         <Button

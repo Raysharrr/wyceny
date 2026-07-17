@@ -48,8 +48,18 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
       firstIssue?.code === "invalid_type" ? "Nieprawidłowe dane formularza." : firstIssue?.message;
     return { error: message ?? "Nieprawidłowe dane formularza." };
   }
-  const { address, area, features, sampleMeta, purpose, kwNumber, client, inspectionDate } =
-    parsed.data;
+  const {
+    address,
+    area,
+    features,
+    sampleMeta,
+    subject,
+    subjectMeta,
+    purpose,
+    kwNumber,
+    client,
+    inspectionDate,
+  } = parsed.data;
 
   // Assign provenance statuses server-side: rcn rows get to_verify, manual
   // rows get confirmed. This is the ACL of ADR-010 — statuses are born here,
@@ -63,6 +73,8 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     comparables: sourcedComparables,
     features: features.map((f) => ({ name: f.name, weight: f.weightPct / 100, rating: f.rating })),
     sampleMeta: sampleMeta ?? null,
+    subject: subject ?? null,
+    subjectMeta: subjectMeta ?? null,
     provenance,
   };
   const { wr } = computeKcs(kcsInput);

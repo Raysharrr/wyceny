@@ -1,7 +1,12 @@
 import { eq, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { KcsInput } from "../domain/kcs";
-import { approveValuation, confirmSampleProvenance, newValuation } from "../domain/valuation";
+import {
+  approveValuation,
+  confirmSampleProvenance,
+  confirmSubjectProvenance,
+  newValuation,
+} from "../domain/valuation";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -109,6 +114,20 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       const valuation = toValuation(row);
       if (valuation.ownerId !== user.id) return null;
       const updated = confirmSampleProvenance(valuation);
+      const [saved] = await db
+        .update(schema.valuation)
+        .set({ inputs: updated.inputs })
+        .where(eq(schema.valuation.id, id))
+        .returning();
+      return toValuation(saved);
+    },
+
+    async confirmSubject(id: string, user: SessionUser): Promise<Valuation | null> {
+      const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+      if (!row) return null;
+      const valuation = toValuation(row);
+      if (valuation.ownerId !== user.id) return null;
+      const updated = confirmSubjectProvenance(valuation);
       const [saved] = await db
         .update(schema.valuation)
         .set({ inputs: updated.inputs })

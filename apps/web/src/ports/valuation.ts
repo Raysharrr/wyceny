@@ -72,6 +72,11 @@ export interface PortValuation {
    */
   confirmSample(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
+   * Confirms subject-snapshot provenance on a draft (ewidencja/mpzp →
+   * confirmed). Mirrors `confirmSample`'s owner-only null/throw contract.
+   */
+  confirmSubject(id: string, user: SessionUser): Promise<Valuation | null>;
+  /**
    * Approves a draft — re-runs the F-4 gate AND the document-field check
    * server-side (never trusts the client). Same null/throw contract as
    * confirmSample; additionally throws ApprovalBlockedError when either the

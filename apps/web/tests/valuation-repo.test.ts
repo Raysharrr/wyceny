@@ -284,3 +284,51 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(reread?.docxUrl).toBe("/api/docs/operat-x.docx");
   });
 });
+
+function subjectApprovableInputs(): KcsInput {
+  return {
+    area: 50,
+    comparables: [{ pricePerM2: 10_000, source: "manual" as const, status: "confirmed" as const }],
+    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    subject: { obreb: "Jeżyce", nrDzialki: "161" },
+    subjectMeta: {
+      x: 1,
+      y: 2,
+      teryt: "306401",
+      fetchedAt: "2026-07-14T09:00:00.000Z",
+      source: "geopoz-gugik",
+      mpzpAbsent: false,
+    },
+    provenance: {
+      address: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      area: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      weights: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      ratings: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      ewidencja: { source: "ewidencja" as const, status: "to_verify" as const },
+      mpzp: { source: "mpzp" as const, status: "to_verify" as const },
+    },
+  };
+}
+
+describe("F-5: confirmSubject mutation (subject provenance, Task 6)", () => {
+  it("confirmSubject flips ewidencja + mpzp to confirmed and persists", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 9"),
+      inputs: subjectApprovableInputs(),
+    });
+    const confirmed = await repo.confirmSubject(created.id, appraiserA);
+    expect(confirmed).not.toBeNull();
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread!.inputs!.provenance!.ewidencja!.status).toBe("confirmed");
+    expect(reread!.inputs!.provenance!.mpzp!.status).toBe("confirmed");
+  });
+
+  it("confirmSubject is owner-only: another appraiser AND a non-owner admin get null", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 10"),
+      inputs: subjectApprovableInputs(),
+    });
+    expect(await repo.confirmSubject(created.id, appraiserB)).toBeNull();
+    expect(await repo.confirmSubject(created.id, admin)).toBeNull();
+  });
+});
