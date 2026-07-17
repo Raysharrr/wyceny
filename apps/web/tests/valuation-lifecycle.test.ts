@@ -131,10 +131,8 @@ describe("confirmSubjectProvenance", () => {
     expect(() => confirmSubjectProvenance(approved)).toThrow(/draft/i);
   });
 
-  it("no-op when there is no inputs snapshot at all", () => {
-    const legacy = draftWith(null);
-    const v = confirmSubjectProvenance(legacy);
-    expect(v.inputs).toBeNull();
+  it("throws when there is no inputs snapshot (mirrors confirmSampleProvenance's guard)", () => {
+    expect(() => confirmSubjectProvenance(draftWith(null))).toThrow(/inputs/i);
   });
 });
 

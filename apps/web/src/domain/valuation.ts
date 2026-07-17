@@ -82,15 +82,23 @@ export function confirmSampleProvenance(v: Valuation): Valuation {
 /**
  * Mirrors `confirmSampleProvenance` for the subject snapshot's provenance
  * groups (EGiB/MPZP): flips `ewidencja`/`mpzp` from to_verify to confirmed.
- * Draft-only (F-7) like its sibling; unlike it, a missing inputs snapshot
- * is a no-op here rather than a throw — there is no subject data to confirm.
+ * Draft-only (F-7) and throw-on-missing-inputs, byte-for-byte like its
+ * sibling — a provenance map lacking `ewidencja`/`mpzp` keys (no subject
+ * fetched) still passes through unchanged, same as `geocode` above.
  */
 export function confirmSubjectProvenance(valuation: Valuation): Valuation {
   assertDraft(valuation);
-  if (!valuation.inputs?.provenance) return valuation;
-  const provenance = { ...valuation.inputs.provenance };
-  if (provenance.ewidencja) provenance.ewidencja = { ...provenance.ewidencja, status: "confirmed" };
-  if (provenance.mpzp) provenance.mpzp = { ...provenance.mpzp, status: "confirmed" };
+  if (!valuation.inputs) {
+    throw new Error(`Valuation ${valuation.id} has no inputs snapshot — nothing to confirm`);
+  }
+  const { provenance: p } = valuation.inputs;
+  const provenance = p
+    ? {
+        ...p,
+        ...(p.ewidencja ? { ewidencja: { ...p.ewidencja, status: "confirmed" as const } } : {}),
+        ...(p.mpzp ? { mpzp: { ...p.mpzp, status: "confirmed" as const } } : {}),
+      }
+    : p;
   return { ...valuation, inputs: { ...valuation.inputs, provenance } };
 }
 
