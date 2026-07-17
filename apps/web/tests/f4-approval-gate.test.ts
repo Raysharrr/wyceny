@@ -128,4 +128,53 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
       expect(result.blockers).toHaveLength(6);
     }
   });
+
+  it("blocks approval when subject fetched but not confirmed", () => {
+    const result = approvalGate({
+      comparables: manualRows(12),
+      sampleMeta: null,
+      subject: { obreb: "Jeżyce" },
+      provenance: {
+        ...confirmedScalars,
+        ewidencja: { source: "ewidencja", status: "to_verify" },
+        mpzp: { source: "mpzp", status: "to_verify" },
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const paths = result.blockers.map((b) => b.path);
+      expect(paths).toContain("provenance.ewidencja");
+      expect(paths).toContain("provenance.mpzp");
+    }
+  });
+
+  it("blocks when subject present but provenance entries missing (default-deny)", () => {
+    const result = approvalGate({
+      comparables: manualRows(12),
+      sampleMeta: null,
+      subject: { obreb: "X" },
+      provenance: confirmedScalars,
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("passes with subject groups confirmed", () => {
+    const result = approvalGate({
+      comparables: manualRows(12),
+      sampleMeta: null,
+      subject: { obreb: "Jeżyce" },
+      provenance: {
+        ...confirmedScalars,
+        ewidencja: { source: "ewidencja", status: "confirmed" },
+        mpzp: { source: "mpzp", status: "confirmed" },
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("does not gate subject when subject absent (legacy)", () => {
+    expect(
+      approvalGate({ comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars }),
+    ).toEqual({ ok: true });
+  });
 });

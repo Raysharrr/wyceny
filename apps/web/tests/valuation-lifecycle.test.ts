@@ -3,6 +3,7 @@ import {
   ApprovalBlockedError,
   approveValuation,
   confirmSampleProvenance,
+  confirmSubjectProvenance,
 } from "../src/domain/valuation";
 import type { Valuation } from "../src/ports/valuation";
 import type { KcsInput } from "../src/domain/kcs";
@@ -83,6 +84,46 @@ describe("confirmSampleProvenance", () => {
 
   it("throws when there is no inputs snapshot", () => {
     expect(() => confirmSampleProvenance(draftWith(null))).toThrow(/inputs/i);
+  });
+});
+
+function subjectInputs(): KcsInput {
+  return {
+    area: 50,
+    comparables: Array.from({ length: 12 }, (_, i) => ({
+      pricePerM2: 10_000 + i,
+      source: "manual" as const,
+      status: "confirmed" as const,
+    })),
+    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    subject: { obreb: "Jeżyce", nrDzialki: "161" },
+    subjectMeta: {
+      x: 1,
+      y: 2,
+      teryt: "306401",
+      fetchedAt: "2026-07-14T09:00:00.000Z",
+      source: "geopoz-gugik",
+      mpzpAbsent: false,
+    },
+    provenance: {
+      ...confirmedScalars,
+      ewidencja: { source: "ewidencja", status: "to_verify" },
+      mpzp: { source: "mpzp", status: "to_verify" },
+    },
+  };
+}
+
+describe("confirmSubjectProvenance", () => {
+  it("flips ewidencja and mpzp to confirmed", () => {
+    const v = confirmSubjectProvenance(draftWith(subjectInputs()));
+    expect(v.inputs!.provenance!.ewidencja).toEqual({ source: "ewidencja", status: "confirmed" });
+    expect(v.inputs!.provenance!.mpzp).toEqual({ source: "mpzp", status: "confirmed" });
+  });
+
+  it("no-op on legacy inputs without subject", () => {
+    const legacy = draftWith(rcnInputs());
+    const v = confirmSubjectProvenance(legacy);
+    expect(v.inputs).toEqual(legacy.inputs);
   });
 });
 

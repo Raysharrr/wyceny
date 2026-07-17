@@ -37,6 +37,45 @@ export const sampleMetaSchema = z.object({
   }),
 });
 
+/** Mirrors `SubjectSnapshot` from `@/domain/subject-snapshot` — the auto-fetched EGiB/MPZP subject data. */
+export const subjectSchema = z.object({
+  parcelId: z.string().optional(),
+  obreb: z.string().optional(),
+  arkusz: z.string().optional(),
+  nrDzialki: z.string().optional(),
+  powEwidHa: z.coerce
+    .number()
+    .positive("Powierzchnia działki musi być większa od zera.")
+    .optional(),
+  uzytek: z.string().optional(),
+  budynekRodzaj: z.string().optional(),
+  kondygnacjeNadziemne: z.coerce.number().int().min(0).optional(),
+  kondygnacjePodziemne: z.coerce.number().int().min(0).optional(),
+  rokBudowy: z.coerce
+    .number()
+    .int()
+    .min(1500, "Rok budowy wygląda na błędny.")
+    .max(2100, "Rok budowy wygląda na błędny.")
+    .optional(),
+  mpzpAbsent: z.boolean().optional(),
+  mpzpSymbol: z.string().optional(),
+  mpzpNazwa: z.string().optional(),
+  mpzpUchwala: z.string().optional(),
+  mpzpData: z.string().optional(),
+  mpzpPubl: z.string().optional(),
+  przeznaczenieStudium: z.string().optional(),
+});
+
+/** Mirrors `SubjectMetaSnapshot` from `@/domain/subject-snapshot` — the fetch's provenance for the subject snapshot (F-5). */
+export const subjectMetaSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  teryt: z.string(),
+  fetchedAt: z.string(),
+  source: z.string(),
+  mpzpAbsent: z.boolean(),
+});
+
 export const valuationFormSchema = z.object({
   address: z.string().trim().min(1, "Podaj adres nieruchomości."),
   area: z.coerce.number().positive("Powierzchnia musi być większa od zera."),
@@ -49,6 +88,8 @@ export const valuationFormSchema = z.object({
       "Suma wag musi wynosić 100%.",
     ),
   sampleMeta: sampleMetaSchema.optional(),
+  subject: subjectSchema.optional(),
+  subjectMeta: subjectMetaSchema.optional(),
   purpose: z.enum(["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"], {
     message: "Wybierz cel wyceny.",
   }),

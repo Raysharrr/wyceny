@@ -46,4 +46,44 @@ describe("assignProvenance (the ADR-010 ACL — statuses are born here, server-s
     const manualOnly = assignProvenance({ comparables: [], sampleMeta: undefined });
     expect(manualOnly.provenance.geocode).toBeUndefined();
   });
+
+  it("marks subject groups to_verify when subjectMeta present (auto-fetched)", () => {
+    const { provenance } = assignProvenance({
+      comparables: [],
+      sampleMeta: undefined,
+      subject: { obreb: "Jeżyce", nrDzialki: "161" },
+      subjectMeta: {
+        x: 1,
+        y: 2,
+        teryt: "306401",
+        fetchedAt: "t",
+        source: "geopoz-gugik",
+        mpzpAbsent: false,
+      },
+    });
+    expect(provenance.ewidencja).toEqual({ source: "ewidencja", status: "to_verify" });
+    expect(provenance.mpzp).toEqual({ source: "mpzp", status: "to_verify" });
+  });
+
+  it("marks subject groups confirmed for manual entry (no subjectMeta)", () => {
+    const { provenance } = assignProvenance({
+      comparables: [],
+      sampleMeta: undefined,
+      subject: { obreb: "Jeżyce" },
+      subjectMeta: undefined,
+    });
+    expect(provenance.ewidencja).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+    expect(provenance.mpzp).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+  });
+
+  it("omits subject provenance when subject absent", () => {
+    const { provenance } = assignProvenance({
+      comparables: [],
+      sampleMeta: undefined,
+      subject: undefined,
+      subjectMeta: undefined,
+    });
+    expect(provenance.ewidencja).toBeUndefined();
+    expect(provenance.mpzp).toBeUndefined();
+  });
 });

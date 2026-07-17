@@ -10,7 +10,9 @@ import type { ValuationFormValues } from "@/lib/valuation-form-schema";
  * confirmed by definition (AI-first: humans only confirm what they didn't
  * type themselves).
  */
-export function assignProvenance(values: Pick<ValuationFormValues, "comparables" | "sampleMeta">): {
+export function assignProvenance(
+  values: Pick<ValuationFormValues, "comparables" | "sampleMeta" | "subject" | "subjectMeta">,
+): {
   comparables: Comparable[];
   provenance: InputsProvenance;
 } {
@@ -27,6 +29,14 @@ export function assignProvenance(values: Pick<ValuationFormValues, "comparables"
     weights: confirmed,
     ratings: confirmed,
     ...(values.sampleMeta ? { geocode: { source: "geokoder", status: "to_verify" } as const } : {}),
+    ...(values.subject
+      ? {
+          ewidencja: values.subjectMeta
+            ? ({ source: "ewidencja", status: "to_verify" } as const)
+            : confirmed,
+          mpzp: values.subjectMeta ? ({ source: "mpzp", status: "to_verify" } as const) : confirmed,
+        }
+      : {}),
   };
 
   return { comparables, provenance };

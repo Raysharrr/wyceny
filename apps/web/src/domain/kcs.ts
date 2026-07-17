@@ -18,6 +18,7 @@
 import type { ProvenanceStatus } from "@wyceny/shared";
 import type { SampleMeta } from "../ports/sample";
 import type { InputsProvenance } from "./provenance";
+import type { SubjectMetaSnapshot, SubjectSnapshot } from "./subject-snapshot";
 
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
 
@@ -57,6 +58,10 @@ export type KcsInput = {
   sampleMeta?: SampleMeta | null;
   /** Scalar provenance map (F-4) — see domain/provenance.ts. Optional: legacy snapshots lack it. */
   provenance?: InputsProvenance | null;
+  /** Auto-fetched EGiB/MPZP subject snapshot — display/audit metadata only; computeKcs never reads this. */
+  subject?: SubjectSnapshot | null;
+  /** Fetch provenance for the subject snapshot (F-5) — display/audit metadata only. */
+  subjectMeta?: SubjectMetaSnapshot | null;
 };
 
 export type FeatureShare = Feature & {

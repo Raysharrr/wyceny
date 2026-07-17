@@ -80,6 +80,18 @@ export function confirmSampleProvenance(v: Valuation): Valuation {
 }
 
 /**
+ * Mirrors `confirmSampleProvenance` for the subject snapshot's provenance
+ * groups (EGiB/MPZP): flips `ewidencja`/`mpzp` from to_verify to confirmed.
+ */
+export function confirmSubjectProvenance(valuation: Valuation): Valuation {
+  if (!valuation.inputs?.provenance) return valuation;
+  const provenance = { ...valuation.inputs.provenance };
+  if (provenance.ewidencja) provenance.ewidencja = { ...provenance.ewidencja, status: "confirmed" };
+  if (provenance.mpzp) provenance.mpzp = { ...provenance.mpzp, status: "confirmed" };
+  return { ...valuation, inputs: { ...valuation.inputs, provenance } };
+}
+
+/**
  * The approve mutation — F-4 gate as aggregate invariant (ADR-012). A draft
  * without a snapshot can never pass (default-deny). The gate is merged with
  * the document-field blockers (spec §4): approval also requires the four

@@ -14,6 +14,9 @@ export type InputsProvenance = {
   ratings: Provenance;
   /** Present only when the draft was seeded by an RCN fetch (sampleMeta set). */
   geocode?: Provenance;
+  /** Present only when a subject snapshot (EGiB/MPZP) was attached to the draft. */
+  ewidencja?: Provenance;
+  mpzp?: Provenance;
 };
 
 export type Blocker = { path: string; label: string };
@@ -24,6 +27,7 @@ export type GateResult = { ok: true } | { ok: false; blockers: Blocker[] };
 export type GateInput = {
   comparables: Array<{ source?: "rcn" | "manual"; status?: ProvenanceStatus }>;
   sampleMeta?: unknown | null;
+  subject?: unknown | null;
   provenance?: InputsProvenance | null;
 };
 
@@ -80,6 +84,28 @@ export function approvalGate(input: GateInput): GateResult {
       blockers.push({
         path: "provenance.geocode",
         label: `Geokodowanie adresu — ${statusLabel(geocode?.status ?? "none")}.`,
+      });
+    }
+  }
+
+  // Subject data (EGiB/MPZP): gated whenever a subject snapshot exists.
+  // Decision 10: confirmed "no plan" is also a conscious approval — mpzp group
+  // covers both plan data and its absence.
+  if (input.subject != null) {
+    const ewidencja = input.provenance?.ewidencja;
+    const sE = sourced("ewidencja", ewidencja?.source ?? "ewidencja", ewidencja?.status ?? "none");
+    if (isBlocking(sE)) {
+      blockers.push({
+        path: "provenance.ewidencja",
+        label: `Dane ewidencyjne przedmiotu (EGiB) — ${statusLabel(ewidencja?.status ?? "none")}.`,
+      });
+    }
+    const mpzp = input.provenance?.mpzp;
+    const sM = sourced("mpzp", mpzp?.source ?? "mpzp", mpzp?.status ?? "none");
+    if (isBlocking(sM)) {
+      blockers.push({
+        path: "provenance.mpzp",
+        label: `Przeznaczenie planistyczne (MPZP) — ${statusLabel(mpzp?.status ?? "none")}.`,
       });
     }
   }
