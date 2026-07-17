@@ -152,6 +152,11 @@ import hmac
 
 from app.kw import EXTRACTION_PROMPT, KwDzial, KwExtractPayload, scrub_extract, verify_token
 
+# F-9: PESEL-like fixtures are BUILT AT RUNTIME from split literals so this
+# committed file never contains an 11-digit run (scripts/check-no-pii.sh).
+PESEL_A = "85010" + "112345"
+PESEL_B = "90020" + "254321"
+
 
 def payload(**overrides) -> KwExtractPayload:
     base = dict(
@@ -175,9 +180,9 @@ def payload(**overrides) -> KwExtractPayload:
 
 class TestScrub:
     def test_pesel_removed_from_dzial_tresc(self):
-        p = payload(dzial3=KwDzial(wpisy=True, tresc=["roszczenie, PESEL 85010112345, o wpis"]))
+        p = payload(dzial3=KwDzial(wpisy=True, tresc=[f"roszczenie, PESEL {PESEL_A}, o wpis"]))
         out = scrub_extract(p)
-        assert "85010112345" not in out.dzial3.tresc[0]
+        assert PESEL_A not in out.dzial3.tresc[0]
         assert out.dzial3.wpisy is True
 
     def test_person_context_fragment_removed(self):
@@ -194,10 +199,10 @@ class TestScrub:
         assert scrub_extract(p).dzial4.tresc[0] == entry
 
     def test_scrub_covers_sad_and_udzial(self):
-        p = payload(sad="Sąd Rejonowy PESEL 90020254321", udzial="1/2 PESEL 90020254321")
+        p = payload(sad=f"Sąd Rejonowy PESEL {PESEL_B}", udzial=f"1/2 PESEL {PESEL_B}")
         out = scrub_extract(p)
-        assert "90020254321" not in out.sad
-        assert "90020254321" not in out.udzial
+        assert PESEL_B not in out.sad
+        assert PESEL_B not in out.udzial
 
     def test_none_fields_pass_through(self):
         out = scrub_extract(payload())
@@ -409,6 +414,9 @@ from fastapi.testclient import TestClient
 from app import main
 from app.kw import KwDzial, KwExtractPayload
 
+# F-9: runtime-built PESEL (no 11-digit run in the committed file).
+PESEL_A = "85010" + "112345"
+
 client = TestClient(main.app)
 
 SECRET = "test-secret"
@@ -424,7 +432,7 @@ def mint(exp_offset: int = 300) -> str:
 def fake_payload(**overrides) -> KwExtractPayload:
     base = dict(
         docType="akt",
-        kwLokalu="AB1C/00000001/9",  # F-9-safe synthetic shape? NO — see note below
+        kwLokalu="AB1C/1/9",  # F-9-safe synthetic shape? NO — see note below
         kwGruntu=None,
         kwInne=[],
         deweloperski=False,
@@ -455,7 +463,7 @@ def post(token: str, content: bytes = b"%PDF-1.4 test", expected_type: str = "ak
 
 
 def test_happy_path_scrubs_and_returns_extract(monkeypatch):
-    dz3 = KwDzial(wpisy=True, tresc=["roszczenie, PESEL 85010112345, o wpis"])
+    dz3 = KwDzial(wpisy=True, tresc=[f"roszczenie, PESEL {PESEL_A}, o wpis"])
     monkeypatch.setattr(main, "_extract_kw_payload", lambda pdf_b64: fake_payload(dzial3=dz3))
     resp = post(mint())
     assert resp.status_code == 200
@@ -464,7 +472,7 @@ def test_happy_path_scrubs_and_returns_extract(monkeypatch):
     assert body["typeMismatch"] is False
     assert body["extract"]["powUzytkowaKw"] == 69.56
     # scrub ran inside the endpoint: PESEL never leaves the worker
-    assert "85010112345" not in body["extract"]["dzial3"]["tresc"][0]
+    assert PESEL_A not in body["extract"]["dzial3"]["tresc"][0]
 
 
 def test_invalid_token_401():
@@ -527,12 +535,6 @@ def test_developer_variant_forced_when_akt_without_kw_lokalu(monkeypatch):
     body = post(mint()).json()
     assert body["extract"]["deweloperski"] is True
 ```
-
-> **F-9 note on `kwLokalu="AB1C/00000001/9"`:** this DOES match the F-9 KW
-> regex and MUST NOT be committed. Use `"AB1C/1/9"` (short digit run) in the
-> fixture instead — the endpoint doesn't validate KW format. Fix the fixture
-> line accordingly before committing (deliberately called out so the
-> implementer doesn't "correct" it back).
 
 - [ ] **Step 3: Run to verify failure**
 
@@ -655,9 +657,8 @@ def kw_extract(
 
 Notes for the implementer: `main.py` already has `logger`, `HTTPException`, `BaseModel` imported — merge, don't duplicate. Sync `def` (not `async`) mirrors `/convert-to-pdf` — FastAPI runs it in the threadpool, so the blocking anthropic call can't stall `/health`.
 
-- [ ] **Step 5: Fix the fixture F-9 shape, run tests**
+- [ ] **Step 5: Run tests**
 
-Change `kwLokalu="AB1C/00000001/9"` → `kwLokalu="AB1C/1/9"` in `fake_payload`.
 Run: `cd apps/worker && uv run pytest tests/test_kw_extract.py -q`
 Expected: PASS (9 tests)
 
@@ -2166,3 +2167,96 @@ git push && gh run watch --exit-status
 - Spec coverage: all spec sections map to tasks (picker/upload→7, extraction→2-3, HMAC→2/3/6, model→4-5, confirm→8, document→9-10, RTL→1/7, e2e flag→11, secrets→post-stage). Cost limits, file storage, per-field badges: out of scope per spec.
 - Type consistency: `KwExtractPayload` (worker) ↔ `wireSchema` (client) ↔ `kwSchema` (form) ↔ `KwSnapshot` (domain) field names verified identical; template tags Task 9 ↔ model fields Task 10 verified identical.
 - Known judgment calls: `.superRefine` forces the `valuationFormObject` split (called out in Task 5); `kw_zrodlo` text via lookup table; area-match equality (not tolerance) is deliberate and tested.
+
+---
+
+## Amendments — independent plan review 2026-07-17 (BINDING)
+
+An adversarial reviewer verified this plan against the live codebase. The
+corrections below OVERRIDE the task bodies above; per-task briefs MUST fold
+in the items for their task. (K1/K2 — F-9 fixture literals — are already
+applied inline in this file.)
+
+- **W1 (Task 5):** zod 4 `.pick()` THROWS at runtime on a schema with
+  refinements. Do the `valuationFormObject` (plain object) +
+  `valuationFormSchema = valuationFormObject.superRefine(...)` split and
+  migrate BOTH pick call sites: `get-subject-data.ts` AND
+  `get-sample-proposal.ts:10`. `.shape` access keeps working on the refined
+  schema — test usages survive.
+- **W2 (Task 3):** `main.py` has NO module-level `logger` (it calls
+  `logging.getLogger("uvicorn.error")` inline). Add
+  `logger = logging.getLogger("uvicorn.error")` at module level (plus
+  `import logging` if absent) before using `logger.error` in the endpoint.
+- **W3 (Task 5):** extending `assignProvenance`'s Pick with required `area`
+  breaks the EXISTING calls in `assign-provenance.test.ts` (~7 call sites) —
+  update them to pass `area`, keeping their assertions unchanged.
+- **W4 (Task 7):** upload mode + no file + submit = silent dead-end. Point
+  the `superRefine` issue at BOTH paths `["kwNumber"]` and `["kw"]`, and
+  render the `kw` root error inside `KwSection` in upload mode ("Wgraj
+  dokument albo przełącz na wpis ręczny."). Add an RTL case for it.
+- **W5 (Task 7):** add a Controller CHECKBOX for `kw.deweloperski` (spec:
+  manual toggle; disables the `kw.kwLokalu` input when checked). Worker rule
+  stays akt-only (auto-forcing on odpis would silently swallow a bad
+  extract's missing kwLokalu) — the manual checkbox is the odpis escape
+  hatch. Add an RTL case.
+- **W6 (Task 7):** add editable textareas for `kw.dzial3.tresc` /
+  `kw.dzial4.tresc` (render joined with newlines, split on change) — the
+  GDPR scrub design depends on appraiser editability. Add an RTL case.
+- **W7 (Task 7):** `resetKwSection` must use `resetField("kw")` +
+  `resetField("kwMeta")` (NOT `setValue(..., undefined)`) — RHF does not
+  reliably clear registered nested objects. Add a regression test: extract →
+  switch to manual → submitted values contain no `kw` (write-once inputs
+  poisoning class from Slice 5).
+- **W8 (Tasks 9–10):** the unconditional `pow_uzytkowa_kw` line in FACTS_82
+  would print "…: —." into LEGACY operats (spec forbids legacy regression).
+  Wrap it in its own condition: `{#pow_kw_present}Powierzchnia użytkowa
+lokalu (wg dokumentu KW/aktu): {pow_uzytkowa_kw}.{/pow_kw_present}`; add
+  `pow_kw_present: kw?.powUzytkowaKw != null` to the model (Task 10) and the
+  pair to both placeholder lists. Legacy `udzial_kw` fallback text is fine.
+- **W9 (Task 7):** the smoke spec locates `#kwNumber`
+  (`e2e/smoke.spec.ts:19`). Keep `id="kwNumber"` on the manual input (do NOT
+  rename to `kw-number`) and run `pnpm --filter web e2e` locally in Task 7
+  before pushing.
+- **D1 (Tasks 4/5):** real helper names differ from the plan's test sketches:
+  f4 tests build inline GateInput objects (`manualRows(12)`,
+  `confirmedScalars`); lifecycle helpers are `draftWith(inputs, overrides)`
+  (inputs FIRST arg), `rcnInputs()`, `subjectInputs()`; form-schema test uses
+  a `valid` const; assign-provenance test has no fixture helpers. The plan's
+  CASES and ASSERTIONS are binding; its helper names are not — follow each
+  file's actual style.
+- **D2 (Task 9):** `build_template.py` already copies the output to
+  `apps/web/templates/operat-szablon.docx` (`shutil.copyfile`) — no manual cp.
+- **D3 (Task 9):** add CLOSING tags (`{/kw_badanie}`, `{/kw_deweloperski}`,
+  `{/kw_standard}`, `{/dzial3_brak}`, `{/dzial3_wpisy}`, `{/dzial4_brak}`,
+  `{/dzial4_wpisy}`, `{/pow_kw_present}`) alongside openers in BOTH the
+  script's `PLACEHOLDERS` list and the integrity test array (repo convention
+  lists pairs).
+- **D4 (Task 9):** mirror `add_82_facts_block` EXACTLY (`W_P` constant,
+  `para_text(p).strip().startswith(...)`, `break` on first match). Intended
+  final order: STUB_KW → BADANIE_KW → 8.2 facts block — call
+  `add_kw_badanie_block` so insertion order yields that, and add an order
+  assertion to `verify()`.
+- **D5 (Task 7):** the form uses `useWatch({ control })`, not a destructured
+  `watch` — follow the file's existing pattern for the new watches. RTL
+  harness: type the form as `useForm<FormInput, unknown, FormOutput>()` so
+  `Control` matches `KwSection`'s prop.
+- **D6 (Task 2):** the `ur\.` branch is dead (`\b` after a dot never
+  matches before a space). Move `\b` into the branches:
+  `(?:PESEL\b|urodzon\w+\b|ur\.|syn(?:a|owi)?\b|c[óo]r(?:ka|ki|ce)\b)[^,;.]*`.
+  Add tests: "ur. " fragment removed; spaced PESEL after the "PESEL" marker
+  removed by the context rule.
+- **D8 (Task 5):** the "never null in practice" comment is wrong — an extract
+  with both KW numbers null yields `kwNumber = null` (column is nullable;
+  `documentFieldBlockers` gates approval). Keep the sync expression, fix the
+  comment.
+- **D9 (Task 7):** accepted MVP deviations from the spec's error table
+  (single retry button for all errors; no auto-retry on 401). ADD the cheap
+  client-side pre-checks in `onFileSelected`: reject non-PDF and
+  `file.size > 32 * 1024 * 1024` with an inline Polish message before any
+  network call.
+- **D10 (Task 9):** add sample anti-literals to the template integrity
+  forbidden list (template scan only, fixtures unaffected): `"14651/29359"`
+  and `"146,5100"`.
+- **D7 (accepted, backlog):** HMAC token has no nonce store / no user
+  binding — replay within 300 s can only burn LLM cost; log for the
+  worker-auth hardening backlog (nonce log + rate limit).
