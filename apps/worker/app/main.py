@@ -203,7 +203,7 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
         parcel_ref = subject.fetch_parcel_by_xy(x, y)
         parcel = subject.parcel_from_xml(subject.fetch_egib_xml("dzialki", x, y))
         if parcel is None:
-            raise RuntimeError("EGiB nie zwrocilo dzialki")
+            raise RuntimeError("EGiB nie zwróciło działki")
         building = subject.building_from_xml(subject.fetch_egib_xml("budynki", x, y))
         wkt_2180 = subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 2180)
         function = subject.pick_mpzp_function(wkt_2180, subject.fetch_mpzp_functions(wkt_2180))

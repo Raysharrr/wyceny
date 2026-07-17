@@ -98,3 +98,61 @@ def test_upstream_failure_is_502_polish_detail(monkeypatch):
     r = client.post("/subject-proposal", json={"address": "x"})
     assert r.status_code == 502
     assert "Nie udało się pobrać danych przedmiotu" in r.json()["detail"]
+
+
+def test_mpzp_function_without_plan_has_symbol_and_empty_plan_fields(happy_io, monkeypatch):
+    monkeypatch.setattr(subject, "pick_plan", lambda lon, lat, plans: None)
+    r = client.post("/subject-proposal", json={"address": "Poznan, Koscielna 33"})
+    assert r.status_code == 200
+    mpzp = r.json()["mpzp"]
+    assert mpzp["symbol"] == "4MW/U"
+    assert mpzp["nazwaPlanu"] == ""
+    assert mpzp["uchwala"] == ""
+    assert mpzp["dataUchwaly"] == ""
+    assert mpzp["publikator"] == ""
+    assert r.json()["meta"]["mpzpAbsent"] is False
+
+
+def test_plan_without_mpzp_function_has_empty_symbol_and_plan_fields(happy_io, monkeypatch):
+    monkeypatch.setattr(subject, "pick_mpzp_function", lambda wkt, fns: None)
+    r = client.post("/subject-proposal", json={"address": "Poznan, Koscielna 33"})
+    assert r.status_code == 200
+    mpzp = r.json()["mpzp"]
+    assert mpzp["symbol"] == ""
+    assert mpzp["uchwala"] == "VII/84/VIII/2019"
+    assert mpzp["dataUchwaly"] == "2019-02-26"
+    assert r.json()["meta"]["mpzpAbsent"] is False
+
+
+def test_egib_fetch_failure_mid_pipeline_is_502(monkeypatch):
+    monkeypatch.setattr(
+        subject,
+        "geocode_address",
+        lambda address: {"x": 357604.98, "y": 507623.88, "teryt": "306401"},
+    )
+    monkeypatch.setattr(
+        subject, "fetch_parcel_by_xy", lambda x, y: {"parcel_id": "306401_1.0021.AR_10.161"}
+    )
+
+    def boom(layer, x, y):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(subject, "fetch_egib_xml", boom)
+    r = client.post("/subject-proposal", json={"address": "Poznan, Koscielna 33"})
+    assert r.status_code == 502
+    assert "Nie udało się pobrać danych przedmiotu" in r.json()["detail"]
+
+
+def test_missing_parcel_from_egib_is_502(monkeypatch):
+    monkeypatch.setattr(
+        subject,
+        "geocode_address",
+        lambda address: {"x": 357604.98, "y": 507623.88, "teryt": "306401"},
+    )
+    monkeypatch.setattr(
+        subject, "fetch_parcel_by_xy", lambda x, y: {"parcel_id": "306401_1.0021.AR_10.161"}
+    )
+    monkeypatch.setattr(subject, "fetch_egib_xml", lambda layer, x, y: EMPTY_XML)
+    r = client.post("/subject-proposal", json={"address": "Poznan, Koscielna 33"})
+    assert r.status_code == 502
+    assert "Nie udało się pobrać danych przedmiotu" in r.json()["detail"]
