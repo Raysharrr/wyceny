@@ -13,6 +13,10 @@ export default defineConfig({
     },
   },
   test: {
+    // Global environment stays "node" — most tests (integration, contract,
+    // schema) need no DOM and node is faster to spin up. Component/RTL tests
+    // opt into jsdom per-file via a `// @vitest-environment jsdom` pragma
+    // (e.g. tests/rtl-*.test.tsx), so we never pay jsdom's cost fleet-wide.
     environment: "node",
     // Integration tests hit the same real Postgres and each calls
     // `migrate()` in `beforeAll`. Drizzle's migrator has no locking, so two

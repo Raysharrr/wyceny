@@ -18,8 +18,10 @@ import {
 import { createValuation } from "@/app/actions/create-valuation";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import { getSubjectData } from "@/app/actions/get-subject-data";
+import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { PURPOSE_LABEL } from "@/domain/document-model";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { extractKw } from "@/lib/kw-extract-client";
 import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
 import { cn } from "@/lib/utils";
 import {
@@ -27,7 +29,12 @@ import {
   valuationFormSchema,
   type ValuationFormValues,
 } from "@/lib/valuation-form-schema";
+import { KwSection, type KwFetchState, type KwSource } from "./kw-section";
 import { SubjectSection, type SubjectFetchState } from "./subject-section";
+
+// KW uploads bypass Vercel's body limit by going straight to the worker
+// (see mint-kw-token.ts). Defaults to the local worker for dev/e2e.
+const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? "http://localhost:8000";
 
 type FormInput = z.input<typeof valuationFormSchema>;
 type FormOutput = z.output<typeof valuationFormSchema>;
@@ -89,6 +96,11 @@ export function NewValuationForm() {
   const [isFetchingSample, setIsFetchingSample] = useState(false);
   const [fetchSampleError, setFetchSampleError] = useState<string | null>(null);
   const [subjectFetch, setSubjectFetch] = useState<SubjectFetchState>({ status: "idle" });
+  // KW "Stan prawny" section. The UI `kwSource` (akt|odpis_kw|reczny) is the
+  // section key — distinct from the extract's own `kw.source` (akt|odpis_kw).
+  const [kwSource, setKwSource] = useState<KwSource>("reczny");
+  const [kwState, setKwState] = useState<KwFetchState>({ status: "idle" });
+  const lastKwFile = useRef<File | null>(null);
   const lastFetchedAddress = useRef<string | null>(null);
   // Guards against out-of-order responses: if the address changes again (or
   // a retry fires) before an in-flight fetch resolves, only the LATEST
@@ -100,6 +112,7 @@ export function NewValuationForm() {
     control,
     handleSubmit,
     setValue,
+    resetField,
     getValues,
     trigger,
     formState: { isSubmitting, errors },
@@ -138,6 +151,8 @@ export function NewValuationForm() {
 
   const comparables = useWatch({ control, name: "comparables" });
   const features = useWatch({ control, name: "features" });
+  const kwValues = useWatch({ control, name: "kw" });
+  const areaValue = useWatch({ control, name: "area" });
 
   const validPrices = (comparables ?? [])
     .map((c) => Number(c?.pricePerM2))
@@ -155,6 +170,17 @@ export function NewValuationForm() {
 
   const comparablesError = errors.comparables?.root?.message ?? errors.comparables?.message;
   const featuresError = errors.features?.root?.message ?? errors.features?.message;
+
+  // Surfaced only when a document gave a usable area AND the form's own area
+  // disagrees — a nudge, never a block (the appraiser decides which wins).
+  const areaMismatch =
+    kwValues?.powUzytkowaKw != null &&
+    areaValue !== undefined &&
+    areaValue !== "" &&
+    areaValue !== null &&
+    Number(areaValue) !== kwValues.powUzytkowaKw
+      ? { form: Number(areaValue), doc: kwValues.powUzytkowaKw }
+      : null;
 
   // Decision 8 (hard reset): address is the section key for "Dane
   // przedmiotu" — every fetch (including a retry) wipes the whole subject
@@ -221,6 +247,82 @@ export function NewValuationForm() {
     } finally {
       setIsFetchingSample(false);
     }
+  };
+
+  // Hard reset on source change (Slice-5 lesson: the source is the section
+  // key). `resetField` — not `setValue(..., undefined)` — clears the field
+  // AND unregisters the nested extract Controllers (kw.kwLokalu, dzial*.tresc)
+  // that were mounted during an upload, so a switch to manual can't leave a
+  // stale `kw` in the submitted values (W7 write-once poisoning class).
+  const resetKwSection = (nextSource: KwSource) => {
+    setKwSource(nextSource);
+    setKwState({ status: "idle" });
+    lastKwFile.current = null;
+    resetField("kw");
+    resetField("kwMeta");
+  };
+
+  const runKwExtraction = async (file: File, expectedType: "akt" | "odpis_kw") => {
+    lastKwFile.current = file;
+    setKwState({ status: "loading" });
+    const minted = await mintKwUploadToken();
+    if ("error" in minted) {
+      setKwState({ status: "error", message: minted.error });
+      return;
+    }
+    const result = await extractKw({
+      file,
+      expectedType,
+      token: minted.token,
+      workerUrl: WORKER_URL,
+    });
+    if (result.kind === "invalidDoc") {
+      setKwState({ status: "invalidDoc", message: result.message });
+      return;
+    }
+    if (result.kind === "error") {
+      setKwState({ status: "error", message: result.message });
+      return;
+    }
+    setValue("kw", result.extract, { shouldDirty: true });
+    setValue("kwMeta", result.meta, { shouldDirty: true });
+    // Seed the form area from the document only if the appraiser left it blank
+    // — never overwrite a value they typed (that's what the mismatch nudge is
+    // for).
+    const area = getValues("area");
+    if (
+      result.extract.powUzytkowaKw != null &&
+      (area === undefined || area === "" || area === null)
+    ) {
+      setValue("area", result.extract.powUzytkowaKw, { shouldDirty: true });
+    }
+    const kwCount = [
+      result.extract.kwLokalu,
+      result.extract.kwGruntu,
+      ...result.extract.kwInne,
+    ].filter(Boolean).length;
+    const pow = result.extract.powUzytkowaKw;
+    setKwState({
+      status: "done",
+      summary: `${kwCount} KW${pow != null ? `, pow. ${pow.toString().replace(".", ",")} m²` : ""}`,
+      typeMismatch: result.typeMismatch,
+    });
+  };
+
+  // Non-PDF / oversize are rejected client-side before any network call (D9).
+  const onKwFileSelected = (file: File) => {
+    const expectedType = kwSource === "odpis_kw" ? "odpis_kw" : "akt";
+    if (file.type !== "application/pdf") {
+      lastKwFile.current = null;
+      setKwState({ status: "error", message: "Wgraj plik PDF." });
+      return;
+    }
+    if (file.size > 32 * 1024 * 1024) {
+      lastKwFile.current = null;
+      setKwState({ status: "error", message: "Plik jest za duży (maks. 32 MB)." });
+      return;
+    }
+    void runKwExtraction(file, expectedType);
   };
 
   const onSubmit = handleSubmit(async (values) => {
@@ -304,22 +406,6 @@ export function NewValuationForm() {
         />
         <Controller
           control={control}
-          name="kwNumber"
-          render={({ field, fieldState }) => (
-            <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="kwNumber">Numer księgi wieczystej</FieldLabel>
-              <Input
-                id="kwNumber"
-                placeholder="np. numer księgi wieczystej"
-                autoComplete="off"
-                {...field}
-              />
-              <FieldError errors={[fieldState.error]} />
-            </Field>
-          )}
-        />
-        <Controller
-          control={control}
           name="client"
           render={({ field, fieldState }) => (
             <Field data-invalid={!!fieldState.error}>
@@ -349,6 +435,25 @@ export function NewValuationForm() {
           lastFetchedAddress.current = null;
           void onAddressBlur();
         }}
+      />
+
+      <KwSection
+        control={control}
+        state={kwState}
+        source={kwSource}
+        onSourceChange={resetKwSection}
+        onFileSelected={onKwFileSelected}
+        onRetry={() => {
+          if (lastKwFile.current) {
+            void runKwExtraction(lastKwFile.current, kwSource === "odpis_kw" ? "odpis_kw" : "akt");
+          }
+        }}
+        onUseDocumentArea={() => {
+          if (kwValues?.powUzytkowaKw != null) {
+            setValue("area", kwValues.powUzytkowaKw, { shouldDirty: true });
+          }
+        }}
+        areaMismatch={areaMismatch}
       />
 
       <section className="flex flex-col gap-3">
