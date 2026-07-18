@@ -339,8 +339,11 @@ function kwApprovableInputs(): KcsInput {
     ...base,
     kw: {
       source: "odpis_kw",
-      kwLokalu: "PO1P/00012345/6",
-      kwGruntu: "PO1P/00098765/4",
+      // Short synthetic KW numbers — deliberately NOT the real 8-digit-middle
+      // format (2 letters + digit + letter / 8 digits / digit) so the F-9 PII
+      // scan stays clean (mirrors rtl-kw-section.test.tsx).
+      kwLokalu: "PO1P/1/6",
+      kwGruntu: "PO1P/2/4",
       kwInne: [],
       deweloperski: false,
       powUzytkowaKw: 50,
