@@ -6,6 +6,7 @@ import {
   formatNumber,
   formatPln,
 } from "../src/domain/document-model";
+import type { KwSnapshot } from "../src/domain/kw-snapshot";
 
 const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
 
@@ -114,6 +115,41 @@ describe("F-12: professional-secrecy masking in the document model", () => {
     expect(model.opis_cmin).toHaveLength(2);
     expect(model.opis_cmin[0]).toContain("wartość najniższa");
     expect(model.opis_cmax[0]).toContain("wartość najwyższa");
+  });
+});
+
+describe("F-12: KW examination masking (Slice 6, defense-in-depth)", () => {
+  // The worker's scrub_extract (layer 2) already replaces PESEL/person-context
+  // fragments with the "[dane osobowe usunięte]" marker before a KwSnapshot
+  // ever reaches the web app — this fixture is post-scrub, as a real snapshot
+  // would arrive. The model must not reintroduce an 11-digit run anywhere
+  // (e.g. via sad/wydzial/udział passthrough) even given this input shape.
+  function kwFixtureWithScrubMarker(): KwSnapshot {
+    return {
+      source: "odpis_kw",
+      kwLokalu: "PO1P/1/6",
+      kwGruntu: "PO1P/2/4",
+      kwInne: [],
+      deweloperski: false,
+      powUzytkowaKw: 50.55,
+      udzial: "1/1",
+      sad: "Sąd Rejonowy Poznań-Stare Miasto",
+      wydzial: "V Wydział Ksiąg Wieczystych",
+      dataDokumentu: "2026-06-01",
+      dzial3: {
+        wpisy: true,
+        tresc: ["roszczenie, [dane osobowe usunięte], o wpis"],
+      },
+      dzial4: { wpisy: false, tresc: [] },
+    };
+  }
+
+  it("never leaks an 11-digit (PESEL-shaped) run anywhere in the serialized model", () => {
+    const inputs = { ...syntheticInputs(), kw: kwFixtureWithScrubMarker() };
+    const model = buildDocumentModel({ ...goldenInput(), inputs, kcs: computeKcs(inputs) });
+    const json = JSON.stringify(model);
+    expect(json).not.toMatch(/\d{11}/);
+    expect(json).toContain("[dane osobowe usunięte]");
   });
 });
 

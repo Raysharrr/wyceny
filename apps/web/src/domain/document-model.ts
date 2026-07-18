@@ -37,6 +37,9 @@ const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is inv
 const DASH = "—";
 const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 
+/** `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych na podstawie: …"). */
+const KW_ZRODLO_TEXT = { akt: "akt notarialny", odpis_kw: "odpis księgi wieczystej" } as const;
+
 /** `1044400` → `"1 044 400,00"` (NBSP thousands separator — matches the source operat). */
 export function formatPln(value: number): string {
   return formatNumber(value, 2);
@@ -70,6 +73,20 @@ function maskMonth(date: string | undefined): string {
 function cityFromAddress(address: string): string {
   const afterComma = address.split(",").pop()?.trim();
   return afterComma && afterComma.length > 0 ? afterComma : DASH;
+}
+
+/**
+ * T9 handoff: the template's `{#dzial3_wpisy}Dział III — wpis: {.}{/dzial3_wpisy}`
+ * loop repeats the label per entry with no separator between iterations, so
+ * 2+ entries would otherwise run together (`…wpisDział III — wpis: …`).
+ * Template tags are FINAL — fixed here by terminating each entry with a
+ * period (+ trailing space) so repeated iterations read as separate sentences.
+ */
+function terminateEntries(tresc: string[]): string[] {
+  return tresc.map((t) => {
+    const trimmed = t.trimEnd();
+    return /[.!?]$/.test(trimmed) ? `${trimmed} ` : `${trimmed}. `;
+  });
 }
 
 export type TransactionRow = {
@@ -116,6 +133,26 @@ export type DocumentModel = {
   budynek_rodzaj: string;
   kondygnacje: string;
   rok_budowy: string;
+  // Section 8.2 KW examination block (Slice 6) — `kw_standard`/`kw_deweloperski`
+  // and `dzialN_brak`/`dzialN_wpisy` are each mutually exclusive PAIRS, enforced
+  // structurally (both members of a pair derive from the same source boolean —
+  // the mpzp lesson). All false/empty/dash when `inputs.kw` is absent (legacy).
+  kw_badanie: boolean;
+  kw_standard: boolean;
+  kw_deweloperski: boolean;
+  kw_zrodlo: string;
+  kw_lokalu: string;
+  kw_gruntu: string;
+  kw_sad: string;
+  kw_wydzial: string;
+  kw_data_dok: string;
+  udzial_kw: string;
+  pow_kw_present: boolean;
+  pow_uzytkowa_kw: string;
+  dzial3_brak: boolean;
+  dzial3_wpisy: string[];
+  dzial4_brak: boolean;
+  dzial4_wpisy: string[];
   // Section 9 MPZP variants — `{#mpzp}`/`{#mpzp_brak}` are mutually exclusive,
   // enforced here (never both, never neither, when a subject is present).
   mpzp: MpzpBlock | null;
@@ -183,6 +220,7 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     subject != null &&
     subject.mpzpAbsent !== true &&
     Boolean(subject.mpzpSymbol || subject.mpzpNazwa || subject.mpzpUchwala);
+  const kw = inputs.kw ?? null;
   return {
     adres: input.address,
     powierzchnia: formatNumber(input.area, 2),
@@ -201,6 +239,22 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
       ? `${subject.kondygnacjeNadziemne ?? DASH} / ${subject.kondygnacjePodziemne ?? DASH}`
       : DASH,
     rok_budowy: subject?.rokBudowy != null ? String(subject.rokBudowy) : ROK_BUDOWY_BD,
+    kw_badanie: kw != null,
+    kw_standard: kw != null && !kw.deweloperski,
+    kw_deweloperski: kw != null && kw.deweloperski,
+    kw_zrodlo: kw ? KW_ZRODLO_TEXT[kw.source] : DASH,
+    kw_lokalu: kw?.kwLokalu ?? DASH,
+    kw_gruntu: kw?.kwGruntu ?? DASH,
+    kw_sad: kw?.sad ?? DASH,
+    kw_wydzial: kw?.wydzial ?? DASH,
+    kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : DASH,
+    udzial_kw: kw?.udzial ?? "wg odpisu księgi wieczystej",
+    pow_kw_present: kw?.powUzytkowaKw != null,
+    pow_uzytkowa_kw: kw?.powUzytkowaKw != null ? formatNumber(kw.powUzytkowaKw, 2) : DASH,
+    dzial3_brak: kw != null && (kw.dzial3 == null || !kw.dzial3.wpisy),
+    dzial3_wpisy: kw?.dzial3?.wpisy ? terminateEntries(kw.dzial3.tresc) : [],
+    dzial4_brak: kw != null && (kw.dzial4 == null || !kw.dzial4.wpisy),
+    dzial4_wpisy: kw?.dzial4?.wpisy ? terminateEntries(kw.dzial4.tresc) : [],
     mpzp: hasMpzp
       ? {
           symbol: subject.mpzpSymbol ?? "",
