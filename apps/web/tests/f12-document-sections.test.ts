@@ -71,6 +71,19 @@ const KW_DEWELOPERSKI: KwSnapshot = {
   dzial4: { wpisy: false, tresc: [] },
 };
 
+/**
+ * Akt notarialny — the source document never examines dział III/IV at all
+ * (`dzial3`/`dzial4` are null, not "examined and empty"). Rendering "brak
+ * wpisów" here would fabricate a clean-title/no-mortgage claim; the model
+ * must render neither the brak sentence nor the wpisy loop for either dział.
+ */
+const KW_AKT_NO_DZIAL: KwSnapshot = {
+  ...KW_STANDARD,
+  source: "akt",
+  dzial3: null,
+  dzial4: null,
+};
+
 /** Subject snapshot with a resolved MPZP — drives the `{#mpzp}` section-9 variant. */
 const SUBJECT_WITH_MPZP: SubjectSnapshot = {
   obreb: "Jeżyce",
@@ -279,6 +292,42 @@ describe("F-12: rendered operat — KW examination block (developer variant)", (
   it("renders the developer sentence, omits the standard sentence", () => {
     expect(text).toContain("księgę macierzystą gruntu");
     expect(text).not.toContain("Księga wieczysta lokalu:");
+  });
+});
+
+describe("F-12: rendered operat — akt notarialny with no dział III/IV info (dzial3/dzial4 null)", () => {
+  const text = renderGolden(SUBJECT_WITH_MPZP, KW_AKT_NO_DZIAL);
+
+  it("has no unresolved template tags and no 'undefined'", () => {
+    expect(text).not.toContain("undefined");
+    expect(text).not.toMatch(/\{[a-z_#/.]+\}/i);
+  });
+
+  it("renders NEITHER the brak sentence NOR the wpisy loop for either dział (honest silence, not a fabricated clean-title claim)", () => {
+    expect(text).not.toContain("Dział III (prawa, roszczenia i ograniczenia): brak wpisów.");
+    expect(text).not.toContain("Dział III — wpis:");
+    expect(text).not.toContain("Dział IV (hipoteki): brak wpisów.");
+    expect(text).not.toContain("Dział IV — wpis:");
+  });
+
+  it("model: dzialN_brak and dzialN_wpisy both false/empty when the dział was never examined", () => {
+    const inputs = goldenInputs(SUBJECT_WITH_MPZP, KW_AKT_NO_DZIAL);
+    const model = buildDocumentModel({
+      address: "ul. Przykładowa 5, Poznań",
+      area: 48.2,
+      purpose: "informacyjny",
+      kwNumber: "KW-TEST-9",
+      client: "p. Anna Przykładowa",
+      inspectionDate: "2026-06-30",
+      approvedAt: new Date("2026-07-15T09:00:00Z"),
+      inputs,
+      kcs: computeKcs(inputs),
+      amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+    });
+    expect(model.dzial3_brak).toBe(false);
+    expect(model.dzial3_wpisy).toEqual([]);
+    expect(model.dzial4_brak).toBe(false);
+    expect(model.dzial4_wpisy).toEqual([]);
   });
 });
 

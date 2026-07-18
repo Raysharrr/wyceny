@@ -133,10 +133,15 @@ export type DocumentModel = {
   budynek_rodzaj: string;
   kondygnacje: string;
   rok_budowy: string;
-  // Section 8.2 KW examination block (Slice 6) — `kw_standard`/`kw_deweloperski`
-  // and `dzialN_brak`/`dzialN_wpisy` are each mutually exclusive PAIRS, enforced
-  // structurally (both members of a pair derive from the same source boolean —
-  // the mpzp lesson). All false/empty/dash when `inputs.kw` is absent (legacy).
+  // Section 8.2 KW examination block (Slice 6). `kw_standard`/`kw_deweloperski`
+  // are a mutually exclusive PAIR (never both, always exactly one when
+  // kw_badanie), structurally derived from `kw.deweloperski`. `dzialN_brak`/
+  // `dzialN_wpisy` are mutually exclusive but NOT exhaustive — both are
+  // false/empty when the source document never examined that dział (e.g. an
+  // akt notarialny carries no dział III/IV info): rendering "brak wpisów" in
+  // that case would fabricate a clean-title/no-mortgage claim, so the model
+  // renders nothing instead (honest silence) rather than a false "never
+  // neither" guarantee. All false/empty/dash when `inputs.kw` is absent (legacy).
   kw_badanie: boolean;
   kw_standard: boolean;
   kw_deweloperski: boolean;
@@ -251,9 +256,13 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     udzial_kw: kw?.udzial ?? "wg odpisu księgi wieczystej",
     pow_kw_present: kw?.powUzytkowaKw != null,
     pow_uzytkowa_kw: kw?.powUzytkowaKw != null ? formatNumber(kw.powUzytkowaKw, 2) : DASH,
-    dzial3_brak: kw != null && (kw.dzial3 == null || !kw.dzial3.wpisy),
+    // dzialN == null means the source document carries NO dział info (e.g. an
+    // akt notarialny) — that must render NOTHING, not "brak wpisów" (a
+    // fabricated clean-title/no-mortgage claim). brak is true ONLY when the
+    // dział was actually examined (non-null) and came back empty.
+    dzial3_brak: kw != null && kw.dzial3 != null && !kw.dzial3.wpisy,
     dzial3_wpisy: kw?.dzial3?.wpisy ? terminateEntries(kw.dzial3.tresc) : [],
-    dzial4_brak: kw != null && (kw.dzial4 == null || !kw.dzial4.wpisy),
+    dzial4_brak: kw != null && kw.dzial4 != null && !kw.dzial4.wpisy,
     dzial4_wpisy: kw?.dzial4?.wpisy ? terminateEntries(kw.dzial4.tresc) : [],
     mpzp: hasMpzp
       ? {
