@@ -6,18 +6,39 @@ Local run:
     uv run uvicorn app.main:app --reload
 """
 
+import base64
 import logging
+import os
+import time
 from datetime import UTC, datetime
 
-from fastapi import Body, FastAPI, HTTPException, Response
+from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import app.rcn as rcn
 import app.subject as subject
+from app import kw as kw_core
 from app.amount_in_words import to_amount_in_words
 from app.convert import ConversionError, docx_to_pdf
 
+logger = logging.getLogger("uvicorn.error")
+
 app = FastAPI(title="wyceny-worker")
+
+# CORS: the KW upload posts directly from the browser (Vercel 4.5 MB body
+# limit forces the web bypass — spec §Architektura). Scoped by origin, not
+# by route; the only state-changing endpoints are token-gated anyway.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        o.strip()
+        for o in os.environ.get("CORS_ALLOW_ORIGINS", "http://localhost:3000").split(",")
+        if o.strip()
+    ],
+    allow_methods=["POST"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
@@ -246,4 +267,98 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
             source="geopoz-gugik",
             mpzpAbsent=mpzp is None,
         ),
+    )
+
+
+class KwExtractResponse(BaseModel):
+    extract: kw_core.KwExtractPayload
+    docTypeDetected: str
+    typeMismatch: bool
+    model: str
+
+
+KW_MODEL = "claude-sonnet-5"
+
+
+def kw_max_bytes() -> int:
+    # Seam for tests (shrinking the limit beats allocating 32 MB fixtures).
+    return kw_core.MAX_PDF_BYTES
+
+
+def _extract_kw_payload(pdf_b64: str) -> kw_core.KwExtractPayload:
+    """The ONLY anthropic touchpoint — monkeypatched in every CI test.
+    thinking disabled: spike showed identical quality, pure-JSON output."""
+    import anthropic
+
+    client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from worker env (Railway secret)
+    response = client.messages.parse(
+        model=KW_MODEL,
+        max_tokens=4096,
+        thinking={"type": "disabled"},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": pdf_b64,
+                        },
+                    },
+                    {"type": "text", "text": kw_core.EXTRACTION_PROMPT},
+                ],
+            }
+        ],
+        output_format=kw_core.KwExtractPayload,
+    )
+    if response.parsed_output is None:
+        raise RuntimeError(f"kw extraction returned no parsed output ({response.stop_reason})")
+    return response.parsed_output
+
+
+@app.post("/kw-extract")
+def kw_extract(
+    file: UploadFile = File(...),
+    token: str = Form(...),
+    expected_type: str = Form(...),
+) -> KwExtractResponse:
+    secret = os.environ.get("WORKER_SHARED_SECRET", "")
+    if not secret or not kw_core.verify_token(token, secret, time.time()):
+        raise HTTPException(
+            status_code=401,
+            detail="Nieprawidłowy lub wygasły token — odśwież stronę i spróbuj ponownie.",
+        )
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail="Obsługiwane są wyłącznie pliki PDF.")
+    data = file.file.read()
+    if len(data) > kw_max_bytes():
+        raise HTTPException(status_code=413, detail="Plik jest za duży (limit 32 MB).")
+
+    try:
+        payload = _extract_kw_payload(base64.standard_b64encode(data).decode())
+    except Exception as exc:
+        logger.error("kw extraction failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Nie udało się odczytać dokumentu — spróbuj ponownie albo wpisz dane ręcznie.",
+        ) from exc
+    # File bytes are never persisted or logged: `data` dies with this request.
+
+    if payload.docType == "nieznany":
+        raise HTTPException(
+            status_code=422,
+            detail="To nie wygląda na akt notarialny ani odpis księgi wieczystej.",
+        )
+
+    payload = kw_core.scrub_extract(payload)
+    if payload.docType == "akt" and payload.kwLokalu is None:
+        payload = payload.model_copy(update={"deweloperski": True})
+
+    return KwExtractResponse(
+        extract=payload,
+        docTypeDetected=payload.docType,
+        typeMismatch=payload.docType != expected_type,
+        model=KW_MODEL,
     )
