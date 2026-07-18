@@ -151,6 +151,12 @@ export type DocumentModel = {
   kw_sad: string;
   kw_wydzial: string;
   kw_data_dok: string;
+  // STUB_KW paragraph (the {nr_kw} line): its second sentence ("Pełna treść
+  // odpisu KW pozostaje…") renders ONLY when the title info could come from a KW
+  // excerpt — legacy/manual (kw == null) and the "odpis_kw" source. Under an
+  // "akt" (deed) source it is hidden, so the operat never implies possession of a
+  // KW excerpt it may not hold (final-review #5b).
+  kw_stub_odpis: boolean;
   udzial_kw: string;
   pow_kw_present: boolean;
   pow_uzytkowa_kw: string;
@@ -253,6 +259,9 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     kw_sad: kw?.sad ?? DASH,
     kw_wydzial: kw?.wydzial ?? DASH,
     kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : DASH,
+    // Legacy/manual (kw == null) and odpis_kw source keep the sentence (accurate);
+    // an akt (deed) source hides it — no false claim of holding a KW excerpt.
+    kw_stub_odpis: kw == null || kw.source === "odpis_kw",
     // Honest udział: the "wg odpisu księgi wieczystej" annotation is a LEGACY
     // fallback for pre-Slice-6 rows that never examined a KW (kw == null). When
     // a KW WAS examined (kw != null) but the extract carries no udział, render a

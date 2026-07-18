@@ -203,6 +203,14 @@ describe("F-12: rendered operat — legacy, no subject fetched", () => {
     expect(text).not.toContain("brak obowiązującego miejscowego planu");
   });
 
+  it("still renders the odpis stub sentence (kw_stub_odpis true for legacy/manual)", () => {
+    // Legacy inputs never examined a KW/deed (kw == null); the {nr_kw} line keeps
+    // its second sentence exactly as before — this is the byte-identical guarantee.
+    expect(text).toContain(
+      "Pełna treść odpisu KW pozostaje w dokumentacji źródłowej rzeczoznawcy.",
+    );
+  });
+
   it("renders exactly as today for the KW examination block: no badanie content, unconditional udział dash text", () => {
     expect(text).toContain("KW-TEST-9"); // {nr_kw} line still present, unconditional
     expect(text).not.toContain("Badanie ksiąg wieczystych przeprowadzono");
@@ -255,6 +263,12 @@ describe("F-12: rendered operat — KW examination block (standard variant)", ()
     expect(text).toContain("Księga wieczysta lokalu: PO1P/1/6");
     expect(text).toContain("Księga wieczysta gruntu: PO1P/2/4");
     expect(text).not.toContain("księgę macierzystą gruntu");
+  });
+
+  it("keeps the odpis stub sentence (source odpis_kw — the KW excerpt is accurate)", () => {
+    expect(text).toContain(
+      "Pełna treść odpisu KW pozostaje w dokumentacji źródłowej rzeczoznawcy.",
+    );
   });
 
   it("renders both dział III and dział IV entries from the two-entry fixture (T9 loop-shaping)", () => {
@@ -320,6 +334,15 @@ describe("F-12: rendered operat — akt notarialny with no dział III/IV info (d
     expect(text).not.toContain("Dział III — wpis:");
     expect(text).not.toContain("Dział IV (hipoteki): brak wpisów.");
     expect(text).not.toContain("Dział IV — wpis:");
+  });
+
+  it("hides the odpis stub sentence (source akt — the operat must not imply a KW excerpt it may not hold)", () => {
+    // Fix #5b: the {nr_kw} line's "Pełna treść odpisu KW…" sentence would render
+    // directly above the badanie block's "…na podstawie: akt notarialny…", falsely
+    // implying possession of a KW excerpt. Under a deed source it must disappear.
+    expect(text).not.toContain("Pełna treść odpisu KW");
+    // The {nr_kw} line itself (its stable prefix) still renders.
+    expect(text).toContain("Oznaczenie księgi wieczystej:");
   });
 
   it("model: dzialN_brak and dzialN_wpisy both false/empty when the dział was never examined", () => {

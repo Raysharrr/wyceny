@@ -133,6 +133,11 @@ const REQUIRED_PLACEHOLDERS = [
   "{/dzial4_brak}",
   "{#dzial4_wpisy}",
   "{/dzial4_wpisy}",
+  // Task 12: the {nr_kw} stub paragraph's second sentence ("Pełna treść odpisu
+  // KW…") is wrapped in an inline section, hidden when the examination source is
+  // a deed (akt) so the operat never implies a KW excerpt it may not hold.
+  "{#kw_stub_odpis}",
+  "{/kw_stub_odpis}",
 ];
 
 describe("F-12: template integrity (operat-szablon.docx)", () => {
