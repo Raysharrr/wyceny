@@ -60,6 +60,10 @@ const FORBIDDEN_LITERALS = [
   "18 169", // §13 offer-price range max
   // Task 7: source-operat plan symbol must never be baked into the template.
   "4MW/U",
+  // Task 9 (D10): sample KW/akt values must arrive via {udzial_kw} /
+  // {pow_uzytkowa_kw}, never as literals baked into the 8.2 examination block.
+  "14651/29359", // sample udział we współwłasności
+  "146,5100", // sample powierzchnia użytkowa
 ];
 
 const REQUIRED_PLACEHOLDERS = [
@@ -104,6 +108,31 @@ const REQUIRED_PLACEHOLDERS = [
   "{/mpzp}",
   "{#mpzp_brak}",
   "{/mpzp_brak}",
+  // Task 9: 8.2 KW examination block — scalars, section pairs, loops.
+  "{udzial_kw}",
+  "{pow_uzytkowa_kw}",
+  "{#pow_kw_present}",
+  "{/pow_kw_present}",
+  "{kw_zrodlo}",
+  "{kw_lokalu}",
+  "{kw_gruntu}",
+  "{kw_sad}",
+  "{kw_wydzial}",
+  "{kw_data_dok}",
+  "{#kw_badanie}",
+  "{/kw_badanie}",
+  "{#kw_standard}",
+  "{/kw_standard}",
+  "{#kw_deweloperski}",
+  "{/kw_deweloperski}",
+  "{#dzial3_brak}",
+  "{/dzial3_brak}",
+  "{#dzial3_wpisy}",
+  "{/dzial3_wpisy}",
+  "{#dzial4_brak}",
+  "{/dzial4_brak}",
+  "{#dzial4_wpisy}",
+  "{/dzial4_wpisy}",
 ];
 
 describe("F-12: template integrity (operat-szablon.docx)", () => {
