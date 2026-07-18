@@ -85,7 +85,7 @@ class TestScrub:
         p = payload(dzial4=KwDzial(wpisy=True, tresc=[f"hipoteka, {pesel_spaced}, kwota"]))
         out = scrub_extract(p)
         # The spaced PESEL should be removed by the context rule (from PESEL marker to next delimiter)
-        assert "85010" not in out.dzial4.tresc[0] or "hipoteka" in out.dzial4.tresc[0]
+        assert "850101" not in out.dzial4.tresc[0]
         # At least the context rule should have scrubbed something
         assert "[dane osobowe usunięte]" in out.dzial4.tresc[0]
 
