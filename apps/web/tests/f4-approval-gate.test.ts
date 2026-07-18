@@ -178,3 +178,66 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     ).toEqual({ ok: true });
   });
 });
+
+describe("kw group (Slice 6)", () => {
+  function passingInput() {
+    return { comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars };
+  }
+
+  const kwOk = {
+    source: "akt" as const,
+    kwLokalu: "AB1C/1/9",
+    kwGruntu: "AB1C/2/7",
+    deweloperski: false,
+  };
+
+  it("blocks when kw snapshot present but provenance kw missing (default-deny)", () => {
+    const result = approvalGate({ ...passingInput(), kw: kwOk });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers.some((b) => b.path === "provenance.kw")).toBe(true);
+    }
+  });
+
+  it("blocks on to_verify, passes on confirmed", () => {
+    const base = passingInput();
+    const toVerify = approvalGate({
+      ...base,
+      kw: kwOk,
+      provenance: { ...base.provenance, kw: { source: "akt", status: "to_verify" } },
+    });
+    expect(toVerify.ok).toBe(false);
+    const confirmed = approvalGate({
+      ...base,
+      kw: kwOk,
+      provenance: { ...base.provenance, kw: { source: "akt", status: "confirmed" } },
+    });
+    expect(confirmed.ok).toBe(true);
+  });
+
+  it("blocks missing kwGruntu and missing kwLokalu (non-developer)", () => {
+    const base = passingInput();
+    const prov = {
+      ...base.provenance,
+      kw: { source: "akt" as const, status: "confirmed" as const },
+    };
+    const noGrunt = approvalGate({ ...base, provenance: prov, kw: { ...kwOk, kwGruntu: null } });
+    expect(noGrunt.ok).toBe(false);
+    const noLokal = approvalGate({ ...base, provenance: prov, kw: { ...kwOk, kwLokalu: null } });
+    expect(noLokal.ok).toBe(false);
+  });
+
+  it("developer variant: missing kwLokalu is fine when deweloperski", () => {
+    const base = passingInput();
+    const result = approvalGate({
+      ...base,
+      provenance: { ...base.provenance, kw: { source: "akt", status: "confirmed" } },
+      kw: { ...kwOk, kwLokalu: null, deweloperski: true },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("no kw snapshot -> no kw blockers (manual path regression)", () => {
+    expect(approvalGate(passingInput()).ok).toBe(true);
+  });
+});

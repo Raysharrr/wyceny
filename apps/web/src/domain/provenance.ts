@@ -17,6 +17,8 @@ export type InputsProvenance = {
   /** Present only when a subject snapshot (EGiB/MPZP) was attached to the draft. */
   ewidencja?: Provenance;
   mpzp?: Provenance;
+  /** Present only when a KW extract (deed/excerpt upload) was attached. */
+  kw?: Provenance;
 };
 
 export type Blocker = { path: string; label: string };
@@ -28,6 +30,12 @@ export type GateInput = {
   comparables: Array<{ source?: "rcn" | "manual"; status?: ProvenanceStatus }>;
   sampleMeta?: unknown | null;
   subject?: unknown | null;
+  kw?: {
+    source: "akt" | "odpis_kw";
+    kwLokalu: string | null;
+    kwGruntu: string | null;
+    deweloperski: boolean;
+  } | null;
   provenance?: InputsProvenance | null;
 };
 
@@ -106,6 +114,32 @@ export function approvalGate(input: GateInput): GateResult {
       blockers.push({
         path: "provenance.mpzp",
         label: `Przeznaczenie planistyczne (MPZP) — ${statusLabel(mpzp?.status ?? "none")}.`,
+      });
+    }
+  }
+
+  // KW extract (deed/excerpt upload): gated whenever a kw snapshot exists.
+  // Manual kwNumber entry attaches no snapshot and adds no blockers here.
+  if (input.kw != null) {
+    const kwProv = input.provenance?.kw;
+    const sK = sourced("kw", kwProv?.source ?? input.kw.source, kwProv?.status ?? "none");
+    if (isBlocking(sK)) {
+      blockers.push({
+        path: "provenance.kw",
+        label: `Stan prawny (KW) — ${statusLabel(kwProv?.status ?? "none")}.`,
+      });
+    }
+    if (!input.kw.kwGruntu) {
+      blockers.push({
+        path: "kw.kwGruntu",
+        label: "Numer KW gruntu (księgi macierzystej) — brak.",
+      });
+    }
+    if (!input.kw.kwLokalu && !input.kw.deweloperski) {
+      blockers.push({
+        path: "kw.kwLokalu",
+        label:
+          "Numer KW lokalu — brak (zaznacz wariant deweloperski, jeśli lokal nie ma własnej księgi).",
       });
     }
   }

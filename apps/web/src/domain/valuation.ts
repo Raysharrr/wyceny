@@ -103,6 +103,29 @@ export function confirmSubjectProvenance(valuation: Valuation): Valuation {
 }
 
 /**
+ * Mirrors `confirmSubjectProvenance` for the KW extract group: flips `kw`
+ * — and `area` when the area was seeded from the document (source akt /
+ * odpis_kw) — from to_verify to confirmed. Draft-only (F-7),
+ * throw-on-missing-inputs, byte-for-byte like its siblings.
+ */
+export function confirmKwProvenance(valuation: Valuation): Valuation {
+  assertDraft(valuation);
+  if (!valuation.inputs) {
+    throw new Error(`Valuation ${valuation.id} has no inputs snapshot — nothing to confirm`);
+  }
+  const { provenance: p } = valuation.inputs;
+  const areaFromDoc = p?.area && (p.area.source === "akt" || p.area.source === "odpis_kw");
+  const provenance = p
+    ? {
+        ...p,
+        ...(p.kw ? { kw: { ...p.kw, status: "confirmed" as const } } : {}),
+        ...(areaFromDoc ? { area: { ...p.area, status: "confirmed" as const } } : {}),
+      }
+    : p;
+  return { ...valuation, inputs: { ...valuation.inputs, provenance } };
+}
+
+/**
  * The approve mutation — F-4 gate as aggregate invariant (ADR-012). A draft
  * without a snapshot can never pass (default-deny). The gate is merged with
  * the document-field blockers (spec §4): approval also requires the four

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ApprovalBlockedError,
   approveValuation,
+  confirmKwProvenance,
   confirmSampleProvenance,
   confirmSubjectProvenance,
 } from "../src/domain/valuation";
@@ -133,6 +134,52 @@ describe("confirmSubjectProvenance", () => {
 
   it("throws when there is no inputs snapshot (mirrors confirmSampleProvenance's guard)", () => {
     expect(() => confirmSubjectProvenance(draftWith(null))).toThrow(/inputs/i);
+  });
+});
+
+function kwInputs(provenanceOverrides: Partial<InputsProvenance> = {}): KcsInput {
+  return {
+    area: 50,
+    comparables: Array.from({ length: 12 }, (_, i) => ({
+      pricePerM2: 10_000 + i,
+      source: "manual" as const,
+      status: "confirmed" as const,
+    })),
+    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    provenance: { ...confirmedScalars, ...provenanceOverrides },
+  };
+}
+
+describe("confirmKwProvenance (Slice 6)", () => {
+  it("flips kw and document-sourced area to confirmed, leaves others", () => {
+    const v = draftWith(
+      kwInputs({
+        kw: { source: "akt", status: "to_verify" },
+        area: { source: "akt", status: "to_verify" },
+      }),
+    );
+    const out = confirmKwProvenance(v);
+    expect(out.inputs!.provenance!.kw!.status).toBe("confirmed");
+    expect(out.inputs!.provenance!.area.status).toBe("confirmed");
+  });
+
+  it("does not touch manual area provenance", () => {
+    const v = draftWith(
+      kwInputs({
+        kw: { source: "odpis_kw", status: "to_verify" },
+      }),
+    );
+    const out = confirmKwProvenance(v);
+    expect(out.inputs!.provenance!.area.source).toBe("rzeczoznawca");
+  });
+
+  it("throws on non-draft and on missing inputs (F-7 guards)", () => {
+    const approved = {
+      ...draftWith(kwInputs({ kw: { source: "akt", status: "to_verify" } })),
+      status: "approved" as const,
+    };
+    expect(() => confirmKwProvenance(approved)).toThrow();
+    expect(() => confirmKwProvenance(draftWith(null))).toThrow();
   });
 });
 
