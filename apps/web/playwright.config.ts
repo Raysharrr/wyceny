@@ -21,6 +21,8 @@ export default defineConfig({
     // that already baked in the guard (see new-valuation-form.tsx's
     // `onAddressBlur`). NEXT_PUBLIC_* is inlined at `next build` time, so
     // this alone does NOT retroactively disable a build made without it.
-    env: { NEXT_PUBLIC_SUBJECT_AUTOFETCH: "off" },
+    // Same rationale for the KW upload flow (see kw-section.tsx's
+    // `uploadEnabled` guard).
+    env: { NEXT_PUBLIC_SUBJECT_AUTOFETCH: "off", NEXT_PUBLIC_KW_UPLOAD: "off" },
   },
 });

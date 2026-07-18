@@ -183,6 +183,18 @@ Web runs at <http://localhost:3000>, worker at <http://localhost:8000>. Log in w
 
 **Tests / lint / typecheck / build** (from repo root): `pnpm turbo lint typecheck test build`. Worker tests: `cd apps/worker && uv run pytest`. Dependency rule (F-10): `pnpm depcruise`. No-PII scan (F-9): `bash scripts/check-no-pii.sh`.
 
+## Environment variables (production)
+
+Beyond the local-only vars in `apps/web/.env.example` (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `WORKER_URL`), the KW upload/extract flow (Slice 6) needs these set on the hosting platforms. Names and locations only — no values here.
+
+| Variable                 | Where it lives                  | What it's for                                                                                                                                                    |
+| ------------------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WORKER_SHARED_SECRET`   | Vercel (web) + Railway (worker) | Shared secret for the HMAC upload token minted by web and verified by the worker.                                                                                |
+| `ANTHROPIC_API_KEY`      | Railway (worker only)           | LLM key the worker uses to extract structured data from uploaded KW/akt PDFs.                                                                                    |
+| `NEXT_PUBLIC_WORKER_URL` | Vercel (web build)              | Public worker base URL — the browser calls the worker directly for uploads.                                                                                      |
+| `CORS_ALLOW_ORIGINS`     | Railway (worker)                | Comma-separated allow-list of origins the worker accepts CORS requests from.                                                                                     |
+| `NEXT_PUBLIC_KW_UPLOAD`  | optional (CI/local)             | Set to `"off"` to hide the KW upload UI and force the manual-entry path (used by the e2e job in `.github/workflows/ci.yml` and `apps/web/playwright.config.ts`). |
+
 ## Known limitations / backlog
 
 Carried forward from the walking-skeleton build (full history in `.superpowers/sdd/`):
