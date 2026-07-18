@@ -4,10 +4,10 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { subjectData } from "@/app/valuations/_deps";
 import { WORKER_SUBJECT_PREFIX } from "@/adapters/subject-http";
-import { valuationFormSchema } from "@/lib/valuation-form-schema";
+import { valuationFormObject } from "@/lib/valuation-form-schema";
 import type { SubjectProposal } from "@/ports/subject";
 
-const inputSchema = valuationFormSchema.pick({ address: true });
+const inputSchema = valuationFormObject.pick({ address: true });
 
 export type GetSubjectDataResult =
   { proposal: SubjectProposal } | { outOfCoverage: string } | { error: string };

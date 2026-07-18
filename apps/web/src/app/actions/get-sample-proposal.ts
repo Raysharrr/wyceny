@@ -4,10 +4,10 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { sampleProposal } from "@/app/valuations/_deps";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
-import { valuationFormSchema } from "@/lib/valuation-form-schema";
+import { valuationFormObject } from "@/lib/valuation-form-schema";
 import type { SampleProposal } from "@/ports/sample";
 
-const getSampleProposalInputSchema = valuationFormSchema.pick({ address: true, area: true });
+const getSampleProposalInputSchema = valuationFormObject.pick({ address: true, area: true });
 
 export type GetSampleProposalInput = { address: string; area: number };
 

@@ -56,6 +56,8 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     sampleMeta,
     subject,
     subjectMeta,
+    kw,
+    kwMeta,
     purpose,
     kwNumber,
     client,
@@ -87,6 +89,10 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     sampleMeta: sampleMeta ?? null,
     subject: effectiveSubject ?? null,
     subjectMeta: effectiveSubjectMeta ?? null,
+    // Normalized to null when absent, like subject/subjectMeta, so every
+    // stored snapshot has the same shape (manual-only vs. kw-extract-seeded).
+    kw: kw ?? null,
+    kwMeta: kwMeta ?? null,
     provenance,
   };
   const { wr } = computeKcs(kcsInput);
@@ -101,7 +107,13 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     docUrl: null,
     docxUrl: null,
     purpose,
-    kwNumber,
+    // kwNumber column sync: prefer the appraiser's manual entry (trimmed);
+    // otherwise fall back to the document-sourced KW numbers (lokal, then
+    // grunt). Can still be `null` — an extract with both KW numbers null
+    // yields no fallback either, and the column is nullable; approval is
+    // gated separately by `documentFieldBlockers`/the F-4 kw checks, not by
+    // this sync.
+    kwNumber: kwNumber?.trim() || kw?.kwLokalu || kw?.kwGruntu || null,
     client,
     inspectionDate,
     ownerId: session.user.id,

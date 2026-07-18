@@ -134,6 +134,40 @@ describe("valuationFormSchema — RCN provenance (F-5)", () => {
   });
 });
 
+describe("kw section (Slice 6)", () => {
+  const kwValid = {
+    source: "akt" as const,
+    kwLokalu: "AB1C/1/9",
+    kwGruntu: "AB1C/2/7",
+    kwInne: [],
+    deweloperski: false,
+    powUzytkowaKw: 69.56,
+    udzial: "1234/56789",
+    sad: "Sąd Rejonowy",
+    wydzial: "VI Wydział Ksiąg Wieczystych",
+    dataDokumentu: "2026-05-11",
+    dzial3: null,
+    dzial4: null,
+  };
+
+  it("accepts a form with kw extract and NO kwNumber", () => {
+    const parsed = valuationFormSchema.safeParse({
+      ...valid,
+      kwNumber: undefined,
+      kw: kwValid,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("still requires kwNumber when no kw extract (manual path)", () => {
+    const parsed = valuationFormSchema.safeParse({ ...valid, kwNumber: undefined });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.some((i) => i.path.join(".") === "kwNumber")).toBe(true);
+    }
+  });
+});
+
 describe("subjectSchema — mpzpData (Fix B)", () => {
   it("rejects a Polish free-text date with the Polish message", () => {
     const r = subjectSchema.safeParse({ mpzpData: "26.02.2019" });

@@ -117,7 +117,7 @@ describe("createValuation — success path (Slice 4: no document generation at d
       docUrl: null,
       docxUrl: null,
       purpose: valid.purpose,
-      kwNumber: valid.kwNumber,
+      kwNumber: valid.kwNumber ?? null,
       client: valid.client,
       inspectionDate: valid.inspectionDate,
       ownerId: "test-user",
@@ -160,7 +160,7 @@ describe("createValuation — success path (Slice 4: no document generation at d
       docUrl: null,
       docxUrl: null,
       purpose: valid.purpose,
-      kwNumber: valid.kwNumber,
+      kwNumber: valid.kwNumber ?? null,
       client: valid.client,
       inspectionDate: valid.inspectionDate,
       ownerId: "test-user",
@@ -209,7 +209,7 @@ describe("createValuation — success path (Slice 4: no document generation at d
       docUrl: null,
       docxUrl: null,
       purpose: valid.purpose,
-      kwNumber: valid.kwNumber,
+      kwNumber: valid.kwNumber ?? null,
       client: valid.client,
       inspectionDate: valid.inspectionDate,
       ownerId: "test-user",
@@ -251,7 +251,7 @@ describe("createValuation — success path (Slice 4: no document generation at d
       docUrl: null,
       docxUrl: null,
       purpose: valid.purpose,
-      kwNumber: valid.kwNumber,
+      kwNumber: valid.kwNumber ?? null,
       client: valid.client,
       inspectionDate: valid.inspectionDate,
       ownerId: "test-user",
@@ -276,6 +276,67 @@ describe("createValuation — success path (Slice 4: no document generation at d
     );
   });
 
+  it("persists the kw snapshot and syncs kwNumber from kwLokalu when kwNumber is absent (Slice 6)", async () => {
+    createMock.mockResolvedValue({
+      id: "valuation-test-kw-1",
+      address: valid.address,
+      area: valid.area,
+      wr: 1000000,
+      inputs: null,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: valid.purpose,
+      kwNumber: "AB1C/1/9",
+      client: valid.client,
+      inspectionDate: valid.inspectionDate,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      createdAt: new Date("2026-07-17T00:00:00.000Z"),
+    });
+
+    const kw = {
+      source: "akt" as const,
+      kwLokalu: "AB1C/1/9",
+      kwGruntu: "AB1C/2/7",
+      kwInne: [],
+      deweloperski: false,
+      powUzytkowaKw: 69.56,
+      udzial: "1234/56789",
+      sad: "Sąd Rejonowy",
+      wydzial: "VI Wydział Ksiąg Wieczystych",
+      dataDokumentu: "2026-05-11",
+      dzial3: null,
+      dzial4: null,
+    };
+    const kwMeta = {
+      model: "claude-test-model",
+      extractedAt: "2026-07-17T00:00:00.000Z",
+      docTypeDetected: "akt" as const,
+      docTypeDeclared: "akt" as const,
+    };
+
+    const withKw: CreateValuationInput = {
+      ...valid,
+      kwNumber: undefined,
+      kw,
+      kwMeta,
+    };
+
+    await createValuation(withKw);
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kwNumber: kw.kwLokalu,
+        inputs: expect.objectContaining({
+          kw: expect.objectContaining({ source: "akt" }),
+          kwMeta: expect.objectContaining({ model: "claude-test-model" }),
+        }),
+      }),
+    );
+  });
+
   it("persists a subject with only mpzpAbsent: true set — a lone true flag is non-empty (Fix A)", async () => {
     createMock.mockResolvedValue({
       id: "valuation-test-5",
@@ -287,7 +348,7 @@ describe("createValuation — success path (Slice 4: no document generation at d
       docUrl: null,
       docxUrl: null,
       purpose: valid.purpose,
-      kwNumber: valid.kwNumber,
+      kwNumber: valid.kwNumber ?? null,
       client: valid.client,
       inspectionDate: valid.inspectionDate,
       ownerId: "test-user",

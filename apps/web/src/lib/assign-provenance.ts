@@ -11,7 +11,10 @@ import type { ValuationFormValues } from "@/lib/valuation-form-schema";
  * type themselves).
  */
 export function assignProvenance(
-  values: Pick<ValuationFormValues, "comparables" | "sampleMeta" | "subject" | "subjectMeta">,
+  values: Pick<
+    ValuationFormValues,
+    "comparables" | "sampleMeta" | "subject" | "subjectMeta" | "kw" | "kwMeta" | "area"
+  >,
 ): {
   comparables: Comparable[];
   provenance: InputsProvenance;
@@ -23,9 +26,18 @@ export function assignProvenance(
   }));
 
   const confirmed = { source: "rzeczoznawca", status: "confirmed" } as const;
+
+  // The area field is doc-sourced (to_verify) only when a kw extract is
+  // attached AND its powUzytkowaKw exactly matches the submitted area — i.e.
+  // the appraiser accepted the document's value rather than typing their own.
+  const areaFromDocument =
+    values.kw != null &&
+    values.kw.powUzytkowaKw != null &&
+    Number(values.area) === values.kw.powUzytkowaKw;
+
   const provenance: InputsProvenance = {
     address: confirmed,
-    area: confirmed,
+    area: areaFromDocument ? { source: values.kw!.source, status: "to_verify" } : confirmed,
     weights: confirmed,
     ratings: confirmed,
     ...(values.sampleMeta ? { geocode: { source: "geokoder", status: "to_verify" } as const } : {}),
@@ -37,6 +49,7 @@ export function assignProvenance(
           mpzp: values.subjectMeta ? ({ source: "mpzp", status: "to_verify" } as const) : confirmed,
         }
       : {}),
+    ...(values.kw ? { kw: { source: values.kw.source, status: "to_verify" } as const } : {}),
   };
 
   return { comparables, provenance };
