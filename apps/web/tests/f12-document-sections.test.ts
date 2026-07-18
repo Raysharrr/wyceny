@@ -84,6 +84,18 @@ const KW_AKT_NO_DZIAL: KwSnapshot = {
   dzial4: null,
 };
 
+/**
+ * Akt notarialny whose extract carries NO udział (`udzial: null`). Because a KW
+ * WAS examined (kw != null), the document must render a dash — never the legacy
+ * "wg odpisu księgi wieczystej" annotation, which is reserved for pre-Slice-6
+ * rows that never examined a KW (kw == null). Fix #5a.
+ */
+const KW_AKT_NULL_UDZIAL: KwSnapshot = {
+  ...KW_STANDARD,
+  source: "akt",
+  udzial: null,
+};
+
 /** Subject snapshot with a resolved MPZP — drives the `{#mpzp}` section-9 variant. */
 const SUBJECT_WITH_MPZP: SubjectSnapshot = {
   obreb: "Jeżyce",
@@ -328,6 +340,37 @@ describe("F-12: rendered operat — akt notarialny with no dział III/IV info (d
     expect(model.dzial3_wpisy).toEqual([]);
     expect(model.dzial4_brak).toBe(false);
     expect(model.dzial4_wpisy).toEqual([]);
+  });
+});
+
+describe("F-12: rendered operat — KW examined but udział absent (akt, udzial null)", () => {
+  const text = renderGolden(SUBJECT_WITH_MPZP, KW_AKT_NULL_UDZIAL);
+
+  it("has no unresolved template tags and no 'undefined'", () => {
+    expect(text).not.toContain("undefined");
+    expect(text).not.toMatch(/\{[a-z_#/.]+\}/i);
+  });
+
+  it("renders a dash for udział, NOT the legacy odpis annotation (Fix #5a)", () => {
+    expect(text).toContain("Udział w nieruchomości wspólnej: —.");
+    expect(text).not.toContain("Udział w nieruchomości wspólnej: wg odpisu księgi wieczystej.");
+  });
+
+  it("model: udzial_kw is a dash when a KW was examined but carries no udział", () => {
+    const inputs = goldenInputs(SUBJECT_WITH_MPZP, KW_AKT_NULL_UDZIAL);
+    const model = buildDocumentModel({
+      address: "ul. Przykładowa 5, Poznań",
+      area: 48.2,
+      purpose: "informacyjny",
+      kwNumber: "KW-TEST-9",
+      client: "p. Anna Przykładowa",
+      inspectionDate: "2026-06-30",
+      approvedAt: new Date("2026-07-15T09:00:00Z"),
+      inputs,
+      kcs: computeKcs(inputs),
+      amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+    });
+    expect(model.udzial_kw).toBe("—");
   });
 });
 

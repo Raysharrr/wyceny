@@ -337,6 +337,122 @@ describe("createValuation — success path (Slice 4: no document generation at d
     );
   });
 
+  it("normalizes empty-string kw fields to null at the action boundary (final review #4)", async () => {
+    createMock.mockResolvedValue({
+      id: "valuation-test-kw-empty",
+      address: valid.address,
+      area: valid.area,
+      wr: 1000000,
+      inputs: null,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: valid.purpose,
+      kwNumber: "AB1C/2/7",
+      client: valid.client,
+      inspectionDate: valid.inspectionDate,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      createdAt: new Date("2026-07-18T00:00:00.000Z"),
+    });
+
+    // The extractor can emit "" (or whitespace) for fields it could not read;
+    // those must persist as `null`, never as a "" that renders malformed operat
+    // sentences ("Sąd: .") or a phantom KW number.
+    const kwEmpty = {
+      source: "akt" as const,
+      kwLokalu: "",
+      kwGruntu: "AB1C/2/7",
+      kwInne: ["", "  "],
+      deweloperski: false,
+      powUzytkowaKw: 69.56,
+      udzial: "",
+      sad: "  ",
+      wydzial: "",
+      dataDokumentu: "",
+      dzial3: null,
+      dzial4: null,
+    };
+    const kwMeta = {
+      model: "claude-test-model",
+      extractedAt: "2026-07-18T00:00:00.000Z",
+      docTypeDetected: "akt" as const,
+      docTypeDeclared: "akt" as const,
+    };
+
+    await createValuation({ ...valid, kwNumber: undefined, kw: kwEmpty, kwMeta });
+
+    const call = createMock.mock.calls[0][0] as {
+      kwNumber: string | null;
+      inputs: { kw: Record<string, unknown> };
+    };
+    expect(call.inputs.kw).toMatchObject({
+      kwLokalu: null,
+      udzial: null,
+      sad: null,
+      wydzial: null,
+      dataDokumentu: null,
+      kwInne: [],
+      kwGruntu: "AB1C/2/7",
+    });
+    // kwLokalu normalized to null → the column sync falls back to kwGruntu,
+    // never the empty string.
+    expect(call.kwNumber).toBe("AB1C/2/7");
+  });
+
+  it('drops empty/whitespace tresc lines while leaving wpisy untouched (T7 [""]-textarea, #4)', async () => {
+    createMock.mockResolvedValue({
+      id: "valuation-test-kw-tresc",
+      address: valid.address,
+      area: valid.area,
+      wr: 1000000,
+      inputs: null,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: valid.purpose,
+      kwNumber: "PO1P/1/6",
+      client: valid.client,
+      inspectionDate: valid.inspectionDate,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      createdAt: new Date("2026-07-18T00:00:00.000Z"),
+    });
+
+    const kwEmptyTresc = {
+      source: "odpis_kw" as const,
+      kwLokalu: "PO1P/1/6",
+      kwGruntu: "PO1P/2/4",
+      kwInne: [],
+      deweloperski: false,
+      powUzytkowaKw: null,
+      udzial: "1/1",
+      sad: "Sąd Rejonowy",
+      wydzial: "V Wydział",
+      dataDokumentu: "2026-06-01",
+      // An empty textarea round-trips as [""] — must persist as [] (no phantom
+      // entry), but `wpisy` stays true (flipping it would fabricate "brak wpisów").
+      dzial3: { wpisy: true, tresc: ["", "  "] },
+      dzial4: { wpisy: false, tresc: [] },
+    };
+    const kwMeta = {
+      model: "claude-test-model",
+      extractedAt: "2026-07-18T00:00:00.000Z",
+      docTypeDetected: "odpis_kw" as const,
+      docTypeDeclared: "odpis_kw" as const,
+    };
+
+    await createValuation({ ...valid, kwNumber: undefined, kw: kwEmptyTresc, kwMeta });
+
+    const call = createMock.mock.calls[0][0] as {
+      inputs: { kw: { dzial3: unknown; dzial4: unknown } };
+    };
+    expect(call.inputs.kw.dzial3).toEqual({ wpisy: true, tresc: [] });
+    expect(call.inputs.kw.dzial4).toEqual({ wpisy: false, tresc: [] });
+  });
+
   it("persists a subject with only mpzpAbsent: true set — a lone true flag is non-empty (Fix A)", async () => {
     createMock.mockResolvedValue({
       id: "valuation-test-5",

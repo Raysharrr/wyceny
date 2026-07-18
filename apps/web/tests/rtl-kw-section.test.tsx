@@ -229,9 +229,14 @@ describe("KwSection", () => {
 // Full-form wiring — the real <NewValuationForm/> with mocked actions. Guards
 // W4 (upload-mode submit error) and W7 (reset regression / write-once poison).
 // ---------------------------------------------------------------------------
-async function fillRequiredExceptKw(user: ReturnType<typeof userEvent.setup>) {
+async function fillRequiredExceptKw(
+  user: ReturnType<typeof userEvent.setup>,
+  { skipArea = false }: { skipArea?: boolean } = {},
+) {
   await user.type(screen.getByLabelText("Adres"), "ul. Testowa 1, Poznań");
-  await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
+  // `skipArea` leaves the field blank so the extract's powUzytkowaKw can seed
+  // it (the #2 doc-seed reset regression needs an empty area to seed into).
+  if (!skipArea) await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
   await user.selectOptions(screen.getByLabelText(/cel wyceny/i), "sprzedaz");
   await user.type(screen.getByLabelText(/zamawiający wycenę/i), "p. Test Testowy");
   await user.type(screen.getByLabelText(/data oględzin/i), "2026-07-01");
@@ -296,6 +301,103 @@ describe("KwSection — full-form wiring", () => {
     await waitFor(() => expect(createValuation).toHaveBeenCalled());
     const submitted = vi.mocked(createValuation).mock.calls[0][0] as { kw?: unknown };
     expect(submitted.kw).toBeUndefined();
+  });
+
+  // #2: a doc-seeded area (auto-filled from the extract's powUzytkowaKw into a
+  // BLANK field) must NOT survive a section reset — otherwise a stale LLM number
+  // would persist as a rzeczoznawca/confirmed area. Switching source clears it.
+  it("clears a doc-seeded area on source switch, so the stale number never persists (#2)", async () => {
+    vi.mocked(extractKw).mockResolvedValue(OK_EXTRACT);
+    const user = userEvent.setup();
+    render(<NewValuationForm />);
+
+    await fillRequiredExceptKw(user, { skipArea: true });
+    const areaInput = screen.getByLabelText(/powierzchnia \(m²\)/i) as HTMLInputElement;
+    expect(areaInput.value).toBe("");
+
+    await user.click(screen.getByRole("button", { name: /wgraj akt notarialny/i }));
+    const fileInput = screen.getByTestId("kw-file-input") as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["%PDF-1.4 fake"], "akt.pdf", { type: "application/pdf" }),
+    );
+    await screen.findByText(/Odczytano/);
+    // Auto-seeded from OK_EXTRACT.extract.powUzytkowaKw (69.56) into the blank field.
+    await waitFor(() => expect(areaInput.value).toBe("69.56"));
+
+    // Switch to manual → the doc-seeded (unedited) area is dropped.
+    await user.click(screen.getByRole("button", { name: /wpisz ręcznie/i }));
+    await waitFor(() => expect(areaInput.value).toBe(""));
+
+    // Empty area fails the required-positive schema rule, so submit is blocked:
+    // the stale 69.56 can never reach the action as a rzeczoznawca value.
+    await user.click(screen.getByRole("button", { name: /zapisz szkic/i }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(createValuation).not.toHaveBeenCalled();
+  });
+
+  // #3: a kwNumber typed in manual mode must be hard-reset when switching to an
+  // upload source, so it can't silently become {nr_kw} next to a DIFFERENT set
+  // of extracted numbers. After the extract, the KW number comes from the extract.
+  it("hard-resets a manually-typed kwNumber when switching to an upload source (#3)", async () => {
+    vi.mocked(extractKw).mockResolvedValue(OK_EXTRACT);
+    const user = userEvent.setup();
+    render(<NewValuationForm />);
+
+    await fillRequiredExceptKw(user);
+    // Default source is "reczny": type a manual KW number first.
+    await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "KW-MANUAL-3");
+
+    // Switch to akt + upload → extract populates kw.* (kwLokalu AB1C/1/9).
+    await user.click(screen.getByRole("button", { name: /wgraj akt notarialny/i }));
+    const fileInput = screen.getByTestId("kw-file-input") as HTMLInputElement;
+    await user.upload(
+      fileInput,
+      new File(["%PDF-1.4 fake"], "akt.pdf", { type: "application/pdf" }),
+    );
+    await screen.findByText(/Odczytano/);
+
+    await user.click(screen.getByRole("button", { name: /zapisz szkic/i }));
+    await waitFor(() => expect(createValuation).toHaveBeenCalled());
+
+    const submitted = vi.mocked(createValuation).mock.calls[0][0] as {
+      kwNumber?: string;
+      kw?: { kwLokalu?: string | null };
+    };
+    // The typed "KW-MANUAL-3" is gone; the server syncs kwNumber from the
+    // extract's kwLokalu (createValuation is mocked, so we assert the inputs).
+    expect(submitted.kwNumber ?? "").toBe("");
+    expect(submitted.kw?.kwLokalu).toBe("AB1C/1/9");
+  });
+
+  // Minor: a client-side reject (non-PDF) must bump kwSeq so a prior in-flight
+  // extraction that resolves late can't overwrite the inline error.
+  it("a non-PDF reject invalidates a prior in-flight extraction (kwSeq bump)", async () => {
+    let resolveExtract!: (v: KwExtractResult) => void;
+    vi.mocked(extractKw).mockReturnValue(
+      new Promise<KwExtractResult>((r) => {
+        resolveExtract = r;
+      }),
+    );
+    const user = userEvent.setup({ applyAccept: false });
+    render(<NewValuationForm />);
+
+    await fillRequiredExceptKw(user);
+    await user.click(screen.getByRole("button", { name: /wgraj akt notarialny/i }));
+    const fileInput = screen.getByTestId("kw-file-input") as HTMLInputElement;
+    // 1) A valid PDF starts an extraction we hold unresolved (in-flight).
+    await user.upload(fileInput, new File(["%PDF-1.4"], "akt.pdf", { type: "application/pdf" }));
+    await waitFor(() => expect(extractKw).toHaveBeenCalled());
+
+    // 2) A non-PDF is rejected client-side → inline error, and bumps kwSeq.
+    await user.upload(fileInput, new File(["nie pdf"], "notatka.txt", { type: "text/plain" }));
+    expect(await screen.findByText(/Wgraj plik PDF/i)).toBeDefined();
+
+    // 3) The now-stale extraction resolves — it must NOT overwrite the error.
+    resolveExtract(OK_EXTRACT);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText(/Odczytano/)).toBeNull();
+    expect(screen.getByText(/Wgraj plik PDF/i)).toBeDefined();
   });
 
   // Race guard: an extraction that resolves AFTER the user switched source must

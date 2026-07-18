@@ -253,7 +253,12 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     kw_sad: kw?.sad ?? DASH,
     kw_wydzial: kw?.wydzial ?? DASH,
     kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : DASH,
-    udzial_kw: kw?.udzial ?? "wg odpisu księgi wieczystej",
+    // Honest udział: the "wg odpisu księgi wieczystej" annotation is a LEGACY
+    // fallback for pre-Slice-6 rows that never examined a KW (kw == null). When
+    // a KW WAS examined (kw != null) but the extract carries no udział, render a
+    // dash — the document must not claim the share was "per the KW excerpt"
+    // when the excerpt (or akt) never stated it.
+    udzial_kw: kw == null ? "wg odpisu księgi wieczystej" : (kw.udzial ?? DASH),
     pow_kw_present: kw?.powUzytkowaKw != null,
     pow_uzytkowa_kw: kw?.powUzytkowaKw != null ? formatNumber(kw.powUzytkowaKw, 2) : DASH,
     // dzialN == null means the source document carries NO dział info (e.g. an

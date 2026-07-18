@@ -106,6 +106,11 @@ export function NewValuationForm() {
   // a late-resolving stale extract can't repopulate `kw` after the section was
   // reset — which would silently submit a stale legal KW snapshot.
   const kwSeq = useRef(0);
+  // The numeric area value auto-seeded from a KW extract's `powUzytkowaKw`
+  // (into a blank field). `resetKwSection` uses it to drop a doc-seeded area on
+  // a section reset — a stale LLM number must never survive as a
+  // rzeczoznawca/confirmed area. `null` = nothing doc-seeded to reconcile.
+  const areaSeededFromKw = useRef<number | null>(null);
   const lastFetchedAddress = useRef<string | null>(null);
   // Guards against out-of-order responses: if the address changes again (or
   // a retry fires) before an in-flight fetch resolves, only the LATEST
@@ -266,6 +271,21 @@ export function NewValuationForm() {
     lastKwFile.current = null;
     resetField("kw");
     resetField("kwMeta");
+    // Hard-reset the flat manual number too: a kwNumber typed in "reczny" must
+    // not silently become `{nr_kw}` in the operat next to a DIFFERENT set of
+    // extracted numbers after switching to an upload source. Switching back to
+    // reczny starts clean — consistent with the section's reset philosophy.
+    resetField("kwNumber");
+    // Drop a doc-seeded area the appraiser never edited (still equals the
+    // seeded value) — otherwise a stale LLM `powUzytkowaKw` would persist as a
+    // rzeczoznawca/confirmed area. A hand-edited area (differs) is preserved.
+    if (
+      areaSeededFromKw.current != null &&
+      Number(getValues("area")) === areaSeededFromKw.current
+    ) {
+      resetField("area");
+    }
+    areaSeededFromKw.current = null;
   };
 
   const runKwExtraction = async (file: File, expectedType: "akt" | "odpis_kw") => {
@@ -308,6 +328,7 @@ export function NewValuationForm() {
       (area === undefined || area === "" || area === null)
     ) {
       setValue("area", result.extract.powUzytkowaKw, { shouldDirty: true });
+      areaSeededFromKw.current = result.extract.powUzytkowaKw;
     }
     const kwCount = [
       result.extract.kwLokalu,
@@ -326,11 +347,13 @@ export function NewValuationForm() {
   const onKwFileSelected = (file: File) => {
     const expectedType = kwSource === "odpis_kw" ? "odpis_kw" : "akt";
     if (file.type !== "application/pdf") {
+      kwSeq.current++; // invalidate any in-flight extraction so a late resolve can't overwrite this inline error
       lastKwFile.current = null;
       setKwState({ status: "error", message: "Wgraj plik PDF." });
       return;
     }
     if (file.size > 32 * 1024 * 1024) {
+      kwSeq.current++; // invalidate any in-flight extraction so a late resolve can't overwrite this inline error
       lastKwFile.current = null;
       setKwState({ status: "error", message: "Plik jest za duży (maks. 32 MB)." });
       return;

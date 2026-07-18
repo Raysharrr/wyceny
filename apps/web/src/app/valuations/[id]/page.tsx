@@ -7,7 +7,7 @@ import { getSession } from "@/auth/session";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
 import type { KwDzialSnapshot } from "@/domain/kw-snapshot";
 import { approvalGate } from "@/domain/provenance";
-import { documentFieldBlockers } from "@/domain/document-model";
+import { documentFieldBlockers, formatNumber } from "@/domain/document-model";
 import { valuationRepository } from "../_deps";
 import { ValuationActions } from "./valuation-actions";
 
@@ -36,6 +36,18 @@ const RATING_LABEL: Record<string, string> = {
   przecietna: "przeciętna",
   lepsza: "lepsza",
 };
+
+// Document-source labels for the area provenance line (F-4): when the area was
+// seeded from an uploaded deed/excerpt it is `to_verify` until confirmKw, so
+// the confirm surface must NOT claim it as a rzeczoznawca-confirmed value.
+const AREA_SOURCE_LABEL: Record<"akt" | "odpis_kw", string> = {
+  akt: "akt",
+  odpis_kw: "odpis KW",
+};
+
+function provenanceStatusText(status?: string): string {
+  return status === "confirmed" ? "potwierdzone" : "do weryfikacji";
+}
 
 // RFC 4122-shaped (any version/variant) — the `id` route param is
 // user-controlled and Postgres' `uuid` column rejects anything else with a
@@ -317,6 +329,10 @@ function KwCard({ inputs }: { inputs: KcsInput }) {
             <dd>{kw.udzial ?? "—"}</dd>
           </div>
           <div>
+            <dt className="text-xs text-muted-foreground">Pow. użytkowa (wg dokumentu)</dt>
+            <dd>{kw.powUzytkowaKw != null ? `${formatNumber(kw.powUzytkowaKw, 2)} m²` : "—"}</dd>
+          </div>
+          <div>
             <dt className="text-xs text-muted-foreground">Sąd / wydział</dt>
             <dd>
               {kw.sad ?? "—"} / {kw.wydzial ?? "—"}
@@ -337,6 +353,15 @@ function KwCard({ inputs }: { inputs: KcsInput }) {
 }
 
 function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
+  // Area is doc-sourced (and thus to_verify until confirmKw) only when its
+  // provenance source is a document type — render it separately with its real
+  // source + status instead of folding it into the blanket "rzeczoznawca
+  // (potwierdzone)" claim, which would be false while it is still to_verify.
+  const area = inputs.provenance?.area;
+  const areaProvenanceText =
+    area && (area.source === "akt" || area.source === "odpis_kw")
+      ? `powierzchnia: ${AREA_SOURCE_LABEL[area.source]} — ${provenanceStatusText(area.status)}`
+      : null;
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 pt-6">
@@ -365,13 +390,11 @@ function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
         </table>
         {inputs.provenance ? (
           <p className="text-xs text-muted-foreground">
-            Adres, powierzchnia, wagi i oceny: rzeczoznawca (potwierdzone)
+            {areaProvenanceText
+              ? `Adres, wagi i oceny: rzeczoznawca (potwierdzone) · ${areaProvenanceText}`
+              : "Adres, powierzchnia, wagi i oceny: rzeczoznawca (potwierdzone)"}
             {inputs.provenance.geocode
-              ? ` · geokodowanie: ${
-                  inputs.provenance.geocode.status === "confirmed"
-                    ? "potwierdzone"
-                    : "do weryfikacji"
-                }`
+              ? ` · geokodowanie: ${provenanceStatusText(inputs.provenance.geocode.status)}`
               : ""}
           </p>
         ) : null}

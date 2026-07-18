@@ -12,6 +12,50 @@ export type CreateValuationInput = ValuationFormValues;
 
 export type CreateValuationResult = { error: string } | undefined;
 
+type KwSnapshot = NonNullable<ValuationFormValues["kw"]>;
+type KwDzial = NonNullable<KwSnapshot["dzial3"]>;
+
+/** ""/whitespace → null; otherwise the trimmed string. */
+function trimToNull(value: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/** Drops empty/whitespace-only entries; keeps `wpisy` untouched (see below). */
+function normalizeDzial(dzial: KwDzial | null): KwDzial | null {
+  if (dzial == null) return dzial;
+  // Deliberately DO NOT flip `wpisy` to false when the filtered `tresc` is
+  // empty: that would fabricate a "brak wpisów" (clean-title/no-mortgage)
+  // claim. The document model renders neither the brak sentence nor the loop
+  // when `wpisy` is true but `tresc` is [] — acceptable honest silence.
+  return {
+    wpisy: dzial.wpisy,
+    tresc: dzial.tresc.map((t) => t.trim()).filter((t) => t.length > 0),
+  };
+}
+
+/**
+ * Normalizes a document-sourced KW snapshot at the action boundary (mirrors
+ * the `isEmptySubject` convention): empty-string fields the extractor may emit
+ * become `null`, and empty/whitespace `tresc`/`kwInne` lines are dropped — so
+ * a `""` never persists to render malformed operat sentences (e.g. "Sąd: .")
+ * or a phantom KW number, and the F-4 gate sees honest nulls.
+ */
+function normalizeKw(kw: KwSnapshot): KwSnapshot {
+  return {
+    ...kw,
+    kwLokalu: trimToNull(kw.kwLokalu),
+    kwGruntu: trimToNull(kw.kwGruntu),
+    udzial: trimToNull(kw.udzial),
+    sad: trimToNull(kw.sad),
+    wydzial: trimToNull(kw.wydzial),
+    dataDokumentu: trimToNull(kw.dataDokumentu),
+    kwInne: kw.kwInne.map((s) => s.trim()).filter((s) => s.length > 0),
+    dzial3: normalizeDzial(kw.dzial3),
+    dzial4: normalizeDzial(kw.dzial4),
+  };
+}
+
 /**
  * Server Action backing `valuations/new` (Task 9 — the E2E climax). Crosses
  * every boundary built so far: session (T6) → PortValuation/Postgres (T5),
@@ -64,6 +108,13 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     inspectionDate,
   } = parsed.data;
 
+  // Normalize the document-sourced KW snapshot once (""-fields → null, empty
+  // tresc/kwInne lines dropped) so every downstream consumer — the persisted
+  // kcsInput.kw, the kwNumber column sync, the F-4 gate — sees the same honest
+  // shape. `assignProvenance` reads only source/powUzytkowaKw, so it is
+  // unaffected by this and keeps receiving `parsed.data.kw`.
+  const normalizedKw = kw ? normalizeKw(kw) : kw;
+
   // An untouched "Dane przedmiotu" section still submits a truthy object
   // (RHF seeds `defaultValues.subject` with `EMPTY_SUBJECT`) — treat it as
   // absent so no snapshot/provenance is persisted for data nobody touched.
@@ -91,7 +142,7 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     subjectMeta: effectiveSubjectMeta ?? null,
     // Normalized to null when absent, like subject/subjectMeta, so every
     // stored snapshot has the same shape (manual-only vs. kw-extract-seeded).
-    kw: kw ?? null,
+    kw: normalizedKw ?? null,
     kwMeta: kwMeta ?? null,
     provenance,
   };
@@ -113,7 +164,7 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
     // yields no fallback either, and the column is nullable; approval is
     // gated separately by `documentFieldBlockers`/the F-4 kw checks, not by
     // this sync.
-    kwNumber: kwNumber?.trim() || kw?.kwLokalu || kw?.kwGruntu || null,
+    kwNumber: kwNumber?.trim() || normalizedKw?.kwLokalu || normalizedKw?.kwGruntu || null,
     client,
     inspectionDate,
     ownerId: session.user.id,
