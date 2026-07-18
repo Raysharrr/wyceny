@@ -332,3 +332,64 @@ describe("F-5: confirmSubject mutation (subject provenance, Task 6)", () => {
     expect(await repo.confirmSubject(created.id, admin)).toBeNull();
   });
 });
+
+function kwApprovableInputs(): KcsInput {
+  const base = approvableInputs();
+  return {
+    ...base,
+    kw: {
+      source: "odpis_kw",
+      kwLokalu: "PO1P/00012345/6",
+      kwGruntu: "PO1P/00098765/4",
+      kwInne: [],
+      deweloperski: false,
+      powUzytkowaKw: 50,
+      udzial: "1/1",
+      sad: "Sąd Rejonowy Poznań-Stare Miasto",
+      wydzial: "V Wydział Ksiąg Wieczystych",
+      dataDokumentu: "2026-06-01",
+      dzial3: { wpisy: false, tresc: [] },
+      dzial4: { wpisy: true, tresc: ["Hipoteka umowna na rzecz banku X"] },
+    },
+    provenance: {
+      ...base.provenance!,
+      area: { source: "odpis_kw" as const, status: "to_verify" as const },
+      kw: { source: "odpis_kw" as const, status: "to_verify" as const },
+    },
+  };
+}
+
+describe("F-5: confirmKw mutation (KW-extract provenance, Task 8)", () => {
+  it("confirmKw flips kw + document-sourced area to confirmed and persists", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 11"),
+      inputs: kwApprovableInputs(),
+    });
+    const confirmed = await repo.confirmKw(created.id, appraiserA);
+    expect(confirmed).not.toBeNull();
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread!.inputs!.provenance!.kw!.status).toBe("confirmed");
+    expect(reread!.inputs!.provenance!.area!.status).toBe("confirmed");
+  });
+
+  it("confirmKw is owner-only: another appraiser AND a non-owner admin get null", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 12"),
+      inputs: kwApprovableInputs(),
+    });
+    expect(await repo.confirmKw(created.id, appraiserB)).toBeNull();
+    expect(await repo.confirmKw(created.id, admin)).toBeNull();
+  });
+
+  it("confirmKw on an approved valuation throws (write-once at approval)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 13"),
+      inputs: kwApprovableInputs(),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmKw(created.id, appraiserA);
+    const approved = await repo.approve(created.id, appraiserA);
+    expect(approved!.status).toBe("approved");
+    await expect(repo.confirmKw(created.id, appraiserA)).rejects.toThrow(/not a draft/i);
+  });
+});

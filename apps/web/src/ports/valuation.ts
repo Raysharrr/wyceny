@@ -77,6 +77,12 @@ export interface PortValuation {
    */
   confirmSubject(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
+   * Confirms KW-extract provenance on a draft (kw — and document-sourced
+   * area — → confirmed). Mirrors `confirmSample`'s owner-only null/throw
+   * contract.
+   */
+  confirmKw(id: string, user: SessionUser): Promise<Valuation | null>;
+  /**
    * Approves a draft — re-runs the F-4 gate AND the document-field check
    * server-side (never trusts the client). Same null/throw contract as
    * confirmSample; additionally throws ApprovalBlockedError when either the

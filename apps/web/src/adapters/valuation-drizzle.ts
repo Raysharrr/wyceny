@@ -3,6 +3,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { KcsInput } from "../domain/kcs";
 import {
   approveValuation,
+  confirmKwProvenance,
   confirmSampleProvenance,
   confirmSubjectProvenance,
   newValuation,
@@ -128,6 +129,20 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       const valuation = toValuation(row);
       if (valuation.ownerId !== user.id) return null;
       const updated = confirmSubjectProvenance(valuation);
+      const [saved] = await db
+        .update(schema.valuation)
+        .set({ inputs: updated.inputs })
+        .where(eq(schema.valuation.id, id))
+        .returning();
+      return toValuation(saved);
+    },
+
+    async confirmKw(id: string, user: SessionUser): Promise<Valuation | null> {
+      const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+      if (!row) return null;
+      const valuation = toValuation(row);
+      if (valuation.ownerId !== user.id) return null;
+      const updated = confirmKwProvenance(valuation);
       const [saved] = await db
         .update(schema.valuation)
         .set({ inputs: updated.inputs })

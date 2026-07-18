@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getSession } from "@/auth/session";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
+import type { KwDzialSnapshot } from "@/domain/kw-snapshot";
 import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers } from "@/domain/document-model";
 import { valuationRepository } from "../_deps";
@@ -265,6 +266,76 @@ function SubjectCard({ inputs }: { inputs: KcsInput }) {
   );
 }
 
+function KwDzialField({ label, dzial }: { label: string; dzial: KwDzialSnapshot | null }) {
+  const tresc = dzial?.tresc ?? [];
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      {tresc.length > 0 ? (
+        <ul className="list-disc pl-5 text-sm">
+          {tresc.map((t, i) => (
+            <li key={i}>{t}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm">brak wpisów</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Auto-extracted KW snapshot (Slice 6, Task 8) — rendered only when a KW
+ * extract exists (manual `kwNumber`-only submissions never attached one).
+ * Mirrors `SubjectCard`'s structure.
+ */
+function KwCard({ inputs }: { inputs: KcsInput }) {
+  const kw = inputs.kw;
+  if (!kw) return null;
+  const provenance = inputs.provenance;
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium text-foreground">Stan prawny (KW)</h2>
+          <GroupProvenanceBadge label="Stan prawny (KW)" status={provenance?.kw?.status} />
+        </div>
+        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+          <div>
+            <dt className="text-xs text-muted-foreground">Nr KW lokalu</dt>
+            <dd>
+              {kw.deweloperski ? "lokal bez własnej KW — księga macierzysta" : (kw.kwLokalu ?? "—")}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Nr KW gruntu (księga macierzysta)</dt>
+            <dd>{kw.kwGruntu ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Udział w nieruchomości wspólnej</dt>
+            <dd>{kw.udzial ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Sąd / wydział</dt>
+            <dd>
+              {kw.sad ?? "—"} / {kw.wydzial ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Data dokumentu</dt>
+            <dd>{kw.dataDokumentu ?? "—"}</dd>
+          </div>
+        </dl>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <KwDzialField label="Dział III — prawa, roszczenia i ograniczenia" dzial={kw.dzial3} />
+          <KwDzialField label="Dział IV — hipoteki" dzial={kw.dzial4} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
   return (
     <Card>
@@ -349,6 +420,10 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
       ? valuation.inputs.provenance?.ewidencja?.status === "to_verify" ||
         valuation.inputs.provenance?.mpzp?.status === "to_verify"
       : false;
+  const hasKwToVerify =
+    isDraft && valuation.inputs
+      ? valuation.inputs.kw != null && valuation.inputs.provenance?.kw?.status === "to_verify"
+      : false;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
@@ -395,6 +470,8 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
 
       {valuation.inputs?.subject ? <SubjectCard inputs={valuation.inputs} /> : null}
 
+      {valuation.inputs?.kw ? <KwCard inputs={valuation.inputs} /> : null}
+
       {isDraft ? (
         <Card>
           <CardContent className="flex flex-col gap-3 pt-6">
@@ -414,6 +491,7 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
               id={valuation.id}
               hasToVerify={hasToVerify}
               hasSubjectToVerify={hasSubjectToVerify}
+              hasKwToVerify={hasKwToVerify}
               gateOk={gateOk}
             />
           </CardContent>
