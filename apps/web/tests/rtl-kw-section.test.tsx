@@ -47,8 +47,11 @@ const OK_EXTRACT = {
   kind: "ok" as const,
   extract: {
     source: "akt" as const,
-    kwLokalu: "AB1C/00000001/9",
-    kwGruntu: "AB1C/00000002/7",
+    // Short synthetic KW numbers — deliberately NOT the real 8-digit-middle
+    // format (2 letters + digit + letter / 8 digits / digit) so the F-9 PII
+    // scan stays clean.
+    kwLokalu: "AB1C/1/9",
+    kwGruntu: "AB1C/2/7",
     kwInne: [],
     deweloperski: false,
     powUzytkowaKw: 69.56,
