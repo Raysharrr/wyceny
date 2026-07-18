@@ -101,6 +101,11 @@ export function NewValuationForm() {
   const [kwSource, setKwSource] = useState<KwSource>("reczny");
   const [kwState, setKwState] = useState<KwFetchState>({ status: "idle" });
   const lastKwFile = useRef<File | null>(null);
+  // Same out-of-order guard as `fetchSeq` below, for the KW extraction: a
+  // source switch (or a retry) mid-flight invalidates the in-flight upload so
+  // a late-resolving stale extract can't repopulate `kw` after the section was
+  // reset — which would silently submit a stale legal KW snapshot.
+  const kwSeq = useRef(0);
   const lastFetchedAddress = useRef<string | null>(null);
   // Guards against out-of-order responses: if the address changes again (or
   // a retry fires) before an in-flight fetch resolves, only the LATEST
@@ -255,6 +260,7 @@ export function NewValuationForm() {
   // that were mounted during an upload, so a switch to manual can't leave a
   // stale `kw` in the submitted values (W7 write-once poisoning class).
   const resetKwSection = (nextSource: KwSource) => {
+    kwSeq.current++; // invalidate any in-flight extraction owning the old section
     setKwSource(nextSource);
     setKwState({ status: "idle" });
     lastKwFile.current = null;
@@ -263,9 +269,11 @@ export function NewValuationForm() {
   };
 
   const runKwExtraction = async (file: File, expectedType: "akt" | "odpis_kw") => {
+    const seq = ++kwSeq.current;
     lastKwFile.current = file;
     setKwState({ status: "loading" });
     const minted = await mintKwUploadToken();
+    if (seq !== kwSeq.current) return; // stale — a switch/retry owns the section now
     if ("error" in minted) {
       setKwState({ status: "error", message: minted.error });
       return;
@@ -276,6 +284,7 @@ export function NewValuationForm() {
       token: minted.token,
       workerUrl: WORKER_URL,
     });
+    if (seq !== kwSeq.current) return; // stale response — do not write into the form
     if (result.kind === "invalidDoc") {
       setKwState({ status: "invalidDoc", message: result.message });
       return;
@@ -286,6 +295,10 @@ export function NewValuationForm() {
     }
     setValue("kw", result.extract, { shouldDirty: true });
     setValue("kwMeta", result.meta, { shouldDirty: true });
+    // Clear a stale kwNumber error left over from a prior empty upload-mode
+    // submit (W4) — now that an extract exists, the manual number isn't
+    // required and the contradictory error must go.
+    void trigger("kwNumber");
     // Seed the form area from the document only if the appraiser left it blank
     // — never overwrite a value they typed (that's what the mismatch nudge is
     // for).

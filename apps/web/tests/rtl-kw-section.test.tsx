@@ -41,7 +41,7 @@ vi.mock("@/lib/kw-extract-client", () => ({ extractKw: vi.fn() }));
 
 import { NewValuationForm } from "@/app/valuations/new/new-valuation-form";
 import { createValuation } from "@/app/actions/create-valuation";
-import { extractKw } from "@/lib/kw-extract-client";
+import { extractKw, type KwExtractResult } from "@/lib/kw-extract-client";
 
 const OK_EXTRACT = {
   kind: "ok" as const,
@@ -293,6 +293,41 @@ describe("KwSection — full-form wiring", () => {
     await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "KW-MANUAL-1");
     await user.click(screen.getByRole("button", { name: /zapisz szkic/i }));
 
+    await waitFor(() => expect(createValuation).toHaveBeenCalled());
+    const submitted = vi.mocked(createValuation).mock.calls[0][0] as { kw?: unknown };
+    expect(submitted.kw).toBeUndefined();
+  });
+
+  // Race guard: an extraction that resolves AFTER the user switched source must
+  // not write into the form — no stale `kw` in the submitted values, no extract
+  // UI resurfacing. Mirrors fetchSubject's out-of-order guard.
+  it("ignores a stale extraction that resolves after a source switch", async () => {
+    let resolveExtract!: (v: KwExtractResult) => void;
+    vi.mocked(extractKw).mockReturnValue(
+      new Promise<KwExtractResult>((r) => {
+        resolveExtract = r;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<NewValuationForm />);
+
+    await fillRequiredExceptKw(user);
+    await user.click(screen.getByRole("button", { name: /wgraj akt notarialny/i }));
+    const fileInput = screen.getByTestId("kw-file-input") as HTMLInputElement;
+    await user.upload(fileInput, new File(["%PDF-1.4"], "akt.pdf", { type: "application/pdf" }));
+    // In-flight: the mint has resolved and extractKw was called but not resolved.
+    await waitFor(() => expect(extractKw).toHaveBeenCalled());
+
+    // Switch away, THEN let the now-stale extraction resolve.
+    await user.click(screen.getByRole("button", { name: /wpisz ręcznie/i }));
+    resolveExtract(OK_EXTRACT);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // The stale "done" state must not have landed.
+    expect(screen.queryByText(/Odczytano/)).toBeNull();
+
+    await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "KW-MANUAL-2");
+    await user.click(screen.getByRole("button", { name: /zapisz szkic/i }));
     await waitFor(() => expect(createValuation).toHaveBeenCalled());
     const submitted = vi.mocked(createValuation).mock.calls[0][0] as { kw?: unknown };
     expect(submitted.kw).toBeUndefined();
