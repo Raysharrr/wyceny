@@ -29,6 +29,11 @@ export async function saveSignature(formData: FormData): Promise<SaveSignatureRe
     return { error: "Plik jest za duży — maksymalnie 1 MB." };
   }
   const bytes = Buffer.from(await file.arrayBuffer());
-  await profileRepository.saveSignature(session.user.id, bytes, file.type);
+  try {
+    await profileRepository.saveSignature(session.user.id, bytes, file.type);
+  } catch (error) {
+    console.error("saveSignature failed", error);
+    return { error: "Nie udało się zapisać podpisu — spróbuj ponownie." };
+  }
   revalidatePath("/profile");
 }
