@@ -184,6 +184,11 @@ describe("F-12: template integrity (operat-szablon.docx)", () => {
     }
   });
 
+  it("contains the {%podpis} signature tag exactly once (Slice 8)", () => {
+    const text = templateText();
+    expect(text.match(/\{%podpis\}/g)).toHaveLength(1);
+  });
+
   // ADR-006 (AC-8): the honest weights-methodology sentence must be present —
   // the r² claim was removed in Slice 4; this is its truthful replacement.
   it("contains the honest weights-methodology sentence (ADR-006 short variant)", () => {
