@@ -7,6 +7,7 @@ import { valuationFormSchema, type ValuationFormValues } from "@/lib/valuation-f
 import { computeKcs, type KcsInput } from "@/domain/kcs";
 import { assignProvenance } from "@/lib/assign-provenance";
 import { isEmptySubject } from "@/lib/subject-form";
+import { normalizeDefText, type FeatureDefinitions } from "@/domain/feature-presets";
 
 export type CreateValuationInput = ValuationFormValues;
 
@@ -19,6 +20,20 @@ type KwDzial = NonNullable<KwSnapshot["dzial3"]>;
 function trimToNull(value: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+/** Normalize per-level definitions: trim + collapse whitespace, drop empty levels. */
+function normalizeDefinitions(defs?: {
+  lepsza?: string;
+  przecietna?: string;
+  gorsza?: string;
+}): FeatureDefinitions {
+  const out: FeatureDefinitions = {};
+  for (const level of ["lepsza", "przecietna", "gorsza"] as const) {
+    const t = normalizeDefText(defs?.[level]);
+    if (t) out[level] = t;
+  }
+  return out;
 }
 
 /** Drops empty/whitespace-only entries; keeps `wpisy` untouched (see below). */
@@ -136,7 +151,13 @@ export async function createValuation(input: CreateValuationInput): Promise<Crea
   const kcsInput: KcsInput = {
     area,
     comparables: sourcedComparables,
-    features: features.map((f) => ({ name: f.name, weight: f.weightPct / 100, rating: f.rating })),
+    features: features.map((f) => ({
+      name: f.name,
+      weight: f.weightPct / 100,
+      rating: f.rating,
+      key: f.key,
+      definitions: normalizeDefinitions(f.definitions),
+    })),
     sampleMeta: sampleMeta ?? null,
     subject: effectiveSubject ?? null,
     subjectMeta: effectiveSubjectMeta ?? null,

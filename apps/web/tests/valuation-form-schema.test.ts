@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { subjectSchema, valuationFormSchema } from "../src/lib/valuation-form-schema";
+import {
+  DEFAULT_FEATURES,
+  subjectSchema,
+  valuationFormSchema,
+} from "../src/lib/valuation-form-schema";
 
 const valid = {
   address: "ul. Kościelna 33A, Poznań",
@@ -10,12 +14,22 @@ const valid = {
     { date: "2024-04", area: 76.41, pricePerM2: 12629.24 },
   ],
   features: [
-    { name: "standard wykończenia", weightPct: 40, rating: "lepsza" },
-    { name: "położenie na piętrze", weightPct: 30, rating: "lepsza" },
-    { name: "lokalizacja", weightPct: 10, rating: "przecietna" },
-    { name: "powierzchnia użytkowa", weightPct: 10, rating: "gorsza" },
-    { name: "pomieszczenia przynależne", weightPct: 4, rating: "przecietna" },
-    { name: "dodatkowe", weightPct: 6, rating: "przecietna" },
+    { key: "standard-wykonczenia", name: "standard wykończenia", weightPct: 40, rating: "lepsza" },
+    { key: "polozenie-na-pietrze", name: "położenie na piętrze", weightPct: 30, rating: "lepsza" },
+    { key: "lokalizacja", name: "lokalizacja", weightPct: 10, rating: "przecietna" },
+    {
+      key: "powierzchnia-uzytkowa",
+      name: "powierzchnia użytkowa",
+      weightPct: 10,
+      rating: "gorsza",
+    },
+    {
+      key: "pomieszczenia-przynalezne",
+      name: "pomieszczenia przynależne",
+      weightPct: 4,
+      rating: "przecietna",
+    },
+    { key: "dodatkowe", name: "dodatkowe", weightPct: 6, rating: "przecietna" },
   ],
   purpose: "sprzedaz",
   kwNumber: "KW-TEST-1",
@@ -23,9 +37,38 @@ const valid = {
   inspectionDate: "2026-07-01",
 };
 
+/** Fresh deep copy — new tests mutate `values.features`, must not leak into `valid`. */
+function validPayload(): typeof valid {
+  return structuredClone(valid);
+}
+
 describe("valuationFormSchema", () => {
   it("accepts a valid payload", () => {
     expect(valuationFormSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it("rejects a feature key outside the pool", () => {
+    const values = validPayload();
+    values.features = [
+      { key: "wlasna-cecha", name: "własna", weightPct: 100, rating: "przecietna" },
+    ];
+    expect(valuationFormSchema.safeParse(values).success).toBe(false);
+  });
+
+  it("rejects duplicate feature keys", () => {
+    const values = validPayload();
+    values.features = [
+      { key: "lokalizacja", name: "lokalizacja", weightPct: 50, rating: "przecietna" },
+      { key: "lokalizacja", name: "lokalizacja", weightPct: 50, rating: "lepsza" },
+    ];
+    const result = valuationFormSchema.safeParse(values);
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts optional per-level definitions and DEFAULT_FEATURES parses", () => {
+    const values = validPayload();
+    values.features = DEFAULT_FEATURES.map((f) => ({ ...f }));
+    expect(valuationFormSchema.safeParse(values).success).toBe(true);
   });
 
   it("rejects fewer than 3 comparables", () => {
@@ -60,7 +103,7 @@ describe("valuationFormSchema — document fields (Slice 4)", () => {
     address: "ul. Testowa 1",
     area: 50,
     comparables: [{ pricePerM2: 10000 }, { pricePerM2: 11000 }, { pricePerM2: 12000 }],
-    features: [{ name: "cecha", weightPct: 100, rating: "przecietna" }],
+    features: [{ key: "dodatkowe", name: "cecha", weightPct: 100, rating: "przecietna" }],
   };
 
   it("requires the four document fields with Polish messages", () => {

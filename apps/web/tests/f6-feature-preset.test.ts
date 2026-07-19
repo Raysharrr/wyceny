@@ -9,6 +9,7 @@ import {
   powierzchniaDefinitions,
 } from "../src/domain/feature-presets";
 import { computeKcs, type KcsInput } from "../src/domain/kcs";
+import { DEFAULT_FEATURES } from "../src/lib/valuation-form-schema";
 import fixture from "./fixtures/koscielna.json";
 
 /**
@@ -121,6 +122,10 @@ describe("F-6: lokal feature preset", () => {
     expect(matchesPresetDefinitions(edited, 60)).toBe(false);
     // wrong median → not preset
     expect(matchesPresetDefinitions(defaults, 70)).toBe(false);
+  });
+
+  it("DEFAULT_FEATURES is exactly the derived preset (golden-era form reproduced)", () => {
+    expect(DEFAULT_FEATURES).toEqual(defaultFeatureFormValues());
   });
 
   it("engine ignores the new metadata: enriched features give a byte-identical result (F-1 safe)", () => {

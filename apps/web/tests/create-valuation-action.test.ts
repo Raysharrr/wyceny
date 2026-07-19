@@ -33,6 +33,7 @@ import { redirect } from "next/navigation";
 import { createValuation, type CreateValuationInput } from "../src/app/actions/create-valuation";
 import { storage, valuationRepository, worker } from "@/app/valuations/_deps";
 import { EMPTY_SUBJECT } from "../src/lib/subject-form";
+import { DEFAULT_FEATURES } from "../src/lib/valuation-form-schema";
 
 const createMock = vi.mocked(valuationRepository.create);
 const amountInWordsMock = vi.mocked(worker.amountInWords);
@@ -47,14 +48,9 @@ const valid: CreateValuationInput = {
     { date: "2024-06", area: 61, pricePerM2: 13000 },
     { date: "2024-04", area: 62, pricePerM2: 14000 },
   ],
-  features: [
-    { name: "standard wykończenia", weightPct: 40, rating: "przecietna" },
-    { name: "położenie na piętrze", weightPct: 30, rating: "przecietna" },
-    { name: "lokalizacja", weightPct: 10, rating: "przecietna" },
-    { name: "powierzchnia użytkowa", weightPct: 10, rating: "przecietna" },
-    { name: "pomieszczenia przynależne", weightPct: 4, rating: "przecietna" },
-    { name: "dodatkowe", weightPct: 6, rating: "przecietna" },
-  ],
+  // Same composition as DEFAULT_FEATURES (F-6 basic preset) — cloned so
+  // per-test mutations never leak into the shared module-level export.
+  features: structuredClone(DEFAULT_FEATURES),
   purpose: "sprzedaz",
   kwNumber: "KW-TEST-1",
   client: "p. Jan Testowy",
@@ -145,6 +141,19 @@ describe("createValuation — success path (Slice 4: no document generation at d
         ownerId: "test-user",
       }),
     );
+
+    // Feature bag metadata (Slice 7, F-6) — key + per-level definitions must
+    // survive into the persisted snapshot, not just name/weight/rating.
+    const repoCreateCall = createMock.mock.calls[0][0] as {
+      inputs: { features: Array<{ key: string; definitions: unknown }> };
+    };
+    const persisted = repoCreateCall.inputs.features[0];
+    expect(persisted.key).toBe("standard-wykonczenia");
+    expect(persisted.definitions).toEqual({
+      lepsza: "standard dobry, wykończenie materiałami lepszej jakości",
+      przecietna: "standard dobry, wykończenie materiałami dobrej jakości",
+      gorsza: "wymagany remont lub odświeżenie części elementów wykończenia",
+    });
 
     expect(redirectMock).toHaveBeenCalledWith("/valuations/valuation-test-1");
   });

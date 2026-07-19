@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 
 /**
  * Shared validation for the valuation form — used by BOTH the client
@@ -18,10 +19,20 @@ export const comparableSchema = z.object({
   transactionId: z.string().optional(),
 });
 
+export const featureDefinitionsSchema = z.object({
+  lepsza: z.string().optional(),
+  przecietna: z.string().optional(),
+  gorsza: z.string().optional(),
+});
+
 export const featureSchema = z.object({
+  // Closed pool (F-6): a custom feature is added by a commit to the preset,
+  // never free-typed (brainstorm decision 2).
+  key: z.enum(LOKAL_FEATURE_KEYS, { message: "Nieznana cecha — wybierz z puli." }),
   name: z.string().trim().min(1, "Podaj nazwę cechy."),
   weightPct: z.coerce.number().min(0, "Waga nie może być ujemna."),
   rating: z.enum(["gorsza", "przecietna", "lepsza"]),
+  definitions: featureDefinitionsSchema.optional(),
 });
 
 /** Mirrors `SampleMeta` from `@/ports/sample` — the RCN fetch's provenance for the whole sample (F-5). */
@@ -123,6 +134,10 @@ export const valuationFormObject = z.object({
     .refine(
       (features) => Math.abs(features.reduce((sum, f) => sum + f.weightPct, 0) - 100) <= 0.1,
       "Suma wag musi wynosić 100%.",
+    )
+    .refine(
+      (features) => new Set(features.map((f) => f.key)).size === features.length,
+      "Każda cecha może wystąpić najwyżej raz.",
     ),
   sampleMeta: sampleMetaSchema.optional(),
   subject: subjectSchema.optional(),
@@ -155,12 +170,5 @@ export const valuationFormSchema = valuationFormObject.superRefine((values, ctx)
 
 export type ValuationFormValues = z.infer<typeof valuationFormSchema>;
 
-/** Default feature bag for a lokal — weights per mockup v3-r4 (docelowo derived from market analysis). */
-export const DEFAULT_FEATURES: ValuationFormValues["features"] = [
-  { name: "standard wykończenia", weightPct: 40, rating: "przecietna" },
-  { name: "położenie na piętrze", weightPct: 30, rating: "przecietna" },
-  { name: "lokalizacja", weightPct: 10, rating: "przecietna" },
-  { name: "powierzchnia użytkowa", weightPct: 10, rating: "przecietna" },
-  { name: "pomieszczenia przynależne", weightPct: 4, rating: "przecietna" },
-  { name: "dodatkowe", weightPct: 6, rating: "przecietna" },
-];
+/** Default feature bag for a lokal — derived from the domain preset (F-6, ADR-006). */
+export const DEFAULT_FEATURES: ValuationFormValues["features"] = defaultFeatureFormValues();
