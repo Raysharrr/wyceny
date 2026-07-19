@@ -60,6 +60,9 @@ export default async function ValuationsListPage() {
               Nowa wycena
             </Link>
           </Button>
+          <Button asChild variant="outline">
+            <Link href="/profile">Profil</Link>
+          </Button>
           <form action={signOutAction}>
             <Button type="submit" variant="outline">
               Wyloguj
