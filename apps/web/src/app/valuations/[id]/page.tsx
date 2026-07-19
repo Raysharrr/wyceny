@@ -493,7 +493,6 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
   const isOwner = valuation.ownerId === session.user.id;
   const canSign =
     valuation.status === "approved" && Boolean(valuation.inputs) && Boolean(valuation.docxUrl);
-  const canCreateNewVersion = valuation.status === "signed";
   // Successor lookup (Task 9): no dedicated port method (YAGNI) — a signed
   // valuation is superseded by at most one draft, found by scanning the
   // owner's own list for a row that points back at this one.
@@ -503,6 +502,10 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
           (v) => v.supersedesId === valuation.id,
         )
       : undefined;
+  // A superseded signed valuation already has its replacement (banner below)
+  // — offering the button here would let the owner spawn a second, duplicate
+  // draft.
+  const canCreateNewVersion = valuation.status === "signed" && isOwner && !successor;
   const gate = isDraft && valuation.inputs ? approvalGate(valuation.inputs) : null;
   const fieldBlockers = isDraft ? documentFieldBlockers(valuation) : [];
   // Approval requires BOTH the F-4 provenance gate and the document-field
@@ -528,6 +531,17 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
       ? valuation.inputs.provenance?.weights?.status === "to_verify" ||
         valuation.inputs.provenance?.featureDefs?.status === "to_verify"
       : false;
+  // A legacy `approved` row (no inputs) or a superseded `signed` row leaves
+  // every can*/has* flag false — without this check the action-bar Card
+  // would render empty for the owner.
+  const hasAnyAction =
+    hasToVerify ||
+    hasSubjectToVerify ||
+    hasKwToVerify ||
+    hasFeaturesToVerify ||
+    valuation.status === "in_progress" || // canApprove
+    canSign ||
+    canCreateNewVersion;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
@@ -549,7 +563,7 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
         </div>
         {valuation.supersedesId ? (
           <p data-testid="supersedes-banner" className="text-sm text-muted-foreground">
-            Wersja zastępująca operat{" "}
+            Zastępuje{" "}
             <Link
               href={`/valuations/${valuation.supersedesId}`}
               className="underline hover:text-primary"
@@ -599,7 +613,7 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
 
       {valuation.inputs?.kw ? <KwCard inputs={valuation.inputs} /> : null}
 
-      {isOwner ? (
+      {isOwner && hasAnyAction ? (
         <Card>
           <CardContent className="flex flex-col gap-3 pt-6">
             {allBlockers.length > 0 ? (

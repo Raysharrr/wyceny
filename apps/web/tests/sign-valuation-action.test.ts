@@ -63,6 +63,20 @@ const approvedValuation: Valuation = {
 };
 
 describe("signValuationAction", () => {
+  it("refuses an admin who is not the owner, before touching signature/storage/sign", async () => {
+    getMock.mockResolvedValue(approvedValuation); // ownerId "u1"; session below is "admin-1"
+    vi.mocked(await import("@/auth/session")).getSession.mockResolvedValueOnce({
+      user: { id: "admin-1", role: "admin" },
+    });
+
+    const result = await signValuationAction("v1");
+
+    expect(result?.error).toMatch(/właściciel/i);
+    expect(getSignatureMock).not.toHaveBeenCalled();
+    expect(storagePutMock).not.toHaveBeenCalled();
+    expect(signMock).not.toHaveBeenCalled();
+  });
+
   it("refuses when there is no signature scan in the profile", async () => {
     getMock.mockResolvedValue(approvedValuation);
     getSignatureMock.mockResolvedValue(null);

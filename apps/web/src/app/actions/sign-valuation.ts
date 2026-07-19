@@ -33,6 +33,12 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
   if (!valuation) {
     return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
   }
+  // `get` lets an admin see any owner's valuation (F-8), but only the owner
+  // may sign (spec decision #5) — an admin must be refused here, before the
+  // owner's signature scan is read or any -signed file is written.
+  if (valuation.ownerId !== session.user.id) {
+    return { error: "Tylko właściciel wyceny może ją podpisać." };
+  }
   if (valuation.status === "signed") {
     return { error: "Wycena jest już podpisana." };
   }
