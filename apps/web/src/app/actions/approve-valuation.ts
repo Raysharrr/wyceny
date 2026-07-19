@@ -54,6 +54,7 @@ export async function approveValuation(id: string): Promise<ApproveValuationResu
     if (!valuation.inputs) {
       return { error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu." };
     }
+    const now = new Date();
     const kcs = computeKcs(valuation.inputs);
     const amountInWords = await worker.amountInWords(kcs.wr);
     const model = buildDocumentModel({
@@ -63,7 +64,7 @@ export async function approveValuation(id: string): Promise<ApproveValuationResu
       kwNumber: valuation.kwNumber ?? "",
       client: valuation.client ?? "",
       inspectionDate: valuation.inspectionDate ?? "",
-      approvedAt: new Date(),
+      approvedAt: now,
       inputs: valuation.inputs,
       kcs,
       amountInWords,
@@ -73,7 +74,7 @@ export async function approveValuation(id: string): Promise<ApproveValuationResu
     const docxUrl = await storage.put(`operat-${id}.docx`, docx);
     const docUrl = await storage.put(`operat-${id}.pdf`, pdf);
 
-    const updated = await valuationRepository.approve(id, session.user, { docUrl, docxUrl });
+    const updated = await valuationRepository.approve(id, session.user, { docUrl, docxUrl }, now);
     if (!updated) {
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
     }
