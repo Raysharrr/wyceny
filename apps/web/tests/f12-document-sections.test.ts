@@ -168,6 +168,55 @@ function renderGolden(subject?: SubjectSnapshot, kw?: KwSnapshot): string {
     .replace(/\u00A0/g, " "); // NBSP -> regular space (escape sequence, not a pasted literal)
 }
 
+/**
+ * Golden features with `definitions` stripped (Task 9): every feature still
+ * has weight/rating, so cechy/opis_* keep rendering, but skala_ocen ends up
+ * empty (buildDocumentModel drops rows with zero non-empty levels) — the
+ * scenario the §12.1 `{#ma_skale}` honest-silence wrap exists for.
+ */
+function goldenInputsNoDefinitions(subject?: SubjectSnapshot, kw?: KwSnapshot): KcsInput {
+  return {
+    ...goldenInputs(subject, kw),
+    features: [
+      {
+        name: "standard wykończenia",
+        weight: 0.4,
+        rating: "przecietna" as const,
+        key: "standard-wykonczenia",
+      },
+      {
+        name: "położenie na piętrze",
+        weight: 0.3,
+        rating: "lepsza" as const,
+        key: "polozenie-na-pietrze",
+      },
+      { name: "lokalizacja", weight: 0.3, rating: "gorsza" as const, key: "lokalizacja" },
+    ],
+  };
+}
+
+function renderGoldenNoDefinitions(subject?: SubjectSnapshot, kw?: KwSnapshot): string {
+  const inputs = goldenInputsNoDefinitions(subject, kw);
+  const model = buildDocumentModel({
+    address: "ul. Przykładowa 5, Poznań",
+    area: 48.2,
+    purpose: "informacyjny",
+    kwNumber: "KW-TEST-9",
+    client: "p. Anna Przykładowa",
+    inspectionDate: "2026-06-30",
+    approvedAt: new Date("2026-07-15T09:00:00Z"),
+    inputs,
+    kcs: computeKcs(inputs),
+    amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+  });
+  const docx = renderOperatDocx(model);
+  const zip = new PizZip(docx);
+  return zip.files["word/document.xml"]
+    .asText()
+    .replace(/<[^>]+>/g, "")
+    .replace(/\u00A0/g, " ");
+}
+
 describe("F-12: rendered operat completeness (real template, golden data)", () => {
   const text = renderGolden(SUBJECT_WITH_MPZP);
 
@@ -222,6 +271,15 @@ describe("F-12: rendered operat completeness (real template, golden data)", () =
     // consecutive levels together — the nested loop must render one paragraph
     // per level (advisor finding #2).
     expect(text).not.toMatch(/powyżejprzeciętna|pośredniegorsza/);
+  });
+
+  it("tells the truth about THIS valuation's feature bag in the §12/§13 intro (Task 9)", () => {
+    expect(text).toContain("to: standard wykończenia, położenie na piętrze oraz lokalizacja.");
+    expect(text).toContain(
+      "czyli kolejno: standard wykończenia, położenie na piętrze oraz lokalizacja.",
+    );
+    expect(text).toContain("za pomocą 3 atrybutów");
+    expect(text).not.toContain("za pomocą 5 atrybutów");
   });
 });
 
@@ -446,5 +504,23 @@ describe("F-12: rendered operat — mpzp absent variant", () => {
     expect(text).toContain("brak obowiązującego miejscowego planu");
     expect(text).toContain("zabudowa (studium)");
     expect(text).not.toContain("symbol przeznaczenia");
+  });
+});
+
+describe("F-12: rendered operat — empty rating scale (honest silence, Task 9)", () => {
+  // Every active feature still carries weight/rating, but none carries a
+  // `definitions` entry — buildDocumentModel.ma_skale is false, so the
+  // {#ma_skale}…{/ma_skale} wrap must hide the §12.1 scale intro sentence,
+  // table and "Źródło" caption WITHOUT touching the surrounding weights prose.
+  const text = renderGoldenNoDefinitions(SUBJECT_WITH_MPZP);
+
+  it("has no unresolved template tags and no 'undefined'", () => {
+    expect(text).not.toContain("undefined");
+    expect(text).not.toMatch(/\{[a-z_#/.]+\}/i);
+  });
+
+  it("hides only the rating-scale block, keeps the weights-methodology sentence", () => {
+    expect(text).not.toContain("Poniżej przedstawiono wyniki badania cech istotnych");
+    expect(text).toContain("Wagi cech rynkowych przyjęto na podstawie analizy rynku lokalnego");
   });
 });

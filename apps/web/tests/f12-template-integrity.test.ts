@@ -69,6 +69,10 @@ const FORBIDDEN_LITERALS = [
   "poniżej 65 m2",
   "4 piętro i powyżej",
   "prawo do wyłącznego korzystania z miejsca postojowego",
+  // Task 9 (Slice 7 follow-up): hardcoded Kościelna feature lists / count must never ship.
+  "dodatkowe oraz lokalizację szczegółową",
+  "dodatkowe oraz lokalizacja szczegółowa",
+  "za pomocą 5 atrybutów",
 ];
 
 const REQUIRED_PLACEHOLDERS = [
@@ -151,6 +155,12 @@ const REQUIRED_PLACEHOLDERS = [
   "{cecha}",
   "{poziom}",
   "{def}",
+  // Task 9: truthful feature-list intro + honest-silence wrap.
+  "{cechy_lista}",
+  "{cechy_lista_wg_wag}",
+  "{liczba_atrybutow_fraza}",
+  "{#ma_skale}",
+  "{/ma_skale}",
 ];
 
 describe("F-12: template integrity (operat-szablon.docx)", () => {

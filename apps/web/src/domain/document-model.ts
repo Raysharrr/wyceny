@@ -109,6 +109,12 @@ function terminateEntries(tresc: string[]): string[] {
   return tresc.map((t) => `${terminateSentence(t)} `);
 }
 
+/** Polish list join for feature names: "a, b oraz c" (single name unchanged). */
+function polishFeatureList(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} oraz ${names[names.length - 1]}`;
+}
+
 export type TransactionRow = {
   data_msc: string;
   miasto: string;
@@ -208,6 +214,14 @@ export type DocumentModel = {
   opis_przedmiot: string[];
   /** §12.1 rating-scale definitions — one row per active feature; only non-empty levels print. */
   skala_ocen: Array<{ cecha: string; poziomy: Array<{ poziom: string; def: string }> }>;
+  /** §12.1 intro — active feature names in bag order ("a, b oraz c"). */
+  cechy_lista: string;
+  /** §13 — active feature names sorted by weight descending (stable ties). */
+  cechy_lista_wg_wag: string;
+  /** §13 — "N atrybutów" / "1 atrybutu" (genitive after "za pomocą"). */
+  liczba_atrybutow_fraza: string;
+  /** Honest-silence flag: the §12.1 scale block renders only when true. */
+  ma_skale: boolean;
 };
 
 export type DocumentFields = {
@@ -259,6 +273,15 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
   // decision: "pancerz obronny" — a zero-weight row invites challenge).
   const activeFeatures = inputs.features.filter((f) => f.weight > 0);
   const activeUi = kcs.ui.filter((f) => f.weight > 0);
+  const skalaOcen = activeFeatures
+    .map((f) => ({
+      cecha: f.name,
+      poziomy: LEVEL_ORDER.filter((level) => f.definitions?.[level]?.trim()).map((level) => ({
+        poziom: LEVEL_LABEL[level],
+        def: terminateSentence(f.definitions![level]!.trim()),
+      })),
+    }))
+    .filter((row) => row.poziomy.length > 0);
 
   return {
     adres: input.address,
@@ -355,14 +378,12 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     opis_cmin: activeFeatures.map((f) => `${f.name} – wartość najniższa cechy,`),
     opis_cmax: activeFeatures.map((f) => `${f.name} – wartość najwyższa cechy,`),
     opis_przedmiot: activeFeatures.map((f) => `${f.name} – ${RATING_TEXT[f.rating]},`),
-    skala_ocen: activeFeatures
-      .map((f) => ({
-        cecha: f.name,
-        poziomy: LEVEL_ORDER.filter((level) => f.definitions?.[level]?.trim()).map((level) => ({
-          poziom: LEVEL_LABEL[level],
-          def: terminateSentence(f.definitions![level]!.trim()),
-        })),
-      }))
-      .filter((row) => row.poziomy.length > 0),
+    skala_ocen: skalaOcen,
+    cechy_lista: polishFeatureList(activeFeatures.map((f) => f.name)),
+    cechy_lista_wg_wag: polishFeatureList(
+      [...activeFeatures].sort((a, b) => b.weight - a.weight).map((f) => f.name),
+    ),
+    liczba_atrybutow_fraza: `${activeFeatures.length} ${activeFeatures.length === 1 ? "atrybutu" : "atrybutów"}`,
+    ma_skale: skalaOcen.length > 0,
   };
 }

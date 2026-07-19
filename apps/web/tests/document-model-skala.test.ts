@@ -115,3 +115,63 @@ describe("document model — skala ocen (Slice 7)", () => {
     ]);
   });
 });
+
+describe("document model — feature intro fields (Task 9)", () => {
+  it("joins active feature names in bag order for §12.1, and counts the §13 attributes", () => {
+    const m = modelWith([
+      { name: "standard wykończenia", weight: 0.4, rating: "przecietna" },
+      { name: "położenie na piętrze", weight: 0.3, rating: "przecietna" },
+      { name: "lokalizacja", weight: 0.3, rating: "przecietna" },
+    ]);
+    expect(m.cechy_lista).toBe("standard wykończenia, położenie na piętrze oraz lokalizacja");
+    // 0.3/0.3 tie: Array.prototype.sort is stable, keeps bag order — identical to cechy_lista here.
+    expect(m.cechy_lista_wg_wag).toBe(
+      "standard wykończenia, położenie na piętrze oraz lokalizacja",
+    );
+    expect(m.liczba_atrybutow_fraza).toBe("3 atrybutów");
+  });
+
+  it("sorts cechy_lista_wg_wag by weight descending, independent of bag order", () => {
+    const m = modelWith([
+      { name: "a", weight: 0.2, rating: "przecietna" },
+      { name: "b", weight: 0.5, rating: "przecietna" },
+      { name: "c", weight: 0.3, rating: "przecietna" },
+    ]);
+    expect(m.cechy_lista).toBe("a, b oraz c");
+    expect(m.cechy_lista_wg_wag).toBe("b, c oraz a");
+  });
+
+  it("a single active feature has no 'oraz' and a genitive-singular fraza", () => {
+    const m = modelWith([{ name: "lokalizacja", weight: 1, rating: "lepsza" }]);
+    expect(m.cechy_lista).toBe("lokalizacja");
+    expect(m.cechy_lista_wg_wag).toBe("lokalizacja");
+    expect(m.liczba_atrybutow_fraza).toBe("1 atrybutu");
+  });
+
+  it("weight-0 features are excluded from both lists and the count", () => {
+    const m = modelWith([
+      { name: "lokalizacja", weight: 1, rating: "lepsza" },
+      { name: "rodzaj zabudowy budynku", weight: 0, rating: "przecietna" },
+    ]);
+    expect(m.cechy_lista).toBe("lokalizacja");
+    expect(m.cechy_lista_wg_wag).toBe("lokalizacja");
+    expect(m.liczba_atrybutow_fraza).toBe("1 atrybutu");
+  });
+
+  it("ma_skale is true only when at least one feature prints a rating-scale row", () => {
+    const withDefs = modelWith([
+      { name: "lokalizacja", weight: 1, rating: "lepsza", definitions: { lepsza: "opis" } },
+    ]);
+    expect(withDefs.ma_skale).toBe(true);
+
+    // legacy features without definitions
+    const legacyNoDefs = modelWith([{ name: "lokalizacja", weight: 1, rating: "lepsza" }]);
+    expect(legacyNoDefs.ma_skale).toBe(false);
+
+    // whitespace-only definition
+    const whitespaceOnly = modelWith([
+      { name: "lokalizacja", weight: 1, rating: "lepsza", definitions: { lepsza: "  " } },
+    ]);
+    expect(whitespaceOnly.ma_skale).toBe(false);
+  });
+});
