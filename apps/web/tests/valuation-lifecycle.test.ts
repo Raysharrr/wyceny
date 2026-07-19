@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ApprovalBlockedError,
   approveValuation,
+  confirmFeaturesProvenance,
   confirmKwProvenance,
   confirmSampleProvenance,
   confirmSubjectProvenance,
@@ -180,6 +181,39 @@ describe("confirmKwProvenance (Slice 6)", () => {
     };
     expect(() => confirmKwProvenance(approved)).toThrow();
     expect(() => confirmKwProvenance(draftWith(null))).toThrow();
+  });
+});
+
+describe("confirmFeaturesProvenance (Slice 7)", () => {
+  it("flips weights + featureDefs to confirmed, draft-only", () => {
+    const draft = draftWith(
+      kwInputs({
+        weights: { source: "preset", status: "to_verify" },
+        featureDefs: { source: "preset", status: "to_verify" },
+      }),
+    );
+    const updated = confirmFeaturesProvenance(draft);
+    expect(updated.inputs!.provenance!.weights).toEqual({ source: "preset", status: "confirmed" });
+    expect(updated.inputs!.provenance!.featureDefs).toEqual({
+      source: "preset",
+      status: "confirmed",
+    });
+  });
+
+  it("on legacy provenance (no featureDefs) flips weights only", () => {
+    const draft = draftWith(kwInputs({ weights: { source: "preset", status: "to_verify" } }));
+    const updated = confirmFeaturesProvenance(draft);
+    expect(updated.inputs!.provenance!.featureDefs).toBeUndefined();
+    expect(updated.inputs!.provenance!.weights.status).toBe("confirmed");
+  });
+
+  it("throws on non-draft and on missing inputs (F-7 guards)", () => {
+    const approved = {
+      ...draftWith(kwInputs({ weights: { source: "preset", status: "to_verify" } })),
+      status: "approved" as const,
+    };
+    expect(() => confirmFeaturesProvenance(approved)).toThrow(/draft/i);
+    expect(() => confirmFeaturesProvenance(draftWith(null))).toThrow(/inputs/i);
   });
 });
 

@@ -51,6 +51,10 @@ test("draft with 12 manual transactions: approve → Zatwierdzony + operat PDF/D
   await fillDraft(page, prices);
 
   await expect(page.getByTestId("valuation-status")).toHaveText("Szkic");
+  // Slice 7: untouched defaults enter as preset — to_verify; confirm them first.
+  await page.getByTestId("confirm-features-button").click();
+  await expect(page.getByTestId("confirm-features-button")).toHaveCount(0);
+
   // Manual rows are confirmed at the ACL — no to_verify, gate passes on >=12.
   await expect(page.getByTestId("approve-button")).toBeEnabled();
   await page.getByTestId("approve-button").click();

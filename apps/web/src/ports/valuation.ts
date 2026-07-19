@@ -83,6 +83,11 @@ export interface PortValuation {
    */
   confirmKw(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
+   * Confirms the feature-preset provenance on a draft (weights + featureDefs →
+   * confirmed). Mirrors `confirmSample`'s owner-only null/throw contract.
+   */
+  confirmFeatures(id: string, user: SessionUser): Promise<Valuation | null>;
+  /**
    * Approves a draft — re-runs the F-4 gate AND the document-field check
    * server-side (never trusts the client). Same null/throw contract as
    * confirmSample; additionally throws ApprovalBlockedError when either the

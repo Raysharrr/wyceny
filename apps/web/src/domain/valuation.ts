@@ -126,6 +126,30 @@ export function confirmKwProvenance(valuation: Valuation): Valuation {
 }
 
 /**
+ * Mirrors `confirmSubjectProvenance` for the feature preset group (Slice 7):
+ * flips `weights` (always present) and `featureDefs` (when present — legacy
+ * snapshots lack it) to confirmed. Draft-only, throw-on-missing-inputs,
+ * byte-for-byte like its siblings.
+ */
+export function confirmFeaturesProvenance(valuation: Valuation): Valuation {
+  assertDraft(valuation);
+  if (!valuation.inputs) {
+    throw new Error(`Valuation ${valuation.id} has no inputs snapshot — nothing to confirm`);
+  }
+  const { provenance: p } = valuation.inputs;
+  const provenance = p
+    ? {
+        ...p,
+        weights: { ...p.weights, status: "confirmed" as const },
+        ...(p.featureDefs
+          ? { featureDefs: { ...p.featureDefs, status: "confirmed" as const } }
+          : {}),
+      }
+    : p;
+  return { ...valuation, inputs: { ...valuation.inputs, provenance } };
+}
+
+/**
  * The approve mutation — F-4 gate as aggregate invariant (ADR-012). A draft
  * without a snapshot can never pass (default-deny). The gate is merged with
  * the document-field blockers (spec §4): approval also requires the four

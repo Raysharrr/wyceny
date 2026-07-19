@@ -5,25 +5,28 @@ import { Button } from "@/components/ui/button";
 import { confirmSample } from "@/app/actions/confirm-sample";
 import { confirmSubject } from "@/app/actions/confirm-subject";
 import { confirmKw } from "@/app/actions/confirm-kw";
+import { confirmFeatures } from "@/app/actions/confirm-features";
 import { approveValuation } from "@/app/actions/approve-valuation";
 
 /**
  * Draft-only action bar. `gateOk`/`hasToVerify`/`hasSubjectToVerify`/
- * `hasKwToVerify` are computed server-side by the RSC (approvalGate) — the
- * disabled state is UX sugar; the actions re-check everything server-side
- * (F-4 is an invariant, not UI).
+ * `hasKwToVerify`/`hasFeaturesToVerify` are computed server-side by the RSC
+ * (approvalGate) — the disabled state is UX sugar; the actions re-check
+ * everything server-side (F-4 is an invariant, not UI).
  */
 export function ValuationActions({
   id,
   hasToVerify,
   hasSubjectToVerify,
   hasKwToVerify,
+  hasFeaturesToVerify,
   gateOk,
 }: {
   id: string;
   hasToVerify: boolean;
   hasSubjectToVerify: boolean;
   hasKwToVerify: boolean;
+  hasFeaturesToVerify: boolean;
   gateOk: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +76,17 @@ export function ValuationActions({
             onClick={() => run(confirmKw)}
           >
             {isPending ? "Potwierdzanie…" : "Potwierdź dane KW"}
+          </Button>
+        ) : null}
+        {hasFeaturesToVerify ? (
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="confirm-features-button"
+            disabled={isPending}
+            onClick={() => run(confirmFeatures)}
+          >
+            {isPending ? "Potwierdzanie…" : "Potwierdź cechy i wagi"}
           </Button>
         ) : null}
         <Button

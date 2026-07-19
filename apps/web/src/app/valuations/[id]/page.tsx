@@ -352,6 +352,59 @@ function KwCard({ inputs }: { inputs: KcsInput }) {
   );
 }
 
+const LEVEL_LABEL: Record<"lepsza" | "przecietna" | "gorsza", string> = {
+  lepsza: "lepsza",
+  przecietna: "przeciętna",
+  gorsza: "gorsza",
+};
+
+/** Feature bag + rating-scale definitions (Slice 7). Mirrors SubjectCard's structure. */
+function FeaturesCard({ inputs }: { inputs: KcsInput }) {
+  const features = inputs.features ?? [];
+  if (features.length === 0) return null;
+  const provenance = inputs.provenance;
+  const rows = features
+    .map((f) => ({
+      name: f.name,
+      defs: (["lepsza", "przecietna", "gorsza"] as const)
+        .filter((level) => f.definitions?.[level]?.trim())
+        .map((level) => `${LEVEL_LABEL[level]} – ${f.definitions![level]!.trim()}`),
+    }))
+    .filter((r) => r.defs.length > 0);
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3 pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium text-foreground">Cechy i wagi</h2>
+          <div className="flex flex-wrap gap-2">
+            <GroupProvenanceBadge label="Wagi cech" status={provenance?.weights?.status} />
+            {provenance?.featureDefs ? (
+              <GroupProvenanceBadge
+                label="Definicje skali ocen"
+                status={provenance.featureDefs.status}
+              />
+            ) : null}
+          </div>
+        </div>
+        {rows.length > 0 ? (
+          <dl className="flex flex-col gap-2 text-sm">
+            {rows.map((r) => (
+              <div key={r.name}>
+                <dt className="text-xs text-muted-foreground">{r.name}</dt>
+                {r.defs.map((d) => (
+                  <dd key={d}>{d}</dd>
+                ))}
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="text-xs text-muted-foreground">Brak definicji skali ocen.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
   // Area is doc-sourced (and thus to_verify until confirmKw) only when its
   // provenance source is a document type — render it separately with its real
@@ -391,8 +444,14 @@ function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
         {inputs.provenance ? (
           <p className="text-xs text-muted-foreground">
             {areaProvenanceText
-              ? `Adres, wagi i oceny: rzeczoznawca (potwierdzone) · ${areaProvenanceText}`
-              : "Adres, powierzchnia, wagi i oceny: rzeczoznawca (potwierdzone)"}
+              ? `Adres: rzeczoznawca (potwierdzone) · ${areaProvenanceText}`
+              : "Adres, powierzchnia: rzeczoznawca (potwierdzone)"}
+            {` · wagi: ${
+              inputs.provenance.weights.source === "preset"
+                ? `preset — ${provenanceStatusText(inputs.provenance.weights.status)}`
+                : "rzeczoznawca (potwierdzone)"
+            }`}
+            {" · oceny: rzeczoznawca (potwierdzone)"}
             {inputs.provenance.geocode
               ? ` · geokodowanie: ${provenanceStatusText(inputs.provenance.geocode.status)}`
               : ""}
@@ -447,6 +506,11 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
     isDraft && valuation.inputs
       ? valuation.inputs.kw != null && valuation.inputs.provenance?.kw?.status === "to_verify"
       : false;
+  const hasFeaturesToVerify =
+    isDraft && valuation.inputs
+      ? valuation.inputs.provenance?.weights?.status === "to_verify" ||
+        valuation.inputs.provenance?.featureDefs?.status === "to_verify"
+      : false;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
@@ -491,6 +555,8 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
 
       {valuation.inputs ? <ComparablesProvenance inputs={valuation.inputs} /> : null}
 
+      {valuation.inputs ? <FeaturesCard inputs={valuation.inputs} /> : null}
+
       {valuation.inputs?.subject ? <SubjectCard inputs={valuation.inputs} /> : null}
 
       {valuation.inputs?.kw ? <KwCard inputs={valuation.inputs} /> : null}
@@ -515,6 +581,7 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
               hasToVerify={hasToVerify}
               hasSubjectToVerify={hasSubjectToVerify}
               hasKwToVerify={hasKwToVerify}
+              hasFeaturesToVerify={hasFeaturesToVerify}
               gateOk={gateOk}
             />
           </CardContent>
