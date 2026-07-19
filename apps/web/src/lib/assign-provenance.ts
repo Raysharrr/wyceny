@@ -1,4 +1,9 @@
 import type { Comparable } from "@/domain/kcs";
+import {
+  matchesPresetDefinitions,
+  matchesPresetWeights,
+  medianAreaM2,
+} from "@/domain/feature-presets";
 import type { InputsProvenance } from "@/domain/provenance";
 import type { ValuationFormValues } from "@/lib/valuation-form-schema";
 
@@ -13,7 +18,7 @@ import type { ValuationFormValues } from "@/lib/valuation-form-schema";
 export function assignProvenance(
   values: Pick<
     ValuationFormValues,
-    "comparables" | "sampleMeta" | "subject" | "subjectMeta" | "kw" | "kwMeta" | "area"
+    "comparables" | "features" | "sampleMeta" | "subject" | "subjectMeta" | "kw" | "kwMeta" | "area"
   >,
 ): {
   comparables: Comparable[];
@@ -35,11 +40,20 @@ export function assignProvenance(
     values.kw.powUzytkowaKw != null &&
     Number(values.area) === values.kw.powUzytkowaKw;
 
+  // Preset detection (Slice 7, brainstorm decision 5): server-side comparison
+  // against the expected preset — the client cannot fake a manual edit. The
+  // powierzchnia threshold is recomputed here from the SUBMITTED comparables,
+  // so a median-prefilled definition still counts as the app's proposal.
+  const median = medianAreaM2(values.comparables.map((c) => c.area));
+  const presetWeights = matchesPresetWeights(values.features);
+  const presetDefs = matchesPresetDefinitions(values.features, median);
+
   const provenance: InputsProvenance = {
     address: confirmed,
     area: areaFromDocument ? { source: values.kw!.source, status: "to_verify" } : confirmed,
-    weights: confirmed,
+    weights: presetWeights ? ({ source: "preset", status: "to_verify" } as const) : confirmed,
     ratings: confirmed,
+    featureDefs: presetDefs ? ({ source: "preset", status: "to_verify" } as const) : confirmed,
     ...(values.sampleMeta ? { geocode: { source: "geokoder", status: "to_verify" } as const } : {}),
     ...(values.subject
       ? {

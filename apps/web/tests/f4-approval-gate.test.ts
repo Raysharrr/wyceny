@@ -241,3 +241,26 @@ describe("kw group (Slice 6)", () => {
     expect(approvalGate(passingInput()).ok).toBe(true);
   });
 });
+
+describe("featureDefs group (Slice 7)", () => {
+  it("featureDefs to_verify blocks with a Polish label; legacy provenance without the key does not", () => {
+    const blocked = approvalGate({
+      comparables: manualRows(12),
+      sampleMeta: null,
+      provenance: { ...confirmedScalars, featureDefs: { source: "preset", status: "to_verify" } },
+    });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) {
+      expect(blocked.blockers.map((b) => b.path)).toContain("provenance.featureDefs");
+      expect(blocked.blockers.find((b) => b.path === "provenance.featureDefs")!.label).toBe(
+        "Definicje skali ocen — do weryfikacji.",
+      );
+    }
+
+    // legacy: no featureDefs key at all → no blocker
+    expect(
+      approvalGate({ comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars })
+        .ok,
+    ).toBe(true);
+  });
+});

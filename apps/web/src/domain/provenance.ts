@@ -12,6 +12,12 @@ export type InputsProvenance = {
   area: Provenance;
   weights: Provenance;
   ratings: Provenance;
+  /**
+   * Present on every Slice-7+ snapshot (assignProvenance always sets it);
+   * absent on legacy snapshots — the gate skips it then (no retro-blockers
+   * on old prod drafts).
+   */
+  featureDefs?: Provenance;
   /** Present only when the draft was seeded by an RCN fetch (sampleMeta set). */
   geocode?: Provenance;
   /** Present only when a subject snapshot (EGiB/MPZP) was attached to the draft. */
@@ -81,6 +87,19 @@ export function approvalGate(input: GateInput): GateResult {
       blockers.push({
         path: `provenance.${key}`,
         label: `${SCALAR_LABEL[key]} — ${statusLabel(entry?.status ?? "none")}.`,
+      });
+    }
+  }
+
+  // Rating-scale definitions (Slice 7): gated only when the snapshot carries
+  // the key — legacy drafts (pre-preset) stay approvable unchanged.
+  if (input.provenance?.featureDefs != null) {
+    const fd = input.provenance.featureDefs;
+    const s = sourced("featureDefs", fd.source, fd.status);
+    if (isBlocking(s)) {
+      blockers.push({
+        path: "provenance.featureDefs",
+        label: `Definicje skali ocen — ${statusLabel(fd.status)}.`,
       });
     }
   }
