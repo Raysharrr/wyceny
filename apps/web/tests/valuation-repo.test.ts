@@ -6,58 +6,13 @@ import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { ApprovalBlockedError, assertNotSigned } from "../src/domain/valuation";
 import type { KcsInput } from "../src/domain/kcs";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
+import { approvableInputs, valuationInput } from "./fixtures/valuation-inputs";
 
 const appraiserA: SessionUser = { id: "user-test-1", role: "appraiser" };
 const appraiserB: SessionUser = { id: "user-test-2", role: "appraiser" };
 const admin: SessionUser = { id: "user-test-admin", role: "admin" };
 
 const repo = valuationRepo(db);
-
-function valuationInput(ownerId: string, address: string): NewValuationInput {
-  return {
-    address,
-    area: 33.3,
-    wr: 333000,
-    inputs: null,
-    amountInWords: null,
-    docUrl: null,
-    // Document fields present by default so gate-passing approvals also clear
-    // the document-field blockers (spec §4); the legacy-draft test overrides
-    // them to null.
-    purpose: "sprzedaz",
-    kwNumber: "KW-TEST-1",
-    client: "p. Jan Testowy",
-    inspectionDate: "2026-07-01",
-    ownerId,
-  };
-}
-
-function approvableInputs(): KcsInput {
-  return {
-    area: 50,
-    comparables: Array.from({ length: 12 }, (_, i) => ({
-      pricePerM2: 10_000 + i,
-      source: "rcn" as const,
-      transactionId: `tx-${i}`,
-      status: "to_verify" as const,
-    })),
-    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
-    sampleMeta: {
-      lat: 52.4,
-      lon: 16.9,
-      fetchedAt: "2026-07-14T09:00:00.000Z",
-      source: "rcn-wfs-gugik",
-      query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D" },
-    },
-    provenance: {
-      address: { source: "rzeczoznawca" as const, status: "confirmed" as const },
-      area: { source: "rzeczoznawca" as const, status: "confirmed" as const },
-      weights: { source: "rzeczoznawca" as const, status: "confirmed" as const },
-      ratings: { source: "rzeczoznawca" as const, status: "confirmed" as const },
-      geocode: { source: "geokoder" as const, status: "to_verify" as const },
-    },
-  };
-}
 
 beforeAll(async () => {
   await migrate(db, { migrationsFolder: "./drizzle" });

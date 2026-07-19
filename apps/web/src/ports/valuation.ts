@@ -95,11 +95,14 @@ export interface PortValuation {
    * confirmSample; additionally throws ApprovalBlockedError when either the
    * gate or a required document field fails. When `docs` are supplied (the
    * approve action has generated + stored the operat), their URLs are
-   * persisted atomically with the status flip (Slice 4, spec §3).
+   * persisted atomically with the status flip (Slice 4, spec §3). `now`
+   * defaults to the current time; callers pass it explicitly to sync
+   * `approvedAt` with another timestamp (e.g. the signature date, F-7).
    */
   approve(
     id: string,
     user: SessionUser,
     docs?: { docUrl: string; docxUrl: string },
+    now?: Date,
   ): Promise<Valuation | null>;
 }

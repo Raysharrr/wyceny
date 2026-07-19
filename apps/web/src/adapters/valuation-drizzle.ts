@@ -1,4 +1,4 @@
-import { eq, or, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { KcsInput } from "../domain/kcs";
 import {
@@ -8,6 +8,7 @@ import {
   confirmSampleProvenance,
   confirmSubjectProvenance,
   newValuation,
+  type AuditAction,
 } from "../domain/valuation";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
@@ -42,6 +43,19 @@ async function setAppRole(tx: Tx, user: SessionUser) {
   await tx.execute(sql`select set_config('app.role', ${user.role}, true)`);
 }
 
+/** One audit row per mutation, inside the mutation's transaction (FR-12). */
+async function insertAudit(
+  tx: Tx,
+  entry: { valuationId: string; actorId: string; action: AuditAction; meta?: unknown },
+) {
+  await tx.insert(schema.auditLog).values({
+    valuationId: entry.valuationId,
+    actorId: entry.actorId,
+    action: entry.action,
+    meta: entry.meta ?? null,
+  });
+}
+
 /**
  * Drizzle/Postgres adapter for {@link PortValuation}.
  *
@@ -62,9 +76,12 @@ async function setAppRole(tx: Tx, user: SessionUser) {
 export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation {
   return {
     async create(input: NewValuationInput): Promise<Valuation> {
-      const toInsert = newValuation(input);
-      const [row] = await db.insert(schema.valuation).values(toInsert).returning();
-      return toValuation(row);
+      return db.transaction(async (tx) => {
+        const toInsert = newValuation(input);
+        const [row] = await tx.insert(schema.valuation).values(toInsert).returning();
+        await insertAudit(tx, { valuationId: row.id, actorId: input.ownerId, action: "created" });
+        return toValuation(row);
+      });
     },
 
     async listForUser(user: SessionUser): Promise<Valuation[]> {
@@ -105,91 +122,121 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       });
     },
 
-    // Both mutations run on the superuser pool connection, same trust path
-    // as create (app_role/RLS stays read-only, F-8 unchanged); ownership is
-    // enforced app-level below. ponytail: load→domain→update without a row
-    // lock — single-user-per-valuation flow (ADR-012, Scalability=L); add
-    // SELECT ... FOR UPDATE if concurrent editing ever arrives.
+    // All five mutations below run on the superuser pool connection, same
+    // trust path as create (app_role/RLS stays read-only, F-8 unchanged);
+    // ownership is enforced app-level. Each wraps its select→domain→update
+    // in a transaction: the CAS re-check in the UPDATE's WHERE closes the
+    // select→update race (0 rows means a concurrent status flip won — the
+    // stale write is silently dropped instead of applied), and the audit
+    // row commits atomically with the mutation (FR-12) — a domain throw
+    // (e.g. not-a-draft, missing inputs) rolls back the whole transaction,
+    // so a failed mutation leaves zero audit rows.
     async confirmSample(id: string, user: SessionUser): Promise<Valuation | null> {
-      const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
-      if (!row) return null;
-      const valuation = toValuation(row);
-      if (valuation.ownerId !== user.id) return null;
-      const updated = confirmSampleProvenance(valuation);
-      const [saved] = await db
-        .update(schema.valuation)
-        .set({ inputs: updated.inputs })
-        .where(eq(schema.valuation.id, id))
-        .returning();
-      return toValuation(saved);
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = confirmSampleProvenance(valuation);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "sample_confirmed" });
+        return toValuation(saved);
+      });
     },
 
     async confirmSubject(id: string, user: SessionUser): Promise<Valuation | null> {
-      const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
-      if (!row) return null;
-      const valuation = toValuation(row);
-      if (valuation.ownerId !== user.id) return null;
-      const updated = confirmSubjectProvenance(valuation);
-      const [saved] = await db
-        .update(schema.valuation)
-        .set({ inputs: updated.inputs })
-        .where(eq(schema.valuation.id, id))
-        .returning();
-      return toValuation(saved);
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = confirmSubjectProvenance(valuation);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "subject_confirmed" });
+        return toValuation(saved);
+      });
     },
 
     async confirmKw(id: string, user: SessionUser): Promise<Valuation | null> {
-      const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
-      if (!row) return null;
-      const valuation = toValuation(row);
-      if (valuation.ownerId !== user.id) return null;
-      const updated = confirmKwProvenance(valuation);
-      const [saved] = await db
-        .update(schema.valuation)
-        .set({ inputs: updated.inputs })
-        .where(eq(schema.valuation.id, id))
-        .returning();
-      return toValuation(saved);
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = confirmKwProvenance(valuation);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "kw_confirmed" });
+        return toValuation(saved);
+      });
     },
 
     async confirmFeatures(id: string, user: SessionUser): Promise<Valuation | null> {
-      const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
-      if (!row) return null;
-      const valuation = toValuation(row);
-      if (valuation.ownerId !== user.id) return null;
-      const updated = confirmFeaturesProvenance(valuation);
-      const [saved] = await db
-        .update(schema.valuation)
-        .set({ inputs: updated.inputs })
-        .where(eq(schema.valuation.id, id))
-        .returning();
-      return toValuation(saved);
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = confirmFeaturesProvenance(valuation);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "features_confirmed" });
+        return toValuation(saved);
+      });
     },
 
     async approve(
       id: string,
       user: SessionUser,
       docs?: { docUrl: string; docxUrl: string },
+      now: Date = new Date(),
     ): Promise<Valuation | null> {
-      const [row] = await db.select().from(schema.valuation).where(eq(schema.valuation.id, id));
-      if (!row) return null;
-      const valuation = toValuation(row);
-      if (valuation.ownerId !== user.id) return null;
-      // Re-runs the full gate (F-4 + document fields) in the domain — this is
-      // the atomic status flip; a caller that stored files first but fails
-      // here leaves harmless orphan files (same keys, overwritten on retry).
-      const updated = approveValuation(valuation, new Date(), docs);
-      const [saved] = await db
-        .update(schema.valuation)
-        .set({
-          status: updated.status,
-          approvedAt: updated.approvedAt,
-          docUrl: updated.docUrl,
-          docxUrl: updated.docxUrl,
-        })
-        .where(eq(schema.valuation.id, id))
-        .returning();
-      return toValuation(saved);
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        // Re-runs the full gate (F-4 + document fields) in the domain — this is
+        // the atomic status flip; a caller that stored files first but fails
+        // here leaves harmless orphan files (same keys, overwritten on retry).
+        const updated = approveValuation(valuation, now, docs);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({
+            status: updated.status,
+            approvedAt: updated.approvedAt,
+            docUrl: updated.docUrl,
+            docxUrl: updated.docxUrl,
+          })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "approved",
+          meta: { docUrl: updated.docUrl, docxUrl: updated.docxUrl },
+        });
+        return toValuation(saved);
+      });
     },
   };
 }
