@@ -47,8 +47,8 @@ describe("document model — skala ocen (Slice 7)", () => {
       {
         cecha: "położenie na piętrze",
         poziomy: [
-          { poziom: "lepsza", def: "czwarte piętro i powyżej" },
-          { poziom: "gorsza", def: "parter" },
+          { poziom: "lepsza", def: "czwarte piętro i powyżej." },
+          { poziom: "gorsza", def: "parter." },
         ],
       },
     ]);
@@ -63,7 +63,7 @@ describe("document model — skala ocen (Slice 7)", () => {
         definitions: { przecietna: "standard dobry" },
       },
     ]);
-    expect(m.skala_ocen[0]!.poziomy).toEqual([{ poziom: "przeciętna", def: "standard dobry" }]);
+    expect(m.skala_ocen[0]!.poziomy).toEqual([{ poziom: "przeciętna", def: "standard dobry." }]);
   });
 
   it("legacy features without definitions → empty skala_ocen (honest silence)", () => {
@@ -93,5 +93,25 @@ describe("document model — skala ocen (Slice 7)", () => {
       { name: "lokalizacja", weight: 1, rating: "lepsza", definitions: { lepsza: "  " } },
     ]);
     expect(m.skala_ocen).toEqual([]);
+  });
+
+  it("terminates def with a period only when the appraiser's text doesn't already end in .!?", () => {
+    const m = modelWith([
+      {
+        name: "standard wykończenia",
+        weight: 1,
+        rating: "przecietna",
+        definitions: {
+          lepsza: "wykończenie premium.",
+          przecietna: "stan dobry?",
+          gorsza: "do remontu!",
+        },
+      },
+    ]);
+    expect(m.skala_ocen[0]!.poziomy).toEqual([
+      { poziom: "lepsza", def: "wykończenie premium." },
+      { poziom: "przeciętna", def: "stan dobry?" },
+      { poziom: "gorsza", def: "do remontu!" },
+    ]);
   });
 });

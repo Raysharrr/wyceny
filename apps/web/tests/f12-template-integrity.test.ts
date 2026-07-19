@@ -190,6 +190,34 @@ describe("F-12: template integrity (operat-szablon.docx)", () => {
     }
   });
 
+  // Task 8 (Slice 7) review fix F3: the §12.1 rating-scale loop must stay a
+  // MULTI-paragraph loop — {#poziomy}/{poziom} – {def}/{/poziomy}/{/skala_ocen}
+  // each on their OWN <w:p> — regardless of punctuation. This is the durable
+  // structural guard for the anti-run-on failure class (an INLINE loop would
+  // glue consecutive levels into one paragraph with no separator, the exact
+  // bug f12-document-sections.test.ts's `/powyżejprzeciętna|pośredniegorsza/`
+  // regex catches downstream, by content); this test catches it upstream, by
+  // shape, so it fires even if a future edit removes/changes the wording.
+  it("keeps each §12.1 skala_ocen loop tag in its own paragraph (anti run-on structural guard)", () => {
+    // docxtemplater tags can be split across multiple <w:t> runs in raw XML
+    // (see templateText()'s NBSP-normalize precedent) — strip tags WITHIN each
+    // paragraph chunk before searching, mirroring that normalization idiom.
+    const paragraphs = templateXml()
+      .split("</w:p>")
+      .map((chunk) => chunk.replace(/<[^>]+>/g, ""));
+    const loopTags = ["{#poziomy}", "{poziom} – {def}", "{/poziomy}", "{/skala_ocen}"];
+    const indices = loopTags.map((tag) => paragraphs.findIndex((p) => p.includes(tag)));
+    loopTags.forEach((tag, i) => {
+      expect(indices[i], `tag ${tag} not found in any single paragraph`).toBeGreaterThanOrEqual(0);
+    });
+    expect(new Set(indices).size, "each tag must live in a distinct paragraph").toBe(
+      loopTags.length,
+    );
+    expect(indices, "tags must appear in ascending document order").toEqual(
+      [...indices].sort((a, b) => a - b),
+    );
+  });
+
   it("carries no source-operat metadata in docProps/core.xml", () => {
     // docxtemplater preserves non-document parts verbatim, so whatever sits
     // in the template's file properties ships into EVERY generated operat.

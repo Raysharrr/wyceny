@@ -86,6 +86,19 @@ function cityFromAddress(address: string): string {
 }
 
 /**
+ * Appends a period ONLY when `text` doesn't already end in sentence-final
+ * punctuation (`.`/`!`/`?`). Shared guard behind `terminateEntries` (dział
+ * III/IV loop entries, below) and `skala_ocen`'s `def` field (§12.1
+ * rating-scale loop, Slice 7 Task 8 review fix F1) — both turn a
+ * user-authored fragment into a complete sentence before docxtemplater
+ * emits it into a template loop with no separator between iterations.
+ */
+function terminateSentence(text: string): string {
+  const trimmed = text.trimEnd();
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/**
  * T9 handoff: the template's `{#dzial3_wpisy}Dział III — wpis: {.}{/dzial3_wpisy}`
  * loop repeats the label per entry with no separator between iterations, so
  * 2+ entries would otherwise run together (`…wpisDział III — wpis: …`).
@@ -93,10 +106,7 @@ function cityFromAddress(address: string): string {
  * period (+ trailing space) so repeated iterations read as separate sentences.
  */
 function terminateEntries(tresc: string[]): string[] {
-  return tresc.map((t) => {
-    const trimmed = t.trimEnd();
-    return /[.!?]$/.test(trimmed) ? `${trimmed} ` : `${trimmed}. `;
-  });
+  return tresc.map((t) => `${terminateSentence(t)} `);
 }
 
 export type TransactionRow = {
@@ -350,7 +360,7 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
         cecha: f.name,
         poziomy: LEVEL_ORDER.filter((level) => f.definitions?.[level]?.trim()).map((level) => ({
           poziom: LEVEL_LABEL[level],
-          def: f.definitions![level]!.trim(),
+          def: terminateSentence(f.definitions![level]!.trim()),
         })),
       }))
       .filter((row) => row.poziomy.length > 0),
