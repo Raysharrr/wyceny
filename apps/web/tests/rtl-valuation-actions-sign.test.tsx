@@ -18,7 +18,9 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 
 const signValuationAction = vi.hoisted(() => vi.fn());
+const createNewVersionAction = vi.hoisted(() => vi.fn());
 vi.mock("@/app/actions/sign-valuation", () => ({ signValuationAction }));
+vi.mock("@/app/actions/create-new-version", () => ({ createNewVersionAction }));
 vi.mock("@/app/actions/confirm-sample", () => ({ confirmSample: vi.fn() }));
 vi.mock("@/app/actions/confirm-subject", () => ({ confirmSubject: vi.fn() }));
 vi.mock("@/app/actions/confirm-kw", () => ({ confirmKw: vi.fn() }));
@@ -35,6 +37,7 @@ const baseProps = {
   hasFeaturesToVerify: false,
   gateOk: true,
   canApprove: false,
+  canCreateNewVersion: false,
 };
 
 describe("ValuationActions — sign", () => {
@@ -58,5 +61,13 @@ describe("ValuationActions — sign", () => {
     render(<ValuationActions {...baseProps} canSign />);
     await userEvent.click(screen.getByRole("button", { name: /podpisz operat/i }));
     expect(await screen.findByText(/brak skanu podpisu/i)).toBeInTheDocument();
+  });
+
+  it("shows the create-new-version button only when canCreateNewVersion", () => {
+    render(<ValuationActions {...baseProps} canSign={false} canCreateNewVersion />);
+    expect(screen.getByRole("button", { name: /utwórz nową wersję/i })).toBeInTheDocument();
+    cleanup();
+    render(<ValuationActions {...baseProps} canSign={false} canCreateNewVersion={false} />);
+    expect(screen.queryByRole("button", { name: /utwórz nową wersję/i })).not.toBeInTheDocument();
   });
 });

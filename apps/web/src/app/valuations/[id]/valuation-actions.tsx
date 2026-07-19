@@ -8,15 +8,16 @@ import { confirmKw } from "@/app/actions/confirm-kw";
 import { confirmFeatures } from "@/app/actions/confirm-features";
 import { approveValuation } from "@/app/actions/approve-valuation";
 import { signValuationAction } from "@/app/actions/sign-valuation";
+import { createNewVersionAction } from "@/app/actions/create-new-version";
 
 /**
  * Owner-only action bar, mounted for the owner across all statuses.
  * `draft` → confirm-* + approve buttons (gated by `canApprove`); `approved`
- * → sign button (gated by `canSign`); `signed` → new-version button (Task 9).
- * `gateOk`/`hasToVerify`/`hasSubjectToVerify`/`hasKwToVerify`/
- * `hasFeaturesToVerify` are computed server-side by the RSC (approvalGate) —
- * the disabled state is UX sugar; the actions re-check everything
- * server-side (F-4 is an invariant, not UI).
+ * → sign button (gated by `canSign`); `signed` → new-version button (gated
+ * by `canCreateNewVersion`, Task 9). `gateOk`/`hasToVerify`/
+ * `hasSubjectToVerify`/`hasKwToVerify`/`hasFeaturesToVerify` are computed
+ * server-side by the RSC (approvalGate) — the disabled state is UX sugar;
+ * the actions re-check everything server-side (F-4 is an invariant, not UI).
  */
 export function ValuationActions({
   id,
@@ -27,6 +28,7 @@ export function ValuationActions({
   gateOk,
   canApprove,
   canSign,
+  canCreateNewVersion,
 }: {
   id: string;
   hasToVerify: boolean;
@@ -36,6 +38,7 @@ export function ValuationActions({
   gateOk: boolean;
   canApprove: boolean;
   canSign: boolean;
+  canCreateNewVersion: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -115,6 +118,16 @@ export function ValuationActions({
             onClick={() => run(signValuationAction)}
           >
             {isPending ? "Podpisywanie…" : "Podpisz operat (nieodwracalne)"}
+          </Button>
+        ) : null}
+        {canCreateNewVersion ? (
+          <Button
+            type="button"
+            data-testid="create-new-version-button"
+            disabled={isPending}
+            onClick={() => run(createNewVersionAction)}
+          >
+            {isPending ? "Tworzenie…" : "Utwórz nową wersję"}
           </Button>
         ) : null}
       </div>

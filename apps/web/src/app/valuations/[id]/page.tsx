@@ -493,6 +493,16 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
   const isOwner = valuation.ownerId === session.user.id;
   const canSign =
     valuation.status === "approved" && Boolean(valuation.inputs) && Boolean(valuation.docxUrl);
+  const canCreateNewVersion = valuation.status === "signed";
+  // Successor lookup (Task 9): no dedicated port method (YAGNI) — a signed
+  // valuation is superseded by at most one draft, found by scanning the
+  // owner's own list for a row that points back at this one.
+  const successor =
+    valuation.status === "signed"
+      ? (await valuationRepository.listForUser(session.user)).find(
+          (v) => v.supersedesId === valuation.id,
+        )
+      : undefined;
   const gate = isDraft && valuation.inputs ? approvalGate(valuation.inputs) : null;
   const fieldBlockers = isDraft ? documentFieldBlockers(valuation) : [];
   // Approval requires BOTH the F-4 provenance gate and the document-field
@@ -537,6 +547,27 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
             {STATUS_LABEL[valuation.status] ?? valuation.status}
           </Badge>
         </div>
+        {valuation.supersedesId ? (
+          <p data-testid="supersedes-banner" className="text-sm text-muted-foreground">
+            Wersja zastępująca operat{" "}
+            <Link
+              href={`/valuations/${valuation.supersedesId}`}
+              className="underline hover:text-primary"
+            >
+              poprzedni operat
+            </Link>
+            .
+          </p>
+        ) : null}
+        {successor ? (
+          <p data-testid="superseded-by-banner" className="text-sm text-muted-foreground">
+            Zastąpiony przez{" "}
+            <Link href={`/valuations/${successor.id}`} className="underline hover:text-primary">
+              nowszą wersję
+            </Link>
+            .
+          </p>
+        ) : null}
       </div>
 
       <Card>
@@ -592,6 +623,7 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
               gateOk={gateOk}
               canApprove={valuation.status === "in_progress"}
               canSign={canSign}
+              canCreateNewVersion={canCreateNewVersion}
             />
           </CardContent>
         </Card>
