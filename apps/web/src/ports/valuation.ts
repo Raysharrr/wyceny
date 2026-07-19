@@ -105,4 +105,23 @@ export interface PortValuation {
     docs?: { docUrl: string; docxUrl: string },
     now?: Date,
   ): Promise<Valuation | null>;
+  /**
+   * Signs an approved valuation — the final, write-once transition (F-7).
+   * Repoints `docUrl`/`docxUrl` to the signed artifacts and records the
+   * document hashes on the audit row. Same null/throw contract as
+   * `confirmSample` (null = not found or not owner; throws NotSignableError
+   * for status violations, including legacy rows with no inputs/DOCX).
+   */
+  sign(
+    id: string,
+    user: SessionUser,
+    docs: { docUrl: string; docxUrl: string; sha256Docx: string; sha256Pdf: string },
+  ): Promise<Valuation | null>;
+  /**
+   * Copies a signed valuation into a fresh draft that supersedes it (NFR-3),
+   * restarting the confirm → approve → sign cycle. Same null/throw contract
+   * as `confirmSample` (null = not found or not owner; throws when the
+   * source isn't signed). The audit row is recorded against the NEW id.
+   */
+  createNewVersion(id: string, user: SessionUser): Promise<Valuation | null>;
 }

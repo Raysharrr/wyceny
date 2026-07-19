@@ -8,6 +8,8 @@ import {
   confirmSampleProvenance,
   confirmSubjectProvenance,
   newValuation,
+  newVersionOf,
+  signValuation,
   type AuditAction,
 } from "../domain/valuation";
 import * as schema from "../db/schema";
@@ -236,6 +238,56 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           meta: { docUrl: updated.docUrl, docxUrl: updated.docxUrl },
         });
         return toValuation(saved);
+      });
+    },
+
+    async sign(
+      id: string,
+      user: SessionUser,
+      docs: { docUrl: string; docxUrl: string; sha256Docx: string; sha256Pdf: string },
+    ): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = signValuation(valuation, new Date());
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({
+            status: updated.status,
+            signedAt: updated.signedAt,
+            docUrl: docs.docUrl,
+            docxUrl: docs.docxUrl,
+          })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "approved")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "signed",
+          meta: { sha256Docx: docs.sha256Docx, sha256Pdf: docs.sha256Pdf, docUrl: docs.docUrl },
+        });
+        return toValuation(saved);
+      });
+    },
+
+    async createNewVersion(id: string, user: SessionUser): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const copy = newVersionOf(valuation);
+        const [inserted] = await tx.insert(schema.valuation).values(copy).returning();
+        await insertAudit(tx, {
+          valuationId: inserted.id,
+          actorId: user.id,
+          action: "version_created",
+          meta: { supersedes: id },
+        });
+        return toValuation(inserted);
       });
     },
   };
