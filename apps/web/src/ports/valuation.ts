@@ -26,6 +26,8 @@ export type Valuation = {
   ownerId: string;
   status: "in_progress" | "approved" | "signed";
   approvedAt: Date | null;
+  signedAt: Date | null;
+  supersedesId: string | null;
   createdAt: Date;
 };
 

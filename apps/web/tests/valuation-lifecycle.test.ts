@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUDIT_ACTIONS,
   ApprovalBlockedError,
+  NotSignableError,
   approveValuation,
   confirmFeaturesProvenance,
   confirmKwProvenance,
   confirmSampleProvenance,
   confirmSubjectProvenance,
+  newVersionOf,
+  signValuation,
 } from "../src/domain/valuation";
 import type { Valuation } from "../src/ports/valuation";
 import type { KcsInput } from "../src/domain/kcs";
@@ -38,6 +42,8 @@ function draftWith(inputs: KcsInput | null, overrides: Partial<Valuation> = {}):
     ownerId: "owner-1",
     status: "in_progress",
     approvedAt: null,
+    signedAt: null,
+    supersedesId: null,
     createdAt: new Date("2026-07-14T10:00:00Z"),
     ...overrides,
   };
@@ -277,5 +283,108 @@ describe("approveValuation", () => {
     expect(approved.approvedAt).toBe(now);
     expect(approved.docUrl).toBe("/api/docs/operat-x.pdf");
     expect(approved.docxUrl).toBe("/api/docs/operat-x.docx");
+  });
+});
+
+const approvedValuation: Valuation = {
+  ...draftWith(rcnInputs()),
+  status: "approved",
+  docUrl: "/api/docs/operat-y.pdf",
+  docxUrl: "/api/docs/operat-y.docx",
+  approvedAt: new Date("2026-07-15T10:00:00Z"),
+  signedAt: null,
+  supersedesId: null,
+};
+
+describe("signValuation (F-7)", () => {
+  it("flips approved → signed and stamps signedAt", () => {
+    const now = new Date("2026-07-19T12:00:00Z");
+    const signed = signValuation(approvedValuation, now);
+    expect(signed.status).toBe("signed");
+    expect(signed.signedAt).toBe(now);
+  });
+
+  it("refuses a draft", () => {
+    expect(() =>
+      signValuation({ ...approvedValuation, status: "in_progress" }, new Date()),
+    ).toThrow(NotSignableError);
+  });
+
+  it("refuses an already-signed valuation", () => {
+    expect(() => signValuation({ ...approvedValuation, status: "signed" }, new Date())).toThrow(
+      NotSignableError,
+    );
+  });
+
+  it("refuses a legacy approved row without inputs or docx (not signable)", () => {
+    expect(() => signValuation({ ...approvedValuation, inputs: null }, new Date())).toThrow(
+      NotSignableError,
+    );
+    expect(() => signValuation({ ...approvedValuation, docxUrl: null }, new Date())).toThrow(
+      NotSignableError,
+    );
+  });
+});
+
+describe("newVersionOf (NFR-3)", () => {
+  it("copies a signed valuation into a linked draft", () => {
+    const signed = signValuation(approvedValuation, new Date());
+    const draft = newVersionOf(signed);
+    expect(draft.status).toBe("in_progress");
+    expect(draft.supersedesId).toBe(signed.id);
+    expect(draft.approvedAt).toBeNull();
+    expect(draft.signedAt).toBeNull();
+    expect(draft.docUrl).toBeNull();
+    expect(draft.docxUrl).toBeNull();
+    expect(draft.address).toBe(signed.address);
+  });
+
+  it("resets machine-sourced provenance to to_verify, keeps appraiser-sourced confirmed", () => {
+    const signed = signValuation(
+      {
+        ...approvedValuation,
+        inputs: {
+          ...approvedValuation.inputs!,
+          comparables: [
+            { ...approvedValuation.inputs!.comparables[0], source: "rcn", status: "confirmed" },
+            {
+              ...approvedValuation.inputs!.comparables[1],
+              source: "manual",
+              status: "confirmed",
+            },
+          ],
+          provenance: {
+            ...approvedValuation.inputs!.provenance!,
+            geocode: { source: "geokoder", status: "confirmed" },
+            weights: { source: "rzeczoznawca", status: "confirmed" },
+          },
+        },
+      },
+      new Date(),
+    );
+    const draft = newVersionOf(signed);
+    expect(draft.inputs!.comparables[0].status).toBe("to_verify");
+    expect(draft.inputs!.comparables[1].status).toBe("confirmed");
+    expect(draft.inputs!.provenance!.geocode!.status).toBe("to_verify");
+    expect(draft.inputs!.provenance!.weights.status).toBe("confirmed");
+  });
+
+  it("refuses a non-signed source", () => {
+    expect(() => newVersionOf(approvedValuation)).toThrow(/signed/);
+  });
+});
+
+describe("AUDIT_ACTIONS (FR-12)", () => {
+  it("is the closed action list", () => {
+    expect(AUDIT_ACTIONS).toEqual([
+      "created",
+      "sample_confirmed",
+      "subject_confirmed",
+      "kw_confirmed",
+      "features_confirmed",
+      "approved",
+      "signed",
+      "version_created",
+    ]);
   });
 });

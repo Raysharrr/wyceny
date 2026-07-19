@@ -1,5 +1,7 @@
 import { approvalGate, type Blocker } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
+import type { Comparable } from "./kcs";
+import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
 
 /**
@@ -31,6 +33,8 @@ export function newValuation(input: NewValuationInput): Omit<Valuation, "id" | "
     ownerId: input.ownerId,
     status: "in_progress",
     approvedAt: null,
+    signedAt: null,
+    supersedesId: null,
   };
 }
 
@@ -177,5 +181,106 @@ export function approveValuation(
     status: "approved",
     approvedAt: now,
     ...(docs ? { docUrl: docs.docUrl, docxUrl: docs.docxUrl } : {}),
+  };
+}
+
+/** Closed FR-12 audit-action list — the only actions `audit_log` may record. */
+export const AUDIT_ACTIONS = [
+  "created",
+  "sample_confirmed",
+  "subject_confirmed",
+  "kw_confirmed",
+  "features_confirmed",
+  "approved",
+  "signed",
+  "version_created",
+] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+export class NotSignableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotSignableError";
+  }
+}
+
+/**
+ * The sign mutation (F-7): approved → signed, exactly once. Legacy rows
+ * (stub era: no inputs snapshot / no DOCX) are not signable — there is
+ * nothing to re-render the final document from.
+ */
+export function signValuation(v: Valuation, now: Date): Valuation {
+  if (v.status !== "approved") {
+    throw new NotSignableError(
+      `Valuation ${v.id} is not approved (status: ${v.status}) — cannot sign`,
+    );
+  }
+  if (!v.inputs || !v.docxUrl) {
+    throw new NotSignableError(`Valuation ${v.id} is a legacy row — not signable`);
+  }
+  return { ...v, status: "signed", signedAt: now };
+}
+
+/**
+ * Comparables only ever carry "rcn" (RCN auto-fetch) or "manual" (typed by
+ * the appraiser) — mirrors the rcn-vs-everything-else rule already used by
+ * `confirmSampleProvenance` and `provenance.ts`'s gate. Only the machine
+ * ("rcn") rows get re-verified in a new version.
+ */
+function resetComparable(c: Comparable): Comparable {
+  return c.source === "rcn" ? { ...c, status: "to_verify" } : c;
+}
+
+/**
+ * Provenance-map entries carry the full `ProvenanceSource` union (F-5/ADR-010).
+ * Only "rzeczoznawca" (typed directly by the appraiser) survives a new
+ * version unreset — every other source (geokoder, ewidencja, mpzp, akt,
+ * odpis_kw, preset, ...) is machine/registry-derived and gets re-verified
+ * (AI-first ACL: you don't confirm what you typed — and bulk confirm
+ * actions could not flip a "rzeczoznawca" entry back anyway).
+ */
+function resetProvenanceEntry<T extends { source?: string; status?: string }>(entry: T): T {
+  return entry.source === "rzeczoznawca" ? entry : { ...entry, status: "to_verify" };
+}
+
+/**
+ * Versioning (NFR-3): copies a SIGNED valuation into a fresh draft that
+ * supersedes it. Full confirm → approve → sign cycle starts over.
+ */
+export function newVersionOf(v: Valuation): Omit<Valuation, "id" | "createdAt"> {
+  if (v.status !== "signed") {
+    throw new Error(`Valuation ${v.id} is not signed — only signed valuations get new versions`);
+  }
+  const inputs = v.inputs
+    ? {
+        ...v.inputs,
+        comparables: v.inputs.comparables.map(resetComparable),
+        provenance: v.inputs.provenance
+          ? (Object.fromEntries(
+              Object.entries(v.inputs.provenance).map(([k, e]) => [
+                k,
+                e ? resetProvenanceEntry(e) : e,
+              ]),
+            ) as InputsProvenance)
+          : v.inputs.provenance,
+      }
+    : v.inputs;
+  return {
+    address: v.address,
+    area: v.area,
+    wr: v.wr,
+    inputs,
+    amountInWords: null,
+    docUrl: null,
+    docxUrl: null,
+    purpose: v.purpose,
+    kwNumber: v.kwNumber,
+    client: v.client,
+    inspectionDate: v.inspectionDate,
+    ownerId: v.ownerId,
+    status: "in_progress",
+    approvedAt: null,
+    signedAt: null,
+    supersedesId: v.id,
   };
 }

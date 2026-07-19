@@ -119,6 +119,8 @@ describe("createValuation — success path (Slice 4: no document generation at d
       ownerId: "test-user",
       status: "in_progress",
       approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
       createdAt: new Date("2026-07-15T00:00:00.000Z"),
     });
 
@@ -175,6 +177,8 @@ describe("createValuation — success path (Slice 4: no document generation at d
       ownerId: "test-user",
       status: "in_progress",
       approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
       createdAt: new Date("2026-07-17T00:00:00.000Z"),
     });
 
@@ -224,6 +228,8 @@ describe("createValuation — success path (Slice 4: no document generation at d
       ownerId: "test-user",
       status: "in_progress",
       approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
       createdAt: new Date("2026-07-17T00:00:00.000Z"),
     });
 
@@ -266,6 +272,8 @@ describe("createValuation — success path (Slice 4: no document generation at d
       ownerId: "test-user",
       status: "in_progress",
       approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
       createdAt: new Date("2026-07-17T00:00:00.000Z"),
     });
 
@@ -302,6 +310,8 @@ describe("createValuation — success path (Slice 4: no document generation at d
       ownerId: "test-user",
       status: "in_progress",
       approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
       createdAt: new Date("2026-07-17T00:00:00.000Z"),
     });
 
@@ -363,6 +373,8 @@ describe("createValuation — success path (Slice 4: no document generation at d
       ownerId: "test-user",
       status: "in_progress",
       approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
       createdAt: new Date("2026-07-18T00:00:00.000Z"),
     });
 
@@ -427,6 +439,8 @@ describe("createValuation — success path (Slice 4: no document generation at d
       ownerId: "test-user",
       status: "in_progress",
       approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
       createdAt: new Date("2026-07-18T00:00:00.000Z"),
     });
 
@@ -479,6 +493,8 @@ describe("createValuation — success path (Slice 4: no document generation at d
       ownerId: "test-user",
       status: "in_progress",
       approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
       createdAt: new Date("2026-07-17T00:00:00.000Z"),
     });
 
