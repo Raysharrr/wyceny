@@ -33,6 +33,16 @@ const RATING_TEXT: Record<FeatureRating, string> = {
   gorsza: "wartość najniższa cechy",
 };
 
+/** Document label per rating level — the internal enum stays diacritic-free. */
+const LEVEL_LABEL: Record<FeatureRating, string> = {
+  lepsza: "lepsza",
+  przecietna: "przeciętna",
+  gorsza: "gorsza",
+};
+
+/** Document order of rating levels in the §12.1 scale block. */
+const LEVEL_ORDER: FeatureRating[] = ["lepsza", "przecietna", "gorsza"];
+
 const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
 const DASH = "—";
 const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
@@ -186,6 +196,8 @@ export type DocumentModel = {
   opis_cmin: string[];
   opis_cmax: string[];
   opis_przedmiot: string[];
+  /** §12.1 rating-scale definitions — one row per active feature; only non-empty levels print. */
+  skala_ocen: Array<{ cecha: string; poziomy: Array<{ poziom: string; def: string }> }>;
 };
 
 export type DocumentFields = {
@@ -232,6 +244,12 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     subject.mpzpAbsent !== true &&
     Boolean(subject.mpzpSymbol || subject.mpzpNazwa || subject.mpzpUchwala);
   const kw = inputs.kw ?? null;
+
+  // Weight-0 features stay out of the legal document entirely (workshop
+  // decision: "pancerz obronny" — a zero-weight row invites challenge).
+  const activeFeatures = inputs.features.filter((f) => f.weight > 0);
+  const activeUi = kcs.ui.filter((f) => f.weight > 0);
+
   return {
     adres: input.address,
     powierzchnia: formatNumber(input.area, 2),
@@ -314,7 +332,7 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
       pow: c.area != null ? formatNumber(c.area, 2) : "—",
       cena_jedn: formatPln(c.pricePerM2),
     })),
-    cechy: kcs.ui.map((f) => ({
+    cechy: activeUi.map((f) => ({
       nazwa: f.name,
       waga_pct: formatNumber(f.weight * 100, 0),
       ui_min: formatNumber(f.weight * kcs.vmin, 3),
@@ -324,8 +342,17 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     })),
     // ponytail: canonical KCS simplification — cmin lokal = all features at
     // worst, cmax = all at best; the subject follows its actual ratings.
-    opis_cmin: inputs.features.map((f) => `${f.name} – wartość najniższa cechy,`),
-    opis_cmax: inputs.features.map((f) => `${f.name} – wartość najwyższa cechy,`),
-    opis_przedmiot: inputs.features.map((f) => `${f.name} – ${RATING_TEXT[f.rating]},`),
+    opis_cmin: activeFeatures.map((f) => `${f.name} – wartość najniższa cechy,`),
+    opis_cmax: activeFeatures.map((f) => `${f.name} – wartość najwyższa cechy,`),
+    opis_przedmiot: activeFeatures.map((f) => `${f.name} – ${RATING_TEXT[f.rating]},`),
+    skala_ocen: activeFeatures
+      .map((f) => ({
+        cecha: f.name,
+        poziomy: LEVEL_ORDER.filter((level) => f.definitions?.[level]?.trim()).map((level) => ({
+          poziom: LEVEL_LABEL[level],
+          def: f.definitions![level]!.trim(),
+        })),
+      }))
+      .filter((row) => row.poziomy.length > 0),
   };
 }
