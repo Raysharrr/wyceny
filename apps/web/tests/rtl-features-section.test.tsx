@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
@@ -53,6 +53,18 @@ describe("features section — bag add/remove (Slice 7)", () => {
     await user.selectOptions(select, "rodzaj-zabudowy");
     expect(screen.getByText("rodzaj zabudowy budynku")).toBeTruthy();
     expect(Array.from(select.options).map((o) => o.value)).not.toContain("rodzaj-zabudowy");
+
+    // MUST-have: an appended row starts at weight 0 and rating "przecietna"
+    // (label "przeciętna"). Anchor on the remove button's testid, then walk
+    // up to the <tr> and scope queries to that row.
+    const row = screen.getByTestId("remove-feature-rodzaj-zabudowy").closest("tr");
+    expect(row).toBeTruthy();
+    const weightInput = within(row as HTMLElement).getByRole("spinbutton") as HTMLInputElement;
+    expect(weightInput.value).toBe("0");
+    const activeRatingButton = within(row as HTMLElement).getByRole("button", {
+      name: "rodzaj zabudowy budynku: przeciętna",
+    });
+    expect(activeRatingButton.getAttribute("data-variant")).toBe("default");
   });
 
   it("removing a feature deletes its row and returns it to the pool", async () => {
@@ -64,5 +76,18 @@ describe("features section — bag add/remove (Slice 7)", () => {
     expect(screen.queryByTestId("remove-feature-dodatkowe")).toBeNull();
     const select = screen.getByTestId("add-feature-select") as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.value)).toContain("dodatkowe");
+  });
+
+  it("disables the remove button once only one feature row remains", async () => {
+    const user = userEvent.setup();
+    render(<NewValuationForm />);
+    let removeButtons = screen.getAllByRole("button", { name: /^Usuń cechę /i });
+    expect(removeButtons.length).toBeGreaterThan(1);
+    while (removeButtons.length > 1) {
+      await user.click(removeButtons[0]);
+      removeButtons = screen.getAllByRole("button", { name: /^Usuń cechę /i });
+    }
+    expect(removeButtons).toHaveLength(1);
+    expect((removeButtons[0] as HTMLButtonElement).disabled).toBe(true);
   });
 });
