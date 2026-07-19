@@ -64,6 +64,11 @@ const FORBIDDEN_LITERALS = [
   // {pow_uzytkowa_kw}, never as literals baked into the 8.2 examination block.
   "14651/29359", // sample udział we współwłasności
   "146,5100", // sample powierzchnia użytkowa
+  // Task 8 (Slice 7): §12.1 rating-scale definitions are parameterized — the
+  // source operat's hardcoded scale texts must never ship in the template.
+  "poniżej 65 m2",
+  "4 piętro i powyżej",
+  "prawo do wyłącznego korzystania z miejsca postojowego",
 ];
 
 const REQUIRED_PLACEHOLDERS = [
@@ -138,6 +143,14 @@ const REQUIRED_PLACEHOLDERS = [
   // a deed (akt) so the operat never implies a KW excerpt it may not hold.
   "{#kw_stub_odpis}",
   "{/kw_stub_odpis}",
+  // Task 8 (Slice 7): §12.1 rating-scale loop.
+  "{#skala_ocen}",
+  "{/skala_ocen}",
+  "{#poziomy}",
+  "{/poziomy}",
+  "{cecha}",
+  "{poziom}",
+  "{def}",
 ];
 
 describe("F-12: template integrity (operat-szablon.docx)", () => {
@@ -159,6 +172,14 @@ describe("F-12: template integrity (operat-szablon.docx)", () => {
     for (const ph of REQUIRED_PLACEHOLDERS) {
       expect(text, `missing placeholder ${ph}`).toContain(ph);
     }
+  });
+
+  // ADR-006 (AC-8): the honest weights-methodology sentence must be present —
+  // the r² claim was removed in Slice 4; this is its truthful replacement.
+  it("contains the honest weights-methodology sentence (ADR-006 short variant)", () => {
+    expect(templateText()).toContain(
+      "Wagi cech rynkowych przyjęto na podstawie analizy rynku lokalnego",
+    );
   });
 
   it("has at least 19 canonical section headings, all present in the template", () => {

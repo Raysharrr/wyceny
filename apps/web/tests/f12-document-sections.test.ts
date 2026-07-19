@@ -25,9 +25,34 @@ function goldenInputs(subject?: SubjectSnapshot, kw?: KwSnapshot): KcsInput {
       status: "confirmed" as const,
     })),
     features: [
-      { name: "standard wykończenia", weight: 0.4, rating: "przecietna" as const },
-      { name: "położenie na piętrze", weight: 0.3, rating: "lepsza" as const },
-      { name: "lokalizacja", weight: 0.3, rating: "gorsza" as const },
+      {
+        name: "standard wykończenia",
+        weight: 0.4,
+        rating: "przecietna" as const,
+        key: "standard-wykonczenia",
+        definitions: {
+          lepsza: "wykończenie materiałami wyższej klasy",
+          przecietna: "wykończenie w dobrym stanie",
+        },
+      },
+      {
+        name: "położenie na piętrze",
+        weight: 0.3,
+        rating: "lepsza" as const,
+        key: "polozenie-na-pietrze",
+        definitions: {
+          lepsza: "czwarte piętro i powyżej",
+          przecietna: "piętra pośrednie",
+          gorsza: "parter",
+        },
+      },
+      {
+        name: "lokalizacja",
+        weight: 0.3,
+        rating: "gorsza" as const,
+        key: "lokalizacja",
+        definitions: { lepsza: "bliskość punktów usługowych" },
+      },
     ],
     sampleMeta: null,
     provenance: null,
@@ -185,6 +210,18 @@ describe("F-12: rendered operat completeness (real template, golden data)", () =
     expect(text).toContain("symbol przeznaczenia 1MW/U");
     expect(text).toContain("uchwała nr I/1/2020");
     expect(text).not.toContain("brak obowiązującego miejscowego planu");
+  });
+
+  it("renders the §12.1 rating-scale block with this valuation's definitions + honest weights prose", () => {
+    // Slice 7: §12.1 prints THIS valuation's scale definitions + honest weights prose.
+    expect(text).toContain("lepsza – czwarte piętro i powyżej");
+    expect(text).toContain("przeciętna – piętra pośrednie");
+    expect(text).toContain("Wagi cech rynkowych przyjęto na podstawie analizy rynku lokalnego");
+    expect(text).not.toContain("poniżej 65 m2");
+    // Anti-run-on (dzial3_wpisy lesson): an INLINE {#poziomy} loop would glue
+    // consecutive levels together — the nested loop must render one paragraph
+    // per level (advisor finding #2).
+    expect(text).not.toMatch(/powyżejprzeciętna|pośredniegorsza/);
   });
 });
 
