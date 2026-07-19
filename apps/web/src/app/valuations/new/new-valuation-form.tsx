@@ -20,6 +20,7 @@ import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import { getSubjectData } from "@/app/actions/get-subject-data";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { PURPOSE_LABEL } from "@/domain/document-model";
+import { FEATURE_PRESETS, type LokalFeatureKey } from "@/domain/feature-presets";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 import { extractKw } from "@/lib/kw-extract-client";
 import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
@@ -157,7 +158,11 @@ export function NewValuationForm() {
     replace: replaceComparables,
   } = useFieldArray({ control, name: "comparables" });
 
-  const { fields: featureFields } = useFieldArray({ control, name: "features" });
+  const {
+    fields: featureFields,
+    append: appendFeature,
+    remove: removeFeature,
+  } = useFieldArray({ control, name: "features" });
 
   const comparables = useWatch({ control, name: "comparables" });
   const features = useWatch({ control, name: "features" });
@@ -177,6 +182,13 @@ export function NewValuationForm() {
 
   const weightSum = (features ?? []).reduce((sum, f) => sum + (Number(f?.weightPct) || 0), 0);
   const weightsBalanced = Math.abs(weightSum - 100) <= 0.1;
+
+  // The closed pool (F-6): every preset entry not already an active row —
+  // starts as the 3 "exceptional" features, refills with a removed row.
+  const activeFeatureKeys = new Set((features ?? []).map((f) => f?.key));
+  const availableFeatures = FEATURE_PRESETS.lokal.filter(
+    (e) => !activeFeatureKeys.has(e.key as LokalFeatureKey),
+  );
 
   const comparablesError = errors.comparables?.root?.message ?? errors.comparables?.message;
   const featuresError = errors.features?.root?.message ?? errors.features?.message;
@@ -659,6 +671,7 @@ export function NewValuationForm() {
               <TableHead>Cecha</TableHead>
               <TableHead>Waga (%)</TableHead>
               <TableHead>Ocena</TableHead>
+              <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -712,11 +725,51 @@ export function NewValuationForm() {
                       ))}
                     </div>
                   </TableCell>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      data-testid={`remove-feature-${features?.[index]?.key ?? index}`}
+                      aria-label={`Usuń cechę ${field.name}`}
+                      disabled={featureFields.length === 1}
+                      onClick={() => removeFeature(index)}
+                    >
+                      Usuń
+                    </Button>
+                  </TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
         </Table>
+
+        {availableFeatures.length > 0 ? (
+          <select
+            data-testid="add-feature-select"
+            aria-label="Dodaj cechę z puli"
+            className="w-fit rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
+            value=""
+            onChange={(e) => {
+              const entry = FEATURE_PRESETS.lokal.find((x) => x.key === e.target.value);
+              if (!entry) return;
+              appendFeature({
+                key: entry.key as LokalFeatureKey,
+                name: entry.name,
+                weightPct: 0,
+                rating: "przecietna",
+                definitions: { ...entry.defaultDefinitions },
+              });
+            }}
+          >
+            <option value="">+ Dodaj cechę z puli…</option>
+            {availableFeatures.map((e) => (
+              <option key={e.key} value={e.key}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
 
         {featuresError ? (
           <p role="alert" className="text-sm text-destructive">
