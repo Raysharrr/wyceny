@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
@@ -20,7 +20,12 @@ import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import { getSubjectData } from "@/app/actions/get-subject-data";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { PURPOSE_LABEL } from "@/domain/document-model";
-import { FEATURE_PRESETS, type LokalFeatureKey } from "@/domain/feature-presets";
+import {
+  FEATURE_PRESETS,
+  medianAreaM2,
+  powierzchniaDefinitions,
+  type LokalFeatureKey,
+} from "@/domain/feature-presets";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 import { extractKw } from "@/lib/kw-extract-client";
 import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
@@ -112,6 +117,9 @@ export function NewValuationForm() {
   // a section reset — a stale LLM number must never survive as a
   // rzeczoznawca/confirmed area. `null` = nothing doc-seeded to reconcile.
   const areaSeededFromKw = useRef<number | null>(null);
+  // Slice 7 (Slice-6 "seeded" pattern): powierzchnia definitions track the
+  // sample median until the appraiser edits them — then they freeze.
+  const powDefsEdited = useRef(false);
   const lastFetchedAddress = useRef<string | null>(null);
   // Guards against out-of-order responses: if the address changes again (or
   // a retry fires) before an in-flight fetch resolves, only the LATEST
@@ -182,6 +190,24 @@ export function NewValuationForm() {
 
   const weightSum = (features ?? []).reduce((sum, f) => sum + (Number(f?.weightPct) || 0), 0);
   const weightsBalanced = Math.abs(weightSum - 100) <= 0.1;
+
+  const comparableAreas = (comparables ?? [])
+    .map((c) => Number(c?.area))
+    .filter((a) => Number.isFinite(a) && a > 0);
+  const areasKey = comparableAreas.join(",");
+  useEffect(() => {
+    if (powDefsEdited.current) return;
+    const current = getValues("features") ?? [];
+    const idx = current.findIndex((f) => f?.key === "powierzchnia-uzytkowa");
+    if (idx < 0) return;
+    const defs = powierzchniaDefinitions(medianAreaM2(comparableAreas));
+    setValue(`features.${idx}.definitions`, {
+      lepsza: defs.lepsza ?? "",
+      przecietna: "",
+      gorsza: defs.gorsza ?? "",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- areasKey is the dependency proxy for comparableAreas
+  }, [areasKey]);
 
   // The closed pool (F-6): every preset entry not already an active row —
   // starts as the 3 "exceptional" features, refills with a removed row.
@@ -678,67 +704,111 @@ export function NewValuationForm() {
             {featureFields.map((field, index) => {
               const currentRating = features?.[index]?.rating ?? field.rating;
               return (
-                <TableRow key={field.id}>
-                  <TableCell className="whitespace-normal">{field.name}</TableCell>
-                  <TableCell>
-                    <Controller
-                      control={control}
-                      name={`features.${index}.weightPct`}
-                      render={({ field: weightField, fieldState }) => (
-                        <>
-                          <Input
-                            id={`feature-weight-${index}`}
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            inputMode="decimal"
-                            aria-invalid={!!fieldState.error}
-                            name={weightField.name}
-                            onBlur={weightField.onBlur}
-                            ref={weightField.ref}
-                            value={toInputValue(weightField.value)}
-                            onChange={(e) => weightField.onChange(e.target.value)}
-                          />
-                          <FieldError errors={[fieldState.error]} />
-                        </>
-                      )}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1.5">
-                      {RATING_OPTIONS.map((option) => (
-                        <Button
-                          key={option.value}
-                          type="button"
-                          size="sm"
-                          variant={currentRating === option.value ? "default" : "outline"}
-                          aria-label={`${field.name}: ${option.label}`}
-                          onClick={() =>
-                            setValue(`features.${index}.rating`, option.value, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            })
-                          }
+                <Fragment key={field.id}>
+                  <TableRow>
+                    <TableCell className="whitespace-normal">{field.name}</TableCell>
+                    <TableCell>
+                      <Controller
+                        control={control}
+                        name={`features.${index}.weightPct`}
+                        render={({ field: weightField, fieldState }) => (
+                          <>
+                            <Input
+                              id={`feature-weight-${index}`}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              inputMode="decimal"
+                              aria-invalid={!!fieldState.error}
+                              name={weightField.name}
+                              onBlur={weightField.onBlur}
+                              ref={weightField.ref}
+                              value={toInputValue(weightField.value)}
+                              onChange={(e) => weightField.onChange(e.target.value)}
+                            />
+                            <FieldError errors={[fieldState.error]} />
+                          </>
+                        )}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1.5">
+                        {RATING_OPTIONS.map((option) => (
+                          <Button
+                            key={option.value}
+                            type="button"
+                            size="sm"
+                            variant={currentRating === option.value ? "default" : "outline"}
+                            aria-label={`${field.name}: ${option.label}`}
+                            onClick={() =>
+                              setValue(`features.${index}.rating`, option.value, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              })
+                            }
+                          >
+                            {option.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        data-testid={`remove-feature-${features?.[index]?.key ?? index}`}
+                        aria-label={`Usuń cechę ${field.name}`}
+                        disabled={featureFields.length === 1}
+                        onClick={() => removeFeature(index)}
+                      >
+                        Usuń
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell colSpan={4} className="py-0">
+                      <details>
+                        <summary
+                          data-testid={`feature-defs-summary-${features?.[index]?.key ?? index}`}
+                          className="cursor-pointer py-1.5 text-xs text-muted-foreground"
                         >
-                          {option.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      data-testid={`remove-feature-${features?.[index]?.key ?? index}`}
-                      aria-label={`Usuń cechę ${field.name}`}
-                      disabled={featureFields.length === 1}
-                      onClick={() => removeFeature(index)}
-                    >
-                      Usuń
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                          Definicje skali ocen — {field.name}
+                        </summary>
+                        <div className="flex flex-col gap-2 pb-3">
+                          {(["lepsza", "przecietna", "gorsza"] as const).map((level) => (
+                            <Controller
+                              key={level}
+                              control={control}
+                              name={`features.${index}.definitions.${level}`}
+                              render={({ field: defField }) => (
+                                <label className="flex flex-col gap-1 text-xs">
+                                  <span className="text-muted-foreground">
+                                    {level === "przecietna" ? "przeciętna" : level}
+                                  </span>
+                                  <Input
+                                    data-testid={`feature-def-${features?.[index]?.key ?? index}-${level}`}
+                                    placeholder="puste pole — poziom nie pojawi się w operacie"
+                                    name={defField.name}
+                                    onBlur={defField.onBlur}
+                                    ref={defField.ref}
+                                    value={toInputValue(defField.value)}
+                                    onChange={(e) => {
+                                      if (features?.[index]?.key === "powierzchnia-uzytkowa") {
+                                        powDefsEdited.current = true;
+                                      }
+                                      defField.onChange(e.target.value);
+                                    }}
+                                  />
+                                </label>
+                              )}
+                            />
+                          ))}
+                        </div>
+                      </details>
+                    </TableCell>
+                  </TableRow>
+                </Fragment>
               );
             })}
           </TableBody>

@@ -33,6 +33,7 @@ vi.mock("@/app/actions/mint-kw-token", () => ({
 vi.mock("@/lib/kw-extract-client", () => ({ extractKw: vi.fn() }));
 
 import { NewValuationForm } from "@/app/valuations/new/new-valuation-form";
+import { FEATURE_PRESETS } from "@/domain/feature-presets";
 
 describe("features section — bag add/remove (Slice 7)", () => {
   it("renders the 6 basic features and an add-from-pool select with the 3 exceptional ones", async () => {
@@ -89,5 +90,75 @@ describe("features section — bag add/remove (Slice 7)", () => {
     }
     expect(removeButtons).toHaveLength(1);
     expect((removeButtons[0] as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("features section — rating-scale definitions (Slice 7)", () => {
+  it("shows editable default definitions per level", async () => {
+    const user = userEvent.setup();
+    render(<NewValuationForm />);
+    await user.click(screen.getByTestId("feature-defs-summary-standard-wykonczenia"));
+    const input = screen.getByTestId("feature-def-standard-wykonczenia-lepsza") as HTMLInputElement;
+    expect(input.value).toBe("standard dobry, wykończenie materiałami lepszej jakości");
+  });
+
+  it("prefills powierzchnia definitions from the sample area median and re-tracks it", async () => {
+    const user = userEvent.setup();
+    render(<NewValuationForm />);
+    // Comparable-area inputs carry NO labels (advisor finding #5) — target
+    // their ids (#comparable-area-N, see new-valuation-form.tsx ~:527). Do
+    // NOT use the subject "Powierzchnia (m²)" label — that field is the
+    // SUBJECT area and never feeds the median.
+    const areaInput = (i: number) =>
+      document.querySelector(`#comparable-area-${i}`) as HTMLInputElement;
+    const areas = [areaInput(0), areaInput(1), areaInput(2)];
+    await user.type(areas[0], "50");
+    await user.type(areas[1], "60");
+    await user.type(areas[2], "70");
+    await user.click(screen.getByTestId("feature-defs-summary-powierzchnia-uzytkowa"));
+    const lepsza = screen.getByTestId(
+      "feature-def-powierzchnia-uzytkowa-lepsza",
+    ) as HTMLInputElement;
+    expect(lepsza.value).toContain("60");
+    // median changes → prefill follows (not yet edited)
+    await user.clear(areas[2]);
+    await user.type(areas[2], "90");
+    expect(lepsza.value).toContain("60"); // median of 50,60,90 is still 60
+    await user.clear(areas[1]);
+    await user.type(areas[1], "80");
+    expect(lepsza.value).toContain("80"); // median of 50,80,90
+  });
+
+  it("a manual edit freezes the powierzchnia definitions against later sample changes", async () => {
+    const user = userEvent.setup();
+    render(<NewValuationForm />);
+    await user.click(screen.getByTestId("feature-defs-summary-powierzchnia-uzytkowa"));
+    const lepsza = screen.getByTestId(
+      "feature-def-powierzchnia-uzytkowa-lepsza",
+    ) as HTMLInputElement;
+    await user.type(lepsza, "własny próg rzeczoznawcy");
+    const area0 = document.querySelector("#comparable-area-0") as HTMLInputElement;
+    await user.type(area0, "55");
+    expect(lepsza.value).toContain("własny próg rzeczoznawcy");
+  });
+
+  // Controller requirement deferred from Task 5 review (spread-copy freshness):
+  // editing a feature's definitions must never mutate the shared module-level
+  // preset object. This static feature loads via `DEFAULT_FEATURES`
+  // (`defaultFeatureFormValues()`, which itself spreads `defaultDefinitions`);
+  // a pool-add would go through the same spread in `appendFeature` below —
+  // either path must hand the form a real copy, not a live reference.
+  it("editing a static feature's definitions does not mutate the shared preset", async () => {
+    const user = userEvent.setup();
+    render(<NewValuationForm />);
+    const originalLepsza = FEATURE_PRESETS.lokal.find((e) => e.key === "standard-wykonczenia")
+      ?.defaultDefinitions.lepsza;
+    await user.click(screen.getByTestId("feature-defs-summary-standard-wykonczenia"));
+    const input = screen.getByTestId("feature-def-standard-wykonczenia-lepsza") as HTMLInputElement;
+    await user.type(input, " EXTRA TEXT");
+    expect(
+      FEATURE_PRESETS.lokal.find((e) => e.key === "standard-wykonczenia")?.defaultDefinitions
+        .lepsza,
+    ).toBe(originalLepsza);
   });
 });
