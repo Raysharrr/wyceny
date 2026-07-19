@@ -795,7 +795,7 @@ describe("audit_log per mutation", () => {
 });
 ```
 
-(`confirmableInput`/`approvableInput`: the exact `KcsInput` fixtures already exist in `tests/valuation-repo.test.ts` — extract them to `tests/fixtures/valuation-inputs.ts` and import from both files instead of duplicating.)
+(`confirmableInput`/`approvableInput` do NOT exist yet — author them in `tests/fixtures/valuation-inputs.ts`. The raw material in `tests/valuation-repo.test.ts` has DIFFERENT shapes: `approvableInputs()` takes no args and returns a `KcsInput` (12 confirmed comparables — passes the F-4 gate), while `valuationInput(ownerId, address)` returns a `NewValuationInput` with `inputs: null`. Move both into the fixture file, update `valuation-repo.test.ts` imports, then compose the wrappers this plan's tests use: `approvableInput(ownerId: string): NewValuationInput = { ...valuationInput(ownerId, "Audit approvable"), inputs: approvableInputs(), purpose: "sprzedaz", kwNumber: "PO1P/1/6", client: "Jan Testowy", inspectionDate: "2026-07-10" }` — document fields included so the approve gate's `documentFieldBlockers` passes; `confirmableInput(ownerId)` = same but with one comparable flipped to `source: "rcn", status: "to_verify"`.)
 
 - [ ] **Step 2: Run to verify FAIL** — `pnpm --filter web exec vitest run tests/audit-log.test.ts` → FAIL (0 audit rows).
 
@@ -1431,7 +1431,9 @@ import { signValuationAction } from "../src/app/actions/sign-valuation";
 // fixtures: approvedValuation = { id: "v1", status: "approved", ownerId: "u1",
 // approvedAt: new Date("2026-07-19"), inputs: <approvable KcsInput fixture>,
 // docUrl: "/api/docs/operat-v1.pdf", docxUrl: "/api/docs/operat-v1.docx",
-// purpose: "sprzedaz", kwNumber: "PO1P/00000001/1", client: "Jan Testowy",
+// purpose: "sprzedaz", kwNumber: "PO1P/1/6", client: "Jan Testowy",
+// (F-9: kwNumber MUST use the short-middle form "PO1P/1/6" like every fixture
+// in the repo — an 8-digit middle matches check-no-pii.sh's KW regex and REDs CI)
 // inspectionDate: "2026-07-10", area: 40, wr: 400000, address: "Testowa 1",
 // amountInWords: null, signedAt: null, supersedesId: null, createdAt: new Date() }
 
@@ -1622,9 +1624,15 @@ const baseProps = {
   hasKwToVerify: false,
   hasFeaturesToVerify: false,
   gateOk: true,
+  canApprove: false,
 };
 
 describe("ValuationActions — sign", () => {
+  it("hides the approve button outside drafts (canApprove=false)", () => {
+    render(<ValuationActions {...baseProps} canSign />);
+    expect(screen.queryByRole("button", { name: /zatwierdź/i })).not.toBeInTheDocument();
+  });
+
   it("shows the sign button only when canSign", () => {
     render(<ValuationActions {...baseProps} canSign />);
     expect(screen.getByRole("button", { name: /podpisz operat/i })).toBeInTheDocument();
@@ -1670,7 +1678,7 @@ Props: add `canSign: boolean`. Import `signValuationAction`. In the button row, 
 Follow the page's existing status rendering (it already branches on `approved` with the approval date). Add:
 
 - status label for `signed`: `Podpisany` + `Podpisano: {formatted signedAt}` (same date formatting the page uses for `approvedAt`);
-- **IMPORTANT — the component is a "draft-only action bar" today**: the page renders `ValuationActions` only for drafts. Lift that condition so it renders for the owner in ALL statuses, and update the component doc comment: draft → confirm/approve buttons (existing props), `approved` → sign button (`canSign`), `signed` → new-version button (Task 9). With every `can*`/`has*` prop false it renders an empty div — acceptable;
+- **IMPORTANT — the component is a "draft-only action bar" today** and its approve button renders UNCONDITIONALLY (only `disabled={!gateOk}`), while the page mounts the component only inside the `isDraft` branch (page.tsx ~564-589). Do NOT just lift the wrapper — that would show a greyed-out "Zatwierdź operat" on approved/signed operats. Instead: (a) add prop `canApprove: boolean` to `ValuationActions` and wrap the approve button in `{canApprove ? … : null}`; (b) render the component for the owner in ALL statuses, passing `canApprove={valuation.status === "in_progress"}`; (c) update the component doc comment: draft → confirm/approve buttons, `approved` → sign button (`canSign`), `signed` → new-version button (Task 9). The RTL test MUST additionally assert that with `canApprove={false}` no `/zatwierdź/i` button renders;
 - compute and pass `canSign={valuation.status === "approved" && Boolean(valuation.inputs) && Boolean(valuation.docxUrl)}` (ownership is already guaranteed for mutations server-side; pass `canSign` only in the owner branch — an admin viewing a foreign valuation gets no action buttons, same as today);
 - when `signed`, keep showing the document links (they now point at the `-signed` files via `docUrl`/`docxUrl` — no extra work) and do NOT render the draft action buttons (existing draft-only branch already handles this — verify).
 
