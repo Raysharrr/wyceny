@@ -73,12 +73,20 @@ describe("signValuationAction", () => {
     expect(signMock).not.toHaveBeenCalled();
   });
 
-  it("refuses a non-approved valuation with a Polish error", async () => {
+  it("refuses an already-signed valuation", async () => {
     getMock.mockResolvedValue({ ...approvedValuation, status: "signed" });
 
     const result = await signValuationAction("v1");
 
-    expect(result?.error).toMatch(/podpisan/i);
+    expect(result?.error).toMatch(/już podpisana/i);
+  });
+
+  it("refuses a non-approved draft", async () => {
+    getMock.mockResolvedValue({ ...approvedValuation, status: "in_progress" });
+
+    const result = await signValuationAction("v1");
+
+    expect(result?.error).toMatch(/tylko zatwierdzon/i);
   });
 
   it("refuses a legacy approved row (no inputs)", async () => {
@@ -105,7 +113,10 @@ describe("signValuationAction", () => {
     expect(result).toBeUndefined();
     expect(storagePutMock).toHaveBeenCalledWith("operat-v1-signed.docx", expect.any(Buffer));
     expect(storagePutMock).toHaveBeenCalledWith("operat-v1-signed.pdf", expect.any(Buffer));
+    const docxCall = storagePutMock.mock.calls.find(([key]) => key === "operat-v1-signed.docx");
+    const docxBytes = docxCall?.[1] as Buffer;
     const signArgs = signMock.mock.calls[0][2];
+    expect(signArgs.sha256Docx).toBe(createHash("sha256").update(docxBytes).digest("hex"));
     expect(signArgs.sha256Pdf).toBe(
       createHash("sha256").update(Buffer.from("pdf-bytes")).digest("hex"),
     );
