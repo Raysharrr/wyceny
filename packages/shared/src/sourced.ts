@@ -5,7 +5,15 @@
  * worker/source can never inject "confirmed".
  */
 export type ProvenanceSource =
-  "geokoder" | "ewidencja" | "mpzp" | "odpis_kw" | "akt" | "rcn" | "ogledziny" | "rzeczoznawca";
+  | "geokoder"
+  | "ewidencja"
+  | "mpzp"
+  | "odpis_kw"
+  | "akt"
+  | "rcn"
+  | "ogledziny"
+  | "rzeczoznawca"
+  | "preset";
 
 export type ProvenanceStatus = "confirmed" | "to_verify" | "none";
 

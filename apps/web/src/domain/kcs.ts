@@ -48,6 +48,10 @@ export type Feature = {
   /** Weight as a fraction (Σ over features = 1.0). UI works in %, converts before calling. */
   weight: number;
   rating: FeatureRating;
+  /** Preset pool key (Slice 7, F-6) — display/audit metadata only; the engine never reads it. */
+  key?: string;
+  /** Per-level rating-scale definitions (Slice 7) — operat content only; the engine never reads them. */
+  definitions?: Partial<Record<FeatureRating, string>> | null;
 };
 
 export type KcsInput = {
