@@ -486,6 +486,13 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
   }
 
   const isDraft = valuation.status === "in_progress";
+  // `get` already enforces F-8 ownership isolation (appraiser → own rows
+  // only; admin → any), so isOwner is always true for an appraiser here —
+  // it only ever excludes an admin viewing another appraiser's valuation,
+  // which is the case this gates the owner-only action bar for.
+  const isOwner = valuation.ownerId === session.user.id;
+  const canSign =
+    valuation.status === "approved" && Boolean(valuation.inputs) && Boolean(valuation.docxUrl);
   const gate = isDraft && valuation.inputs ? approvalGate(valuation.inputs) : null;
   const fieldBlockers = isDraft ? documentFieldBlockers(valuation) : [];
   // Approval requires BOTH the F-4 provenance gate and the document-field
@@ -561,7 +568,7 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
 
       {valuation.inputs?.kw ? <KwCard inputs={valuation.inputs} /> : null}
 
-      {isDraft ? (
+      {isOwner ? (
         <Card>
           <CardContent className="flex flex-col gap-3 pt-6">
             {allBlockers.length > 0 ? (
@@ -583,6 +590,8 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
               hasKwToVerify={hasKwToVerify}
               hasFeaturesToVerify={hasFeaturesToVerify}
               gateOk={gateOk}
+              canApprove={valuation.status === "in_progress"}
+              canSign={canSign}
             />
           </CardContent>
         </Card>
@@ -593,6 +602,15 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
           Zatwierdzono:{" "}
           {new Intl.DateTimeFormat("pl-PL", { dateStyle: "long", timeStyle: "short" }).format(
             valuation.approvedAt,
+          )}
+        </p>
+      ) : null}
+
+      {valuation.status === "signed" && valuation.signedAt ? (
+        <p className="text-sm text-muted-foreground">
+          Podpisano:{" "}
+          {new Intl.DateTimeFormat("pl-PL", { dateStyle: "long", timeStyle: "short" }).format(
+            valuation.signedAt,
           )}
         </p>
       ) : null}

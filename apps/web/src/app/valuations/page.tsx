@@ -111,7 +111,20 @@ export default async function ValuationsListPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="px-4">
-                    <Badge variant={v.status === "in_progress" ? "secondary" : "default"}>
+                    <Badge
+                      variant={
+                        v.status === "in_progress"
+                          ? "secondary"
+                          : v.status === "signed"
+                            ? "outline"
+                            : "default"
+                      }
+                      className={
+                        v.status === "signed"
+                          ? "border-green-600 text-green-700 dark:text-green-500"
+                          : undefined
+                      }
+                    >
                       {STATUS_LABEL[v.status] ?? v.status}
                     </Badge>
                   </TableCell>

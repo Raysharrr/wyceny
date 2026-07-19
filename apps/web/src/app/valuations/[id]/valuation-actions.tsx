@@ -7,12 +7,16 @@ import { confirmSubject } from "@/app/actions/confirm-subject";
 import { confirmKw } from "@/app/actions/confirm-kw";
 import { confirmFeatures } from "@/app/actions/confirm-features";
 import { approveValuation } from "@/app/actions/approve-valuation";
+import { signValuationAction } from "@/app/actions/sign-valuation";
 
 /**
- * Draft-only action bar. `gateOk`/`hasToVerify`/`hasSubjectToVerify`/
- * `hasKwToVerify`/`hasFeaturesToVerify` are computed server-side by the RSC
- * (approvalGate) — the disabled state is UX sugar; the actions re-check
- * everything server-side (F-4 is an invariant, not UI).
+ * Owner-only action bar, mounted for the owner across all statuses.
+ * `draft` → confirm-* + approve buttons (gated by `canApprove`); `approved`
+ * → sign button (gated by `canSign`); `signed` → new-version button (Task 9).
+ * `gateOk`/`hasToVerify`/`hasSubjectToVerify`/`hasKwToVerify`/
+ * `hasFeaturesToVerify` are computed server-side by the RSC (approvalGate) —
+ * the disabled state is UX sugar; the actions re-check everything
+ * server-side (F-4 is an invariant, not UI).
  */
 export function ValuationActions({
   id,
@@ -21,6 +25,8 @@ export function ValuationActions({
   hasKwToVerify,
   hasFeaturesToVerify,
   gateOk,
+  canApprove,
+  canSign,
 }: {
   id: string;
   hasToVerify: boolean;
@@ -28,6 +34,8 @@ export function ValuationActions({
   hasKwToVerify: boolean;
   hasFeaturesToVerify: boolean;
   gateOk: boolean;
+  canApprove: boolean;
+  canSign: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -89,14 +97,26 @@ export function ValuationActions({
             {isPending ? "Potwierdzanie…" : "Potwierdź cechy i wagi"}
           </Button>
         ) : null}
-        <Button
-          type="button"
-          data-testid="approve-button"
-          disabled={isPending || !gateOk}
-          onClick={() => run(approveValuation)}
-        >
-          {isPending ? "Zatwierdzanie…" : "Zatwierdź operat"}
-        </Button>
+        {canApprove ? (
+          <Button
+            type="button"
+            data-testid="approve-button"
+            disabled={isPending || !gateOk}
+            onClick={() => run(approveValuation)}
+          >
+            {isPending ? "Zatwierdzanie…" : "Zatwierdź operat"}
+          </Button>
+        ) : null}
+        {canSign ? (
+          <Button
+            type="button"
+            data-testid="sign-button"
+            disabled={isPending}
+            onClick={() => run(signValuationAction)}
+          >
+            {isPending ? "Podpisywanie…" : "Podpisz operat (nieodwracalne)"}
+          </Button>
+        ) : null}
       </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
