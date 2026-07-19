@@ -1,4 +1,5 @@
 import {
+  bigserial,
   customType,
   date,
   doublePrecision,
@@ -7,6 +8,7 @@ import {
   text,
   timestamp,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth-schema";
 
@@ -64,5 +66,35 @@ export const valuation = pgTable("valuation", {
   // Set exactly once by the approve mutation (F-4 gate passed). NULL = draft
   // or legacy signed-era row.
   approvedAt: timestamp("approved_at", { withTimezone: true, mode: "date" }),
+  // Set exactly once by the sign mutation (F-7). NULL = not signed.
+  signedAt: timestamp("signed_at", { withTimezone: true, mode: "date" }),
+  // Versioning (NFR-3): the signed valuation this one replaces. NULL = v1.
+  supersedesId: uuid("supersedes_id").references((): AnyPgColumn => valuation.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+// Append-only audit trail (FR-12/NFR-6). INSERT-only — enforced by the
+// audit_log_append_only trigger in drizzle/0009 (hand-written SQL, like RLS
+// in 0003: not expressible in the schema DSL, intentionally not mirrored
+// here so drizzle-kit generate never tries to revert it).
+export const auditLog = pgTable("audit_log", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  // No FK: audit rows must outlive any future data surgery on valuation.
+  valuationId: uuid("valuation_id"),
+  actorId: text("actor_id").notNull(),
+  action: text("action").notNull(),
+  at: timestamp("at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  meta: jsonb("meta"),
+});
+
+// Appraiser profile (PRD "dane do podpisu") — 1:1 with Better Auth `user`,
+// kept OUT of auth-schema.ts (that file is CLI-regenerated). Mutable (a
+// re-uploaded scan replaces the old one); only rendered documents are frozen.
+export const appraiserProfile = pgTable("appraiser_profile", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id),
+  signatureBytes: bytea("signature_bytes").notNull(),
+  signatureMime: text("signature_mime").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
