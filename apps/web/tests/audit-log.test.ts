@@ -13,7 +13,11 @@ const owner: SessionUser = { id: "user-audit", role: "appraiser" };
 const repo = valuationRepo(db);
 
 async function auditRows(valuationId: string) {
-  return db.select().from(schema.auditLog).where(eq(schema.auditLog.valuationId, valuationId));
+  return db
+    .select()
+    .from(schema.auditLog)
+    .where(eq(schema.auditLog.valuationId, valuationId))
+    .orderBy(schema.auditLog.id); // bigserial — ascending = insertion order (Postgres gives no order without this)
 }
 
 beforeAll(async () => {
@@ -50,6 +54,30 @@ describe("audit_log per mutation", () => {
     await repo.confirmSample(v.id, owner);
     const rows = await auditRows(v.id);
     expect(rows.map((r) => r.action)).toEqual(["created", "sample_confirmed"]);
+  });
+
+  // confirmSubject/confirmKw/confirmFeatures share confirmSample's
+  // select→domain→CAS-update→audit shape (valuation-drizzle.ts) — one
+  // assertion each closes FR-12 coverage across all four confirm mutations.
+  it("confirmSubject writes a 'subject_confirmed' row", async () => {
+    const v = await repo.create(confirmableInput(owner.id));
+    await repo.confirmSubject(v.id, owner);
+    const rows = await auditRows(v.id);
+    expect(rows.map((r) => r.action)).toEqual(["created", "subject_confirmed"]);
+  });
+
+  it("confirmKw writes a 'kw_confirmed' row", async () => {
+    const v = await repo.create(confirmableInput(owner.id));
+    await repo.confirmKw(v.id, owner);
+    const rows = await auditRows(v.id);
+    expect(rows.map((r) => r.action)).toEqual(["created", "kw_confirmed"]);
+  });
+
+  it("confirmFeatures writes a 'features_confirmed' row", async () => {
+    const v = await repo.create(confirmableInput(owner.id));
+    await repo.confirmFeatures(v.id, owner);
+    const rows = await auditRows(v.id);
+    expect(rows.map((r) => r.action)).toEqual(["created", "features_confirmed"]);
   });
 
   it("approve writes an 'approved' row with doc urls in meta", async () => {
