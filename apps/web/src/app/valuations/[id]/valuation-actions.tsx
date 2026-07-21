@@ -6,7 +6,7 @@ import { confirmSample } from "@/app/actions/confirm-sample";
 import { confirmSubject } from "@/app/actions/confirm-subject";
 import { confirmKw } from "@/app/actions/confirm-kw";
 import { confirmFeatures } from "@/app/actions/confirm-features";
-import { approveValuation } from "@/app/actions/approve-valuation";
+import { approveValuation, type ApproveValuationResult } from "@/app/actions/approve-valuation";
 import { signValuationAction } from "@/app/actions/sign-valuation";
 import { createNewVersionAction } from "@/app/actions/create-new-version";
 
@@ -41,6 +41,7 @@ export function ValuationActions({
   canCreateNewVersion: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [approveResult, setApproveResult] = useState<ApproveValuationResult>(undefined);
   const [isPending, startTransition] = useTransition();
 
   const run = (action: (id: string) => Promise<{ error: string } | undefined>) => {
@@ -49,6 +50,25 @@ export function ValuationActions({
       const result = await action(id);
       if (result?.error) {
         setError(result.error);
+      }
+    });
+  };
+
+  // Slice 9 (Task 9): approve is no longer covered by the generic `run` —
+  // it needs to forward `opts` (the user's "approve without maps" choice)
+  // and its result carries an extra `mapsUnavailable` flag that drives the
+  // inline retry/skip-maps block instead of the plain error paragraph.
+  const handleApprove = (opts?: { skipMaps?: boolean }) => {
+    setError(null);
+    setApproveResult(undefined);
+    startTransition(async () => {
+      const result = await approveValuation(id, opts);
+      if (result?.error) {
+        if (result.mapsUnavailable) {
+          setApproveResult(result);
+        } else {
+          setError(result.error);
+        }
       }
     });
   };
@@ -105,7 +125,7 @@ export function ValuationActions({
             type="button"
             data-testid="approve-button"
             disabled={isPending || !gateOk}
-            onClick={() => run(approveValuation)}
+            onClick={() => handleApprove()}
           >
             {isPending ? "Zatwierdzanie…" : "Zatwierdź operat"}
           </Button>
@@ -131,6 +151,27 @@ export function ValuationActions({
           </Button>
         ) : null}
       </div>
+      {approveResult?.mapsUnavailable ? (
+        <div data-testid="maps-fallback" className="flex flex-wrap items-center gap-2">
+          <p className="text-sm text-amber-600">⚠ {approveResult.error}</p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => handleApprove()}
+          >
+            Spróbuj ponownie
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => handleApprove({ skipMaps: true })}
+          >
+            Zatwierdź bez map
+          </Button>
+        </div>
+      ) : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
