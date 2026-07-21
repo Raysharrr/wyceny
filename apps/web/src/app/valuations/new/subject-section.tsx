@@ -23,10 +23,22 @@ export type SubjectFetchState =
   | { status: "outOfCoverage"; message: string }
   | { status: "error"; message: string };
 
+/**
+ * Status of the live §8.1 map preview (Task 8) — kicked off by the parent
+ * right after the subject fetch lands `"done"`. Live, NOT persisted: the
+ * frozen copy for the operat is fetched independently at approve (spec
+ * decision 1), so this state never round-trips through the form values.
+ */
+export type MapPreviewState =
+  | { status: "idle" | "loading" }
+  | { status: "done"; ewidencyjna: string; orto: string }
+  | { status: "unavailable"; message: string };
+
 interface SubjectSectionProps {
   control: Control<FormInput, unknown, FormOutput>;
   fetchState: SubjectFetchState;
   onRetry: () => void;
+  mapPreview: MapPreviewState;
 }
 
 // Mirrors `toInputValue` in `new-valuation-form.tsx`: zod's coerced-number
@@ -100,14 +112,63 @@ function SubjectFetchStatusBar({
   }
 }
 
+// `switch` rather than an `if`-chain, mirroring `SubjectFetchStatusBar`
+// above — same TS narrowing rationale.
+function MapPreview({ state }: { state: MapPreviewState }) {
+  switch (state.status) {
+    case "idle":
+      return null;
+    case "loading":
+      return (
+        <p data-testid="map-preview" className="text-sm text-muted-foreground">
+          ⏳ Pobieram podgląd map…
+        </p>
+      );
+    case "unavailable":
+      return (
+        <p data-testid="map-preview" className="text-sm text-muted-foreground">
+          ℹ {state.message}
+        </p>
+      );
+    case "done":
+      return (
+        <div data-testid="map-preview" className="grid gap-4 sm:grid-cols-2">
+          <figure>
+            {/* eslint-disable-next-line @next/next/no-img-element -- data URL, next/image adds nothing */}
+            <img
+              src={`data:image/png;base64,${state.ewidencyjna}`}
+              alt="Mapa ewidencyjna działki"
+              className="w-full border"
+            />
+            <figcaption className="text-sm text-muted-foreground">
+              Mapa ewidencyjna (podgląd)
+            </figcaption>
+          </figure>
+          <figure>
+            {/* eslint-disable-next-line @next/next/no-img-element -- data URL, next/image adds nothing */}
+            <img
+              src={`data:image/jpeg;base64,${state.orto}`}
+              alt="Ortofotomapa okolicy"
+              className="w-full border"
+            />
+            <figcaption className="text-sm text-muted-foreground">
+              Ortofotomapa (podgląd)
+            </figcaption>
+          </figure>
+        </div>
+      );
+  }
+}
+
 /**
  * "Dane przedmiotu" form section (Task 5) — parcel/building/MPZP fields
  * seeded by the address auto-fetch (`onAddressBlur` in the parent) but
  * always editable, since the fetch is a proposal, not an authoritative
  * write. `mpzpAbsent` toggles between the five MPZP fields and the
- * studium/WZ fallback field.
+ * studium/WZ fallback field. `mapPreview` (Task 8) renders the live §8.1
+ * map preview under the fetch-status bar.
  */
-export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionProps) {
+export function SubjectSection({ control, fetchState, onRetry, mapPreview }: SubjectSectionProps) {
   const mpzpAbsent = useWatch({ control, name: "subject.mpzpAbsent" });
 
   return (
@@ -120,6 +181,7 @@ export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionP
       </div>
 
       <SubjectFetchStatusBar fetchState={fetchState} onRetry={onRetry} />
+      <MapPreview state={mapPreview} />
 
       <FieldGroup>
         {TEXT_FIELDS.map(({ name, id, label }) => (

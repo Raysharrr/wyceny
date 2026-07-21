@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createValuation } from "@/app/actions/create-valuation";
+import { getMapPreview } from "@/app/actions/get-map-preview";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import { getSubjectData } from "@/app/actions/get-subject-data";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
@@ -36,7 +37,7 @@ import {
   type ValuationFormValues,
 } from "@/lib/valuation-form-schema";
 import { KwSection, type KwFetchState, type KwSource } from "./kw-section";
-import { SubjectSection, type SubjectFetchState } from "./subject-section";
+import { SubjectSection, type MapPreviewState, type SubjectFetchState } from "./subject-section";
 
 // KW uploads bypass Vercel's body limit by going straight to the worker
 // (see mint-kw-token.ts). Defaults to the local worker for dev/e2e.
@@ -102,6 +103,10 @@ export function NewValuationForm() {
   const [isFetchingSample, setIsFetchingSample] = useState(false);
   const [fetchSampleError, setFetchSampleError] = useState<string | null>(null);
   const [subjectFetch, setSubjectFetch] = useState<SubjectFetchState>({ status: "idle" });
+  // Live §8.1 map preview (Task 8) — kicked off fire-and-forget right after
+  // the subject fetch lands "done". NOT persisted: the operat's frozen copy
+  // is fetched independently at approve (spec decision 1).
+  const [mapPreview, setMapPreview] = useState<MapPreviewState>({ status: "idle" });
   // KW "Stan prawny" section. The UI `kwSource` (akt|odpis_kw|reczny) is the
   // section key — distinct from the extract's own `kw.source` (akt|odpis_kw).
   const [kwSource, setKwSource] = useState<KwSource>("reczny");
@@ -250,6 +255,14 @@ export function NewValuationForm() {
         status: "done",
         summary: `obręb ${p.parcel.obreb}, dz. ${p.parcel.nrDzialki}${p.mpzp ? `, MPZP ${p.mpzp.symbol}` : ", brak MPZP"}`,
       });
+      setMapPreview({ status: "loading" });
+      void getMapPreview({ address }).then((preview) =>
+        setMapPreview(
+          "unavailable" in preview
+            ? { status: "unavailable", message: preview.unavailable }
+            : { status: "done", ewidencyjna: preview.ewidencyjna, orto: preview.orto },
+        ),
+      );
     } else if ("outOfCoverage" in result) {
       setSubjectFetch({ status: "outOfCoverage", message: result.outOfCoverage });
     } else {
@@ -509,6 +522,7 @@ export function NewValuationForm() {
           lastFetchedAddress.current = null;
           void onAddressBlur();
         }}
+        mapPreview={mapPreview}
       />
 
       <KwSection
