@@ -98,12 +98,16 @@ export interface PortValuation {
    * persisted atomically with the status flip (Slice 4, spec §3). `now`
    * defaults to the current time; callers pass it explicitly to sync
    * `approvedAt` with another timestamp (e.g. the signature date, F-7).
+   * `audit.mapsSkipped` records the user's conscious "approve without maps"
+   * choice on the audit row's `meta` (Slice 9) — never set when the maps
+   * were simply unavailable or the kill switch (MAPS_FETCH=off) is on.
    */
   approve(
     id: string,
     user: SessionUser,
     docs?: { docUrl: string; docxUrl: string },
     now?: Date,
+    audit?: { mapsSkipped?: boolean },
   ): Promise<Valuation | null>;
   /**
    * Signs an approved valuation — the final, write-once transition (F-7).

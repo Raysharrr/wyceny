@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { storage, worker, valuationRepository } from "@/app/valuations/_deps";
+import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import { ApprovalBlockedError } from "@/domain/valuation";
 import { approvalGate } from "@/domain/provenance";
 import {
@@ -12,17 +12,26 @@ import {
   type OperatPurpose,
 } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
-import { renderOperatDocx } from "@/adapters/docx-render";
+import { renderOperatDocx, type RenderMaps } from "@/adapters/docx-render";
 
-export type ApproveValuationResult = { error: string } | undefined;
+export type ApproveValuationResult = { error: string; mapsUnavailable?: boolean } | undefined;
 
 /**
  * Approve = F-4 gate + document generation, synchronously (spec §3).
  * Invariant: approved ⇔ operat exists. Files are stored FIRST, the status
  * flip (which re-runs the gate atomically, ADR-012) happens LAST — a failed
  * flip leaves harmless orphan files that the retry overwrites (same keys).
+ *
+ * Slice 9 (Task 6): also fetches + freezes the §8.1 WMS maps at the approve
+ * moment (spec decision 1). `opts.skipMaps` is the user's conscious "approve
+ * without maps" choice — audited on the approved row's meta. `mapImages ===
+ * null` (MAPS_FETCH=off kill switch, CI e2e) silently renders the honest
+ * "no maps" stub instead and is NOT audited as a skip.
  */
-export async function approveValuation(id: string): Promise<ApproveValuationResult> {
+export async function approveValuation(
+  id: string,
+  opts?: { skipMaps?: boolean },
+): Promise<ApproveValuationResult> {
   const session = await getSession();
   if (!session) {
     redirect("/login");
@@ -57,6 +66,22 @@ export async function approveValuation(id: string): Promise<ApproveValuationResu
     const now = new Date();
     const kcs = computeKcs(valuation.inputs);
     const amountInWords = await worker.amountInWords(kcs.wr);
+
+    // Slice 9: fetch + freeze maps at the approve moment (spec decision 1).
+    // mapImages === null -> MAPS_FETCH=off (CI e2e): silent stub, NOT audited
+    // as a skip — only the user's conscious "approve without maps" is.
+    let maps: RenderMaps | null = null;
+    if (!opts?.skipMaps && mapImages) {
+      const mapsResult = await mapImages.fetchMaps(valuation.address);
+      if (mapsResult.kind !== "ok") {
+        return {
+          error: `Nie udało się pobrać map do operatu — ${mapsResult.message}`,
+          mapsUnavailable: true,
+        };
+      }
+      maps = mapsResult.maps;
+    }
+
     const model = buildDocumentModel({
       address: valuation.address,
       area: valuation.area,
@@ -69,12 +94,22 @@ export async function approveValuation(id: string): Promise<ApproveValuationResu
       kcs,
       amountInWords,
     });
-    const docx = renderOperatDocx(model);
+    if (maps) {
+      await storage.put(`mapa-ewidencyjna-${id}.png`, maps.ewidencyjna);
+      await storage.put(`mapa-orto-${id}.jpg`, maps.orto);
+    }
+    const docx = renderOperatDocx(model, { maps });
     const pdf = await worker.convertToPdf(docx);
     const docxUrl = await storage.put(`operat-${id}.docx`, docx);
     const docUrl = await storage.put(`operat-${id}.pdf`, pdf);
 
-    const updated = await valuationRepository.approve(id, session.user, { docUrl, docxUrl }, now);
+    const updated = await valuationRepository.approve(
+      id,
+      session.user,
+      { docUrl, docxUrl },
+      now,
+      opts?.skipMaps ? { mapsSkipped: true } : undefined,
+    );
     if (!updated) {
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
     }

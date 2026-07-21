@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
@@ -237,6 +238,29 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     const reread = await repo.get(created.id, appraiserA);
     expect(reread?.docUrl).toBe("/api/docs/operat-x.pdf");
     expect(reread?.docxUrl).toBe("/api/docs/operat-x.docx");
+  });
+
+  it("approve with audit.mapsSkipped writes an 'approved' audit row whose meta contains mapsSkipped: true (Slice 9)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 9"),
+      inputs: approvableInputs(),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.approve(
+      created.id,
+      appraiserA,
+      { docUrl: "/api/docs/operat-y.pdf", docxUrl: "/api/docs/operat-y.docx" },
+      new Date(),
+      { mapsSkipped: true },
+    );
+
+    const rows = await db
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.valuationId, created.id))
+      .orderBy(schema.auditLog.id);
+    expect(rows.at(-1)!.action).toBe("approved");
+    expect(rows.at(-1)!.meta).toMatchObject({ mapsSkipped: true });
   });
 });
 

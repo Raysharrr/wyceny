@@ -210,6 +210,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       user: SessionUser,
       docs?: { docUrl: string; docxUrl: string },
       now: Date = new Date(),
+      audit?: { mapsSkipped?: boolean },
     ): Promise<Valuation | null> {
       return db.transaction(async (tx) => {
         const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
@@ -235,7 +236,11 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           valuationId: id,
           actorId: user.id,
           action: "approved",
-          meta: { docUrl: updated.docUrl, docxUrl: updated.docxUrl },
+          meta: {
+            docUrl: updated.docUrl,
+            docxUrl: updated.docxUrl,
+            ...(audit?.mapsSkipped ? { mapsSkipped: true } : {}),
+          },
         });
         return toValuation(saved);
       });
