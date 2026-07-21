@@ -55,4 +55,22 @@ describe("httpMapImages contract", () => {
     const result = await httpMapImages("http://worker").fetchMaps("Poznań, Testowa 1");
     expect(result.kind).toBe("unavailable");
   });
+
+  it("maps a non-2xx response with a non-JSON body to unavailable with the generic message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("<html>gateway error</html>", { status: 502 })),
+    );
+    const result = await httpMapImages("http://worker").fetchMaps("Poznań, Testowa 1");
+    expect(result).toEqual({
+      kind: "unavailable",
+      message: "Usługa map (Geoportal) jest chwilowo niedostępna.",
+    });
+  });
+
+  it("maps a 200 response with a malformed JSON body to unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not-json{", { status: 200 })));
+    const result = await httpMapImages("http://worker").fetchMaps("Poznań, Testowa 1");
+    expect(result.kind).toBe("unavailable");
+  });
 });
