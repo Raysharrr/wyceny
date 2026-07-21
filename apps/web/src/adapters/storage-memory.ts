@@ -1,4 +1,4 @@
-import type { PortStorage } from "../ports/storage";
+import { StorageNotFoundError, type PortStorage } from "../ports/storage";
 
 // Keyed on `globalThis`, not a plain module-level variable: Next.js bundles
 // Server Actions and Route Handlers into separate chunks, each of which can
@@ -41,9 +41,13 @@ export function memoryStorage(): PortStorage {
     async get(key: string): Promise<Buffer> {
       const buf = store.get(key);
       if (!buf) {
-        throw new Error(`Storage: key not found: ${key}`);
+        throw new StorageNotFoundError(`Storage: key not found: ${key}`);
       }
       return buf;
+    },
+
+    async delete(key: string): Promise<void> {
+      store.delete(key);
     },
   };
 }

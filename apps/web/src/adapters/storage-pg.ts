@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "../db/schema";
-import type { PortStorage } from "../ports/storage";
+import { StorageNotFoundError, type PortStorage } from "../ports/storage";
 
 /**
  * Postgres-backed adapter for {@link PortStorage} (Task 11a).
@@ -37,7 +37,7 @@ export function pgStorage(db: NodePgDatabase<typeof schema>): PortStorage {
     async get(key: string): Promise<Buffer> {
       const [row] = await db.select().from(schema.document).where(eq(schema.document.key, key));
       if (!row) {
-        throw new Error(`Storage: key not found: ${key}`);
+        throw new StorageNotFoundError(`Storage: key not found: ${key}`);
       }
       if (row.contentBytes) {
         return Buffer.from(row.contentBytes);
@@ -46,6 +46,10 @@ export function pgStorage(db: NodePgDatabase<typeof schema>): PortStorage {
         throw new Error(`Storage: empty row for key: ${key}`);
       }
       return Buffer.from(row.content);
+    },
+
+    async delete(key: string): Promise<void> {
+      await db.delete(schema.document).where(eq(schema.document.key, key));
     },
   };
 }

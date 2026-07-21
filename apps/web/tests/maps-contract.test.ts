@@ -56,6 +56,25 @@ describe("httpMapImages contract", () => {
     expect(result.kind).toBe("unavailable");
   });
 
+  it("passes an AbortSignal to fetch so a hanging WMS can't outlive the page's maxDuration (final review, Recommended #3)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ewidencyjna: b64(PNG), orto: b64(JPG) }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await httpMapImages("http://worker").fetchMaps("Poznań, Testowa 1");
+    const options = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("maps a timeout (abort) to unavailable, same as any other network failure", async () => {
+    const timeoutError = new DOMException("The operation was aborted.", "TimeoutError");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(timeoutError));
+    const result = await httpMapImages("http://worker").fetchMaps("Poznań, Testowa 1");
+    expect(result.kind).toBe("unavailable");
+  });
+
   it("maps a non-2xx response with a non-JSON body to unavailable with the generic message", async () => {
     vi.stubGlobal(
       "fetch",

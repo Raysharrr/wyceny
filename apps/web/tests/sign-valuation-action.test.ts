@@ -53,6 +53,7 @@ vi.mock("next/navigation", () => ({
 
 import { signValuationAction } from "../src/app/actions/sign-valuation";
 import { profileRepository, storage, valuationRepository, worker } from "@/app/valuations/_deps";
+import { StorageNotFoundError } from "@/ports/storage";
 
 const getMock = vi.mocked(valuationRepository.get);
 const signMock = vi.mocked(valuationRepository.sign);
@@ -206,7 +207,7 @@ describe("signValuationAction", () => {
     amountInWordsMock.mockResolvedValue("czterysta tysięcy złotych");
     convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
     storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
-    storageGetMock.mockRejectedValue(new Error("not found"));
+    storageGetMock.mockRejectedValue(new StorageNotFoundError("not found"));
     signMock.mockResolvedValue({ ...approvedValuation, status: "signed" });
 
     const result = await signValuationAction("v1");
@@ -216,5 +217,28 @@ describe("signValuationAction", () => {
     const docxBytes = docxCall?.[1] as Buffer;
     expect(textOf(docxBytes)).toContain("Dokumentacja kartograficzna zostanie uzupełniona.");
     expect(generatedMedia(docxBytes).length).toBe(1); // signature only
+  });
+
+  it("returns a Polish error and does not sign when storage.get fails with a transient error (final review, Important #2)", async () => {
+    getMock.mockResolvedValue(approvedValuation);
+    getSignatureMock.mockResolvedValue({
+      bytes: fs.readFileSync(path.join(__dirname, "fixtures", "signature-synthetic.png")),
+      mime: "image/png",
+    });
+    amountInWordsMock.mockResolvedValue("czterysta tysięcy złotych");
+    // A generic Error (e.g. a dead pooled connection) must NOT be treated as
+    // "approved without maps" — only StorageNotFoundError may be.
+    storageGetMock.mockRejectedValue(new Error("connection reset"));
+    // signMock (like storagePutMock, see the .findLast comment above)
+    // accumulates calls across tests in this file (no clearMocks
+    // configured) — clear it so "not called" below reflects only this test.
+    signMock.mockClear();
+
+    const result = await signValuationAction("v1");
+
+    expect(result).toEqual({
+      error: "Nie udało się odczytać zamrożonych map operatu — spróbuj ponownie.",
+    });
+    expect(signMock).not.toHaveBeenCalled();
   });
 });

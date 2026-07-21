@@ -18,4 +18,18 @@ describe("PortStorage — in-memory adapter", () => {
     const storage = memoryStorage();
     await expect(storage.get("does-not-exist")).rejects.toThrow();
   });
+
+  it("delete() removes a stored key so a subsequent get() rejects", async () => {
+    const storage = memoryStorage();
+    await storage.put("doc-2", "content");
+
+    await storage.delete("doc-2");
+
+    await expect(storage.get("doc-2")).rejects.toThrow();
+  });
+
+  it("delete() on a missing key is a no-op (idempotent)", async () => {
+    const storage = memoryStorage();
+    await expect(storage.delete("never-existed")).resolves.toBeUndefined();
+  });
 });

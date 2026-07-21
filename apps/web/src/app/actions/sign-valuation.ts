@@ -9,6 +9,7 @@ import { NotSignableError } from "@/domain/valuation";
 import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
 import { renderOperatDocx, type RenderMaps } from "@/adapters/docx-render";
+import { StorageNotFoundError } from "@/ports/storage";
 
 export type SignValuationResult = { error: string } | undefined;
 
@@ -70,8 +71,12 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
       amountInWords,
     });
     // Slice 9: sign NEVER contacts WMS — it re-renders the maps frozen at
-    // approve (spec decision 1). Missing keys = approved without maps. The
-    // Buffer.isBuffer guard also covers PortStorage fakes that resolve
+    // approve (spec decision 1). A StorageNotFoundError means "approved
+    // without maps" — the only case map absence is silent. Any OTHER error
+    // (e.g. a transient dead pooled connection) must NOT be treated as "no
+    // maps" — spec decision 4 says map absence is never silent — so it is
+    // returned as an error WITHOUT signing (final review, Important #2).
+    // The Buffer.isBuffer guard also covers PortStorage fakes that resolve
     // undefined instead of throwing (advisor B2).
     let maps: RenderMaps | null = null;
     try {
@@ -80,8 +85,13 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
       if (Buffer.isBuffer(ewidencyjna) && Buffer.isBuffer(orto)) {
         maps = { ewidencyjna, orto };
       }
-    } catch {
-      maps = null;
+    } catch (error) {
+      if (!(error instanceof StorageNotFoundError)) {
+        console.error("signValuationAction: reading frozen maps failed", error);
+        return {
+          error: "Nie udało się odczytać zamrożonych map operatu — spróbuj ponownie.",
+        };
+      }
     }
     const docx = renderOperatDocx(model, { signature: signature.bytes, maps });
     const pdf = await worker.convertToPdf(docx);

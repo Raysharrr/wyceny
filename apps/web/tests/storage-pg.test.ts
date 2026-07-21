@@ -56,4 +56,18 @@ describe("PortStorage — Postgres adapter (Task 11a)", () => {
     const back = await storage.get("upsert-key.pdf");
     expect(Buffer.compare(back, bytes)).toBe(0);
   });
+
+  it("delete() removes a stored key so a subsequent get() rejects (final review, Important #1)", async () => {
+    const storage = pgStorage(db);
+    await storage.put("doc-pg-delete-1", "to be deleted");
+
+    await storage.delete("doc-pg-delete-1");
+
+    await expect(storage.get("doc-pg-delete-1")).rejects.toThrow();
+  });
+
+  it("delete() on a missing key is a no-op (idempotent)", async () => {
+    const storage = pgStorage(db);
+    await expect(storage.delete("doc-pg-never-existed")).resolves.toBeUndefined();
+  });
 });

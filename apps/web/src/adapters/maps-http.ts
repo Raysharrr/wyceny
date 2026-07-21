@@ -17,6 +17,13 @@ export function httpMapImages(baseUrl: string): PortMapImages {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address }),
+          // Worst case (worker retries WMS): 2 maps x 4 attempts x 30s ~= 246s,
+          // far past the page's `maxDuration = 60` — Vercel would kill the
+          // approve action with an opaque error before the "unavailable"
+          // fallback UI ever renders (final review, Recommended #3). This
+          // timeout fires first and the existing catch below already maps
+          // aborts to `unavailable`.
+          signal: AbortSignal.timeout(45_000),
         });
         if (!response.ok) {
           let detail: string | undefined;

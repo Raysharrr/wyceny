@@ -47,6 +47,7 @@ const approveMock = vi.mocked(valuationRepository.approve);
 const amountInWordsMock = vi.mocked(worker.amountInWords);
 const convertToPdfMock = vi.mocked(worker.convertToPdf);
 const storagePutMock = vi.mocked(storage.put);
+const storageDeleteMock = vi.mocked(storage.delete);
 const fetchMapsMock = vi.mocked(mapImages!.fetchMaps);
 
 // Synthetic 1x1 images (F-9: no real map data in fixtures) — same fixture
@@ -103,6 +104,7 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     amountInWordsMock.mockReset();
     convertToPdfMock.mockReset();
     storagePutMock.mockReset();
+    storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
   });
 
@@ -147,6 +149,9 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     expect(fetchMapsMock).toHaveBeenCalledWith(draft.address);
     expect(storagePutMock).toHaveBeenCalledWith(`mapa-ewidencyjna-${draft.id}.png`, PNG_1PX);
     expect(storagePutMock).toHaveBeenCalledWith(`mapa-orto-${draft.id}.jpg`, JPG_1PX);
+    // Maps were fetched fresh and frozen this call — nothing orphaned to
+    // clean up (final review, Important #1).
+    expect(storageDeleteMock).not.toHaveBeenCalled();
 
     const docxCall = storagePutMock.mock.calls.find(([key]) => key === `operat-${draft.id}.docx`);
     const docxBytes = docxCall?.[1] as Buffer;
@@ -186,6 +191,12 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     );
     const mapaCalls = storagePutMock.mock.calls.filter(([key]) => key.startsWith("mapa-"));
     expect(mapaCalls).toHaveLength(0);
+    // skipMaps proceeds with maps === null — any orphaned frozen map keys
+    // from a prior failed approve attempt must be cleaned up so a later sign
+    // can't find and embed maps this approved document doesn't have (final
+    // review, Important #1).
+    expect(storageDeleteMock).toHaveBeenCalledWith(`mapa-ewidencyjna-${draft.id}.png`);
+    expect(storageDeleteMock).toHaveBeenCalledWith(`mapa-orto-${draft.id}.jpg`);
 
     const docxCall = storagePutMock.mock.calls.find(([key]) => key === `operat-${draft.id}.docx`);
     const docxBytes = docxCall?.[1] as Buffer;

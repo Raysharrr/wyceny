@@ -97,6 +97,16 @@ export async function approveValuation(
     if (maps) {
       await storage.put(`mapa-ewidencyjna-${id}.png`, maps.ewidencyjna);
       await storage.put(`mapa-orto-${id}.jpg`, maps.orto);
+    } else {
+      // skipMaps (user's conscious choice) or MAPS_FETCH=off kill switch:
+      // approve proceeds with maps === null. A PRIOR failed approve attempt
+      // (e.g. PDF conversion crash) may have already written these keys
+      // before failing — left uncleaned, sign would find and embed maps this
+      // approved document doesn't have (approve<->sign drift in a legal
+      // document, final review Important #1). delete() is idempotent, so
+      // this is a no-op on the common case where nothing was ever orphaned.
+      await storage.delete(`mapa-ewidencyjna-${id}.png`);
+      await storage.delete(`mapa-orto-${id}.jpg`);
     }
     const docx = renderOperatDocx(model, { maps });
     const pdf = await worker.convertToPdf(docx);
