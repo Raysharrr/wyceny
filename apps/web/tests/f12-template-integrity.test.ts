@@ -161,6 +161,12 @@ const REQUIRED_PLACEHOLDERS = [
   "{liczba_atrybutow_fraza}",
   "{#ma_skale}",
   "{/ma_skale}",
+  // Slice 9: §8.1 map block (built by build_template.py map stage)
+  "{#mapy}",
+  "{%mapa_ewidencyjna}",
+  "{%mapa_orto}",
+  "{mapy_data}",
+  "{^mapy}",
 ];
 
 describe("F-12: template integrity (operat-szablon.docx)", () => {
