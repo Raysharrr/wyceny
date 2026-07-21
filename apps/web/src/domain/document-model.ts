@@ -149,6 +149,8 @@ export type DocumentModel = {
   klient: string;
   data_ogledzin: string;
   data_sporzadzenia: string;
+  /** §8.1 map block caption ("dane pobrane {mapy_data}") — same source date as data_sporzadzenia. */
+  mapy_data: string;
   // EGiB/building facts (section 8.2) — from the auto-fetched subject snapshot;
   // dashes when no subject was fetched (legacy manual-entry inputs).
   obreb: string;
@@ -291,6 +293,7 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     klient: input.client,
     data_ogledzin: formatDatePl(input.inspectionDate),
     data_sporzadzenia: formatDatePl(input.approvedAt.toISOString()),
+    mapy_data: formatDatePl(input.approvedAt.toISOString()),
     obreb: subject?.obreb || DASH,
     arkusz: subject?.arkusz || DASH,
     nr_dzialki: subject?.nrDzialki || DASH,
