@@ -8,7 +8,7 @@ import { storage, worker, valuationRepository, profileRepository } from "@/app/v
 import { NotSignableError } from "@/domain/valuation";
 import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
-import { renderOperatDocx } from "@/adapters/docx-render";
+import { renderOperatDocx, type RenderMaps } from "@/adapters/docx-render";
 
 export type SignValuationResult = { error: string } | undefined;
 
@@ -69,7 +69,21 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
       kcs,
       amountInWords,
     });
-    const docx = renderOperatDocx(model, { signature: signature.bytes });
+    // Slice 9: sign NEVER contacts WMS — it re-renders the maps frozen at
+    // approve (spec decision 1). Missing keys = approved without maps. The
+    // Buffer.isBuffer guard also covers PortStorage fakes that resolve
+    // undefined instead of throwing (advisor B2).
+    let maps: RenderMaps | null = null;
+    try {
+      const ewidencyjna = await storage.get(`mapa-ewidencyjna-${id}.png`);
+      const orto = await storage.get(`mapa-orto-${id}.jpg`);
+      if (Buffer.isBuffer(ewidencyjna) && Buffer.isBuffer(orto)) {
+        maps = { ewidencyjna, orto };
+      }
+    } catch {
+      maps = null;
+    }
+    const docx = renderOperatDocx(model, { signature: signature.bytes, maps });
     const pdf = await worker.convertToPdf(docx);
     const docxUrl = await storage.put(`operat-${id}-signed.docx`, docx);
     const docUrl = await storage.put(`operat-${id}-signed.pdf`, pdf);

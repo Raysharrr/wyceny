@@ -2,8 +2,31 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import { approvableInput } from "./fixtures/valuation-inputs";
+
+// Synthetic 1x1 images (F-9: no real map data in fixtures) — same constants
+// as docx-render-maps.test.ts (repo convention: duplicate small fixture
+// constants locally rather than importing across test files).
+const PNG_1PX = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+const JPG_1PX = Buffer.from(
+  "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==",
+  "base64",
+);
+
+const generatedMedia = (buf: Buffer) =>
+  Object.keys(new PizZip(buf).files).filter((f) => /^word\/media\/image_generated_/.test(f));
+const textOf = (buf: Buffer) =>
+  new PizZip(buf)
+    .file("word/document.xml")!
+    .asText()
+    .replace(/<[^>]+>/g, "|")
+    .replace(/\|+/g, " ")
+    .trim();
 
 /**
  * Focused unit test of `signValuationAction`'s guards and happy path (F-7
@@ -37,6 +60,7 @@ const getSignatureMock = vi.mocked(profileRepository.getSignature);
 const amountInWordsMock = vi.mocked(worker.amountInWords);
 const convertToPdfMock = vi.mocked(worker.convertToPdf);
 const storagePutMock = vi.mocked(storage.put);
+const storageGetMock = vi.mocked(storage.get);
 
 const approvedValuation: Valuation = {
   id: "v1",
@@ -135,5 +159,62 @@ describe("signValuationAction", () => {
       createHash("sha256").update(Buffer.from("pdf-bytes")).digest("hex"),
     );
     expect(signArgs.docUrl).toBe("/api/docs/operat-v1-signed.pdf");
+  });
+
+  it("re-renders from frozen map bytes at sign (Task 7) — byte-identical maps, no wms contact", async () => {
+    getMock.mockResolvedValue(approvedValuation);
+    getSignatureMock.mockResolvedValue({
+      bytes: fs.readFileSync(path.join(__dirname, "fixtures", "signature-synthetic.png")),
+      mime: "image/png",
+    });
+    amountInWordsMock.mockResolvedValue("czterysta tysięcy złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    // Frozen keys from Task 6 (approve); anything else (e.g. a live WMS
+    // fetch) would reject — sign must never contact WMS.
+    storageGetMock.mockImplementation((key: string) =>
+      key === "mapa-ewidencyjna-v1.png"
+        ? Promise.resolve(PNG_1PX)
+        : key === "mapa-orto-v1.jpg"
+          ? Promise.resolve(JPG_1PX)
+          : Promise.reject(new Error("not found")),
+    );
+    signMock.mockResolvedValue({ ...approvedValuation, status: "signed" });
+
+    const result = await signValuationAction("v1");
+
+    expect(result).toBeUndefined();
+    // .findLast, not .find: storagePutMock.mock.calls accumulates across
+    // tests in this file (no clearMocks configured) — .find would pick up
+    // the earlier happy-path test's docx call instead of this test's own.
+    const docxCall = storagePutMock.mock.calls.findLast(([key]) => key === "operat-v1-signed.docx");
+    const docxBytes = docxCall?.[1] as Buffer;
+    const zip = new PizZip(docxBytes);
+    const media = generatedMedia(docxBytes);
+    expect(media.length).toBe(3); // signature + 2 frozen maps
+    const mediaBuffers = media.map((m) => Buffer.from(zip.file(m)!.asUint8Array()));
+    expect(mediaBuffers.some((b) => b.equals(PNG_1PX))).toBe(true);
+    expect(mediaBuffers.some((b) => b.equals(JPG_1PX))).toBe(true);
+  });
+
+  it("signs without maps when approved without them (Task 7) — honest stub, exactly 1 medium", async () => {
+    getMock.mockResolvedValue(approvedValuation);
+    getSignatureMock.mockResolvedValue({
+      bytes: fs.readFileSync(path.join(__dirname, "fixtures", "signature-synthetic.png")),
+      mime: "image/png",
+    });
+    amountInWordsMock.mockResolvedValue("czterysta tysięcy złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    storageGetMock.mockRejectedValue(new Error("not found"));
+    signMock.mockResolvedValue({ ...approvedValuation, status: "signed" });
+
+    const result = await signValuationAction("v1");
+
+    expect(result).toBeUndefined();
+    const docxCall = storagePutMock.mock.calls.findLast(([key]) => key === "operat-v1-signed.docx");
+    const docxBytes = docxCall?.[1] as Buffer;
+    expect(textOf(docxBytes)).toContain("Dokumentacja kartograficzna zostanie uzupełniona.");
+    expect(generatedMedia(docxBytes).length).toBe(1); // signature only
   });
 });
