@@ -19,6 +19,7 @@ from pydantic import BaseModel
 import app.rcn as rcn
 import app.subject as subject
 from app import kw as kw_core
+import app.maps as maps
 from app.amount_in_words import to_amount_in_words
 from app.convert import ConversionError, docx_to_pdf
 
@@ -267,6 +268,51 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
             source="geopoz-gugik",
             mpzpAbsent=mpzp is None,
         ),
+    )
+
+
+class MapProposalRequest(BaseModel):
+    address: str
+
+
+class MapProposalResponse(BaseModel):
+    ewidencyjna: str  # base64 PNG (KIEG cadastral map)
+    orto: str  # base64 JPEG (orthophoto)
+    parcelId: str
+    fetchedAt: str
+
+
+MAPS_OUT_OF_COVERAGE_DETAIL = "Mapy do operatu dostępne na razie dla Poznania."
+MAPS_FAILED_DETAIL = "Nie udało się pobrać map z Geoportalu — spróbuj ponownie."
+
+
+@app.post("/map-proposal")
+def map_proposal(request: MapProposalRequest) -> MapProposalResponse:
+    try:
+        geo = subject.geocode_address(request.address)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=MAPS_FAILED_DETAIL) from exc
+
+    # 422 = out of MVP coverage (same non-retryable contract as /subject-proposal)
+    if not subject.is_poznan(geo.get("teryt")):
+        raise HTTPException(status_code=422, detail=MAPS_OUT_OF_COVERAGE_DETAIL)
+
+    try:
+        parcel_ref = subject.fetch_parcel_by_xy(geo["x"], geo["y"])
+        wkt_2180 = subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 2180)
+        bbox_ewid, bbox_orto = maps.map_bboxes(wkt_2180)
+        ewid = maps.fetch_map(
+            maps.getmap_url(maps.KIEG_URL, maps.KIEG_LAYERS, bbox_ewid, "image/png")
+        )
+        orto = maps.fetch_map(maps.getmap_url(maps.ORTO_URL, "Raster", bbox_orto, "image/jpeg"))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=MAPS_FAILED_DETAIL) from exc
+
+    return MapProposalResponse(
+        ewidencyjna=base64.b64encode(ewid).decode("ascii"),
+        orto=base64.b64encode(orto).decode("ascii"),
+        parcelId=parcel_ref["parcel_id"],
+        fetchedAt=datetime.now(UTC).isoformat(),
     )
 
 
