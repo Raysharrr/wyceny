@@ -116,6 +116,9 @@ jobs:
       # buttons hidden so the manual-entry smoke path stays network-free
       # (see kw-section.tsx's `uploadEnabled` guard).
       NEXT_PUBLIC_KW_UPLOAD: "off"
+      # Slice 9: approve fetches WMS maps via the worker; off keeps the e2e
+      # smoke network-free (approve renders the honest §8.1 stub instead).
+      MAPS_FETCH: "off"
     services:
       postgres:
         image: postgres:16

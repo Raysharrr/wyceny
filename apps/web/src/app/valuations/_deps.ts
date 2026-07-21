@@ -3,8 +3,10 @@ import { valuationRepo } from "@/adapters/valuation-drizzle";
 import { httpWorker } from "@/adapters/worker-http";
 import { httpSampleProposal } from "@/adapters/sample-http";
 import { httpSubjectProposal } from "@/adapters/subject-http";
+import { httpMapImages } from "@/adapters/maps-http";
 import { pgStorage } from "@/adapters/storage-pg";
 import { profileRepo } from "@/adapters/profile-drizzle";
+import type { PortMapImages } from "@/ports/maps";
 
 /**
  * Adapters wired once at the app layer (F-10: domain/ports stay pure — only
@@ -20,5 +22,10 @@ export const valuationRepository = valuationRepo(db);
 export const worker = httpWorker(process.env.WORKER_URL ?? "http://localhost:8000");
 export const sampleProposal = httpSampleProposal(process.env.WORKER_URL ?? "http://localhost:8000");
 export const subjectData = httpSubjectProposal(process.env.WORKER_URL ?? "http://localhost:8000");
+/** Slice 9: null when MAPS_FETCH=off (CI e2e stays network-free) — approve then renders the honest stub. */
+export const mapImages: PortMapImages | null =
+  process.env.MAPS_FETCH === "off"
+    ? null
+    : httpMapImages(process.env.WORKER_URL ?? "http://localhost:8000");
 export const storage = pgStorage(db);
 export const profileRepository = profileRepo(db);
