@@ -46,33 +46,42 @@ export function InspectionSection({
   const uploadFiles = async (section: Section, files: FileList) => {
     setError(null);
     const list = Array.from(files);
-    for (let i = 0; i < list.length; i++) {
-      setUploading(`${i + 1}/${list.length}`);
-      const minted = await mintKwUploadToken();
-      if ("error" in minted) {
-        setError(minted.error);
-        break;
+    try {
+      for (let i = 0; i < list.length; i++) {
+        setUploading(`${i + 1}/${list.length}`);
+        const minted = await mintKwUploadToken();
+        if ("error" in minted) {
+          setError(minted.error);
+          break;
+        }
+        const processed = await processPhoto({
+          file: list[i],
+          token: minted.token,
+          workerUrl: WORKER_URL,
+        });
+        if (processed.kind !== "ok") {
+          setError(processed.message);
+          break;
+        }
+        const form = new FormData();
+        form.set("photo", processed.blob);
+        const result = await uploadInspectionPhoto(valuationId, section, form);
+        if ("error" in result) {
+          setError(result.error);
+          break;
+        }
       }
-      const processed = await processPhoto({
-        file: list[i],
-        token: minted.token,
-        workerUrl: WORKER_URL,
-      });
-      if (processed.kind !== "ok") {
-        setError(processed.message);
-        break;
-      }
-      const form = new FormData();
-      form.set("photo", processed.blob);
-      const result = await uploadInspectionPhoto(valuationId, section, form);
-      if ("error" in result) {
-        setError(result.error);
-        break;
-      }
+    } catch {
+      // mintKwUploadToken (a server action over the network) can reject
+      // outright, and processPhoto's ok-branch parses JSON/base64 without a
+      // guard — either throw must not brick the upload UI forever (final
+      // review): the finally below always clears `uploading`.
+      setError("Nie udało się przetworzyć zdjęcia — sprawdź połączenie i spróbuj ponownie.");
+    } finally {
+      setUploading(null);
+      const input = inputRefs.current[section];
+      if (input) input.value = "";
     }
-    setUploading(null);
-    const input = inputRefs.current[section];
-    if (input) input.value = "";
   };
 
   return (

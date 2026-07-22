@@ -8,6 +8,7 @@ import {
   confirmKwProvenance,
   confirmSampleProvenance,
   confirmSubjectProvenance,
+  InputsChangedError,
   newValuation,
   newVersionOf,
   signValuation,
@@ -254,12 +255,25 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       docs?: { docUrl: string; docxUrl: string },
       now: Date = new Date(),
       audit?: { mapsSkipped?: boolean },
+      expectedInputs?: KcsInput | null,
     ): Promise<Valuation | null> {
       return db.transaction(async (tx) => {
         const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
         if (!row) return null;
         const valuation = toValuation(row);
         if (valuation.ownerId !== user.id) return null;
+        // Closes the approve-window drift: the action reads the draft, spends
+        // seconds generating the operat, THEN calls approve — during that
+        // window the owner can still mutate draft inputs (final review). Both
+        // sides come from the same pg jsonb driver parse, so a JSON.stringify
+        // comparison is exact when nothing changed and differs the instant
+        // updateInspection/confirm* touches the row.
+        if (
+          expectedInputs !== undefined &&
+          JSON.stringify(valuation.inputs) !== JSON.stringify(expectedInputs)
+        ) {
+          throw new InputsChangedError(id);
+        }
         // Re-runs the full gate (F-4 + document fields) in the domain — this is
         // the atomic status flip; a caller that stored files first but fails
         // here leaves harmless orphan files (same keys, overwritten on retry).

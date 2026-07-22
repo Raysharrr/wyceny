@@ -42,6 +42,7 @@ vi.mock("next/navigation", () => ({
 import { approveValuation } from "../src/app/actions/approve-valuation";
 import { storage, valuationRepository, worker, mapImages } from "@/app/valuations/_deps";
 import { StorageNotFoundError } from "@/ports/storage";
+import { InputsChangedError } from "@/domain/valuation";
 
 const getMock = vi.mocked(valuationRepository.get);
 const approveMock = vi.mocked(valuationRepository.approve);
@@ -190,6 +191,7 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
       expect.anything(),
       expect.anything(),
       { mapsSkipped: true },
+      draft.inputs,
     );
     const mapaCalls = storagePutMock.mock.calls.filter(([key]) => key.startsWith("mapa-"));
     expect(mapaCalls).toHaveLength(0);
@@ -321,5 +323,54 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
       error: "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
     });
     expect(approveMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("approveValuation — InputsChangedError (approve-window drift guard, final review)", () => {
+  const draftForDriftTest: Valuation = {
+    id: "valuation-drift-1",
+    address: "ul. Dryfująca 1, Poznań",
+    area: 71.63,
+    wr: 1_044_400,
+    inputs: approvableInput("test-user").inputs,
+    amountInWords: null,
+    docUrl: null,
+    docxUrl: null,
+    purpose: "sprzedaz",
+    kwNumber: "PO1P/1/6",
+    client: "Jan Testowy",
+    inspectionDate: "2026-07-10",
+    ownerId: "test-user",
+    status: "in_progress",
+    approvedAt: null,
+    signedAt: null,
+    supersedesId: null,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+
+  beforeEach(() => {
+    getMock.mockReset();
+    approveMock.mockReset();
+    amountInWordsMock.mockReset();
+    convertToPdfMock.mockReset();
+    storagePutMock.mockReset();
+    storageDeleteMock.mockReset();
+    fetchMapsMock.mockReset();
+  });
+
+  it("returns the Polish drift message when repo.approve rejects with InputsChangedError, no crash", async () => {
+    getMock.mockResolvedValue(draftForDriftTest);
+    amountInWordsMock.mockResolvedValue("milion czterdzieści cztery tysiące czterysta złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    approveMock.mockRejectedValue(new InputsChangedError(draftForDriftTest.id));
+
+    const result = await approveValuation(draftForDriftTest.id);
+
+    expect(result).toEqual({
+      error:
+        "Dane wyceny zmieniły się w trakcie zatwierdzania — odśwież stronę i spróbuj ponownie.",
+    });
   });
 });

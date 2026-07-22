@@ -63,6 +63,20 @@ export class ApprovalBlockedError extends Error {
   }
 }
 
+/**
+ * The approve action reads the draft, then spends seconds generating the
+ * operat (worker + WMS + PDF conversion) before the status flip — a window
+ * in which the owner can still mutate draft inputs (e.g. add an inspection
+ * photo). The adapter throws this when the row's inputs no longer match
+ * what the caller rendered from, closing that drift window (final review).
+ */
+export class InputsChangedError extends Error {
+  constructor(id: string) {
+    super(`Valuation ${id} inputs changed between read and approve — render is stale`);
+    this.name = "InputsChangedError";
+  }
+}
+
 function assertDraft(v: Valuation): void {
   if (v.status !== "in_progress") {
     throw new Error(`Valuation ${v.id} is not a draft (status: ${v.status}) — mutation refused`);

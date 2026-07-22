@@ -156,4 +156,23 @@ describe("InspectionSection", () => {
     expect(uploadCall?.[1]).toBe("otoczenie");
     expect(uploadCall?.[2]).toBeInstanceOf(FormData);
   });
+
+  it("mintKwUploadToken rejecting (network failure) shows an error and re-enables the file input (final review)", async () => {
+    mintKwUploadToken.mockRejectedValue(new Error("network down"));
+
+    render(<InspectionSection valuationId={VID} inspection={null} />);
+    const input = screen.getByLabelText(
+      /dodaj zdjęcia — otoczenie i droga dojazdowa/i,
+    ) as HTMLInputElement;
+    const file = new File(["fake-jpeg-bytes"], "a.jpg", { type: "image/jpeg" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /nie udało się przetworzyć zdjęcia — sprawdź połączenie/i,
+      ),
+    );
+    expect(input.disabled).toBe(false);
+    expect(input.value).toBe("");
+  });
 });

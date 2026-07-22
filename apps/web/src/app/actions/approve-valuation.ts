@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
-import { ApprovalBlockedError } from "@/domain/valuation";
+import { ApprovalBlockedError, InputsChangedError } from "@/domain/valuation";
 import { approvalGate } from "@/domain/provenance";
 import {
   buildDocumentModel,
@@ -134,11 +134,18 @@ export async function approveValuation(
       { docUrl, docxUrl },
       now,
       opts?.skipMaps ? { mapsSkipped: true } : undefined,
+      valuation.inputs,
     );
     if (!updated) {
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
     }
   } catch (error) {
+    if (error instanceof InputsChangedError) {
+      return {
+        error:
+          "Dane wyceny zmieniły się w trakcie zatwierdzania — odśwież stronę i spróbuj ponownie.",
+      };
+    }
     if (error instanceof ApprovalBlockedError) {
       return {
         error: `Zatwierdzenie zablokowane — ${error.blockers[0]?.label ?? "operat zawiera niezweryfikowane wartości."}`,

@@ -4,7 +4,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
-import { ApprovalBlockedError, assertNotSigned } from "../src/domain/valuation";
+import { ApprovalBlockedError, InputsChangedError, assertNotSigned } from "../src/domain/valuation";
 import { buildPhotoKey } from "../src/domain/inspection";
 import type { KcsInput } from "../src/domain/kcs";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
@@ -262,6 +262,56 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       .orderBy(schema.auditLog.id);
     expect(rows.at(-1)!.action).toBe("approved");
     expect(rows.at(-1)!.meta).toMatchObject({ mapsSkipped: true });
+  });
+
+  it("approve rejects with InputsChangedError when expectedInputs no longer matches the row (approve-window drift guard, final review)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 10"),
+      inputs: approvableInputs(),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    const current = (await repo.get(created.id, appraiserA))!.inputs!;
+    // Simulates a photo added mid-render via updateInspection — the caller
+    // rendered from `current`, but the row has since drifted.
+    const staleInputs: KcsInput = {
+      ...current,
+      inspection: {
+        note: null,
+        photos: { otoczenie: ["ogledziny-otoczenie-mid-render.jpg"], budynekZewn: [], wnetrza: [] },
+      },
+    };
+
+    await expect(
+      repo.approve(created.id, appraiserA, undefined, new Date(), undefined, staleInputs),
+    ).rejects.toThrow(InputsChangedError);
+
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread!.status).toBe("in_progress");
+    expect(reread!.approvedAt).toBeNull();
+    const rows = await db
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.valuationId, created.id));
+    expect(rows.some((r) => r.action === "approved")).toBe(false);
+  });
+
+  it("approve succeeds when expectedInputs matches the row exactly (no drift)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 11"),
+      inputs: approvableInputs(),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    const current = (await repo.get(created.id, appraiserA))!.inputs!;
+
+    const approved = await repo.approve(
+      created.id,
+      appraiserA,
+      undefined,
+      new Date(),
+      undefined,
+      current,
+    );
+    expect(approved!.status).toBe("approved");
   });
 });
 

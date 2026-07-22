@@ -2,9 +2,10 @@
  * Port for the Valuation repository.
  *
  * Pure interface — no imports, no I/O. Application code depends on this
- * abstraction, never on a concrete adapter (F-10). The one exception is this
- * type-only import of `KcsInput` — it stays pure because type imports are
- * erased at compile time (no runtime dependency, no I/O).
+ * abstraction, never on a concrete adapter (F-10). The one exception is
+ * these type-only imports of `KcsInput`/`InspectionOp` — they stay pure
+ * because type imports are erased at compile time (no runtime dependency,
+ * no I/O).
  */
 
 import type { KcsInput } from "../domain/kcs";
@@ -108,6 +109,11 @@ export interface PortValuation {
    * `audit.mapsSkipped` records the user's conscious "approve without maps"
    * choice on the audit row's `meta` (Slice 9) — never set when the maps
    * were simply unavailable or the kill switch (MAPS_FETCH=off) is on.
+   * `expectedInputs` is the inputs snapshot the caller rendered the document
+   * from — when provided, the adapter throws `InputsChangedError` if the
+   * row's inputs no longer serialize identically, closing the multi-second
+   * get→approve window in which the owner could still mutate draft inputs
+   * (final review).
    */
   approve(
     id: string,
@@ -115,6 +121,7 @@ export interface PortValuation {
     docs?: { docUrl: string; docxUrl: string },
     now?: Date,
     audit?: { mapsSkipped?: boolean },
+    expectedInputs?: KcsInput | null,
   ): Promise<Valuation | null>;
   /**
    * Signs an approved valuation — the final, write-once transition (F-7).
