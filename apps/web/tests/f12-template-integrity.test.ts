@@ -167,6 +167,25 @@ const REQUIRED_PLACEHOLDERS = [
   "{%mapa_orto}",
   "{mapy_data}",
   "{^mapy}",
+  // Slice 10 (Task 6, FR-2): §8.1/§8.3 inspection photo blocks — budynek,
+  // otoczenie, wnetrza loops each wrapping the shared {%img} image tag, plus
+  // the free-text inspection-notes block (build_template.py stage 13).
+  "{#ma_foto_budynek}",
+  "{/ma_foto_budynek}",
+  "{#foto_budynek}",
+  "{/foto_budynek}",
+  "{#ma_foto_otoczenie}",
+  "{/ma_foto_otoczenie}",
+  "{#foto_otoczenie}",
+  "{/foto_otoczenie}",
+  "{#ma_foto_wnetrza}",
+  "{/ma_foto_wnetrza}",
+  "{#foto_wnetrza}",
+  "{/foto_wnetrza}",
+  "{%img}",
+  "{#ma_uwagi_ogledzin}",
+  "{/ma_uwagi_ogledzin}",
+  "{uwagi_ogledzin}",
 ];
 
 describe("F-12: template integrity (operat-szablon.docx)", () => {
