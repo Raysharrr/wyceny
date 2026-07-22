@@ -256,13 +256,14 @@ export function NewValuationForm() {
         summary: `obręb ${p.parcel.obreb}, dz. ${p.parcel.nrDzialki}${p.mpzp ? `, MPZP ${p.mpzp.symbol}` : ", brak MPZP"}`,
       });
       setMapPreview({ status: "loading" });
-      void getMapPreview({ address }).then((preview) =>
+      void getMapPreview({ address }).then((preview) => {
+        if (seq !== fetchSeq.current) return; // stale preview — a newer fetch owns the section
         setMapPreview(
           "unavailable" in preview
             ? { status: "unavailable", message: preview.unavailable }
             : { status: "done", ewidencyjna: preview.ewidencyjna, orto: preview.orto },
-        ),
-      );
+        );
+      });
     } else if ("outOfCoverage" in result) {
       setSubjectFetch({ status: "outOfCoverage", message: result.outOfCoverage });
     } else {
