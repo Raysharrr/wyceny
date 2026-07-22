@@ -16,7 +16,7 @@ from app.photo import MAX_PHOTO_BYTES, process_photo
 def jpeg_with_exif(width: int, height: int, orientation: int | None = None) -> bytes:
     img = Image.new("RGB", (width, height), (120, 30, 30))
     exif = Image.Exif()
-    exif[0x010F] = "TestCam"          # Make — device metadata (RODO target)
+    exif[0x010F] = "TestCam"  # Make — device metadata (RODO target)
     exif[0x0110] = "TestCam Model X"  # Model
     if orientation is not None:
         exif[0x0112] = orientation
