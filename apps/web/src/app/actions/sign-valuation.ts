@@ -8,8 +8,9 @@ import { storage, worker, valuationRepository, profileRepository } from "@/app/v
 import { NotSignableError } from "@/domain/valuation";
 import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
-import { renderOperatDocx, type RenderMaps } from "@/adapters/docx-render";
+import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { StorageNotFoundError } from "@/ports/storage";
+import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 
 export type SignValuationResult = { error: string } | undefined;
 
@@ -93,7 +94,23 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
         };
       }
     }
-    const docx = renderOperatDocx(model, { signature: signature.bytes, maps });
+
+    // Slice 10 (Task 8): sign reads the photo manifest from the FROZEN
+    // inputs, same as maps — but unlike maps, StorageNotFoundError here is
+    // NOT swallowed. The manifest is written in the same tx as the bytes, so
+    // a missing key is a hard integrity error: every failure aborts the sign
+    // rather than being treated as a legal absence (final review, contrast
+    // with the maps try/catch above).
+    let photos: RenderPhotos | null = null;
+    try {
+      photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
+    } catch (error) {
+      console.error("signValuationAction: reading frozen inspection photos failed", error);
+      return {
+        error: "Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie.",
+      };
+    }
+    const docx = renderOperatDocx(model, { signature: signature.bytes, maps, photos });
     const pdf = await worker.convertToPdf(docx);
     const docxUrl = await storage.put(`operat-${id}-signed.docx`, docx);
     const docUrl = await storage.put(`operat-${id}-signed.pdf`, pdf);

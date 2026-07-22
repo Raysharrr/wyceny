@@ -241,4 +241,104 @@ describe("signValuationAction", () => {
     });
     expect(signMock).not.toHaveBeenCalled();
   });
+
+  describe("inspection photos (Slice 10, Task 8)", () => {
+    // Manifest with 2 keys spread across 2 of the 3 sections.
+    const photoKeys = {
+      otoczenie: "ogledziny-otoczenie-p1-v1.jpg",
+      wnetrza: "ogledziny-wnetrza-p2-v1.jpg",
+    };
+
+    const approvedValuationWithPhotos: Valuation = {
+      ...approvedValuation,
+      inputs: {
+        ...approvedValuation.inputs!,
+        inspection: {
+          note: null,
+          photos: {
+            otoczenie: [photoKeys.otoczenie],
+            budynekZewn: [],
+            wnetrza: [photoKeys.wnetrza],
+          },
+        },
+      },
+    };
+
+    it("aborts (no repo.sign) when a manifest photo key fails to resolve — contrast with maps' silent StorageNotFoundError", async () => {
+      getMock.mockResolvedValue(approvedValuationWithPhotos);
+      getSignatureMock.mockResolvedValue({
+        bytes: fs.readFileSync(path.join(__dirname, "fixtures", "signature-synthetic.png")),
+        mime: "image/png",
+      });
+      amountInWordsMock.mockResolvedValue("czterysta tysięcy złotych");
+      // signMock (see the .findLast comment above) accumulates across tests
+      // in this file (no clearMocks configured) — clear it so "not called"
+      // below reflects only this test.
+      signMock.mockClear();
+      // Maps keys also reject with StorageNotFoundError here (silently
+      // treated as "approved without maps"); the photo key's identical error
+      // must NOT be swallowed the same way — it aborts the sign entirely.
+      storageGetMock.mockImplementation((key: string) =>
+        key === photoKeys.otoczenie
+          ? Promise.resolve(JPG_1PX)
+          : Promise.reject(new StorageNotFoundError(`missing: ${key}`)),
+      );
+
+      const result = await signValuationAction("v1");
+
+      expect(result).toEqual({
+        error: "Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie.",
+      });
+      expect(signMock).not.toHaveBeenCalled();
+    });
+
+    it("re-renders from frozen photo bytes at sign — embeds photos from the manifest", async () => {
+      getMock.mockResolvedValue(approvedValuationWithPhotos);
+      getSignatureMock.mockResolvedValue({
+        bytes: fs.readFileSync(path.join(__dirname, "fixtures", "signature-synthetic.png")),
+        mime: "image/png",
+      });
+      amountInWordsMock.mockResolvedValue("czterysta tysięcy złotych");
+      convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+      storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+      storageGetMock.mockImplementation((key: string) =>
+        key === photoKeys.otoczenie || key === photoKeys.wnetrza
+          ? Promise.resolve(JPG_1PX)
+          : // Maps absent (StorageNotFoundError) -> honest stub, doesn't affect photos.
+            Promise.reject(new StorageNotFoundError(`missing: ${key}`)),
+      );
+      signMock.mockResolvedValue({ ...approvedValuationWithPhotos, status: "signed" });
+
+      const result = await signValuationAction("v1");
+
+      expect(result).toBeUndefined();
+      const docxCall = storagePutMock.mock.calls.findLast(
+        ([key]) => key === "operat-v1-signed.docx",
+      );
+      const docxBytes = docxCall?.[1] as Buffer;
+      expect(generatedMedia(docxBytes).length).toBe(3); // signature + 2 photos, no maps
+    });
+
+    it("aborts (not a crash) when storage.get resolves undefined for a manifest photo key (fake/buggy storage)", async () => {
+      getMock.mockResolvedValue(approvedValuationWithPhotos);
+      getSignatureMock.mockResolvedValue({
+        bytes: fs.readFileSync(path.join(__dirname, "fixtures", "signature-synthetic.png")),
+        mime: "image/png",
+      });
+      amountInWordsMock.mockResolvedValue("czterysta tysięcy złotych");
+      signMock.mockClear();
+      storageGetMock.mockImplementation((key: string) =>
+        key === photoKeys.otoczenie
+          ? (Promise.resolve(undefined) as unknown as Promise<Buffer>)
+          : Promise.reject(new StorageNotFoundError(`missing: ${key}`)),
+      );
+
+      const result = await signValuationAction("v1");
+
+      expect(result).toEqual({
+        error: "Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie.",
+      });
+      expect(signMock).not.toHaveBeenCalled();
+    });
+  });
 });

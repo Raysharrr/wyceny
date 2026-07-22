@@ -12,7 +12,8 @@ import {
   type OperatPurpose,
 } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
-import { renderOperatDocx, type RenderMaps } from "@/adapters/docx-render";
+import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
+import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 
 export type ApproveValuationResult = { error: string; mapsUnavailable?: boolean } | undefined;
 
@@ -108,7 +109,21 @@ export async function approveValuation(
       await storage.delete(`mapa-ewidencyjna-${id}.png`);
       await storage.delete(`mapa-orto-${id}.jpg`);
     }
-    const docx = renderOperatDocx(model, { maps });
+
+    // Slice 10 (Task 8): the photo manifest lives in inputs.inspection —
+    // unlike maps, a manifest key that fails to resolve is a HARD integrity
+    // error (manifest + bytes are written in the same tx) and aborts the
+    // approve before repo.approve is ever called.
+    let photos: RenderPhotos | null = null;
+    try {
+      photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
+    } catch (error) {
+      console.error("approveValuation: reading inspection photos failed", error);
+      return {
+        error: "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+      };
+    }
+    const docx = renderOperatDocx(model, { maps, photos });
     const pdf = await worker.convertToPdf(docx);
     const docxUrl = await storage.put(`operat-${id}.docx`, docx);
     const docUrl = await storage.put(`operat-${id}.pdf`, pdf);

@@ -41,6 +41,7 @@ vi.mock("next/navigation", () => ({
 
 import { approveValuation } from "../src/app/actions/approve-valuation";
 import { storage, valuationRepository, worker, mapImages } from "@/app/valuations/_deps";
+import { StorageNotFoundError } from "@/ports/storage";
 
 const getMock = vi.mocked(valuationRepository.get);
 const approveMock = vi.mocked(valuationRepository.approve);
@@ -48,6 +49,7 @@ const amountInWordsMock = vi.mocked(worker.amountInWords);
 const convertToPdfMock = vi.mocked(worker.convertToPdf);
 const storagePutMock = vi.mocked(storage.put);
 const storageDeleteMock = vi.mocked(storage.delete);
+const storageGetMock = vi.mocked(storage.get);
 const fetchMapsMock = vi.mocked(mapImages!.fetchMaps);
 
 // Synthetic 1x1 images (F-9: no real map data in fixtures) — same fixture
@@ -202,5 +204,122 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     const docxBytes = docxCall?.[1] as Buffer;
     const text = new PizZip(docxBytes).file("word/document.xml")!.asText();
     expect(text).toContain("Dokumentacja kartograficzna zostanie uzupełniona.");
+  });
+});
+
+describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
+  beforeEach(() => {
+    getMock.mockReset();
+    approveMock.mockReset();
+    amountInWordsMock.mockReset();
+    convertToPdfMock.mockReset();
+    storagePutMock.mockReset();
+    storageDeleteMock.mockReset();
+    storageGetMock.mockReset();
+    fetchMapsMock.mockReset();
+  });
+
+  // Manifest with 2 keys spread across 2 of the 3 sections — enough to prove
+  // storage.get is called for exactly the manifest keys (not more, not
+  // fewer) without the noise of a full 3-section fixture.
+  const photoKeys = {
+    otoczenie: "ogledziny-otoczenie-p1-valuation-draft-photos-1.jpg",
+    budynekZewn: "ogledziny-budynek-p2-valuation-draft-photos-1.jpg",
+  };
+
+  const draftWithPhotos: Valuation = {
+    id: "valuation-draft-photos-1",
+    address: "ul. Fotograficzna 5, Poznań",
+    area: 60,
+    wr: 900_000,
+    inputs: {
+      ...approvableInput("test-user").inputs!,
+      inspection: {
+        note: null,
+        photos: {
+          otoczenie: [photoKeys.otoczenie],
+          budynekZewn: [photoKeys.budynekZewn],
+          wnetrza: [],
+        },
+      },
+    },
+    amountInWords: null,
+    docUrl: null,
+    docxUrl: null,
+    purpose: "sprzedaz",
+    kwNumber: "PO1P/1/6",
+    client: "Jan Testowy",
+    inspectionDate: "2026-07-10",
+    ownerId: "test-user",
+    status: "in_progress",
+    approvedAt: null,
+    signedAt: null,
+    supersedesId: null,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+
+  const setUpHappyMocksWithMaps = () => {
+    amountInWordsMock.mockResolvedValue("dziewięćset tysięcy złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    approveMock.mockResolvedValue({ ...draftWithPhotos, status: "approved" });
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+  };
+
+  it("reads exactly the manifest keys via storage.get and embeds maps+photos media", async () => {
+    getMock.mockResolvedValue(draftWithPhotos);
+    setUpHappyMocksWithMaps();
+    storageGetMock.mockImplementation((key: string) =>
+      key === photoKeys.otoczenie || key === photoKeys.budynekZewn
+        ? Promise.resolve(JPG_1PX)
+        : Promise.reject(new Error(`unexpected storage.get(${key})`)),
+    );
+
+    const result = await approveValuation(draftWithPhotos.id);
+
+    expect(result).toBeUndefined();
+    expect(storageGetMock).toHaveBeenCalledTimes(2);
+    expect(storageGetMock).toHaveBeenCalledWith(photoKeys.otoczenie);
+    expect(storageGetMock).toHaveBeenCalledWith(photoKeys.budynekZewn);
+
+    const docxCall = storagePutMock.mock.calls.find(
+      ([key]) => key === `operat-${draftWithPhotos.id}.docx`,
+    );
+    const docxBytes = docxCall?.[1] as Buffer;
+    expect(generatedMedia(docxBytes)).toHaveLength(2 + 2); // 2 maps + 2 photos
+  });
+
+  it("aborts BEFORE repo.approve when a manifest photo key fails to resolve", async () => {
+    getMock.mockResolvedValue(draftWithPhotos);
+    setUpHappyMocksWithMaps();
+    storageGetMock.mockImplementation((key: string) =>
+      key === photoKeys.otoczenie
+        ? Promise.resolve(JPG_1PX)
+        : Promise.reject(new StorageNotFoundError(`missing: ${key}`)),
+    );
+
+    const result = await approveValuation(draftWithPhotos.id);
+
+    expect(result).toEqual({
+      error: "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+    });
+    expect(approveMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts (not a crash) when storage.get resolves undefined for a manifest key (fake/buggy storage)", async () => {
+    getMock.mockResolvedValue(draftWithPhotos);
+    setUpHappyMocksWithMaps();
+    storageGetMock.mockImplementation((key: string) =>
+      key === photoKeys.otoczenie
+        ? Promise.resolve(JPG_1PX)
+        : (Promise.resolve(undefined) as unknown as Promise<Buffer>),
+    );
+
+    const result = await approveValuation(draftWithPhotos.id);
+
+    expect(result).toEqual({
+      error: "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+    });
+    expect(approveMock).not.toHaveBeenCalled();
   });
 });
