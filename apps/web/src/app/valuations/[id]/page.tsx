@@ -9,6 +9,7 @@ import type { KwDzialSnapshot } from "@/domain/kw-snapshot";
 import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers, formatNumber } from "@/domain/document-model";
 import { valuationRepository } from "../_deps";
+import { InspectionSection } from "./inspection-section";
 import { ValuationActions } from "./valuation-actions";
 
 // The approve Server Action invoked from this page generates the operat
@@ -612,6 +613,13 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
       {valuation.inputs?.subject ? <SubjectCard inputs={valuation.inputs} /> : null}
 
       {valuation.inputs?.kw ? <KwCard inputs={valuation.inputs} /> : null}
+
+      {isDraft && isOwner ? (
+        <InspectionSection
+          valuationId={valuation.id}
+          inspection={valuation.inputs?.inspection ?? null}
+        />
+      ) : null}
 
       {isOwner && hasAnyAction ? (
         <Card>

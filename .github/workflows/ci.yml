@@ -119,6 +119,10 @@ jobs:
       # Slice 9: approve fetches WMS maps via the worker; off keeps the e2e
       # smoke network-free (approve renders the honest §8.1 stub instead).
       MAPS_FETCH: "off"
+      # Slice 10 (FR-2): keeps the inspection photo upload inputs hidden so
+      # the smoke path stays network-free (see inspection-section.tsx's
+      # `uploadEnabled` guard).
+      NEXT_PUBLIC_PHOTO_UPLOAD: "off"
     services:
       postgres:
         image: postgres:16

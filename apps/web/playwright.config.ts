@@ -22,7 +22,12 @@ export default defineConfig({
     // `onAddressBlur`). NEXT_PUBLIC_* is inlined at `next build` time, so
     // this alone does NOT retroactively disable a build made without it.
     // Same rationale for the KW upload flow (see kw-section.tsx's
-    // `uploadEnabled` guard).
-    env: { NEXT_PUBLIC_SUBJECT_AUTOFETCH: "off", NEXT_PUBLIC_KW_UPLOAD: "off" },
+    // `uploadEnabled` guard) and the inspection photo upload flow (see
+    // inspection-section.tsx's `uploadEnabled` guard).
+    env: {
+      NEXT_PUBLIC_SUBJECT_AUTOFETCH: "off",
+      NEXT_PUBLIC_KW_UPLOAD: "off",
+      NEXT_PUBLIC_PHOTO_UPLOAD: "off",
+    },
   },
 });
