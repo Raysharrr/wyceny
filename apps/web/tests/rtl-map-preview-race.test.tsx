@@ -81,7 +81,7 @@ describe("map preview race (Slice 9 follow-up)", () => {
     fireEvent.blur(address);
     await waitFor(() => expect(getMapPreviewMock).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(address, { target: { value: "Głogowska 40" } });
+    fireEvent.change(address, { target: { value: "Zmyślona 40" } });
     fireEvent.blur(address);
     await waitFor(() => expect(getMapPreviewMock).toHaveBeenCalledTimes(2));
     // newer preview settled first…
