@@ -224,6 +224,9 @@ export type DocumentModel = {
   liczba_atrybutow_fraza: string;
   /** Honest-silence flag: the §12.1 scale block renders only when true. */
   ma_skale: boolean;
+  /** §8.3 "Uwagi z oględzin" block (Slice 10) — conditional, honest silence when empty. */
+  ma_uwagi_ogledzin: boolean;
+  uwagi_ogledzin: string;
 };
 
 export type DocumentFields = {
@@ -388,5 +391,7 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     ),
     liczba_atrybutow_fraza: `${activeFeatures.length} ${activeFeatures.length === 1 ? "atrybutu" : "atrybutów"}`,
     ma_skale: skalaOcen.length > 0,
+    ma_uwagi_ogledzin: Boolean(input.inputs.inspection?.note),
+    uwagi_ogledzin: input.inputs.inspection?.note ?? "",
   };
 }

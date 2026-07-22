@@ -30,3 +30,18 @@ export const exifApp1 = {
 };
 
 export const xmpApp1 = { marker: 0xe1, payload: Buffer.from("http://ns.adobe.com/xap/1.0/\0") };
+
+/**
+ * Synthetic 1x1 real-format images (F-9: no real map/photo data in fixtures),
+ * shared by docx-render-maps.test.ts and docx-render-photos.test.ts. Real
+ * dimensions ARE 1x1 (jpegDimensions confirms) — fitBox never upscales, so
+ * these are for magic-byte/media-count assertions, not aspect-ratio sizing.
+ */
+export const PNG_1PX = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+export const JPG_1PX = Buffer.from(
+  "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==",
+  "base64",
+);

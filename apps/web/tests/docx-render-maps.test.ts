@@ -3,16 +3,8 @@ import PizZip from "pizzip";
 import { renderOperatDocx, type RenderMaps } from "../src/adapters/docx-render";
 import { buildDocumentModel } from "../src/domain/document-model";
 import { syntheticDocumentInput } from "./fixtures/document-model-fixture";
+import { JPG_1PX, PNG_1PX } from "./fixtures/jpeg-fixtures";
 
-// Synthetic 1x1 images (F-9: no real map data in fixtures)
-const PNG_1PX = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-  "base64",
-);
-const JPG_1PX = Buffer.from(
-  "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==",
-  "base64",
-);
 const MAPS: RenderMaps = { ewidencyjna: PNG_1PX, orto: JPG_1PX };
 
 const zipOf = (buf: Buffer) => new PizZip(buf);
