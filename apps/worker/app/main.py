@@ -20,6 +20,7 @@ import app.rcn as rcn
 import app.subject as subject
 from app import kw as kw_core
 import app.maps as maps
+from app import photo as photo_core
 from app.amount_in_words import to_amount_in_words
 from app.convert import ConversionError, docx_to_pdf
 
@@ -407,4 +408,42 @@ def kw_extract(
         docTypeDetected=payload.docType,
         typeMismatch=payload.docType != expected_type,
         model=KW_MODEL,
+    )
+
+
+class PhotoProcessResponse(BaseModel):
+    """Processed inspection photo (Slice 10, FR-2). F-11: images only, no market values."""
+
+    photo: str  # base64 JPEG — resized to <=1200 px long side, EXIF stripped by re-encode
+    width: int
+    height: int
+
+
+@app.post("/photo-process")
+def photo_process(
+    file: UploadFile = File(...),
+    token: str = Form(...),
+) -> PhotoProcessResponse:
+    secret = os.environ.get("WORKER_SHARED_SECRET", "")
+    if not secret or not kw_core.verify_token(token, secret, time.time()):
+        raise HTTPException(
+            status_code=401,
+            detail="Nieprawidłowy lub wygasły token — odśwież stronę i spróbuj ponownie.",
+        )
+    if file.content_type not in ("image/jpeg", "image/png"):
+        raise HTTPException(status_code=415, detail="Obsługiwane są wyłącznie zdjęcia JPEG i PNG.")
+    data = file.file.read()
+    if len(data) > photo_core.MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=413, detail="Plik jest za duży (limit 10 MB).")
+    try:
+        jpeg, width, height = photo_core.process_photo(data)
+    except Exception as exc:  # unreadable image / decompression bomb — same user answer
+        logger.error("photo processing failed: %s", exc)
+        raise HTTPException(
+            status_code=415,
+            detail="Nie udało się odczytać zdjęcia — wgraj plik JPEG lub PNG.",
+        ) from exc
+    # File bytes are never persisted or logged: `data` dies with this request (RODO).
+    return PhotoProcessResponse(
+        photo=base64.standard_b64encode(jpeg).decode(), width=width, height=height
     )
