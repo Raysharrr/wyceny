@@ -4,6 +4,20 @@ import { storage, valuationRepository } from "@/app/valuations/_deps";
 
 const TEXT_HEADERS = { "Content-Type": "text/plain; charset=utf-8" };
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PHOTO_HEADERS = { "Content-Type": "image/jpeg", "Content-Disposition": "inline" };
+
+/**
+ * Inspection photo keys (Slice 10, FR-2), e.g.
+ * "ogledziny-budynek-<uuid>-<valuationId>.jpg" — live only in
+ * `inputs.inspection.photos` (the manifest), never in `docUrl`/`docxUrl`, so
+ * `getByDocKey` can't see them (it matches only those two columns,
+ * valuation-drizzle.ts). The key embeds its owning valuationId; authorize
+ * via `valuationRepository.get` (owner + admin, F-8) AND membership in that
+ * valuation's manifest — the key alone doesn't prove the caller may see it
+ * (no fishing for orphaned/guessed keys).
+ */
+const PHOTO_KEY_RX =
+  /^ogledziny-(?:otoczenie|budynek|wnetrza)-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jpg$/;
 
 /**
  * Success-path Content-Type/-Disposition, derived from the key's file
@@ -46,6 +60,22 @@ export async function GET(_request: Request, { params }: { params: Promise<{ key
   const session = await getSession();
   if (!session) {
     return new NextResponse("Wymagane zalogowanie.", { status: 401, headers: TEXT_HEADERS });
+  }
+
+  const photoMatch = PHOTO_KEY_RX.exec(key);
+  if (photoMatch) {
+    const owning = await valuationRepository.get(photoMatch[1], session.user);
+    const manifest = owning?.inputs?.inspection?.photos;
+    const inManifest = manifest && Object.values(manifest).some((keys) => keys.includes(key));
+    if (!inManifest) {
+      return new NextResponse("Nie znaleziono dokumentu.", { status: 404, headers: TEXT_HEADERS });
+    }
+    try {
+      const data = await storage.get(key);
+      return new NextResponse(new Uint8Array(data), { status: 200, headers: PHOTO_HEADERS });
+    } catch {
+      return new NextResponse("Nie znaleziono dokumentu.", { status: 404, headers: TEXT_HEADERS });
+    }
   }
 
   const valuation = await valuationRepository.getByDocKey(key, session.user);

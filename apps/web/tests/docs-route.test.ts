@@ -4,6 +4,8 @@ import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { pgStorage } from "../src/adapters/storage-pg";
+import { buildPhotoKey } from "../src/domain/inspection";
+import { approvableInput, valuationInput } from "./fixtures/valuation-inputs";
 import type { SessionUser } from "../src/ports/valuation";
 
 /**
@@ -127,5 +129,109 @@ describe("/api/docs/[key] — access control (Task 11a)", () => {
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     );
     expect(docxRes.headers.get("content-disposition")).toContain("attachment");
+  });
+});
+
+describe("/api/docs/[key] — inspection photo thumbnails (Slice 10 FR-2, Task 8b)", () => {
+  const jpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+
+  it("photo key present in the owner's manifest -> 200, image/jpeg, inline, correct bytes", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Miniatury 1"),
+      inputs: { comparables: [], area: 10, features: [] },
+    });
+    const key = buildPhotoKey("wnetrza", "photo-1", created.id);
+    await repo.updateInspection(created.id, appraiserA, {
+      kind: "add_photo",
+      section: "wnetrza",
+      key,
+    });
+    await storage.put(key, jpegBytes);
+
+    getSessionMock.mockResolvedValue({ user: appraiserA });
+    const res = await GET(new Request(`http://test/api/docs/${key}`), paramsFor(key));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("content-disposition")).toBe("inline");
+    expect(Buffer.from(await res.arrayBuffer()).equals(jpegBytes)).toBe(true);
+  });
+
+  it("photo key not present in the manifest -> 404 (orphaned/guessed key, no fishing)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Miniatury 2"),
+      inputs: { comparables: [], area: 10, features: [] },
+    });
+    const knownKey = buildPhotoKey("otoczenie", "photo-known", created.id);
+    await repo.updateInspection(created.id, appraiserA, {
+      kind: "add_photo",
+      section: "otoczenie",
+      key: knownKey,
+    });
+    // Well-formed, same (visible) valuationId, but never added to the manifest.
+    const guessedKey = buildPhotoKey("otoczenie", "photo-guessed", created.id);
+
+    getSessionMock.mockResolvedValue({ user: appraiserA });
+    const res = await GET(new Request(`http://test/api/docs/${guessedKey}`), paramsFor(guessedKey));
+
+    expect(res.status).toBe(404);
+  });
+
+  it("repo.get -> null for a non-owner -> 404, no existence leak", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Miniatury 3"),
+      inputs: { comparables: [], area: 10, features: [] },
+    });
+    const key = buildPhotoKey("budynekZewn", "photo-3", created.id);
+    await repo.updateInspection(created.id, appraiserA, {
+      kind: "add_photo",
+      section: "budynekZewn",
+      key,
+    });
+    await storage.put(key, jpegBytes);
+
+    getSessionMock.mockResolvedValue({ user: appraiserB });
+    const res = await GET(new Request(`http://test/api/docs/${key}`), paramsFor(key));
+
+    expect(res.status).toBe(404);
+  });
+
+  it("malformed key (no embedded UUID) doesn't match the photo branch, falls through to getByDocKey -> 404", async () => {
+    getSessionMock.mockResolvedValue({ user: appraiserA });
+
+    const res = await GET(
+      new Request("http://test/api/docs/ogledziny-costam.jpg"),
+      paramsFor("ogledziny-costam.jpg"),
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("versioning: a v2 draft inherits a v1-embedded photo key; owner request still resolves via v1 -> 200", async () => {
+    const v1 = await repo.create(approvableInput(appraiserA.id));
+    const key = buildPhotoKey("wnetrza", "photo-v1", v1.id);
+    await repo.updateInspection(v1.id, appraiserA, { kind: "add_photo", section: "wnetrza", key });
+    await storage.put(key, jpegBytes);
+
+    await repo.approve(v1.id, appraiserA, {
+      docUrl: `/api/docs/operat-${v1.id}.pdf`,
+      docxUrl: `/api/docs/operat-${v1.id}.docx`,
+    });
+    await repo.sign(v1.id, appraiserA, {
+      docUrl: `/api/docs/operat-${v1.id}-signed.pdf`,
+      docxUrl: `/api/docs/operat-${v1.id}-signed.docx`,
+      sha256Docx: "a".repeat(64),
+      sha256Pdf: "b".repeat(64),
+    });
+    const v2 = await repo.createNewVersion(v1.id, appraiserA);
+    // Inherited unchanged — the key still embeds v1's id (domain/inspection.ts).
+    expect(v2!.inputs!.inspection!.photos.wnetrza).toEqual([key]);
+
+    // The v2 UI's <img> still points at the v1-embedded key.
+    getSessionMock.mockResolvedValue({ user: appraiserA });
+    const res = await GET(new Request(`http://test/api/docs/${key}`), paramsFor(key));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
   });
 });
