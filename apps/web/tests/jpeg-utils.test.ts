@@ -1,28 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fitBox, hasApp1, isJpeg, jpegDimensions } from "../src/lib/jpeg";
-
-/** Minimal marker stream: SOI + segments; SOF0 carries [prec, H, H, W, W]. */
-function jpegOf(segments: Array<{ marker: number; payload: Buffer }>): Buffer {
-  const parts: Buffer[] = [Buffer.from([0xff, 0xd8])];
-  for (const s of segments) {
-    const len = Buffer.alloc(2);
-    len.writeUInt16BE(s.payload.length + 2);
-    parts.push(Buffer.from([0xff, s.marker]) as Buffer, len as Buffer, s.payload as Buffer);
-  }
-  return Buffer.concat(parts);
-}
-const sof0 = (w: number, h: number) => {
-  const p = Buffer.alloc(5);
-  p[0] = 8;
-  p.writeUInt16BE(h, 1);
-  p.writeUInt16BE(w, 3);
-  return { marker: 0xc0, payload: p };
-};
-const exifApp1 = {
-  marker: 0xe1,
-  payload: Buffer.concat([Buffer.from("Exif\0\0"), Buffer.alloc(4)]),
-};
-const xmpApp1 = { marker: 0xe1, payload: Buffer.from("http://ns.adobe.com/xap/1.0/\0") };
+import { exifApp1, jpegOf, sof0, xmpApp1 } from "./fixtures/jpeg-fixtures";
 
 describe("jpeg utils", () => {
   it("isJpeg checks the SOI+marker magic", () => {
