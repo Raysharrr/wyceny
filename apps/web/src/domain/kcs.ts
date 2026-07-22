@@ -20,6 +20,7 @@ import type { SampleMeta } from "../ports/sample";
 import type { KwMetaSnapshot, KwSnapshot } from "./kw-snapshot";
 import type { InputsProvenance } from "./provenance";
 import type { SubjectMetaSnapshot, SubjectSnapshot } from "./subject-snapshot";
+import type { InspectionSnapshot } from "./inspection";
 
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
 
@@ -71,6 +72,8 @@ export type KcsInput = {
   kw?: KwSnapshot | null;
   /** Extraction provenance for the kw snapshot (F-5) — display/audit metadata only. */
   kwMeta?: KwMetaSnapshot | null;
+  /** Inspection photos manifest + note (Slice 10, FR-2) — display/render only; computeKcs never reads this. */
+  inspection?: InspectionSnapshot | null;
 };
 
 export type FeatureShare = Feature & {

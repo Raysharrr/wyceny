@@ -3,6 +3,14 @@ import { documentFieldBlockers } from "./document-model";
 import type { Comparable } from "./kcs";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
+import {
+  EMPTY_INSPECTION,
+  INSPECTION_SECTIONS,
+  MAX_INSPECTION_PHOTOS,
+  totalInspectionPhotos,
+  type InspectionSection,
+  type InspectionSnapshot,
+} from "./inspection";
 
 /**
  * Pure Valuation domain logic.
@@ -153,6 +161,56 @@ export function confirmFeaturesProvenance(valuation: Valuation): Valuation {
   return { ...valuation, inputs: { ...valuation.inputs, provenance } };
 }
 
+export class InspectionLimitError extends Error {
+  constructor() {
+    super(`Inspection photo limit reached (${MAX_INSPECTION_PHOTOS})`);
+    this.name = "InspectionLimitError";
+  }
+}
+
+export type InspectionOp =
+  | { kind: "add_photo"; section: InspectionSection; key: string }
+  | { kind: "remove_photo"; section: InspectionSection; key: string }
+  | { kind: "set_note"; note: string };
+
+/**
+ * Draft-only inspection mutation (Slice 10) — the manifest sibling of the
+ * confirm* family: assertDraft + throw-on-missing-inputs, pure, persisted
+ * by the adapter in one tx with the `inspection_updated` audit row.
+ */
+export function applyInspectionOp(v: Valuation, op: InspectionOp): Valuation {
+  assertDraft(v);
+  if (!v.inputs) {
+    throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
+  }
+  const current = v.inputs.inspection ?? EMPTY_INSPECTION;
+  let inspection: InspectionSnapshot;
+  if (op.kind === "add_photo") {
+    if (totalInspectionPhotos(current) >= MAX_INSPECTION_PHOTOS) {
+      throw new InspectionLimitError();
+    }
+    if (INSPECTION_SECTIONS.some((s) => current.photos[s].includes(op.key))) {
+      throw new Error(`Photo key already present: ${op.key}`);
+    }
+    inspection = {
+      ...current,
+      photos: { ...current.photos, [op.section]: [...current.photos[op.section], op.key] },
+    };
+  } else if (op.kind === "remove_photo") {
+    inspection = {
+      ...current,
+      photos: {
+        ...current.photos,
+        [op.section]: current.photos[op.section].filter((k) => k !== op.key),
+      },
+    };
+  } else {
+    const note = op.note.trim();
+    inspection = { ...current, note: note.length > 0 ? note : null };
+  }
+  return { ...v, inputs: { ...v.inputs, inspection } };
+}
+
 /**
  * The approve mutation — F-4 gate as aggregate invariant (ADR-012). A draft
  * without a snapshot can never pass (default-deny). The gate is merged with
@@ -191,6 +249,7 @@ export const AUDIT_ACTIONS = [
   "subject_confirmed",
   "kw_confirmed",
   "features_confirmed",
+  "inspection_updated",
   "approved",
   "signed",
   "version_created",
