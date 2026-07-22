@@ -2,6 +2,7 @@ import { and, eq, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { KcsInput } from "../domain/kcs";
 import {
+  applyInspectionOp,
   approveValuation,
   confirmFeaturesProvenance,
   confirmKwProvenance,
@@ -12,6 +13,7 @@ import {
   signValuation,
   type AuditAction,
 } from "../domain/valuation";
+import { totalInspectionPhotos } from "../domain/inspection";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -201,6 +203,47 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           .returning();
         if (!saved) return null;
         await insertAudit(tx, { valuationId: id, actorId: user.id, action: "features_confirmed" });
+        return toValuation(saved);
+      });
+    },
+
+    async updateInspection(id, user, op) {
+      return db.transaction(async (tx) => {
+        // .for("update") — UNLIKE the confirm* siblings: the manifest is a
+        // read-modify-write on inputs jsonb and photo uploads repeat, so two
+        // tabs adding photos concurrently would lose a manifest key (last
+        // write wins) and orphan its bytes (advisor I-1). The row lock
+        // serializes writers; confirm* flips are idempotent so they stay as-is.
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.id, id))
+          .for("update");
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = applyInspectionOp(valuation, op);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "inspection_updated",
+          meta: {
+            op:
+              op.kind === "add_photo"
+                ? "photo_added"
+                : op.kind === "remove_photo"
+                  ? "photo_removed"
+                  : "note_updated",
+            ...(op.kind !== "set_note" ? { section: op.section } : {}),
+            total: totalInspectionPhotos(updated.inputs?.inspection),
+          },
+        });
         return toValuation(saved);
       });
     },

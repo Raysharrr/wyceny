@@ -8,6 +8,7 @@
  */
 
 import type { KcsInput } from "../domain/kcs";
+import type { InspectionOp } from "../domain/valuation";
 
 export type Valuation = {
   id: string;
@@ -89,6 +90,12 @@ export interface PortValuation {
    * confirmed). Mirrors `confirmSample`'s owner-only null/throw contract.
    */
   confirmFeatures(id: string, user: SessionUser): Promise<Valuation | null>;
+  /**
+   * Applies a draft-only inspection mutation (photo add/remove, note) and
+   * records ONE `inspection_updated` audit row in the same transaction.
+   * Same null/throw contract as `confirmSample`.
+   */
+  updateInspection(id: string, user: SessionUser, op: InspectionOp): Promise<Valuation | null>;
   /**
    * Approves a draft — re-runs the F-4 gate AND the document-field check
    * server-side (never trusts the client). Same null/throw contract as

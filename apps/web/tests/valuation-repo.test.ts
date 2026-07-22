@@ -5,6 +5,7 @@ import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { ApprovalBlockedError, assertNotSigned } from "../src/domain/valuation";
+import { buildPhotoKey } from "../src/domain/inspection";
 import type { KcsInput } from "../src/domain/kcs";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
 import { approvableInputs, valuationInput } from "./fixtures/valuation-inputs";
@@ -373,5 +374,67 @@ describe("F-5: confirmKw mutation (KW-extract provenance, Task 8)", () => {
     const approved = await repo.approve(created.id, appraiserA);
     expect(approved!.status).toBe("approved");
     await expect(repo.confirmKw(created.id, appraiserA)).rejects.toThrow(/not a draft/i);
+  });
+});
+
+describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task 4)", () => {
+  it("adds a photo key, audits inspection_updated with op meta, in one tx", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Ogledziny 1"),
+      inputs: approvableInputs(),
+    });
+    const key = buildPhotoKey("wnetrza", "u-1", created.id);
+    const updated = await repo.updateInspection(created.id, appraiserA, {
+      kind: "add_photo",
+      section: "wnetrza",
+      key,
+    });
+    expect(updated!.inputs!.inspection!.photos.wnetrza).toEqual([key]);
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread!.inputs!.inspection!.photos.wnetrza).toEqual([key]);
+
+    const rows = await db
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.valuationId, created.id))
+      .orderBy(schema.auditLog.id);
+    expect(rows.at(-1)!.action).toBe("inspection_updated");
+    expect(rows.at(-1)!.meta).toMatchObject({ op: "photo_added", section: "wnetrza", total: 1 });
+  });
+
+  it("updateInspection is owner-only: another appraiser AND a non-owner admin get null", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Ogledziny 2"),
+      inputs: approvableInputs(),
+    });
+    const key = buildPhotoKey("wnetrza", "u-2", created.id);
+    const op = { kind: "add_photo" as const, section: "wnetrza" as const, key };
+    expect(await repo.updateInspection(created.id, appraiserB, op)).toBeNull();
+    expect(await repo.updateInspection(created.id, admin, op)).toBeNull();
+  });
+
+  it("updateInspection on an approved valuation throws (write-once at approval)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Ogledziny 3"),
+      inputs: approvableInputs(),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    const approved = await repo.approve(created.id, appraiserA);
+    expect(approved!.status).toBe("approved");
+    await expect(
+      repo.updateInspection(created.id, appraiserA, { kind: "set_note", note: "x" }),
+    ).rejects.toThrow(/not a draft/i);
+  });
+
+  it("set_note persists the trimmed note", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Ogledziny 4"),
+      inputs: approvableInputs(),
+    });
+    const updated = await repo.updateInspection(created.id, appraiserA, {
+      kind: "set_note",
+      note: " N ",
+    });
+    expect(updated!.inputs!.inspection!.note).toBe("N");
   });
 });
