@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - **F-1 NIETYKALNE:** golden 1 044 400 zł; `computeKcs` bez zmian semantycznych (wolno go tylko WYWOŁYWAĆ z nowych miejsc). Golden test w CI pilnuje.
-- **F-4 NIETYKALNE:** `approvalGate` — logika gate'u bez zmian; jedyna dozwolona zmiana w `provenance.ts` to typ `InputsProvenance` (`weights`/`ratings` → optional; zachowanie gate'u identyczne — brak wpisu = "none" = blokada, co JUŻ jest domyślnym kodem `entry?.status ?? "none"`).
+- **F-4 NIETYKALNE:** `approvalGate` I typ `InputsProvenance` — ZERO zmian w `provenance.ts` (advisor 2026-07-23: optionalizacja `weights`/`ratings` łamie strict typecheck w page.tsx:451, valuation.ts:169 i testach). Częściowy snapshot (bez cech) powstaje przez pojedynczy, skomentowany cast `as InputsProvenance` przy tworzeniu — runtime-partial, type-full; gate czyta `entry?.status ?? "none"` (default-deny), więc braki blokują poprawnie.
 - **F-7:** każda mutacja draftu w tx z DOKŁADNIE jednym wpisem audytu; `AUDIT_ACTIONS` rozszerzone o DOKŁADNIE cztery akcje: `subject_updated`, `sample_updated`, `features_updated`, `calculation_confirmed` (kolumna `action` to `text` bez CHECK — zero DDL na audit_log).
 - **F-9:** fixture'y syntetyczne; adres tylko „ul. Testowa 1, Poznań" / golden-case; KW tylko `PO1P/1/6`-style; zero 11-cyfrowych ciągów, zero realnych dokumentów.
 - **F-12:** szablon DOCX NIETYKANY. Worker NIETYKANY.
@@ -32,12 +32,10 @@
 | `apps/web/src/domain/valuation.ts`                         | `applySubjectUpdate`/`applySampleUpdate`/`applyFeaturesUpdate`/`applyCalculationConfirm`, `set_date` w `InspectionOp`, +4 `AUDIT_ACTIONS` |
 | `apps/web/src/domain/wizard.ts` (nowy)                     | `WIZARD_STEPS`, `maxReachedStep`, `resolveStep`, `calculationReady` — czyste funkcje                                                      |
 | `apps/web/src/domain/document-model.ts`                    | `documentFieldBlockers` + blocker `wr == null`                                                                                            |
-| `apps/web/src/domain/provenance.ts`                        | `InputsProvenance.weights?`/`ratings?` (tylko typ)                                                                                        |
 | `apps/web/src/lib/assign-provenance.ts`                    | split: `assignSubjectProvenance`/`assignSampleProvenance`/`assignFeaturesProvenance` + rekompozycja `assignProvenance`                    |
 | `apps/web/src/adapters/valuation-drizzle.ts`               | 4 nowe metody tx+audyt (wzorzec `updateInspection`); `updateInspection` zapisuje też `inspectionDate`                                     |
 | `apps/web/src/app/actions/wizard.ts` (nowy)                | server actions: `createDraft`, `saveSubjectAction`, `saveSampleAction`, `saveFeaturesAction`, `confirmCalculationAction`                  |
 | `apps/web/src/app/actions/inspection.ts`                   | `saveInspectionDate` (op `set_date`)                                                                                                      |
-| `apps/web/src/app/actions/approve-valuation.ts`            | early-guard: gate + fieldBlockers PRZED renderem/computeKcs                                                                               |
 | `apps/web/src/app/valuations/new/subject-form.tsx` (nowy)  | krok 1 (create+edit) — header fields + SubjectSection + KwSection + orkiestracja fetch/KW                                                 |
 | `apps/web/src/app/valuations/new/page.tsx`                 | switch: flaga on → SubjectForm; off → NewValuationForm                                                                                    |
 | `apps/web/src/app/valuations/[id]/cards.tsx` (nowy)        | KcsBreakdown, badge'y, SubjectCard, KwCard, FeaturesCard, ComparablesProvenance — wyjęte z page.tsx                                       |
@@ -46,9 +44,9 @@
 | `apps/web/src/app/valuations/[id]/page.tsx`                | branch: draft+flaga+owner → wizard switch; inaczej płaski widok (z cards)                                                                 |
 | `apps/web/src/app/valuations/page.tsx`                     | lista: `wr == null` → „—"                                                                                                                 |
 | `apps/web/e2e/smoke.spec.ts`                               | Task 12: migracja na flow wizarda                                                                                                         |
-| USUNIĘTE w Tasku 12                                        | `new-valuation-form.tsx`, `actions/create-valuation.ts`, `valuationFormSchema` (refined; `valuationFormObject` ZOSTAJE), flaga            |
+| USUNIĘTE w Tasku 12                                        | `new-valuation-form.tsx`, `actions/create-valuation.ts` + jego test, flaga (`valuation-form-schema.ts` NIETYKANY — importują go sekcje)   |
 
-Fakty zbadane 2026-07-23 (nie odkrywaj ponownie): `audit_log.action` = `text NOT NULL` bez CHECK (0009); testy repo używają realnego Postgresa + `migrate(db, { migrationsFolder: "./drizzle" })` w `beforeAll` (wzorzec `tests/audit-log.test.ts`); `approvalGate` czyta provenance przez `entry?.status ?? "none"` (optional-safe); approve/sign liczą `computeKcs(inputs).wr` — kolumny `wr` używają TYLKO lista (L132) i detal (L597); `assignProvenance` jest jedynym ACL statusów (ADR-010).
+Fakty zbadane 2026-07-23 (nie odkrywaj ponownie): `audit_log.action` = `text NOT NULL` bez CHECK (0009); testy repo używają realnego Postgresa + `migrate(db, { migrationsFolder: "./drizzle" })` w `beforeAll` (wzorzec `tests/audit-log.test.ts`); `approvalGate` czyta provenance przez `entry?.status ?? "none"` (optional-safe); approve/sign liczą `computeKcs(inputs).wr` — kolumny `wr` używają TYLKO lista (L132) i detal (L597); `assignProvenance` jest jedynym ACL statusów (ADR-010). Advisor 2026-07-23: `approve-valuation.ts:54-61` JUŻ uruchamia `approvalGate` + `documentFieldBlockers` PRZED `computeKcs` (L68) — nowy blocker `wr` działa tam automatycznie, NIE dubluj guarda; `computeKcs` RZUCA na `comparables.length === 0` (`kcs.ts:105-107`); `subject-section.tsx:38` i `kw-section.tsx:22` typują `control: Control<FormInput, unknown, FormOutput>` na PEŁNYM `valuationFormSchema` (RHF `Control` jest inwariantny — podzbiór NIE jest przypisywalny); triggery 0009 (`valuation_write_once`) odpalają tylko na `OLD.status='signed'` — zero kolizji z mutacjami draftu; `rtl-map-preview.test.tsx` renderuje `SubjectSection` bezpośrednio (import typów ze schematu) — NIE wymaga migracji.
 
 ---
 
@@ -61,7 +59,6 @@ Fakty zbadane 2026-07-23 (nie odkrywaj ponownie): `audit_log.action` = `text NOT
 - Modify: `apps/web/src/ports/valuation.ts:18,39` (`wr: number | null`)
 - Modify: `apps/web/src/domain/document-model.ts:240` (`documentFieldBlockers` + typ `DocumentFields`)
 - Modify: `apps/web/src/app/valuations/page.tsx:132`, `apps/web/src/app/valuations/[id]/page.tsx:595-599`
-- Modify: `apps/web/src/app/actions/approve-valuation.ts` (early-guard)
 - Test: `apps/web/tests/wizard-wr-nullable.test.ts` (nowy)
 
 **Interfaces:**
@@ -117,21 +114,11 @@ UWAGA: `buildDocumentModel` czyta `kcs.wr` (nie kolumnę) — nie dotykaj. `doma
 - [ ] **Step 4: Wygeneruj migrację**
 
 Run (repo root): `pnpm --filter web exec drizzle-kit generate --name wizard_wr_nullable`
-Expected: `apps/web/drizzle/0010_wizard_wr_nullable.sql` z DOKŁADNIE `ALTER TABLE "valuation" ALTER COLUMN "stub_wr" DROP NOT NULL;` — nic więcej. Jeśli drizzle-kit dorzuci szum — przytnij ręcznie (precedens 0003/0009 hand-edit).
+Expected: `apps/web/drizzle/0010_wizard_wr_nullable.sql` z DOKŁADNIE `ALTER TABLE "valuation" ALTER COLUMN "stub_wr" DROP NOT NULL;` — nic więcej. Jeśli drizzle-kit dorzuci szum — przytnij ręcznie TYLKO plik `.sql` (precedens 0003/0009 hand-edit); `meta/_journal.json` i snapshot zostawione tak, jak wygenerował drizzle-kit (`migrate()` odpala `.sql` wg journala — advisor MINOR-2).
 
-- [ ] **Step 5: Rendering „—" + early-guard approve**
+- [ ] **Step 5: Rendering „—" + weryfikacja kolejności w approve**
 
-Lista `valuations/page.tsx:132`: `{v.wr == null ? "—" : currencyFormatter.format(v.wr)}`. Detal `[id]/page.tsx:595-599` (karta podsumowania): analogicznie z zachowaniem `data-testid="wr-value"`. W `actions/approve-valuation.ts` — PRZED pierwszym użyciem `computeKcs` na inputs draftu wstaw (dopasuj nazwy zmiennych do pliku; importy `approvalGate` z `@/domain/provenance`, `documentFieldBlockers` z `@/domain/document-model`):
-
-```ts
-// Early gate: a partial wizard draft (comparables [] / wr null) must get a
-// Polish blocker message, not a computeKcs crash mid-render (Slice 11a).
-const earlyGate = approvalGate(valuation.inputs);
-const earlyFieldBlockers = documentFieldBlockers(valuation);
-if (!earlyGate.ok || earlyFieldBlockers.length > 0) {
-  return { error: "Zatwierdzenie zablokowane — uzupełnij braki wskazane na stronie operatu." };
-}
-```
+Lista `valuations/page.tsx:132`: `{v.wr == null ? "—" : currencyFormatter.format(v.wr)}`. Detal `[id]/page.tsx:595-599` (karta podsumowania): analogicznie z zachowaniem `data-testid="wr-value"`. W `actions/approve-valuation.ts` NIC nie dodawaj — L54-61 JUŻ uruchamia `approvalGate` + `documentFieldBlockers` PRZED `computeKcs` (L68), więc nowy blocker `wr` blokuje częściowy szkic z polskim komunikatem automatycznie (advisor MINOR-1). Tylko ZWERYFIKUJ tę kolejność po swoich zmianach (otwórz plik, potwierdź, że `documentFieldBlockers` z nowym polem `wr` jest wołane przed każdym `computeKcs`).
 
 - [ ] **Step 6: Testy + pełny gate lokalny**
 
@@ -162,8 +149,7 @@ Zastosowane WCZEŚNIE świadomie: DROP NOT NULL jest bezpieczny dla starego kodu
 
 **Files:**
 
-- Modify: `apps/web/src/lib/assign-provenance.ts`
-- Modify: `apps/web/src/domain/provenance.ts:12-14` (`weights?`/`ratings?`)
+- Modify: `apps/web/src/lib/assign-provenance.ts` (JEDYNY modyfikowany plik src — `provenance.ts` NIETYKANY, advisor BLOCKER-1)
 - Test: `apps/web/tests/assign-provenance.test.ts` (istniejący MUSI zostać zielony bez zmian asercji) + nowe casy w tym pliku
 
 **Interfaces:**
@@ -292,7 +278,7 @@ export function assignProvenance(
 }
 ```
 
-W `provenance.ts` zmień `weights: Provenance;` → `weights?: Provenance;` i `ratings: Provenance;` → `ratings?: Provenance;` (JSDoc: „optional od Slice 11a — częściowy szkic wizarda nie ma jeszcze cech; brak wpisu = none = blokada w gate — bez zmiany zachowania"). NIE zmieniaj ŻADNEJ linii logiki `approvalGate`.
+`provenance.ts` NIETYKANY (advisor BLOCKER-1: optionalizacja `weights`/`ratings` wywala strict typecheck w `[id]/page.tsx:451-452`, `domain/valuation.ts:169` i testach `assign-provenance.test.ts:195` / `valuation-lifecycle.test.ts:213,369`). Typ `InputsProvenance` zostaje pełny; częściowy snapshot kroku 1 powstaje w Tasku 5 przez skomentowany cast `as InputsProvenance` — runtime-partial jest bezpieczny, bo gate czyta `entry?.status ?? "none"` (default-deny), a jedyne miejsca czytające `provenance.weights` bez guardu (`ComparablesProvenance`, `confirmFeaturesProvenance`) są osiągalne wyłącznie przy ustawionym `wr` / widocznym przycisku confirm (bramkowanie z Taska 7).
 
 - [ ] **Step 4: GREEN** — cały plik testów (stare casy = regresja rekompozycji): `pnpm --filter web exec vitest run tests/assign-provenance.test.ts` → PASS. Pełny gate → GREEN.
 
@@ -638,6 +624,9 @@ const inputs: KcsInput = {
   subjectMeta: effSubjectMeta ?? null,
   kw: normalizedKw ?? null,
   kwMeta: parsed.data.kwMeta ?? null,
+  // Runtime-partial, type-full (advisor BLOCKER-1): weights/ratings arrive at
+  // step 4; approvalGate default-denies missing entries, and every unguarded
+  // provenance.weights read is reachable only once wr is set (Task 7 gating).
   provenance: provenance as InputsProvenance,
 };
 const created = await valuationRepository.create({
@@ -681,8 +670,9 @@ git commit -am "feat: wizard server actions - create draft and per-step saves"
 
 **Interfaces:**
 
-- Produces: `SubjectForm({ valuationId, defaults }: { valuationId?: string; defaults?: Step1FormDefaults })` — bez `valuationId` = create (submit → `createDraft`); z = edit (submit → `saveSubjectAction` → `router.push(`/valuations/${valuationId}?step=2`)`). `Step1FormDefaults` = kształt defaultValues RHF (patrz Step 3).
+- Produces: `SubjectForm({ valuationId, defaults }: { valuationId?: string; defaults?: Partial<FormInput> })` — bez `valuationId` = create (submit → `createDraft`); z = edit (submit → `saveSubjectAction` → `router.push(`/valuations/${valuationId}?step=2`)`).
 - Consumes: `step1Schema`, `createDraft`, `saveSubjectAction` (Task 5); `SubjectSection`/`KwSection` (istniejące, props bez zmian); orkiestracja SKOPIOWANA z `new-valuation-form.tsx` (stary formularz ZAMROŻONY — nie dotykaj go; kopia żyje do Taska 12, potem oryginał znika).
+- **TYPOWANIE (advisor BLOCKER-3):** `SubjectSection`/`KwSection` wymagają `control: Control<FormInput, unknown, FormOutput>` na PEŁNYM `valuationFormSchema` (`subject-section.tsx:38`, `kw-section.tsx:22`), a RHF `Control` jest inwariantny — `Control<podzbiór>` NIE przejdzie. Dlatego `SubjectForm` typuje `useForm` na PEŁNYCH `FormInput`/`FormOutput` (jak stary formularz), a WALIDUJE tylko krok 1 resolverem `step1Schema` przez skomentowany cast (Step 3). Pola spoza kroku 1 nigdy nie są rejestrowane; server action i tak re-waliduje `step1Schema` autorytatywnie.
 
 - [ ] **Step 1: Failing test** (`rtl-subject-form.test.tsx` — mocki jak w `rtl-kw-section.test.tsx`, ale mockuj `@/app/actions/wizard`):
 
@@ -706,14 +696,28 @@ git commit -am "feat: wizard server actions - create draft and per-step saves"
 Szkielet własny:
 
 ```tsx
-type Step1FormInput = z.input<typeof step1Schema>;
+import type { Resolver } from "react-hook-form";
+import { valuationFormSchema } from "@/lib/valuation-form-schema";
+
+// Typed on the FULL schema (SubjectSection/KwSection demand Control<FormInput,
+// unknown, FormOutput> and RHF's Control is invariant — advisor BLOCKER-3),
+// validated by the STEP-1 schema only. Fields outside step 1 are never
+// registered here, and the server action re-validates with step1Schema, so
+// the cast is contained to this one line.
+type FormInput = z.input<typeof valuationFormSchema>;
+type FormOutput = z.output<typeof valuationFormSchema>;
+const step1Resolver = zodResolver(step1Schema) as unknown as Resolver<
+  FormInput,
+  unknown,
+  FormOutput
+>;
 
 export function SubjectForm({
   valuationId,
   defaults,
 }: {
   valuationId?: string;
-  defaults?: Partial<Step1FormInput>;
+  defaults?: Partial<FormInput>;
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -726,8 +730,8 @@ export function SubjectForm({
     getValues,
     trigger,
     formState: { isSubmitting },
-  } = useForm<Step1FormInput, unknown, z.output<typeof step1Schema>>({
-    resolver: zodResolver(step1Schema),
+  } = useForm<FormInput, unknown, FormOutput>({
+    resolver: step1Resolver,
     defaultValues: {
       address: "",
       area: "",
@@ -741,6 +745,8 @@ export function SubjectForm({
   });
   const onSubmit = handleSubmit(async (values) => {
     setSubmitError(null);
+    // `values` is typed FormOutput (full) but runtime-shaped by step1Schema
+    // (zod strips unregistered keys); the action re-parses with step1Schema.
     const result = valuationId
       ? await saveSubjectAction(valuationId, values)
       : await createDraft(values); // redirect on success — never returns
@@ -765,7 +771,7 @@ export function step1DefaultsFromInputs(v: {
   kwNumber: string | null;
   client: string | null;
   inputs: KcsInput | null;
-}): Partial<Step1FormInput> {
+}): Partial<FormInput> {
   return {
     address: v.address,
     area: String(v.area),
@@ -994,7 +1000,14 @@ export default async function ValuationViewPage({
       </div>
     );
   }
-  // ...istniejący płaski widok (approved/signed/admin-cudzy-draft/flaga off) — bez zmian poza importami z cards
+  // ...istniejący płaski widok (approved/signed/admin-cudzy-draft/flaga off) — importy z cards
+  // + OBOWIĄZKOWA zmiana warunków renderu (advisor BLOCKER-2): admin oglądający CUDZY
+  // częściowy szkic po flipie ląduje na płaskim widoku, a computeKcs RZUCA na pustych
+  // comparables (kcs.ts:105-107) i ComparablesProvenance czyta provenance.weights.source
+  // (L451) — SSR 500 niewidoczny dla jednouserowego smoke. Zamień:
+  //   {valuation.inputs ? <KcsBreakdown .../> : null}          → {valuation.wr != null && valuation.inputs ? <KcsBreakdown .../> : null}
+  //   {valuation.inputs ? <ComparablesProvenance .../> : null} → {valuation.wr != null && valuation.inputs ? <ComparablesProvenance .../> : null}
+  // (pozostałe karty — Subject/Kw/Features — czytają dane defensywnie i zostają jak są)
 }
 ```
 
@@ -1336,8 +1349,9 @@ git commit -am "feat: wizard step 5 - kcs preview and calculation confirm"
 
 - Modify: `apps/web/src/app/valuations/new/page.tsx`, `apps/web/src/app/valuations/[id]/page.tsx` (usuń flagę — wizard bezwarunkowy dla draft+owner)
 - Delete: `apps/web/src/app/valuations/new/new-valuation-form.tsx`, `apps/web/src/app/actions/create-valuation.ts`, `apps/web/tests/create-valuation-action.test.ts`
-- Modify: `apps/web/src/lib/valuation-form-schema.ts` (usuń `valuationFormSchema` refined + przełącz `ValuationFormValues` na `z.infer<typeof valuationFormObject>`; `valuationFormObject`, `DEFAULT_FEATURES`, schematy cząstkowe ZOSTAJĄ)
 - Modify: `apps/web/e2e/smoke.spec.ts` (pełna migracja na wizard)
+
+`apps/web/src/lib/valuation-form-schema.ts` NIETYKANY (advisor IMPORTANT-4): `valuationFormSchema` importują jako wartość zachowywane `kw-section.tsx:8`, `subject-section.tsx:9`, `subject-form.tsx` (typowanie z Taska 6) oraz testy `valuation-form-schema.test.ts` i `rtl-map-preview.test.tsx` — kasacja łamie typecheck poza listą planu. Refined schemat zostaje jako współdzielony typ-anchor sekcji; koszt utrzymania ≈ zero.
 
 **Interfaces:** brak nowych — czysty flip + kasacja.
 
@@ -1412,7 +1426,7 @@ test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", asy
 
 UWAGA: approve po drodze do „Zatwierdzony" przenosi z wizarda na płaski widok (status flip) — asercje statusu/PDF działają na płaskim widoku jak dziś. `confirm-features-button` żyje w `ValuationActions` na kroku 7.
 
-- [ ] **Step 2: Usuń flagę + martwy kod.** W obu page.tsx zamień warunek `wizardOn && ...` na `valuation.status === "in_progress" && isOwner` / bezwarunkowy `<SubjectForm />`. Usuń pliki z listy. `grep -rn "NEXT_PUBLIC_WIZARD\|NewValuationForm\|createValuation\b" apps/web` → ZERO trafień (poza CHANGELOG-ami planów). `ValuationFormValues` przepnij na `z.infer<typeof valuationFormObject>`.
+- [ ] **Step 2: Usuń flagę + martwy kod.** W obu page.tsx zamień warunek `wizardOn && ...` na `valuation.status === "in_progress" && isOwner` / bezwarunkowy `<SubjectForm />`. Usuń pliki z listy Delete (TYLKO te trzy — `valuation-form-schema.ts` zostaje w całości). `grep -rn "NEXT_PUBLIC_WIZARD\|NewValuationForm\|createValuation\b" apps/web/src apps/web/tests apps/web/e2e` → ZERO trafień.
 
 - [ ] **Step 3: Lokalny pełny gate + e2e**
 
@@ -1446,4 +1460,4 @@ CI e2e MUSI być green — to jest fitness gate flipa.
 - Panel „Skąd te dane", per-pole badge, DiscrepancyField — **Slice 11b** (osobny plan po deployu 11a).
 - Confirm-akcje (potwierdź próbę/przedmiot/KW/cechy) zostają ZBIORCZO na kroku 7 (`ValuationActions` bez zmian) — rozważenie przeniesienia per krok = 11b/backlog.
 - Kasowanie porzuconych szkiców — backlog (spec „Poza zakresem").
-- `rtl-map-preview.test.tsx` — sprawdź w Tasku 6 czy renderuje formularz czy sekcję; jeśli formularz — migruj razem z `rtl-map-preview-race`.
+- `rtl-map-preview.test.tsx` — ROZSTRZYGNIĘTE (advisor): renderuje `SubjectSection` bezpośrednio, migracja NIEpotrzebna.
