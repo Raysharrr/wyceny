@@ -22,10 +22,10 @@ import { CalculationNotReadyError } from "@/domain/valuation";
 /**
  * Server Actions backing the 7-step wizard (Slice 11a, Task 5) — the "use
  * server" layer between the RHF wizard UI (Task 6) and the repo draft
- * mutations from Task 4. Step 1 (createDraft/saveSubjectAction) mirrors
- * `createValuation`'s validation/normalization pipeline (create-valuation.ts)
- * almost exactly, minus comparables/features/computeKcs — those are filled
- * in at steps 3-5, not step 1.
+ * mutations from Task 4. Step 1 (createDraft/saveSubjectAction) runs the same
+ * validation/normalization pipeline as the legacy single-form create action
+ * did (removed in Task 12), minus comparables/features/computeKcs — those are
+ * filled in at steps 3-5, not step 1.
  *
  * The step-scoped schemas AND their input types (`step1Schema`/`Step1Input`
  * etc.) live in `./wizard-schemas.ts`, NOT here — a "use server" file may
@@ -41,8 +41,8 @@ import { CalculationNotReadyError } from "@/domain/valuation";
 
 /**
  * Normalize per-level definitions: trim + collapse whitespace, drop empty
- * levels. Mirrors create-valuation.ts's private helper of the same name (not
- * shared — both are small, private, and pinned to their own action file).
+ * levels. Small and private on purpose — pinned to this action file, not
+ * shared.
  */
 function normalizeDefinitions(defs?: {
   lepsza?: string;
@@ -57,7 +57,7 @@ function normalizeDefinitions(defs?: {
   return out;
 }
 
-/** Shared zod-issue -> Polish-message mapping (mirrors create-valuation.ts:99-110). */
+/** Shared zod-issue -> Polish-message mapping. */
 function firstIssueMessage(error: z.ZodError): string {
   const firstIssue = error.issues[0];
   // zod v4's built-in `invalid_type` message is English — only reachable for
@@ -71,10 +71,10 @@ function firstIssueMessage(error: z.ZodError): string {
 
 /**
  * Step-1 (Przedmiot) create (Slice 11a): same validation/normalization
- * pipeline as `createValuation`, WITHOUT comparables/features/computeKcs —
- * those arrive at steps 3-5. Always starts `wr: null` (no calculation yet).
- * Returns `{ error }` for recoverable failures; on success `redirect()`
- * throws and never returns.
+ * pipeline as the legacy single-form create used, WITHOUT
+ * comparables/features/computeKcs — those arrive at steps 3-5. Always starts
+ * `wr: null` (no calculation yet). Returns `{ error }` for recoverable
+ * failures; on success `redirect()` throws and never returns.
  */
 export async function createDraft(input: Step1Input): Promise<{ error: string } | never> {
   const session = await getSession();
@@ -88,12 +88,12 @@ export async function createDraft(input: Step1Input): Promise<{ error: string } 
   }
 
   // Normalize the document-sourced KW snapshot once — see
-  // create-valuation.ts:normalizedKw for the full rationale (mirrored here).
+  // `normalizeKw` for the full rationale.
   const normalizedKw = parsed.data.kw ? normalizeKw(parsed.data.kw) : parsed.data.kw;
 
   // An untouched "Dane przedmiotu" section still submits a truthy object —
   // treat it as absent so no snapshot/provenance is persisted for data
-  // nobody touched (mirrors create-valuation.ts).
+  // nobody touched.
   const subjectTouched = !isEmptySubject(parsed.data.subject);
   const effSubject = subjectTouched ? parsed.data.subject : undefined;
   const effSubjectMeta = subjectTouched ? parsed.data.subjectMeta : undefined;
@@ -232,10 +232,10 @@ export async function saveSampleAction(
 }
 
 /**
- * Step-4 (Cechy) draft save. `weightPct` -> fraction (mirrors
- * `createValuation`'s kcsInput.features mapping). The preset-detection
- * provenance fragment is computed from the comparables ALREADY saved on the
- * draft (repo.get) — this step's own input carries no comparables.
+ * Step-4 (Cechy) draft save. `weightPct` -> fraction (same kcsInput.features
+ * mapping used at approve time). The preset-detection provenance fragment is
+ * computed from the comparables ALREADY saved on the draft (repo.get) — this
+ * step's own input carries no comparables.
  *
  * ponytail: median read outside the row lock — a concurrent sample edit
  * skews only the preset-detection heuristic, not data.

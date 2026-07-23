@@ -17,7 +17,7 @@ const GENERIC_ERROR =
 
 /**
  * Server Action backing the "Pobierz dane przedmiotu" button. Session-gated
- * like `createValuation`; validates the address with the same rule as the
+ * like `createDraft`; validates the address with the same rule as the
  * main form (reused via `.pick()`), then delegates to `PortSubjectData`.
  * Distinguishes the worker's non-retryable 422 (`outOfCoverage` — address
  * outside EGiB/MPZP coverage) from a retryable failure, whose Polish

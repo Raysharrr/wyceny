@@ -89,12 +89,16 @@ export default async function ValuationViewPage({
     return <NotFound />;
   }
 
-  // Wizard shell (Slice 11a, Task 7) — only for the owner's own in-progress
-  // draft, behind the flag. Everything else (approved/signed, an admin
-  // viewing another appraiser's draft, or the flag off) falls through to the
-  // flat view below, unchanged.
-  const wizardOn = process.env.NEXT_PUBLIC_WIZARD === "on";
-  if (wizardOn && valuation.status === "in_progress" && valuation.ownerId === session.user.id) {
+  // `get` already enforces F-8 ownership isolation (appraiser → own rows
+  // only; admin → any), so isOwner is always true for an appraiser here —
+  // it only ever excludes an admin viewing another appraiser's valuation,
+  // which is the case this gates the owner-only action bar for.
+  const isOwner = valuation.ownerId === session.user.id;
+
+  // Wizard shell (Slice 11a, Task 7/12) — only for the owner's own
+  // in-progress draft. Everything else (approved/signed, an admin viewing
+  // another appraiser's draft) falls through to the flat view below.
+  if (valuation.status === "in_progress" && isOwner) {
     const max = maxReachedStep(valuation);
     const step = resolveStep((await searchParams).step, max);
     return (
@@ -143,11 +147,6 @@ export default async function ValuationViewPage({
   }
 
   const isDraft = valuation.status === "in_progress";
-  // `get` already enforces F-8 ownership isolation (appraiser → own rows
-  // only; admin → any), so isOwner is always true for an appraiser here —
-  // it only ever excludes an admin viewing another appraiser's valuation,
-  // which is the case this gates the owner-only action bar for.
-  const isOwner = valuation.ownerId === session.user.id;
   const canSign =
     valuation.status === "approved" && Boolean(valuation.inputs) && Boolean(valuation.docxUrl);
   // Successor lookup (Task 9): no dedicated port method (YAGNI) — a signed

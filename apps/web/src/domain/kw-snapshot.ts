@@ -52,10 +52,9 @@ function normalizeDzial(dzial: KwDzialSnapshot | null): KwDzialSnapshot | null {
  * the `isEmptySubject` convention): empty-string fields the extractor may emit
  * become `null`, and empty/whitespace `tresc`/`kwInne` lines are dropped — so
  * a `""` never persists to render malformed operat sentences (e.g. "Sąd: .")
- * or a phantom KW number, and the F-4 gate sees honest nulls. Shared by
- * `createValuation` and the wizard's step-1 actions (Slice 11a, Task 5) —
- * lives here (rather than duplicated per call site) so both use one
- * implementation.
+ * or a phantom KW number, and the F-4 gate sees honest nulls. Lives here
+ * (rather than duplicated per call site) so every caller — the wizard's
+ * step-1 actions (Slice 11a, Task 5) included — shares one implementation.
  */
 export function normalizeKw(kw: KwSnapshot): KwSnapshot {
   return {

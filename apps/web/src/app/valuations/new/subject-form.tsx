@@ -93,12 +93,10 @@ export function step1DefaultsFromInputs(v: {
 }
 
 /**
- * Step-1 ("Dane przedmiotu") wizard form (Slice 11a, Task 6) — the same
- * orchestration as `NewValuationForm`, narrowed to the address/area/purpose/
- * client/subject/KW fields (comparables, features and inspectionDate belong
- * to later steps). The old form stays untouched and live behind the flag
- * switch in `page.tsx` until Task 12 removes it — this is a deliberate
- * transitional duplicate, not a refactor of the original.
+ * Step-1 ("Dane przedmiotu") wizard form (Slice 11a, Task 6) — narrowed to
+ * the address/area/purpose/client/subject/KW fields (comparables, features
+ * and inspectionDate belong to later steps). Since Task 12 this is the only
+ * create-valuation entry point (the legacy single-page form was removed).
  *
  * No `valuationId` = create mode (submit -> `createDraft`, which redirects
  * on success — never returns). With `valuationId` = edit mode (submit ->

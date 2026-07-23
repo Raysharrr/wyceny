@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { NewValuationForm } from "./new-valuation-form";
 import { SubjectForm } from "./subject-form";
 
 // The "Pobierz próbę z RCN" button calls a live worker fetch (typically
@@ -24,7 +23,7 @@ export default async function NewValuationPage() {
           Podaj adres nieruchomości i powierzchnię — wartość rynkową i operat przygotuje system.
         </p>
       </div>
-      {process.env.NEXT_PUBLIC_WIZARD === "on" ? <SubjectForm /> : <NewValuationForm />}
+      <SubjectForm />
     </div>
   );
 }

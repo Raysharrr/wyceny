@@ -18,7 +18,7 @@ const GENERIC_ERROR =
 
 /**
  * Server Action backing the "Pobierz próbę z RCN" button (Task 5). Session-
- * gated like `createValuation`; validates address/area with the same rules
+ * gated like `createDraft`; validates address/area with the same rules
  * as the main form (reused via `.pick()`), then delegates to
  * `PortSampleProposal`. The HTTP adapter's Polish `detail` message (surfaced
  * by the worker on failure, e.g. too few nearby transactions) is passed
