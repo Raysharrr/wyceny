@@ -20,6 +20,7 @@ import {
 import { InspectionSection } from "./inspection-section";
 import { Stepper, WizardNav } from "./stepper";
 import { StepDescriptions } from "./steps/step-descriptions";
+import { StepFeatures } from "./steps/step-features";
 import { StepInspection } from "./steps/step-inspection";
 import { StepOperat } from "./steps/step-operat";
 import { StepSample } from "./steps/step-sample";
@@ -153,7 +154,11 @@ export default async function ValuationViewPage({
             sampleMeta={valuation.inputs?.sampleMeta ?? null}
           />
         ) : step === 4 ? (
-          <StepPlaceholder title="Cechy" valuationId={valuation.id} back={3} next={5} />
+          <StepFeatures
+            valuationId={valuation.id}
+            features={valuation.inputs?.features ?? []}
+            comparableAreas={(valuation.inputs?.comparables ?? []).map((c) => c.area)}
+          />
         ) : step === 5 ? (
           <StepPlaceholder title="Kalkulacja" valuationId={valuation.id} back={4} next={6} />
         ) : step === 6 ? (
