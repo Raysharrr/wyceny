@@ -1,0 +1,83 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+
+afterEach(cleanup);
+
+import { Stepper, WizardNav } from "@/app/valuations/[id]/stepper";
+
+const STEP_LABELS: Record<number, string> = {
+  1: "Przedmiot",
+  2: "Oględziny",
+  3: "Próba",
+  4: "Cechy",
+  5: "Kalkulacja",
+  6: "Opisy",
+  7: "Operat",
+};
+
+describe("Stepper", () => {
+  it("renders steps 1-4 as links (reachable, maxReached=4) and 5-7 as disabled spans", () => {
+    render(<Stepper current={3} maxReached={4} valuationId="v1" />);
+
+    for (const n of [1, 2, 3, 4]) {
+      const link = screen.getByText(STEP_LABELS[n]).closest("a");
+      expect(link).toHaveAttribute("href", `/valuations/v1?step=${n}`);
+    }
+
+    for (const n of [5, 6, 7]) {
+      expect(screen.getByText(STEP_LABELS[n]).closest("a")).toBeNull();
+      const disabled = screen.getByText(STEP_LABELS[n]).closest("span[aria-disabled]");
+      expect(disabled).toHaveAttribute("aria-disabled", "true");
+    }
+  });
+
+  it("marks the current step with aria-current=step and other steps without it", () => {
+    render(<Stepper current={3} maxReached={4} valuationId="v1" />);
+
+    const currentLink = screen.getByText(STEP_LABELS[3]).closest("a");
+    expect(currentLink).toHaveAttribute("aria-current", "step");
+
+    const otherLink = screen.getByText(STEP_LABELS[1]).closest("a");
+    expect(otherLink).not.toHaveAttribute("aria-current");
+  });
+
+  it("renders labels with full Polish diacritics", () => {
+    render(<Stepper current={3} maxReached={4} valuationId="v1" />);
+
+    for (const label of [
+      "Przedmiot",
+      "Oględziny",
+      "Próba",
+      "Cechy",
+      "Kalkulacja",
+      "Opisy",
+      "Operat",
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+});
+
+describe("WizardNav", () => {
+  it("renders back and next links when both provided", () => {
+    render(<WizardNav valuationId="v1" back={2} next={4} nextLabel="Dalej: Cechy" />);
+
+    expect(screen.getByRole("link", { name: "Wstecz" })).toHaveAttribute(
+      "href",
+      "/valuations/v1?step=2",
+    );
+    expect(screen.getByRole("link", { name: "Dalej: Cechy" })).toHaveAttribute(
+      "href",
+      "/valuations/v1?step=4",
+    );
+  });
+
+  it("omits back/next links when not provided", () => {
+    render(<WizardNav valuationId="v1" back={6} />);
+
+    expect(screen.getByRole("link", { name: "Wstecz" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Dalej" })).not.toBeInTheDocument();
+  });
+});
