@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { NewValuationForm } from "./new-valuation-form";
+import { SubjectForm } from "./subject-form";
 
 // The "Pobierz próbę z RCN" button calls a live worker fetch (typically
 // 5-10s, worst case ~25s per the worker's own timeouts) — raise the
@@ -23,7 +24,7 @@ export default async function NewValuationPage() {
           Podaj adres nieruchomości i powierzchnię — wartość rynkową i operat przygotuje system.
         </p>
       </div>
-      <NewValuationForm />
+      {process.env.NEXT_PUBLIC_WIZARD === "on" ? <SubjectForm /> : <NewValuationForm />}
     </div>
   );
 }

@@ -26,21 +26,54 @@ process.env.NEXT_PUBLIC_SUBJECT_AUTOFETCH = "off";
 type FormInput = z.input<typeof valuationFormSchema>;
 type FormOutput = z.output<typeof valuationFormSchema>;
 
-// The parent form imports these; the full-form reset/W4 tests below render the
-// real <NewValuationForm/>, so every module it pulls that touches the network,
-// the DB, or `next/navigation` is mocked to a pure stub.
-vi.mock("@/app/actions/create-valuation", () => ({
-  createValuation: vi.fn(async () => undefined),
+const pushMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock, refresh: vi.fn() }),
 }));
-vi.mock("@/app/actions/get-sample-proposal", () => ({ getSampleProposal: vi.fn() }));
+
+// The parent form imports these; the full-form reset/W4 tests below render the
+// real <SubjectForm/>, so every module it pulls that touches the network, the
+// DB, or `next/navigation` is mocked to a pure stub. `step1Schema` is
+// reconstructed here (mirrors src/app/actions/wizard.ts, pure zod, no I/O)
+// rather than pulled in via importOriginal — the real wizard.ts module also
+// imports `getSession`/`_deps` (DB pool, session store), which a component
+// RTL test has no business booting. Mirrors tests/rtl-subject-form.test.tsx.
+vi.mock("@/app/actions/wizard", async () => {
+  const { valuationFormObject } = await import("@/lib/valuation-form-schema");
+  const step1Object = valuationFormObject.pick({
+    address: true,
+    area: true,
+    subject: true,
+    subjectMeta: true,
+    kw: true,
+    kwMeta: true,
+    purpose: true,
+    kwNumber: true,
+    client: true,
+  });
+  const step1Schema = step1Object.superRefine((values, ctx) => {
+    if (!values.kw && !values.kwNumber) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["kwNumber"],
+        message: "Podaj numer księgi wieczystej.",
+      });
+    }
+  });
+  return {
+    step1Schema,
+    createDraft: vi.fn(async () => undefined),
+    saveSubjectAction: vi.fn(async () => ({ ok: true })),
+  };
+});
 vi.mock("@/app/actions/get-subject-data", () => ({ getSubjectData: vi.fn() }));
 vi.mock("@/app/actions/mint-kw-token", () => ({
   mintKwUploadToken: vi.fn(async () => ({ token: "exp.nonce.sig" })),
 }));
 vi.mock("@/lib/kw-extract-client", () => ({ extractKw: vi.fn() }));
 
-import { NewValuationForm } from "@/app/valuations/new/new-valuation-form";
-import { createValuation } from "@/app/actions/create-valuation";
+import { SubjectForm } from "@/app/valuations/new/subject-form";
+import { createDraft } from "@/app/actions/wizard";
 import { extractKw, type KwExtractResult } from "@/lib/kw-extract-client";
 
 const OK_EXTRACT = {
@@ -226,7 +259,7 @@ describe("KwSection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Full-form wiring — the real <NewValuationForm/> with mocked actions. Guards
+// Full-form wiring — the real <SubjectForm/> with mocked actions. Guards
 // W4 (upload-mode submit error) and W7 (reset regression / write-once poison).
 // ---------------------------------------------------------------------------
 async function fillRequiredExceptKw(
@@ -239,15 +272,11 @@ async function fillRequiredExceptKw(
   if (!skipArea) await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
   await user.selectOptions(screen.getByLabelText(/cel wyceny/i), "sprzedaz");
   await user.type(screen.getByLabelText(/zamawiający wycenę/i), "p. Test Testowy");
-  await user.type(screen.getByLabelText(/data oględzin/i), "2026-07-01");
-  // Comparable price inputs carry no <label> — the placeholder is their handle.
-  const prices = screen.getAllByPlaceholderText("zł/m²");
-  for (const [i, input] of prices.entries()) await user.type(input, String(12000 + i * 100));
 }
 
 describe("KwSection — full-form wiring", () => {
   beforeEach(() => {
-    vi.mocked(createValuation).mockClear();
+    vi.mocked(createDraft).mockClear();
     vi.mocked(extractKw).mockReset();
   });
 
@@ -255,13 +284,13 @@ describe("KwSection — full-form wiring", () => {
   // (the kwNumber Controller is unmounted, so the schema issue would be silent).
   it("shows a visible upload-mode error when submitted with no file (W4)", async () => {
     const user = userEvent.setup();
-    render(<NewValuationForm />);
+    render(<SubjectForm />);
     await user.click(screen.getByRole("button", { name: /wgraj akt notarialny/i }));
     await fillRequiredExceptKw(user);
-    await user.click(screen.getByRole("button", { name: /zapisz szkic/i }));
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
     const err = await screen.findByTestId("kw-upload-error");
     expect(err.textContent).toContain("Wgraj dokument");
-    expect(createValuation).not.toHaveBeenCalled();
+    expect(createDraft).not.toHaveBeenCalled();
   });
 
   // D9: non-PDF is rejected client-side, before any network call.
@@ -270,7 +299,7 @@ describe("KwSection — full-form wiring", () => {
     // accept="application/pdf", so userEvent would otherwise silently drop a
     // text/plain file and never fire onChange, bypassing the guard under test.
     const user = userEvent.setup({ applyAccept: false });
-    render(<NewValuationForm />);
+    render(<SubjectForm />);
     await user.click(screen.getByRole("button", { name: /wgraj akt notarialny/i }));
     const fileInput = screen.getByTestId("kw-file-input") as HTMLInputElement;
     const txt = new File(["nie pdf"], "notatka.txt", { type: "text/plain" });
@@ -285,7 +314,7 @@ describe("KwSection — full-form wiring", () => {
   it("drops kw after switch-to-manual + submit (W7 reset regression)", async () => {
     vi.mocked(extractKw).mockResolvedValue(OK_EXTRACT);
     const user = userEvent.setup();
-    render(<NewValuationForm />);
+    render(<SubjectForm />);
 
     await fillRequiredExceptKw(user);
     await user.click(screen.getByRole("button", { name: /wgraj akt notarialny/i }));
@@ -296,10 +325,10 @@ describe("KwSection — full-form wiring", () => {
 
     await user.click(screen.getByRole("button", { name: /wpisz ręcznie/i }));
     await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "KW-MANUAL-1");
-    await user.click(screen.getByRole("button", { name: /zapisz szkic/i }));
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
 
-    await waitFor(() => expect(createValuation).toHaveBeenCalled());
-    const submitted = vi.mocked(createValuation).mock.calls[0][0] as { kw?: unknown };
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as { kw?: unknown };
     expect(submitted.kw).toBeUndefined();
   });
 
@@ -309,7 +338,7 @@ describe("KwSection — full-form wiring", () => {
   it("clears a doc-seeded area on source switch, so the stale number never persists (#2)", async () => {
     vi.mocked(extractKw).mockResolvedValue(OK_EXTRACT);
     const user = userEvent.setup();
-    render(<NewValuationForm />);
+    render(<SubjectForm />);
 
     await fillRequiredExceptKw(user, { skipArea: true });
     const areaInput = screen.getByLabelText(/powierzchnia \(m²\)/i) as HTMLInputElement;
@@ -331,9 +360,9 @@ describe("KwSection — full-form wiring", () => {
 
     // Empty area fails the required-positive schema rule, so submit is blocked:
     // the stale 69.56 can never reach the action as a rzeczoznawca value.
-    await user.click(screen.getByRole("button", { name: /zapisz szkic/i }));
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
     await new Promise((r) => setTimeout(r, 50));
-    expect(createValuation).not.toHaveBeenCalled();
+    expect(createDraft).not.toHaveBeenCalled();
   });
 
   // #3: a kwNumber typed in manual mode must be hard-reset when switching to an
@@ -342,7 +371,7 @@ describe("KwSection — full-form wiring", () => {
   it("hard-resets a manually-typed kwNumber when switching to an upload source (#3)", async () => {
     vi.mocked(extractKw).mockResolvedValue(OK_EXTRACT);
     const user = userEvent.setup();
-    render(<NewValuationForm />);
+    render(<SubjectForm />);
 
     await fillRequiredExceptKw(user);
     // Default source is "reczny": type a manual KW number first.
@@ -357,15 +386,15 @@ describe("KwSection — full-form wiring", () => {
     );
     await screen.findByText(/Odczytano/);
 
-    await user.click(screen.getByRole("button", { name: /zapisz szkic/i }));
-    await waitFor(() => expect(createValuation).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
 
-    const submitted = vi.mocked(createValuation).mock.calls[0][0] as {
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as {
       kwNumber?: string;
       kw?: { kwLokalu?: string | null };
     };
     // The typed "KW-MANUAL-3" is gone; the server syncs kwNumber from the
-    // extract's kwLokalu (createValuation is mocked, so we assert the inputs).
+    // extract's kwLokalu (createDraft is mocked, so we assert the inputs).
     expect(submitted.kwNumber ?? "").toBe("");
     expect(submitted.kw?.kwLokalu).toBe("AB1C/1/9");
   });
@@ -380,7 +409,7 @@ describe("KwSection — full-form wiring", () => {
       }),
     );
     const user = userEvent.setup({ applyAccept: false });
-    render(<NewValuationForm />);
+    render(<SubjectForm />);
 
     await fillRequiredExceptKw(user);
     await user.click(screen.getByRole("button", { name: /wgraj akt notarialny/i }));
@@ -411,7 +440,7 @@ describe("KwSection — full-form wiring", () => {
       }),
     );
     const user = userEvent.setup();
-    render(<NewValuationForm />);
+    render(<SubjectForm />);
 
     await fillRequiredExceptKw(user);
     await user.click(screen.getByRole("button", { name: /wgraj akt notarialny/i }));
@@ -429,9 +458,9 @@ describe("KwSection — full-form wiring", () => {
     expect(screen.queryByText(/Odczytano/)).toBeNull();
 
     await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "KW-MANUAL-2");
-    await user.click(screen.getByRole("button", { name: /zapisz szkic/i }));
-    await waitFor(() => expect(createValuation).toHaveBeenCalled());
-    const submitted = vi.mocked(createValuation).mock.calls[0][0] as { kw?: unknown };
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as { kw?: unknown };
     expect(submitted.kw).toBeUndefined();
   });
 });

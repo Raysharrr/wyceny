@@ -21,13 +21,45 @@ globalThis.ResizeObserver ??= class {
 // — isn't reset between files.
 process.env.NEXT_PUBLIC_SUBJECT_AUTOFETCH = "";
 
-// The parent form imports these; rendering the real <NewValuationForm/> pulls
-// every module it touches that hits the network, the DB, or `next/navigation`
-// — mocked here to pure stubs.
-vi.mock("@/app/actions/create-valuation", () => ({
-  createValuation: vi.fn(async () => undefined),
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
-vi.mock("@/app/actions/get-sample-proposal", () => ({ getSampleProposal: vi.fn() }));
+
+// The parent form imports these; rendering the real <SubjectForm/> pulls
+// every module it touches that hits the network, the DB, or `next/navigation`
+// — mocked here to pure stubs. `step1Schema` is reconstructed here (mirrors
+// src/app/actions/wizard.ts, pure zod, no I/O) rather than pulled in via
+// importOriginal — the real wizard.ts module also imports `getSession`/`_deps`
+// (DB pool, session store), which a component RTL test has no business
+// booting. Mirrors tests/rtl-subject-form.test.tsx.
+vi.mock("@/app/actions/wizard", async () => {
+  const { valuationFormObject } = await import("@/lib/valuation-form-schema");
+  const step1Object = valuationFormObject.pick({
+    address: true,
+    area: true,
+    subject: true,
+    subjectMeta: true,
+    kw: true,
+    kwMeta: true,
+    purpose: true,
+    kwNumber: true,
+    client: true,
+  });
+  const step1Schema = step1Object.superRefine((values, ctx) => {
+    if (!values.kw && !values.kwNumber) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["kwNumber"],
+        message: "Podaj numer księgi wieczystej.",
+      });
+    }
+  });
+  return {
+    step1Schema,
+    createDraft: vi.fn(async () => undefined),
+    saveSubjectAction: vi.fn(async () => ({ ok: true })),
+  };
+});
 vi.mock("@/app/actions/mint-kw-token", () => ({
   mintKwUploadToken: vi.fn(async () => ({ token: "exp.nonce.sig" })),
 }));
@@ -42,7 +74,7 @@ vi.mock("@/app/actions/get-map-preview", () => ({
   getMapPreview: (...a: unknown[]) => getMapPreviewMock(...a),
 }));
 
-import { NewValuationForm } from "@/app/valuations/new/new-valuation-form";
+import { SubjectForm } from "@/app/valuations/new/subject-form";
 
 const proposal = (obreb: string) => ({
   proposal: {
@@ -75,7 +107,7 @@ describe("map preview race (Slice 9 follow-up)", () => {
       orto: "bmV3ZXIy",
     });
 
-    render(<NewValuationForm />);
+    render(<SubjectForm />);
     const address = screen.getByLabelText(/Adres/);
     fireEvent.change(address, { target: { value: "Kościelna 33" } });
     fireEvent.blur(address);
