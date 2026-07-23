@@ -18,7 +18,8 @@ import {
   SubjectCard,
 } from "./cards";
 import { InspectionSection } from "./inspection-section";
-import { Stepper, WizardNav } from "./stepper";
+import { Stepper } from "./stepper";
+import { StepCalculation } from "./steps/step-calculation";
 import { StepDescriptions } from "./steps/step-descriptions";
 import { StepFeatures } from "./steps/step-features";
 import { StepInspection } from "./steps/step-inspection";
@@ -56,35 +57,6 @@ function NotFound() {
         <Link href="/valuations">Wróć do listy wycen</Link>
       </Button>
     </div>
-  );
-}
-
-/**
- * Shared temporary arm for wizard steps 2-5, not yet built (Tasks 8-11
- * replace each with the real step). Purely a "under construction" card +
- * wizard footer nav — no per-step logic.
- */
-function StepPlaceholder({
-  title,
-  valuationId,
-  back,
-  next,
-}: {
-  title: string;
-  valuationId: string;
-  back?: number;
-  next?: number;
-}) {
-  return (
-    <>
-      <Card>
-        <CardContent className="flex flex-col gap-2 pt-6">
-          <h2 className="text-sm font-medium text-foreground">{title}</h2>
-          <p className="text-sm text-muted-foreground">W budowie.</p>
-        </CardContent>
-      </Card>
-      <WizardNav valuationId={valuationId} back={back} next={next} />
-    </>
   );
 }
 
@@ -160,7 +132,7 @@ export default async function ValuationViewPage({
             comparableAreas={(valuation.inputs?.comparables ?? []).map((c) => c.area)}
           />
         ) : step === 5 ? (
-          <StepPlaceholder title="Kalkulacja" valuationId={valuation.id} back={4} next={6} />
+          <StepCalculation valuation={valuation} />
         ) : step === 6 ? (
           <StepDescriptions valuationId={valuation.id} />
         ) : (
