@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assignProvenance } from "../src/lib/assign-provenance";
+import {
+  assignProvenance,
+  assignFeaturesProvenance,
+  assignSampleProvenance,
+  assignSubjectProvenance,
+} from "../src/lib/assign-provenance";
 import { DEFAULT_FEATURES } from "../src/lib/valuation-form-schema";
 import { powierzchniaDefinitions } from "../src/domain/feature-presets";
 
@@ -220,5 +225,38 @@ describe("feature preset provenance (Slice 7, server-side detection)", () => {
     );
     const { provenance } = assignProvenance({ ...base, comparables, features });
     expect(provenance.featureDefs).toEqual({ source: "preset", status: "to_verify" });
+  });
+});
+
+describe("scoped provenance (Slice 11a)", () => {
+  it("assignSubjectProvenance: no subject/kw → only address+area confirmed", () => {
+    const p = assignSubjectProvenance({
+      area: 54.3,
+      subject: undefined,
+      subjectMeta: undefined,
+      kw: undefined,
+      kwMeta: undefined,
+    });
+    expect(p).toEqual({
+      address: { source: "rzeczoznawca", status: "confirmed" },
+      area: { source: "rzeczoznawca", status: "confirmed" },
+    });
+  });
+  it("assignSampleProvenance: rcn rows to_verify, manual confirmed, geocode only with sampleMeta", () => {
+    const r = assignSampleProvenance({
+      comparables: [
+        { pricePerM2: 12000, source: "rcn", transactionId: "t1" },
+        { pricePerM2: 13000 },
+      ],
+      sampleMeta: undefined,
+    });
+    expect(r.comparables[0]!.status).toBe("to_verify");
+    expect(r.comparables[1]!.status).toBe("confirmed");
+    expect(r.geocode).toBeUndefined();
+  });
+  it("assignFeaturesProvenance: preset weights → to_verify", () => {
+    const p = assignFeaturesProvenance(DEFAULT_FEATURES, []);
+    expect(p.weights).toEqual({ source: "preset", status: "to_verify" });
+    expect(p.ratings).toEqual({ source: "rzeczoznawca", status: "confirmed" });
   });
 });
