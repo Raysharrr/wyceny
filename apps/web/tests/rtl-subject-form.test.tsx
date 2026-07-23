@@ -79,7 +79,7 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("Adres"), "ul. Testowa 1, Poznań");
   await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
   await user.selectOptions(screen.getByLabelText(/cel wyceny/i), "sprzedaz");
-  await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "PO1P/00000001/1");
+  await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "AB1C/1/1");
   await user.type(screen.getByLabelText(/zamawiający wycenę/i), "p. Test Testowy");
 }
 
@@ -116,7 +116,7 @@ describe("SubjectForm — edit mode", () => {
       address: "ul. Kościelna 33, Poznań",
       area: "69.56",
       purpose: "sprzedaz" as never,
-      kwNumber: "PO1P/00280443/7",
+      kwNumber: "AB1C/2/7",
       client: "Jan Kowalski",
     };
     render(<SubjectForm valuationId="val-1" defaults={defaults} />);
@@ -142,7 +142,7 @@ describe("SubjectForm — validation", () => {
     await user.type(screen.getByLabelText("Adres"), "ul. Testowa 1, Poznań");
     await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
     await user.selectOptions(screen.getByLabelText(/cel wyceny/i), "sprzedaz");
-    await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "PO1P/00000001/1");
+    await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "AB1C/1/1");
     // client left empty
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
 
@@ -230,7 +230,7 @@ describe("step1DefaultsFromInputs", () => {
       address: "ul. Kościelna 33, Poznań",
       area: 69.56,
       purpose: "sprzedaz",
-      kwNumber: "PO1P/00280443/7",
+      kwNumber: "AB1C/2/7",
       client: "Jan Kowalski",
       inputs,
     });
@@ -238,7 +238,7 @@ describe("step1DefaultsFromInputs", () => {
     expect(defaults.address).toBe("ul. Kościelna 33, Poznań");
     expect(defaults.area).toBe("69.56");
     expect(defaults.purpose).toBe("sprzedaz");
-    expect(defaults.kwNumber).toBe("PO1P/00280443/7");
+    expect(defaults.kwNumber).toBe("AB1C/2/7");
     expect(defaults.client).toBe("Jan Kowalski");
     // Numeric SubjectSnapshot fields become strings for the coerced-number inputs.
     expect(defaults.subject?.obreb).toBe("Jeżyce");
