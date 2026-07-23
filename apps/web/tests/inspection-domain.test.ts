@@ -77,8 +77,9 @@ describe("inspection keys + audit action", () => {
     expect(isOwnPhotoKey(key, VID)).toBe(true);
     expect(isOwnPhotoKey(key, "other-id")).toBe(false);
   });
-  it("AUDIT_ACTIONS gained exactly inspection_updated", () => {
+  it("AUDIT_ACTIONS contains inspection_updated", () => {
     expect(AUDIT_ACTIONS).toContain("inspection_updated");
-    expect(AUDIT_ACTIONS).toHaveLength(9);
+    // Slice 11a (wizard-domain.test.ts) added 4 more actions on top of these 9.
+    expect(AUDIT_ACTIONS).toHaveLength(13);
   });
 });

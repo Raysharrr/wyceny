@@ -378,6 +378,10 @@ describe("AUDIT_ACTIONS (FR-12)", () => {
   it("is the closed action list", () => {
     expect(AUDIT_ACTIONS).toEqual([
       "created",
+      "subject_updated",
+      "sample_updated",
+      "features_updated",
+      "calculation_confirmed",
       "sample_confirmed",
       "subject_confirmed",
       "kw_confirmed",

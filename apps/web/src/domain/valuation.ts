@@ -1,6 +1,6 @@
 import { approvalGate, type Blocker } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
-import type { Comparable } from "./kcs";
+import { computeKcs, type Comparable, type KcsInput } from "./kcs";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
 import {
@@ -185,7 +185,8 @@ export class InspectionLimitError extends Error {
 export type InspectionOp =
   | { kind: "add_photo"; section: InspectionSection; key: string }
   | { kind: "remove_photo"; section: InspectionSection; key: string }
-  | { kind: "set_note"; note: string };
+  | { kind: "set_note"; note: string }
+  | { kind: "set_date"; date: string };
 
 /**
  * Draft-only inspection mutation (Slice 10) — the manifest sibling of the
@@ -218,11 +219,103 @@ export function applyInspectionOp(v: Valuation, op: InspectionOp): Valuation {
         [op.section]: current.photos[op.section].filter((k) => k !== op.key),
       },
     };
+  } else if (op.kind === "set_date") {
+    return { ...v, inspectionDate: op.date || null };
   } else {
     const note = op.note.trim();
     inspection = { ...current, note: note.length > 0 ? note : null };
   }
   return { ...v, inputs: { ...v.inputs, inspection } };
+}
+
+export type SubjectUpdate = {
+  address: string;
+  area: number;
+  purpose: NonNullable<Valuation["purpose"]>;
+  kwNumber: string | null;
+  client: string;
+  subject: KcsInput["subject"];
+  subjectMeta: KcsInput["subjectMeta"];
+  kw: KcsInput["kw"];
+  kwMeta: KcsInput["kwMeta"];
+  provenance: Partial<InputsProvenance> & Pick<InputsProvenance, "address" | "area">;
+};
+
+/** Step-1 edit (Slice 11a): replaces the subject/kw slice of the draft and
+ * NULLs wr — changed engine inputs must never keep a stale confirmed amount. */
+export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
+  assertDraft(v);
+  if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
+  // Group keys owned by this step are REPLACED, not merged — a detached
+  // subject must not leave stale ewidencja/mpzp/kw provenance behind.
+  const { ewidencja: _e, mpzp: _m, kw: _k, ...rest } = v.inputs.provenance ?? {};
+  const provenance = { ...rest, ...u.provenance } as InputsProvenance;
+  return {
+    ...v,
+    address: u.address,
+    area: u.area,
+    purpose: u.purpose,
+    kwNumber: u.kwNumber,
+    client: u.client,
+    wr: null,
+    inputs: {
+      ...v.inputs,
+      area: u.area,
+      subject: u.subject ?? null,
+      subjectMeta: u.subjectMeta ?? null,
+      kw: u.kw ?? null,
+      kwMeta: u.kwMeta ?? null,
+      provenance,
+    },
+  };
+}
+
+export type SampleUpdate = {
+  comparables: Comparable[];
+  sampleMeta: KcsInput["sampleMeta"];
+  geocode?: InputsProvenance["geocode"];
+};
+
+export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
+  assertDraft(v);
+  if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
+  const { geocode: _g, ...rest } = v.inputs.provenance ?? {};
+  const provenance = { ...rest, ...(u.geocode ? { geocode: u.geocode } : {}) } as InputsProvenance;
+  return {
+    ...v,
+    wr: null,
+    inputs: { ...v.inputs, comparables: u.comparables, sampleMeta: u.sampleMeta, provenance },
+  };
+}
+
+export type FeaturesUpdate = {
+  features: KcsInput["features"];
+  provenance: Pick<InputsProvenance, "weights" | "ratings" | "featureDefs">;
+};
+
+export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation {
+  assertDraft(v);
+  if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
+  const provenance = { ...v.inputs.provenance, ...u.provenance } as InputsProvenance;
+  return { ...v, wr: null, inputs: { ...v.inputs, features: u.features, provenance } };
+}
+
+export class CalculationNotReadyError extends Error {
+  constructor() {
+    super("Calculation needs at least 3 comparables and 1 feature");
+    this.name = "CalculationNotReadyError";
+  }
+}
+
+/** Step-5 confirm: the ONLY place the wizard writes wr. Same engine call the
+ * legacy create action used (F-1: computeKcs itself untouched). */
+export function applyCalculationConfirm(v: Valuation): Valuation {
+  assertDraft(v);
+  if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to confirm`);
+  if (v.inputs.comparables.length < 3 || v.inputs.features.length === 0) {
+    throw new CalculationNotReadyError();
+  }
+  return { ...v, wr: computeKcs(v.inputs).wr };
 }
 
 /**
@@ -259,6 +352,10 @@ export function approveValuation(
 /** Closed FR-12 audit-action list — the only actions `audit_log` may record. */
 export const AUDIT_ACTIONS = [
   "created",
+  "subject_updated",
+  "sample_updated",
+  "features_updated",
+  "calculation_confirmed",
   "sample_confirmed",
   "subject_confirmed",
   "kw_confirmed",

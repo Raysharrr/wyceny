@@ -241,7 +241,9 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
                 : op.kind === "remove_photo"
                   ? "photo_removed"
                   : "note_updated",
-            ...(op.kind !== "set_note" ? { section: op.section } : {}),
+            ...(op.kind === "add_photo" || op.kind === "remove_photo"
+              ? { section: op.section }
+              : {}),
             total: totalInspectionPhotos(updated.inputs?.inspection),
           },
         });
