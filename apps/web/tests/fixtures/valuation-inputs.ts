@@ -1,4 +1,5 @@
 import type { KcsInput } from "../../src/domain/kcs";
+import type { InputsProvenance } from "../../src/domain/provenance";
 import type { NewValuationInput } from "../../src/ports/valuation";
 
 /**
@@ -78,6 +79,26 @@ export function approvableInput(ownerId: string): NewValuationInput {
     kwNumber: "PO1P/1/6",
     client: "Jan Testowy",
     inspectionDate: "2026-07-10",
+  };
+}
+
+/**
+ * Partial-draft `KcsInput` (Slice 11a wizard, Task 4): the shape a wizard
+ * draft has right after step 1 (Przedmiot) — no sample, no features yet,
+ * only the two scalar groups that step confirms (address/area). Exercises
+ * the create-with-null-wr, saveSample/saveFeatures-"from nothing" and
+ * confirmCalculation-not-ready paths.
+ */
+export function partialDraftInputs(): KcsInput {
+  return {
+    area: 50,
+    comparables: [],
+    features: [],
+    sampleMeta: null,
+    provenance: {
+      address: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      area: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+    } as InputsProvenance,
   };
 }
 

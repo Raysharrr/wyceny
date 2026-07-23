@@ -9,7 +9,12 @@
  */
 
 import type { KcsInput } from "../domain/kcs";
-import type { InspectionOp } from "../domain/valuation";
+import type {
+  FeaturesUpdate,
+  InspectionOp,
+  SampleUpdate,
+  SubjectUpdate,
+} from "../domain/valuation";
 
 export type Valuation = {
   id: string;
@@ -98,6 +103,33 @@ export interface PortValuation {
    * Same null/throw contract as `confirmSample`.
    */
   updateInspection(id: string, user: SessionUser, op: InspectionOp): Promise<Valuation | null>;
+  /**
+   * Step-1 (Przedmiot) wizard draft save (Slice 11a): replaces the
+   * subject/kw slice of the inputs snapshot and the
+   * address/area/purpose/kwNumber/client columns, NULLing `wr` — changed
+   * subject inputs must never keep a stale confirmed amount. Same
+   * null/throw contract as `updateInspection`.
+   */
+  saveSubject(id: string, user: SessionUser, u: SubjectUpdate): Promise<Valuation | null>;
+  /**
+   * Step-3 (Próba) wizard draft save: replaces the comparables + sample
+   * metadata + geocode provenance, NULLing `wr`. Same null/throw contract
+   * as `updateInspection`.
+   */
+  saveSample(id: string, user: SessionUser, u: SampleUpdate): Promise<Valuation | null>;
+  /**
+   * Step-4 (Cechy) wizard draft save: replaces the features + their
+   * provenance fragment (weights/ratings/featureDefs), NULLing `wr`. Same
+   * null/throw contract as `updateInspection`.
+   */
+  saveFeatures(id: string, user: SessionUser, u: FeaturesUpdate): Promise<Valuation | null>;
+  /**
+   * Step-5 (Kalkulacja) confirm: runs the KCS engine and persists `wr` —
+   * the only mutation that writes it. Same null/throw contract as
+   * `updateInspection`; additionally throws `CalculationNotReadyError`
+   * when the draft has fewer than 3 comparables or zero features.
+   */
+  confirmCalculation(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
    * Approves a draft — re-runs the F-4 gate AND the document-field check
    * server-side (never trusts the client). Same null/throw contract as

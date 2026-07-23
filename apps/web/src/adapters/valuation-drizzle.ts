@@ -2,7 +2,11 @@ import { and, eq, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { KcsInput } from "../domain/kcs";
 import {
+  applyCalculationConfirm,
+  applyFeaturesUpdate,
   applyInspectionOp,
+  applySampleUpdate,
+  applySubjectUpdate,
   approveValuation,
   confirmFeaturesProvenance,
   confirmKwProvenance,
@@ -13,6 +17,9 @@ import {
   newVersionOf,
   signValuation,
   type AuditAction,
+  type FeaturesUpdate,
+  type SampleUpdate,
+  type SubjectUpdate,
 } from "../domain/valuation";
 import { totalInspectionPhotos } from "../domain/inspection";
 import * as schema from "../db/schema";
@@ -226,7 +233,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         const updated = applyInspectionOp(valuation, op);
         const [saved] = await tx
           .update(schema.valuation)
-          .set({ inputs: updated.inputs })
+          .set({ inputs: updated.inputs, inspectionDate: updated.inspectionDate })
           .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
           .returning();
         if (!saved) return null;
@@ -240,12 +247,137 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
                 ? "photo_added"
                 : op.kind === "remove_photo"
                   ? "photo_removed"
-                  : "note_updated",
+                  : op.kind === "set_date"
+                    ? "date_updated"
+                    : "note_updated",
             ...(op.kind === "add_photo" || op.kind === "remove_photo"
               ? { section: op.section }
               : {}),
             total: totalInspectionPhotos(updated.inputs?.inspection),
           },
+        });
+        return toValuation(saved);
+      });
+    },
+
+    async saveSubject(id: string, user: SessionUser, u: SubjectUpdate): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        // .for("update") — same read-modify-write rationale as updateInspection.
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.id, id))
+          .for("update");
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = applySubjectUpdate(valuation, u);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({
+            inputs: updated.inputs,
+            address: updated.address,
+            area: updated.area,
+            purpose: updated.purpose,
+            kwNumber: updated.kwNumber,
+            client: updated.client,
+            wr: null,
+          })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "subject_updated",
+          meta: { kwAttached: u.kw != null },
+        });
+        return toValuation(saved);
+      });
+    },
+
+    async saveSample(id: string, user: SessionUser, u: SampleUpdate): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.id, id))
+          .for("update");
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = applySampleUpdate(valuation, u);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs, wr: null })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "sample_updated",
+          meta: { count: u.comparables.length },
+        });
+        return toValuation(saved);
+      });
+    },
+
+    async saveFeatures(
+      id: string,
+      user: SessionUser,
+      u: FeaturesUpdate,
+    ): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.id, id))
+          .for("update");
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = applyFeaturesUpdate(valuation, u);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs, wr: null })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "features_updated",
+          meta: { count: u.features.length },
+        });
+        return toValuation(saved);
+      });
+    },
+
+    async confirmCalculation(id: string, user: SessionUser): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.id, id))
+          .for("update");
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        // May throw CalculationNotReadyError — bubbles, rolls back the tx,
+        // zero audit rows (same contract as InspectionLimitError above).
+        const updated = applyCalculationConfirm(valuation);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ wr: updated.wr })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "calculation_confirmed",
+          meta: { wr: updated.wr },
         });
         return toValuation(saved);
       });
