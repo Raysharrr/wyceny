@@ -594,7 +594,7 @@ export default async function ValuationViewPage({ params }: { params: Promise<{ 
           <div className="flex flex-col gap-0.5">
             <p className="text-xs text-muted-foreground">Wartość rynkowa (WR)</p>
             <p className="text-base font-medium text-foreground" data-testid="wr-value">
-              {currencyFormatter.format(valuation.wr)}
+              {valuation.wr == null ? "—" : currencyFormatter.format(valuation.wr)}
             </p>
           </div>
           <div className="flex flex-col gap-0.5 sm:col-span-2">

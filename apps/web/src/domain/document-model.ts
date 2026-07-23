@@ -234,6 +234,7 @@ export type DocumentFields = {
   kwNumber: string | null;
   client: string | null;
   inspectionDate: string | null;
+  wr: number | null;
 };
 
 /** Approval blockers for document fields (spec §4) — Polish UI copy like the F-4 gate. */
@@ -243,6 +244,11 @@ export function documentFieldBlockers(v: DocumentFields): Blocker[] {
   if (!v.kwNumber) blockers.push({ path: "kwNumber", label: "Numer księgi wieczystej — brak." });
   if (!v.client) blockers.push({ path: "client", label: "Klient — brak." });
   if (!v.inspectionDate) blockers.push({ path: "inspectionDate", label: "Data oględzin — brak." });
+  if (v.wr == null)
+    blockers.push({
+      path: "wr",
+      label: "Wartość rynkowa — kalkulacja niezatwierdzona (krok 5. Kalkulacja).",
+    });
   return blockers;
 }
 

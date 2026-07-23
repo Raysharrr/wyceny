@@ -1,0 +1,1 @@
+ALTER TABLE "valuation" ALTER COLUMN "stub_wr" DROP NOT NULL;

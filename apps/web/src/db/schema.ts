@@ -46,7 +46,9 @@ export const valuation = pgTable("valuation", {
   // ponytail: TS field renamed stubWr→wr, physical column stays "stub_wr" —
   // a real RENAME needs drizzle-kit's interactive prompt; rename rides along
   // with the next schema-reshaping migration.
-  wr: doublePrecision("stub_wr").notNull(),
+  // Nullable since Slice 11a (migration 0010): a wizard draft can be saved
+  // before step 5 (Kalkulacja) has run — NULL = calculation not yet confirmed.
+  wr: doublePrecision("stub_wr"),
   // Full KcsInput snapshot for reproducibility (F-3). NULL = stub-era row.
   inputs: jsonb("inputs"),
   amountInWords: text("amount_in_words"),

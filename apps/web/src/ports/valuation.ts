@@ -15,7 +15,8 @@ export type Valuation = {
   id: string;
   address: string;
   area: number;
-  wr: number;
+  /** NULL = wizard draft saved before step 5 (Kalkulacja) confirmed a value (Slice 11a). */
+  wr: number | null;
   inputs: KcsInput | null;
   amountInWords: string | null;
   docUrl: string | null;
@@ -36,7 +37,7 @@ export type Valuation = {
 export type NewValuationInput = {
   address: string;
   area: number;
-  wr: number;
+  wr: number | null;
   inputs: KcsInput | null;
   amountInWords: string | null;
   docUrl: string | null;

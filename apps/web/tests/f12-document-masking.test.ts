@@ -306,13 +306,20 @@ describe("F-12: subject snapshot mapped into document facts + mpzp variants", ()
 describe("documentFieldBlockers", () => {
   it("returns one Polish blocker per missing field, empty when complete", () => {
     expect(
-      documentFieldBlockers({ purpose: null, kwNumber: null, client: null, inspectionDate: null }),
+      documentFieldBlockers({
+        purpose: null,
+        kwNumber: null,
+        client: null,
+        inspectionDate: null,
+        wr: 1_044_400,
+      }),
     ).toHaveLength(4);
     const blockers = documentFieldBlockers({
       purpose: "sprzedaz",
       kwNumber: null,
       client: "k",
       inspectionDate: "2026-07-01",
+      wr: 1_044_400,
     });
     expect(blockers).toEqual([{ path: "kwNumber", label: "Numer księgi wieczystej — brak." }]);
     expect(
@@ -321,6 +328,7 @@ describe("documentFieldBlockers", () => {
         kwNumber: "KW-TEST-1",
         client: "k",
         inspectionDate: "2026-07-01",
+        wr: 1_044_400,
       }),
     ).toEqual([]);
   });
