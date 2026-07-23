@@ -487,4 +487,27 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
     });
     expect(updated!.inputs!.inspection!.note).toBe("N");
   });
+
+  it("set_date persists inspectionDate (column), audits 'date_updated', and survives a re-read", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Ogledziny 5"),
+      inputs: approvableInputs(),
+    });
+    const updated = await repo.updateInspection(created.id, appraiserA, {
+      kind: "set_date",
+      date: "2026-07-20",
+    });
+    expect(updated!.inspectionDate).toBe("2026-07-20");
+
+    const reread = await repo.get(created.id, appraiserA);
+    expect(reread!.inspectionDate).toBe("2026-07-20");
+
+    const rows = await db
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.valuationId, created.id))
+      .orderBy(schema.auditLog.id);
+    expect(rows.at(-1)!.action).toBe("inspection_updated");
+    expect(rows.at(-1)!.meta).toMatchObject({ op: "date_updated" });
+  });
 });
