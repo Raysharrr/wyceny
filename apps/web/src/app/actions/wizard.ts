@@ -27,16 +27,17 @@ import { CalculationNotReadyError } from "@/domain/valuation";
  * almost exactly, minus comparables/features/computeKcs — those are filled
  * in at steps 3-5, not step 1.
  *
- * The step-scoped schemas (`step1Schema` etc.) live in `./wizard-schemas.ts`,
- * NOT here — a "use server" file may only export async functions once it's
- * reachable from a Client Component's import graph (Task 6's `subject-form.tsx`
- * imports `step1Schema` directly for its RHF resolver); a schema-object export
- * from this file breaks the build/runtime. Re-exported as types only below
- * (erased at compile time, so they don't trip that rule) for callers that
- * imported them from here before the split.
+ * The step-scoped schemas AND their input types (`step1Schema`/`Step1Input`
+ * etc.) live in `./wizard-schemas.ts`, NOT here — a "use server" file may
+ * only export async functions once it's reachable from a Client Component's
+ * import graph (Task 6's `subject-form.tsx` imports `step1Schema` directly
+ * for its RHF resolver). This isn't limited to VALUE exports: Next's action
+ * transform also chokes on a bare `export type { ... }` re-export here
+ * ("ReferenceError: Step1Input is not defined" at runtime, empirically —
+ * the transform doesn't erase it the way plain TypeScript would), so this
+ * file re-exports nothing from wizard-schemas.ts. Import the types straight
+ * from `./wizard-schemas` instead.
  */
-
-export type { Step1Input, SampleStepInput, FeaturesStepInput };
 
 /**
  * Normalize per-level definitions: trim + collapse whitespace, drop empty

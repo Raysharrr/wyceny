@@ -37,10 +37,12 @@ import {
   saveSampleAction,
   saveFeaturesAction,
   confirmCalculationAction,
-  type Step1Input,
-  type SampleStepInput,
-  type FeaturesStepInput,
 } from "../src/app/actions/wizard";
+import type {
+  Step1Input,
+  SampleStepInput,
+  FeaturesStepInput,
+} from "../src/app/actions/wizard-schemas";
 import { saveInspectionDate } from "../src/app/actions/inspection";
 import { valuationRepository } from "@/app/valuations/_deps";
 import { CalculationNotReadyError } from "@/domain/valuation";
