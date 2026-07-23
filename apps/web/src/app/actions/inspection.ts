@@ -129,3 +129,34 @@ export async function saveInspectionNote(
   }
   revalidatePath(`/valuations/${valuationId}`);
 }
+
+/**
+ * Step-2 (Oględziny) date field, saved independently of the rest of the
+ * wizard steps (Slice 11a, Task 5) — same `updateInspection`/audit-row path
+ * as the other inspection mutations. `""` clears the date (domain's
+ * `applyInspectionOp` maps it to `null`); format-only check, mirrors
+ * `subjectSchema.mpzpData`'s validation elsewhere in this codebase.
+ */
+export async function saveInspectionDate(
+  valuationId: string,
+  date: string,
+): Promise<{ error: string } | undefined> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (!(/^\d{4}-\d{2}-\d{2}$/.test(date) || date === "")) {
+    return { error: "Podaj datę w formacie RRRR-MM-DD." };
+  }
+  try {
+    const updated = await valuationRepository.updateInspection(valuationId, session.user, {
+      kind: "set_date",
+      date,
+    });
+    if (!updated) {
+      return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+    }
+  } catch (error) {
+    console.error("saveInspectionDate failed", error);
+    return { error: "Nie udało się zapisać daty — spróbuj ponownie." };
+  }
+  revalidatePath(`/valuations/${valuationId}`);
+}

@@ -8,19 +8,11 @@ import { computeKcs, type KcsInput } from "@/domain/kcs";
 import { assignProvenance } from "@/lib/assign-provenance";
 import { isEmptySubject } from "@/lib/subject-form";
 import { normalizeDefText, type FeatureDefinitions } from "@/domain/feature-presets";
+import { normalizeKw } from "@/domain/kw-snapshot";
 
 export type CreateValuationInput = ValuationFormValues;
 
 export type CreateValuationResult = { error: string } | undefined;
-
-type KwSnapshot = NonNullable<ValuationFormValues["kw"]>;
-type KwDzial = NonNullable<KwSnapshot["dzial3"]>;
-
-/** ""/whitespace → null; otherwise the trimmed string. */
-function trimToNull(value: string | null): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
 
 /** Normalize per-level definitions: trim + collapse whitespace, drop empty levels. */
 function normalizeDefinitions(defs?: {
@@ -34,41 +26,6 @@ function normalizeDefinitions(defs?: {
     if (t) out[level] = t;
   }
   return out;
-}
-
-/** Drops empty/whitespace-only entries; keeps `wpisy` untouched (see below). */
-function normalizeDzial(dzial: KwDzial | null): KwDzial | null {
-  if (dzial == null) return dzial;
-  // Deliberately DO NOT flip `wpisy` to false when the filtered `tresc` is
-  // empty: that would fabricate a "brak wpisów" (clean-title/no-mortgage)
-  // claim. The document model renders neither the brak sentence nor the loop
-  // when `wpisy` is true but `tresc` is [] — acceptable honest silence.
-  return {
-    wpisy: dzial.wpisy,
-    tresc: dzial.tresc.map((t) => t.trim()).filter((t) => t.length > 0),
-  };
-}
-
-/**
- * Normalizes a document-sourced KW snapshot at the action boundary (mirrors
- * the `isEmptySubject` convention): empty-string fields the extractor may emit
- * become `null`, and empty/whitespace `tresc`/`kwInne` lines are dropped — so
- * a `""` never persists to render malformed operat sentences (e.g. "Sąd: .")
- * or a phantom KW number, and the F-4 gate sees honest nulls.
- */
-function normalizeKw(kw: KwSnapshot): KwSnapshot {
-  return {
-    ...kw,
-    kwLokalu: trimToNull(kw.kwLokalu),
-    kwGruntu: trimToNull(kw.kwGruntu),
-    udzial: trimToNull(kw.udzial),
-    sad: trimToNull(kw.sad),
-    wydzial: trimToNull(kw.wydzial),
-    dataDokumentu: trimToNull(kw.dataDokumentu),
-    kwInne: kw.kwInne.map((s) => s.trim()).filter((s) => s.length > 0),
-    dzial3: normalizeDzial(kw.dzial3),
-    dzial4: normalizeDzial(kw.dzial4),
-  };
 }
 
 /**
