@@ -2,10 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import type { z } from "zod";
 import { getSession } from "@/auth/session";
 import { valuationRepository } from "@/app/valuations/_deps";
-import { valuationFormObject } from "@/lib/valuation-form-schema";
+import { step1Schema, sampleStepSchema, featuresStepSchema } from "./wizard-schemas";
+import type { Step1Input, SampleStepInput, FeaturesStepInput } from "./wizard-schemas";
 import type { KcsInput } from "@/domain/kcs";
 import type { InputsProvenance } from "@/domain/provenance";
 import {
@@ -26,44 +27,16 @@ import { CalculationNotReadyError } from "@/domain/valuation";
  * almost exactly, minus comparables/features/computeKcs — those are filled
  * in at steps 3-5, not step 1.
  *
- * `.pick()` is called on `valuationFormObject` (the plain, unrefined schema),
- * NOT on the refined `valuationFormSchema` — zod v4 throws at runtime when
- * `.pick()` is called on a schema carrying a `.superRefine()` (verified
- * empirically, see valuation-form-schema.ts:119-126).
+ * The step-scoped schemas (`step1Schema` etc.) live in `./wizard-schemas.ts`,
+ * NOT here — a "use server" file may only export async functions once it's
+ * reachable from a Client Component's import graph (Task 6's `subject-form.tsx`
+ * imports `step1Schema` directly for its RHF resolver); a schema-object export
+ * from this file breaks the build/runtime. Re-exported as types only below
+ * (erased at compile time, so they don't trip that rule) for callers that
+ * imported them from here before the split.
  */
 
-const step1Object = valuationFormObject.pick({
-  address: true,
-  area: true,
-  subject: true,
-  subjectMeta: true,
-  kw: true,
-  kwMeta: true,
-  purpose: true,
-  kwNumber: true,
-  client: true,
-});
-
-/**
- * kwNumber is required only on the manual path (no `kw` extract attached) —
- * mirrors `valuationFormSchema`'s own superRefine (valuation-form-schema.ts:161-169).
- */
-export const step1Schema = step1Object.superRefine((values, ctx) => {
-  if (!values.kw && !values.kwNumber) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["kwNumber"],
-      message: "Podaj numer księgi wieczystej.",
-    });
-  }
-});
-
-export const sampleStepSchema = valuationFormObject.pick({ comparables: true, sampleMeta: true });
-export const featuresStepSchema = valuationFormObject.pick({ features: true });
-
-export type Step1Input = z.input<typeof step1Schema>;
-export type SampleStepInput = z.input<typeof sampleStepSchema>;
-export type FeaturesStepInput = z.input<typeof featuresStepSchema>;
+export type { Step1Input, SampleStepInput, FeaturesStepInput };
 
 /**
  * Normalize per-level definitions: trim + collapse whitespace, drop empty

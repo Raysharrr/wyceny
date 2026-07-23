@@ -33,39 +33,15 @@ vi.mock("next/navigation", () => ({
 
 // The parent form imports these; the full-form reset/W4 tests below render the
 // real <SubjectForm/>, so every module it pulls that touches the network, the
-// DB, or `next/navigation` is mocked to a pure stub. `step1Schema` is
-// reconstructed here (mirrors src/app/actions/wizard.ts, pure zod, no I/O)
-// rather than pulled in via importOriginal — the real wizard.ts module also
-// imports `getSession`/`_deps` (DB pool, session store), which a component
-// RTL test has no business booting. Mirrors tests/rtl-subject-form.test.tsx.
-vi.mock("@/app/actions/wizard", async () => {
-  const { valuationFormObject } = await import("@/lib/valuation-form-schema");
-  const step1Object = valuationFormObject.pick({
-    address: true,
-    area: true,
-    subject: true,
-    subjectMeta: true,
-    kw: true,
-    kwMeta: true,
-    purpose: true,
-    kwNumber: true,
-    client: true,
-  });
-  const step1Schema = step1Object.superRefine((values, ctx) => {
-    if (!values.kw && !values.kwNumber) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["kwNumber"],
-        message: "Podaj numer księgi wieczystej.",
-      });
-    }
-  });
-  return {
-    step1Schema,
-    createDraft: vi.fn(async () => undefined),
-    saveSubjectAction: vi.fn(async () => ({ ok: true })),
-  };
-});
+// DB, or `next/navigation` is mocked to a pure stub. `@/app/actions/wizard-
+// schemas` (step1Schema's real home — pure zod, no I/O) is NOT mocked: it's
+// safe to import for real, unlike `wizard.ts` itself, which also pulls in
+// `getSession`/`_deps` (DB pool, session store). Mirrors
+// tests/rtl-subject-form.test.tsx.
+vi.mock("@/app/actions/wizard", () => ({
+  createDraft: vi.fn(async () => undefined),
+  saveSubjectAction: vi.fn(async () => ({ ok: true })),
+}));
 vi.mock("@/app/actions/get-subject-data", () => ({ getSubjectData: vi.fn() }));
 vi.mock("@/app/actions/mint-kw-token", () => ({
   mintKwUploadToken: vi.fn(async () => ({ token: "exp.nonce.sig" })),
