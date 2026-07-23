@@ -22,6 +22,7 @@ import { Stepper, WizardNav } from "./stepper";
 import { StepDescriptions } from "./steps/step-descriptions";
 import { StepInspection } from "./steps/step-inspection";
 import { StepOperat } from "./steps/step-operat";
+import { StepSample } from "./steps/step-sample";
 import { ValuationActions } from "./valuation-actions";
 
 // The approve Server Action invoked from this page generates the operat
@@ -144,7 +145,13 @@ export default async function ValuationViewPage({
             inspectionDate={valuation.inspectionDate}
           />
         ) : step === 3 ? (
-          <StepPlaceholder title="Próba" valuationId={valuation.id} back={2} next={4} />
+          <StepSample
+            valuationId={valuation.id}
+            address={valuation.address}
+            area={valuation.area}
+            comparables={valuation.inputs?.comparables ?? []}
+            sampleMeta={valuation.inputs?.sampleMeta ?? null}
+          />
         ) : step === 4 ? (
           <StepPlaceholder title="Cechy" valuationId={valuation.id} back={3} next={5} />
         ) : step === 5 ? (
