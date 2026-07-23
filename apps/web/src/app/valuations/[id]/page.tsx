@@ -20,6 +20,7 @@ import {
 import { InspectionSection } from "./inspection-section";
 import { Stepper, WizardNav } from "./stepper";
 import { StepDescriptions } from "./steps/step-descriptions";
+import { StepInspection } from "./steps/step-inspection";
 import { StepOperat } from "./steps/step-operat";
 import { ValuationActions } from "./valuation-actions";
 
@@ -137,7 +138,11 @@ export default async function ValuationViewPage({
         {step === 1 ? (
           <SubjectForm valuationId={valuation.id} defaults={step1DefaultsFromInputs(valuation)} />
         ) : step === 2 ? (
-          <StepPlaceholder title="Oględziny" valuationId={valuation.id} back={1} next={3} />
+          <StepInspection
+            valuationId={valuation.id}
+            inspection={valuation.inputs?.inspection ?? null}
+            inspectionDate={valuation.inspectionDate}
+          />
         ) : step === 3 ? (
           <StepPlaceholder title="Próba" valuationId={valuation.id} back={2} next={4} />
         ) : step === 4 ? (
