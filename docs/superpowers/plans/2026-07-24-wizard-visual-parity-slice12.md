@@ -586,3 +586,29 @@ in `apps/web/tests/` → global + per-task paths). Verdict after fixes: plan rea
 - Spec coverage: tokens/fonts (T2), topbar globally (T3), shell+stepper+headers incl. create (T5/T7), FootNav all steps (T5:2,6; T6:7; T7:1; T8:3; T9:4; T10:5), sidebars K1/K3/K4 (T7/T8/T9), no-sidebar K5 grid (T10), AutoBanners 1/3/5 + warn restyle (T7/T8/T10), banner K4 deliberately absent (spec dec. 6), smoke DOCX (T0), bug step=1 (T1 pending diag), side-by-side gate (T11).
 - Frozen strings repeated in Global Constraints and inside each task that touches them.
 - Type consistency: `FootNav` props (`back/mid/children`) identical across T4-T10; `STEP_META` keys 1-7; `WizardShell` signature defined once (T5), consumed T7.
+
+---
+
+## Wave 2 (post-QA, user checkpoint c feedback 2026-07-24): visual composition parity
+
+User verdict on prod: chrome parity delivered, but CONTENT composition below mockup (no section
+cards/spacing/grouped forms) and the flat view wastes width ("źle się obsługuje i ogląda").
+Method mandate: verify by SCREENSHOTS of rendered UI vs mockup screenshots, not by code review.
+
+### Task 12: content section-cards parity (steps 1–7) + small fixes
+
+Brief: `.superpowers/sdd/parity-task-12-brief.md`. Shared `SectionCard` (mockup Card pattern);
+step-1 left column grouped into cards (Adres i lokalizacja / Dane przedmiotu / Księga wieczysta
+with 3-tile source picker / Zamawiający); steps 2–7 sections wrapped in SectionCards; fixes:
+fully clickable list rows (stretched link), pl-PL commas in cards.tsx coefficients/area,
+step-5 info banner gated on `wr != null`. Screenshot loop against
+`.claude/research/side-by-side-final/mockup-0N.png` is the DoD.
+
+### Task 13: flat view redesign (document-first)
+
+Brief: `.superpowers/sdd/parity-task-13-brief.md`. UX design (controller-authored): page-head
+(h1 + status badge + download actions), grid 1.6fr/1fr — LEFT: PDF iframe card h-[75vh];
+RIGHT sticky: Wynik / Przedmiot / Akcje (ValuationActions untouched, relocated); below grid:
+KcsBreakdown + ComparablesProvenance in md:grid-cols-2. No-PDF variant (admin viewing foreign
+draft) keeps same head with data cards. Frozen: iframe title, "Pobierz DOCX" label, testids,
+all server actions.
