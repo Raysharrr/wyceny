@@ -189,7 +189,7 @@ export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionP
 
       <SubjectFetchStatusBar fetchState={fetchState} onRetry={onRetry} />
 
-      <FieldGroup>
+      <FieldGroup className="grid gap-4 sm:grid-cols-2">
         {TEXT_FIELDS.map(({ name, id, label }) => (
           <Controller
             key={name}

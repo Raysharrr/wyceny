@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { CalendarDays } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { saveInspectionDate } from "@/app/actions/inspection";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { plural } from "@/components/wizard/plural";
+import { SectionCard } from "@/components/wizard/section-card";
 import { totalInspectionPhotos, type InspectionSnapshot } from "@/domain/inspection";
 import { InspectionSection } from "../inspection-section";
 
@@ -34,30 +35,32 @@ export function StepInspection({
 
   return (
     <>
-      <Card>
-        <CardContent className="flex max-w-xs flex-col gap-2 pt-6">
-          <Field>
-            <FieldLabel htmlFor="inspectionDate">Data oględzin</FieldLabel>
-            <Input
-              id="inspectionDate"
-              type="date"
-              defaultValue={inspectionDate ?? ""}
-              onBlur={async (e) => {
-                setError(null);
-                const result = await saveInspectionDate(valuationId, e.target.value);
-                if (result?.error) setError(result.error);
-                else router.refresh();
-              }}
-            />
-          </Field>
-          {error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
-      <InspectionSection valuationId={valuationId} inspection={inspection} />
+      <div className="flex flex-col gap-4">
+        <SectionCard icon={CalendarDays} title="Data oględzin">
+          <div className="flex max-w-xs flex-col gap-2">
+            <Field>
+              <FieldLabel htmlFor="inspectionDate">Data oględzin</FieldLabel>
+              <Input
+                id="inspectionDate"
+                type="date"
+                defaultValue={inspectionDate ?? ""}
+                onBlur={async (e) => {
+                  setError(null);
+                  const result = await saveInspectionDate(valuationId, e.target.value);
+                  if (result?.error) setError(result.error);
+                  else router.refresh();
+                }}
+              />
+            </Field>
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        </SectionCard>
+        <InspectionSection valuationId={valuationId} inspection={inspection} />
+      </div>
       <FootNav
         back={{ href: `/valuations/${valuationId}?step=1` }}
         mid={

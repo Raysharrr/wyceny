@@ -1,4 +1,5 @@
-import { Card, CardContent } from "@/components/ui/card";
+import { ClipboardCheck, FileStack } from "lucide-react";
+import { SectionCard } from "@/components/wizard/section-card";
 import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers } from "@/domain/document-model";
 import type { Valuation } from "@/ports/valuation";
@@ -39,53 +40,57 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
 
   return (
     <>
-      <Card>
-        <CardContent className="grid gap-5 sm:grid-cols-2">
-          <div className="flex flex-col gap-0.5">
-            <p className="text-xs text-muted-foreground">Powierzchnia</p>
-            <p className="text-base font-medium text-foreground">{valuation.area} m²</p>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <p className="text-xs text-muted-foreground">Wartość rynkowa (WR)</p>
-            <p className="text-base font-medium text-foreground" data-testid="wr-value">
-              {valuation.wr == null ? "—" : currencyFormatter.format(valuation.wr)}
-            </p>
-          </div>
-          <div className="flex flex-col gap-0.5 sm:col-span-2">
-            <p className="text-xs text-muted-foreground">Kwota słownie</p>
-            <p className="text-base font-medium text-primary">{valuation.amountInWords ?? "—"}</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="flex flex-col gap-3 pt-6">
-          {allBlockers.length > 0 ? (
-            <div data-testid="gate-blockers" className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-foreground">
-                Zatwierdzenie zablokowane — do wyjaśnienia:
+      <div className="flex flex-col gap-4">
+        <SectionCard icon={FileStack} title="Podsumowanie operatu">
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div className="flex flex-col gap-0.5">
+              <p className="text-xs text-muted-foreground">Powierzchnia</p>
+              <p className="text-base font-medium text-foreground">
+                {valuation.area.toLocaleString("pl-PL")} m²
               </p>
-              <ul className="list-disc pl-5 text-sm text-amber-600 dark:text-amber-500">
-                {allBlockers.map((b) => (
-                  <li key={b.path}>{b.label}</li>
-                ))}
-              </ul>
             </div>
-          ) : null}
-          <ValuationActions
-            id={valuation.id}
-            hasToVerify={hasToVerify}
-            hasSubjectToVerify={hasSubjectToVerify}
-            hasKwToVerify={hasKwToVerify}
-            hasFeaturesToVerify={hasFeaturesToVerify}
-            gateOk={gateOk}
-            canApprove={valuation.status === "in_progress"}
-            canSign={false}
-            canCreateNewVersion={false}
-            wr={valuation.wr}
-          />
-        </CardContent>
-      </Card>
+            <div className="flex flex-col gap-0.5">
+              <p className="text-xs text-muted-foreground">Wartość rynkowa (WR)</p>
+              <p className="text-base font-medium text-foreground" data-testid="wr-value">
+                {valuation.wr == null ? "—" : currencyFormatter.format(valuation.wr)}
+              </p>
+            </div>
+            <div className="flex flex-col gap-0.5 sm:col-span-2">
+              <p className="text-xs text-muted-foreground">Kwota słownie</p>
+              <p className="text-base font-medium text-primary">{valuation.amountInWords ?? "—"}</p>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard icon={ClipboardCheck} title="Zatwierdzenie">
+          <div className="flex flex-col gap-3">
+            {allBlockers.length > 0 ? (
+              <div data-testid="gate-blockers" className="flex flex-col gap-1">
+                <p className="text-sm font-medium text-foreground">
+                  Zatwierdzenie zablokowane — do wyjaśnienia:
+                </p>
+                <ul className="list-disc pl-5 text-sm text-amber-600 dark:text-amber-500">
+                  {allBlockers.map((b) => (
+                    <li key={b.path}>{b.label}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <ValuationActions
+              id={valuation.id}
+              hasToVerify={hasToVerify}
+              hasSubjectToVerify={hasSubjectToVerify}
+              hasKwToVerify={hasKwToVerify}
+              hasFeaturesToVerify={hasFeaturesToVerify}
+              gateOk={gateOk}
+              canApprove={valuation.status === "in_progress"}
+              canSign={false}
+              canCreateNewVersion={false}
+              wr={valuation.wr}
+            />
+          </div>
+        </SectionCard>
+      </div>
     </>
   );
 }

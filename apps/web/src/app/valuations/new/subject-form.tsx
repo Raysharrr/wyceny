@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Building2, MapPin, User } from "lucide-react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import type { Resolver } from "react-hook-form";
 import { useRouter } from "next/navigation";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { FootNav } from "@/components/wizard/foot-nav";
+import { SectionCard } from "@/components/wizard/section-card";
 import { createDraft, saveSubjectAction } from "@/app/actions/wizard";
 import { step1Schema } from "@/app/actions/wizard-schemas";
 import { getMapPreview } from "@/app/actions/get-map-preview";
@@ -332,99 +334,33 @@ export function SubjectForm({
   });
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-8">
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <div className="flex flex-col gap-8">
-          <FieldGroup>
-            <Controller
-              control={control}
-              name="address"
-              render={({ field, fieldState }) => (
-                <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="address">Adres</FieldLabel>
-                  <Input
-                    id="address"
-                    placeholder="np. ul. Wierzbięcice 12/4, Poznań"
-                    autoComplete="off"
-                    {...field}
-                    onBlur={() => {
-                      field.onBlur();
-                      void onAddressBlur();
-                    }}
-                  />
-                  <FieldError errors={[fieldState.error]} />
-                </Field>
-              )}
-            />
-            <Controller
-              control={control}
-              name="area"
-              render={({ field, fieldState }) => (
-                <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="area">Powierzchnia (m²)</FieldLabel>
-                  <Input
-                    id="area"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    inputMode="decimal"
-                    placeholder="np. 54.3"
-                    name={field.name}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                    value={toInputValue(field.value)}
-                    onChange={(e) => field.onChange(e.target.value)}
-                  />
-                  <FieldError errors={[fieldState.error]} />
-                </Field>
-              )}
-            />
-            <Controller
-              control={control}
-              name="purpose"
-              render={({ field, fieldState }) => (
-                <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="purpose">Cel wyceny</FieldLabel>
-                  <select
-                    id="purpose"
-                    {...field}
-                    aria-invalid={!!fieldState.error}
-                    className={cn(
-                      "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
-                    )}
-                  >
-                    <option value="">— wybierz —</option>
-                    {Object.entries(PURPOSE_LABEL).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <FieldError errors={[fieldState.error]} />
-                </Field>
-              )}
-            />
-            <Controller
-              control={control}
-              name="client"
-              render={({ field, fieldState }) => (
-                <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="client">Zamawiający wycenę</FieldLabel>
-                  <Input id="client" placeholder="np. Jan Kowalski" autoComplete="off" {...field} />
-                  <FieldError errors={[fieldState.error]} />
-                </Field>
-              )}
-            />
-          </FieldGroup>
-
-          <SubjectSection
-            control={control}
-            fetchState={subjectFetch}
-            onRetry={() => {
-              lastFetchedAddress.current = null;
-              void onAddressBlur();
-            }}
-          />
+        <div className="flex flex-col gap-4">
+          <SectionCard icon={MapPin} title="Adres i lokalizacja" sub="1 pole">
+            <FieldGroup>
+              <Controller
+                control={control}
+                name="address"
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={!!fieldState.error}>
+                    <FieldLabel htmlFor="address">Adres</FieldLabel>
+                    <Input
+                      id="address"
+                      placeholder="np. ul. Wierzbięcice 12/4, Poznań"
+                      autoComplete="off"
+                      {...field}
+                      onBlur={() => {
+                        field.onBlur();
+                        void onAddressBlur();
+                      }}
+                    />
+                    <FieldError errors={[fieldState.error]} />
+                  </Field>
+                )}
+              />
+            </FieldGroup>
+          </SectionCard>
 
           <KwSection
             control={control}
@@ -447,6 +383,91 @@ export function SubjectForm({
             }}
             areaMismatch={areaMismatch}
           />
+
+          <SectionCard icon={Building2} title="Dane przedmiotu">
+            <div className="flex flex-col gap-4">
+              <FieldGroup className="grid gap-4 sm:grid-cols-2">
+                <Controller
+                  control={control}
+                  name="area"
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={!!fieldState.error}>
+                      <FieldLabel htmlFor="area">Powierzchnia (m²)</FieldLabel>
+                      <Input
+                        id="area"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        inputMode="decimal"
+                        placeholder="np. 54.3"
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                        value={toInputValue(field.value)}
+                        onChange={(e) => field.onChange(e.target.value)}
+                      />
+                      <FieldError errors={[fieldState.error]} />
+                    </Field>
+                  )}
+                />
+              </FieldGroup>
+
+              <SubjectSection
+                control={control}
+                fetchState={subjectFetch}
+                onRetry={() => {
+                  lastFetchedAddress.current = null;
+                  void onAddressBlur();
+                }}
+              />
+            </div>
+          </SectionCard>
+
+          <SectionCard icon={User} title="Zamawiający i cel wyceny">
+            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              <Controller
+                control={control}
+                name="purpose"
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={!!fieldState.error}>
+                    <FieldLabel htmlFor="purpose">Cel wyceny</FieldLabel>
+                    <select
+                      id="purpose"
+                      {...field}
+                      aria-invalid={!!fieldState.error}
+                      className={cn(
+                        "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+                      )}
+                    >
+                      <option value="">— wybierz —</option>
+                      {Object.entries(PURPOSE_LABEL).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <FieldError errors={[fieldState.error]} />
+                  </Field>
+                )}
+              />
+              <Controller
+                control={control}
+                name="client"
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={!!fieldState.error}>
+                    <FieldLabel htmlFor="client">Zamawiający wycenę</FieldLabel>
+                    <Input
+                      id="client"
+                      placeholder="np. Jan Kowalski"
+                      autoComplete="off"
+                      {...field}
+                    />
+                    <FieldError errors={[fieldState.error]} />
+                  </Field>
+                )}
+              />
+            </FieldGroup>
+          </SectionCard>
 
           {submitError ? (
             <p role="alert" className="text-sm text-destructive">

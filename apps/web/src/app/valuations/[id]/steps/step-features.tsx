@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Calculator, Scale, SlidersHorizontal } from "lucide-react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import type { z } from "zod";
@@ -27,6 +28,7 @@ import {
 import { computeKcs, type Comparable, type KcsInput } from "@/domain/kcs";
 import { DEFAULT_FEATURES } from "@/lib/valuation-form-schema";
 import { FootNav } from "@/components/wizard/foot-nav";
+import { SectionCard } from "@/components/wizard/section-card";
 
 type FormInput = z.input<typeof featuresStepSchema>;
 type FormOutput = z.output<typeof featuresStepSchema>;
@@ -191,171 +193,172 @@ export function StepFeatures({
   });
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-8">
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <section className="flex flex-col gap-3">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cecha</TableHead>
-                <TableHead>Waga (%)</TableHead>
-                <TableHead>Ocena</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {featureFields.map((field, index) => {
-                const currentRating = features?.[index]?.rating ?? field.rating;
-                return (
-                  <Fragment key={field.id}>
-                    <TableRow>
-                      <TableCell className="whitespace-normal">{field.name}</TableCell>
-                      <TableCell>
-                        <Controller
-                          control={control}
-                          name={`features.${index}.weightPct`}
-                          render={({ field: weightField, fieldState }) => (
-                            <>
-                              <Input
-                                id={`feature-weight-${index}`}
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                inputMode="decimal"
-                                aria-invalid={!!fieldState.error}
-                                name={weightField.name}
-                                onBlur={weightField.onBlur}
-                                ref={weightField.ref}
-                                value={toInputValue(weightField.value)}
-                                onChange={(e) => weightField.onChange(e.target.value)}
-                              />
-                              <FieldError errors={[fieldState.error]} />
-                            </>
-                          )}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1.5">
-                          {RATING_OPTIONS.map((option) => (
-                            <Button
-                              key={option.value}
-                              type="button"
-                              size="sm"
-                              variant={currentRating === option.value ? "default" : "outline"}
-                              aria-label={`${field.name}: ${option.label}`}
-                              onClick={() =>
-                                setValue(`features.${index}.rating`, option.value, {
-                                  shouldDirty: true,
-                                  shouldValidate: true,
-                                })
-                              }
-                            >
-                              {option.label}
-                            </Button>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          data-testid={`remove-feature-${features?.[index]?.key ?? index}`}
-                          aria-label={`Usuń cechę ${field.name}`}
-                          disabled={featureFields.length === 1}
-                          onClick={() => removeFeature(index)}
-                        >
-                          Usuń
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell colSpan={4} className="py-0">
-                        <details>
-                          <summary
-                            data-testid={`feature-defs-summary-${features?.[index]?.key ?? index}`}
-                            className="cursor-pointer py-1.5 text-xs text-muted-foreground"
-                          >
-                            Definicje skali ocen — {field.name}
-                          </summary>
-                          <div className="flex flex-col gap-2 pb-3">
-                            {(["lepsza", "przecietna", "gorsza"] as const).map((level) => (
-                              <Controller
-                                key={level}
-                                control={control}
-                                name={`features.${index}.definitions.${level}`}
-                                render={({ field: defField }) => (
-                                  <label className="flex flex-col gap-1 text-xs">
-                                    <span className="text-muted-foreground">
-                                      {level === "przecietna" ? "przeciętna" : level}
-                                    </span>
-                                    <Input
-                                      data-testid={`feature-def-${features?.[index]?.key ?? index}-${level}`}
-                                      placeholder="puste pole — poziom nie pojawi się w operacie"
-                                      name={defField.name}
-                                      onBlur={defField.onBlur}
-                                      ref={defField.ref}
-                                      value={toInputValue(defField.value)}
-                                      onChange={(e) => defField.onChange(e.target.value)}
-                                    />
-                                  </label>
-                                )}
-                              />
+        <SectionCard icon={SlidersHorizontal} title="Cechy, oceny i wagi" sub="worek: lokal">
+          <div className="flex flex-col gap-3">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cecha</TableHead>
+                  <TableHead>Waga (%)</TableHead>
+                  <TableHead>Ocena</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {featureFields.map((field, index) => {
+                  const currentRating = features?.[index]?.rating ?? field.rating;
+                  return (
+                    <Fragment key={field.id}>
+                      <TableRow>
+                        <TableCell className="whitespace-normal">{field.name}</TableCell>
+                        <TableCell>
+                          <Controller
+                            control={control}
+                            name={`features.${index}.weightPct`}
+                            render={({ field: weightField, fieldState }) => (
+                              <>
+                                <Input
+                                  id={`feature-weight-${index}`}
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  inputMode="decimal"
+                                  aria-invalid={!!fieldState.error}
+                                  name={weightField.name}
+                                  onBlur={weightField.onBlur}
+                                  ref={weightField.ref}
+                                  value={toInputValue(weightField.value)}
+                                  onChange={(e) => weightField.onChange(e.target.value)}
+                                />
+                                <FieldError errors={[fieldState.error]} />
+                              </>
+                            )}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1.5">
+                            {RATING_OPTIONS.map((option) => (
+                              <Button
+                                key={option.value}
+                                type="button"
+                                size="sm"
+                                variant={currentRating === option.value ? "default" : "outline"}
+                                aria-label={`${field.name}: ${option.label}`}
+                                onClick={() =>
+                                  setValue(`features.${index}.rating`, option.value, {
+                                    shouldDirty: true,
+                                    shouldValidate: true,
+                                  })
+                                }
+                              >
+                                {option.label}
+                              </Button>
                             ))}
                           </div>
-                        </details>
-                      </TableCell>
-                    </TableRow>
-                  </Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            data-testid={`remove-feature-${features?.[index]?.key ?? index}`}
+                            aria-label={`Usuń cechę ${field.name}`}
+                            disabled={featureFields.length === 1}
+                            onClick={() => removeFeature(index)}
+                          >
+                            Usuń
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={4} className="py-0">
+                          <details>
+                            <summary
+                              data-testid={`feature-defs-summary-${features?.[index]?.key ?? index}`}
+                              className="cursor-pointer py-1.5 text-xs text-muted-foreground"
+                            >
+                              Definicje skali ocen — {field.name}
+                            </summary>
+                            <div className="flex flex-col gap-2 pb-3">
+                              {(["lepsza", "przecietna", "gorsza"] as const).map((level) => (
+                                <Controller
+                                  key={level}
+                                  control={control}
+                                  name={`features.${index}.definitions.${level}`}
+                                  render={({ field: defField }) => (
+                                    <label className="flex flex-col gap-1 text-xs">
+                                      <span className="text-muted-foreground">
+                                        {level === "przecietna" ? "przeciętna" : level}
+                                      </span>
+                                      <Input
+                                        data-testid={`feature-def-${features?.[index]?.key ?? index}-${level}`}
+                                        placeholder="puste pole — poziom nie pojawi się w operacie"
+                                        name={defField.name}
+                                        onBlur={defField.onBlur}
+                                        ref={defField.ref}
+                                        value={toInputValue(defField.value)}
+                                        onChange={(e) => defField.onChange(e.target.value)}
+                                      />
+                                    </label>
+                                  )}
+                                />
+                              ))}
+                            </div>
+                          </details>
+                        </TableCell>
+                      </TableRow>
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
 
-          {availableFeatures.length > 0 ? (
-            <select
-              data-testid="add-feature-select"
-              aria-label="Dodaj cechę z puli"
-              className="w-fit rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
-              value=""
-              onChange={(e) => {
-                const entry = FEATURE_PRESETS.lokal.find((x) => x.key === e.target.value);
-                if (!entry) return;
-                appendFeature({
-                  key: entry.key as LokalFeatureKey,
-                  name: entry.name,
-                  weightPct: 0,
-                  rating: "przecietna",
-                  definitions: { ...entry.defaultDefinitions },
-                });
-              }}
-            >
-              <option value="">+ Dodaj cechę z puli…</option>
-              {availableFeatures.map((e) => (
-                <option key={e.key} value={e.key}>
-                  {e.name}
-                </option>
-              ))}
-            </select>
-          ) : null}
+            {availableFeatures.length > 0 ? (
+              <select
+                data-testid="add-feature-select"
+                aria-label="Dodaj cechę z puli"
+                className="w-fit rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
+                value=""
+                onChange={(e) => {
+                  const entry = FEATURE_PRESETS.lokal.find((x) => x.key === e.target.value);
+                  if (!entry) return;
+                  appendFeature({
+                    key: entry.key as LokalFeatureKey,
+                    name: entry.name,
+                    weightPct: 0,
+                    rating: "przecietna",
+                    definitions: { ...entry.defaultDefinitions },
+                  });
+                }}
+              >
+                <option value="">+ Dodaj cechę z puli…</option>
+                {availableFeatures.map((e) => (
+                  <option key={e.key} value={e.key}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
 
-          {featuresError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {featuresError}
-            </p>
-          ) : !weightsBalanced ? (
-            <p className="text-sm text-amber-600 dark:text-amber-500">
-              Suma wag wynosi {numberFormatter.format(weightSum)}% — powinna wynosić 100%.
-            </p>
-          ) : null}
-        </section>
+            {featuresError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {featuresError}
+              </p>
+            ) : !weightsBalanced ? (
+              <p className="text-sm text-amber-600 dark:text-amber-500">
+                Suma wag wynosi {numberFormatter.format(weightSum)}% — powinna wynosić 100%.
+              </p>
+            ) : null}
+          </div>
+        </SectionCard>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
-          <section className="rounded-[14px] border border-border bg-card p-5 shadow-sm">
-            <p className="text-[14.5px] font-semibold">Wskaźnik korekty ΣUi</p>
+          <SectionCard icon={Scale} title="Wskaźnik korekty ΣUi">
             <p
               data-testid="sidebar-sum-ui"
-              className="num mt-2 text-[28px] font-semibold text-foreground"
+              className="num text-[28px] font-semibold text-foreground"
             >
               {live ? sumUiFormatter.format(live.sumUi) : "—"}
             </p>
@@ -383,11 +386,10 @@ export function StepFeatures({
                 </p>
               </div>
             ) : null}
-          </section>
+          </SectionCard>
 
-          <section className="rounded-[14px] border border-border bg-card p-5 shadow-sm">
-            <p className="text-[14.5px] font-semibold">Podgląd wartości (WR)</p>
-            <div className="mt-3 flex flex-col gap-1.5 text-sm">
+          <SectionCard icon={Calculator} title="Podgląd wartości (WR)">
+            <div className="flex flex-col gap-1.5 text-sm">
               <p className="text-muted-foreground">
                 Cśr × ΣUi = cena jedn.{" "}
                 <span className="num font-medium text-foreground">
@@ -395,13 +397,13 @@ export function StepFeatures({
                 </span>
               </p>
               <p className="text-muted-foreground">
-                × {area} m² ={" "}
+                × {area.toLocaleString("pl-PL")} m² ={" "}
                 <b data-testid="sidebar-wr-preview" className="num text-foreground">
                   {live ? `${wrFormatter.format(live.wr)} zł` : "—"}
                 </b>
               </p>
             </div>
-          </section>
+          </SectionCard>
         </aside>
       </div>
 

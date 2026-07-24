@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
+import { FileEdit } from "lucide-react";
 import { FootNav } from "@/components/wizard/foot-nav";
+import { SectionCard } from "@/components/wizard/section-card";
 
 /**
  * Step 6 ("Opisy") — FR-6 prose generator is out of scope for 11a (spec
@@ -10,15 +11,12 @@ import { FootNav } from "@/components/wizard/foot-nav";
 export function StepDescriptions({ valuationId }: { valuationId: string }) {
   return (
     <>
-      <Card>
-        <CardContent className="flex flex-col gap-2 pt-6">
-          <h2 className="text-sm font-medium text-foreground">Opisy</h2>
-          <p className="text-sm text-muted-foreground">
-            Generator prozy sekcji opisowych (FR-6) — w przygotowaniu. Opisy operatu powstają na
-            razie deterministycznie z szablonu przy zatwierdzeniu.
-          </p>
-        </CardContent>
-      </Card>
+      <SectionCard icon={FileEdit} title="Opisy">
+        <p className="text-sm text-muted-foreground">
+          Generator prozy sekcji opisowych (FR-6) — w przygotowaniu. Opisy operatu powstają na razie
+          deterministycznie z szablonu przy zatwierdzeniu.
+        </p>
+      </SectionCard>
       <FootNav
         back={{ href: `/valuations/${valuationId}?step=5` }}
         mid="Opisy z szablonu przy zatwierdzeniu"

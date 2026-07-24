@@ -1,10 +1,14 @@
 "use client";
 
+import { FileText } from "lucide-react";
 import { Controller, useWatch, type Control } from "react-hook-form";
 import type { z } from "zod";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { SectionCard } from "@/components/wizard/section-card";
+import { cn } from "@/lib/utils";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 
 type FormInput = z.input<typeof valuationFormSchema>;
@@ -31,10 +35,22 @@ interface KwSectionProps {
 
 const nf = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const SOURCES: Array<{ value: KwSource; label: string }> = [
-  { value: "akt", label: "Wgraj akt notarialny" },
-  { value: "odpis_kw", label: "Wgraj odpis KW" },
-  { value: "reczny", label: "Wpisz ręcznie" },
+// `label` stays byte-frozen (existing RTL tests query buttons by this exact
+// text via role name); `description` is new tile copy (mockup v3-r4
+// KwSourcePicker), appended inside the same button — a substring match on
+// `label` still passes.
+const SOURCES: Array<{ value: KwSource; label: string; description: string }> = [
+  {
+    value: "akt",
+    label: "Wgraj akt notarialny",
+    description: "najczęstsze źródło stanu prawnego",
+  },
+  {
+    value: "odpis_kw",
+    label: "Wgraj odpis KW",
+    description: "pełny lub zwykły odpis KW (PDF)",
+  },
+  { value: "reczny", label: "Wpisz ręcznie", description: "gdy nie dysponujesz dokumentem" },
 ];
 
 // Mirrors `NEXT_PUBLIC_SUBJECT_AUTOFETCH`: the upload buttons/file input render
@@ -134,155 +150,171 @@ export function KwSection(props: KwSectionProps) {
   };
 
   return (
-    <fieldset className="flex flex-col gap-3 rounded-md border border-border p-4">
-      <legend className="px-1 text-sm font-medium">Stan prawny (KW)</legend>
+    <SectionCard
+      icon={FileText}
+      title="Księga wieczysta"
+      right={
+        state.status === "done" ? <Badge variant="secondary">dokument wgrany</Badge> : undefined
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <div className="grid gap-2 sm:grid-cols-3">
+          {SOURCES.filter((s) => uploadEnabled || s.value === "reczny").map((s) => {
+            const selected = source === s.value;
+            return (
+              <Button
+                key={s.value}
+                type="button"
+                variant="outline"
+                onClick={() => onSourceChange(s.value)}
+                className={cn(
+                  "h-auto flex-col items-start gap-0.5 whitespace-normal rounded-lg px-4 py-3 text-left",
+                  selected
+                    ? "border-primary bg-[var(--accent-050)]"
+                    : "border-border bg-background",
+                )}
+              >
+                <span className="text-sm font-medium text-foreground">{s.label}</span>
+                <span className="text-xs font-normal text-muted-foreground">{s.description}</span>
+              </Button>
+            );
+          })}
+        </div>
 
-      <div className="flex flex-wrap gap-2">
-        {SOURCES.filter((s) => uploadEnabled || s.value === "reczny").map((s) => (
-          <Button
-            key={s.value}
-            type="button"
-            variant={source === s.value ? "default" : "outline"}
-            onClick={() => onSourceChange(s.value)}
-          >
-            {s.label}
-          </Button>
-        ))}
-      </div>
+        {source !== "reczny" && uploadEnabled ? (
+          <input
+            type="file"
+            accept="application/pdf"
+            aria-label="Plik dokumentu (PDF)"
+            data-testid="kw-file-input"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) props.onFileSelected(file);
+            }}
+          />
+        ) : null}
 
-      {source !== "reczny" && uploadEnabled ? (
-        <input
-          type="file"
-          accept="application/pdf"
-          aria-label="Plik dokumentu (PDF)"
-          data-testid="kw-file-input"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) props.onFileSelected(file);
-          }}
-        />
-      ) : null}
+        <KwFetchStatusBar state={state} onRetry={props.onRetry} />
 
-      <KwFetchStatusBar state={state} onRetry={props.onRetry} />
-
-      {/* kwNumber stays registered in both modes: the manual input in "reczny",
+        {/* kwNumber stays registered in both modes: the manual input in "reczny",
           and (upload mode) the visible surface for the schema's silent
           "no document, no number" issue (W4). */}
-      <Controller
-        control={control}
-        name="kwNumber"
-        render={({ field, fieldState }) =>
-          source === "reczny" ? (
-            <div className="flex flex-col gap-1">
-              <label htmlFor="kwNumber" className="text-sm">
-                Numer księgi wieczystej
-              </label>
-              <Input id="kwNumber" autoComplete="off" {...field} value={field.value ?? ""} />
-              {fieldState.error ? (
-                <p className="text-sm text-destructive">{fieldState.error.message}</p>
-              ) : null}
-            </div>
-          ) : fieldState.error ? (
-            <p data-testid="kw-upload-error" className="text-sm text-destructive">
-              Wgraj dokument albo przełącz na wpis ręczny.
-            </p>
-          ) : (
-            <span />
-          )
-        }
-      />
-
-      {source !== "reczny" && hasExtract ? (
-        <>
-          <Controller
-            control={control}
-            name="kw.deweloperski"
-            render={({ field }) => (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="kw-deweloperski"
-                  checked={field.value ?? false}
-                  onCheckedChange={(checked) => field.onChange(checked === true)}
-                  onBlur={field.onBlur}
-                  ref={field.ref}
-                />
-                <label htmlFor="kw-deweloperski" className="text-sm">
-                  Lokal bez własnej KW (zakup deweloperski) — dane z księgi macierzystej
+        <Controller
+          control={control}
+          name="kwNumber"
+          render={({ field, fieldState }) =>
+            source === "reczny" ? (
+              <div className="flex flex-col gap-1">
+                <label htmlFor="kwNumber" className="text-sm">
+                  Numer księgi wieczystej
                 </label>
+                <Input id="kwNumber" autoComplete="off" {...field} value={field.value ?? ""} />
+                {fieldState.error ? (
+                  <p className="text-sm text-destructive">{fieldState.error.message}</p>
+                ) : null}
               </div>
-            )}
-          />
+            ) : fieldState.error ? (
+              <p data-testid="kw-upload-error" className="text-sm text-destructive">
+                Wgraj dokument albo przełącz na wpis ręczny.
+              </p>
+            ) : (
+              <span />
+            )
+          }
+        />
 
-          {deweloperski ? (
-            <p
-              data-testid="kw-developer-banner"
-              className="rounded-md border border-amber-500 bg-amber-500/10 p-2 text-sm"
-            >
-              Lokal bez własnej KW (zakup deweloperski) — dane z księgi macierzystej gruntu.
-            </p>
-          ) : null}
-
-          {EXTRACT_TEXT_FIELDS.map((f) => (
+        {source !== "reczny" && hasExtract ? (
+          <>
             <Controller
-              key={f.name}
               control={control}
-              name={f.name}
+              name="kw.deweloperski"
               render={({ field }) => (
-                <div className="flex flex-col gap-1">
-                  <label htmlFor={f.id} className="text-sm">
-                    {f.label}
-                  </label>
-                  <Input
-                    id={f.id}
-                    autoComplete="off"
-                    {...field}
-                    disabled={f.name === "kw.kwLokalu" && !!deweloperski}
-                    value={field.value == null ? "" : String(field.value)}
-                  />
-                </div>
-              )}
-            />
-          ))}
-
-          {DZIAL_FIELDS.filter((d) => dzialPresent[d.name]).map((d) => (
-            <Controller
-              key={d.tresc}
-              control={control}
-              name={d.tresc}
-              render={({ field }) => (
-                <div className="flex flex-col gap-1">
-                  <label htmlFor={d.id} className="text-sm">
-                    {d.label}
-                  </label>
-                  <textarea
-                    id={d.id}
-                    className={textareaClass}
-                    value={(Array.isArray(field.value) ? field.value : []).join("\n")}
-                    onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="kw-deweloperski"
+                    checked={field.value ?? false}
+                    onCheckedChange={(checked) => field.onChange(checked === true)}
                     onBlur={field.onBlur}
                     ref={field.ref}
                   />
+                  <label htmlFor="kw-deweloperski" className="text-sm">
+                    Lokal bez własnej KW (zakup deweloperski) — dane z księgi macierzystej
+                  </label>
                 </div>
               )}
             />
-          ))}
 
-          {props.areaMismatch ? (
-            <div
-              data-testid="kw-area-mismatch"
-              className="flex flex-col gap-2 rounded-md border border-amber-500 bg-amber-500/10 p-2 text-sm"
-            >
-              <p>
-                Powierzchnia w formularzu ({nf.format(props.areaMismatch.form)} m²) różni się od
-                powierzchni w dokumencie ({nf.format(props.areaMismatch.doc)} m²).
+            {deweloperski ? (
+              <p
+                data-testid="kw-developer-banner"
+                className="rounded-md border border-amber-500 bg-amber-500/10 p-2 text-sm"
+              >
+                Lokal bez własnej KW (zakup deweloperski) — dane z księgi macierzystej gruntu.
               </p>
-              <Button type="button" variant="outline" onClick={props.onUseDocumentArea}>
-                Użyj wartości z dokumentu
-              </Button>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-    </fieldset>
+            ) : null}
+
+            {EXTRACT_TEXT_FIELDS.map((f) => (
+              <Controller
+                key={f.name}
+                control={control}
+                name={f.name}
+                render={({ field }) => (
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor={f.id} className="text-sm">
+                      {f.label}
+                    </label>
+                    <Input
+                      id={f.id}
+                      autoComplete="off"
+                      {...field}
+                      disabled={f.name === "kw.kwLokalu" && !!deweloperski}
+                      value={field.value == null ? "" : String(field.value)}
+                    />
+                  </div>
+                )}
+              />
+            ))}
+
+            {DZIAL_FIELDS.filter((d) => dzialPresent[d.name]).map((d) => (
+              <Controller
+                key={d.tresc}
+                control={control}
+                name={d.tresc}
+                render={({ field }) => (
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor={d.id} className="text-sm">
+                      {d.label}
+                    </label>
+                    <textarea
+                      id={d.id}
+                      className={textareaClass}
+                      value={(Array.isArray(field.value) ? field.value : []).join("\n")}
+                      onChange={(e) => field.onChange(e.target.value.split("\n"))}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </div>
+                )}
+              />
+            ))}
+
+            {props.areaMismatch ? (
+              <div
+                data-testid="kw-area-mismatch"
+                className="flex flex-col gap-2 rounded-md border border-amber-500 bg-amber-500/10 p-2 text-sm"
+              >
+                <p>
+                  Powierzchnia w formularzu ({nf.format(props.areaMismatch.form)} m²) różni się od
+                  powierzchni w dokumencie ({nf.format(props.areaMismatch.doc)} m²).
+                </p>
+                <Button type="button" variant="outline" onClick={props.onUseDocumentArea}>
+                  Użyj wartości z dokumentu
+                </Button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </SectionCard>
   );
 }

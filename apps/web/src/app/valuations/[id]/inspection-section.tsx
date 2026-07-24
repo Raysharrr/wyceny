@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   removeInspectionPhoto,
@@ -8,6 +9,8 @@ import {
   uploadInspectionPhoto,
 } from "@/app/actions/inspection";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
+import { plural } from "@/components/wizard/plural";
+import { SectionCard } from "@/components/wizard/section-card";
 import { processPhoto } from "@/lib/photo-process-client";
 import {
   INSPECTION_SECTIONS,
@@ -97,82 +100,93 @@ export function InspectionSection({
           ⚠ Operat bez dokumentacji fotograficznej — dodaj zdjęcia z oględzin.
         </p>
       ) : null}
-      {INSPECTION_SECTIONS.map((section) => (
-        <div key={section} className="flex flex-col gap-2">
-          <h3 className="text-sm font-medium">{SECTION_LABELS[section]}</h3>
-          <div className="flex flex-wrap gap-2">
-            {(inspection?.photos[section] ?? []).map((key) => (
-              <figure key={key} className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element -- bytea-served thumbnail, not an optimizable asset */}
-                <img
-                  src={`/api/docs/${encodeURIComponent(key)}`}
-                  alt={`Zdjęcie — ${SECTION_LABELS[section]}`}
-                  className="h-24 w-32 rounded-md border object-cover"
+      {INSPECTION_SECTIONS.map((section) => {
+        const count = (inspection?.photos[section] ?? []).length;
+        return (
+          <SectionCard
+            key={section}
+            icon={Camera}
+            title={SECTION_LABELS[section]}
+            sub={`${count} ${plural(count, "zdjęcie", "zdjęcia", "zdjęć")}`}
+          >
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap gap-2">
+                {(inspection?.photos[section] ?? []).map((key) => (
+                  <figure key={key} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- bytea-served thumbnail, not an optimizable asset */}
+                    <img
+                      src={`/api/docs/${encodeURIComponent(key)}`}
+                      alt={`Zdjęcie — ${SECTION_LABELS[section]}`}
+                      className="h-24 w-32 rounded-md border object-cover"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label="Usuń zdjęcie"
+                      disabled={isPending}
+                      onClick={() =>
+                        startTransition(async () => {
+                          const r = await removeInspectionPhoto(valuationId, section, key);
+                          if (r?.error) setError(r.error);
+                        })
+                      }
+                    >
+                      Usuń
+                    </Button>
+                  </figure>
+                ))}
+              </div>
+              {uploadEnabled ? (
+                <input
+                  ref={(el) => {
+                    inputRefs.current[section] = el;
+                  }}
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png"
+                  aria-label={`Dodaj zdjęcia — ${SECTION_LABELS[section]}`}
+                  disabled={uploading !== null || total >= MAX_INSPECTION_PHOTOS}
+                  onChange={(e) => {
+                    if (e.target.files?.length) void uploadFiles(section, e.target.files);
+                  }}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Usuń zdjęcie"
-                  disabled={isPending}
-                  onClick={() =>
-                    startTransition(async () => {
-                      const r = await removeInspectionPhoto(valuationId, section, key);
-                      if (r?.error) setError(r.error);
-                    })
-                  }
-                >
-                  Usuń
-                </Button>
-              </figure>
-            ))}
-          </div>
-          {uploadEnabled ? (
-            <input
-              ref={(el) => {
-                inputRefs.current[section] = el;
-              }}
-              type="file"
-              multiple
-              accept="image/jpeg,image/png"
-              aria-label={`Dodaj zdjęcia — ${SECTION_LABELS[section]}`}
-              disabled={uploading !== null || total >= MAX_INSPECTION_PHOTOS}
-              onChange={(e) => {
-                if (e.target.files?.length) void uploadFiles(section, e.target.files);
-              }}
-            />
-          ) : null}
-        </div>
-      ))}
+              ) : null}
+            </div>
+          </SectionCard>
+        );
+      })}
       {uploading ? (
         <p data-testid="inspection-progress" className="text-sm text-muted-foreground">
           ⏳ Przetwarzam zdjęcie {uploading}…
         </p>
       ) : null}
-      <div className="flex flex-col gap-2">
-        <label htmlFor="inspection-note" className="text-sm font-medium">
-          Notatka z oględzin
-        </label>
-        <textarea
-          id="inspection-note"
-          className="min-h-24 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base md:text-sm"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          disabled={isPending}
-          onClick={() =>
-            startTransition(async () => {
-              const r = await saveInspectionNote(valuationId, note);
-              if (r?.error) setError(r.error);
-            })
-          }
-        >
-          Zapisz notatkę
-        </Button>
-      </div>
+      <SectionCard title="Notatka z wizyty">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="inspection-note" className="text-sm font-medium">
+            Notatka z oględzin
+          </label>
+          <textarea
+            id="inspection-note"
+            className="min-h-24 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base md:text-sm"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isPending}
+            onClick={() =>
+              startTransition(async () => {
+                const r = await saveInspectionNote(valuationId, note);
+                if (r?.error) setError(r.error);
+              })
+            }
+          >
+            Zapisz notatkę
+          </Button>
+        </div>
+      </SectionCard>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}

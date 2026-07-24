@@ -1,5 +1,8 @@
+import { Calculator, Scale, SlidersHorizontal, Table2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { plural } from "@/components/wizard/plural";
+import { SectionCard } from "@/components/wizard/section-card";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
 import type { KwDzialSnapshot } from "@/domain/kw-snapshot";
 import { formatNumber } from "@/domain/document-model";
@@ -33,77 +36,95 @@ function provenanceStatusText(status?: string): string {
 export function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
   const r = computeKcs(inputs);
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-6">
-        {/* T2 — ceny jednostkowe */}
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-foreground">Ceny jednostkowe próby (T2)</h2>
-          <dl className="grid grid-cols-2 gap-1 text-sm sm:grid-cols-5">
-            <div>
-              <dt className="text-xs text-muted-foreground">Cmin</dt>
-              <dd className="num">{plnPerM2.format(r.cmin)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Cmax</dt>
-              <dd className="num">{plnPerM2.format(r.cmax)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Cśr</dt>
-              <dd className="num">{plnPerM2.format(r.csr)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Vmin</dt>
-              <dd className="num">{r.vmin.toFixed(3)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Vmax</dt>
-              <dd className="num">{r.vmax.toFixed(3)}</dd>
-            </div>
-          </dl>
-        </section>
-        {/* T3 — współczynniki korygujące */}
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-foreground">Współczynniki korygujące (T3)</h2>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-muted-foreground">
-                <th className="py-1 font-medium">Cecha</th>
-                <th className="py-1 font-medium">Waga</th>
-                <th className="py-1 font-medium">Ocena</th>
-                <th className="py-1 text-right font-medium">Ui</th>
-              </tr>
-            </thead>
-            <tbody>
-              {r.ui.map((u) => (
-                <tr key={u.name} className="border-t border-border">
-                  <td className="py-1">{u.name}</td>
-                  <td className="py-1 num">{Math.round(u.weight * 100)}%</td>
-                  <td className="py-1">{RATING_LABEL[u.rating]}</td>
-                  <td className="py-1 text-right num">{u.value.toFixed(4)}</td>
-                </tr>
-              ))}
-              <tr className="border-t border-border font-medium">
-                <td className="py-1" colSpan={3}>
-                  Suma współczynników (ΣUi)
+    <>
+      {/* T2 — ceny jednostkowe */}
+      <SectionCard icon={Scale} title="Ceny jednostkowe próby" sub="Tabela 2 operatu">
+        <dl className="grid grid-cols-2 gap-1 text-sm sm:grid-cols-5">
+          <div>
+            <dt className="text-xs text-muted-foreground">Cmin</dt>
+            <dd className="num">{plnPerM2.format(r.cmin)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Cmax</dt>
+            <dd className="num">{plnPerM2.format(r.cmax)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Cśr</dt>
+            <dd className="num">{plnPerM2.format(r.csr)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Vmin</dt>
+            <dd className="num">
+              {r.vmin.toLocaleString("pl-PL", {
+                minimumFractionDigits: 3,
+                maximumFractionDigits: 3,
+              })}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Vmax</dt>
+            <dd className="num">
+              {r.vmax.toLocaleString("pl-PL", {
+                minimumFractionDigits: 3,
+                maximumFractionDigits: 3,
+              })}
+            </dd>
+          </div>
+        </dl>
+      </SectionCard>
+      {/* T3 — współczynniki korygujące */}
+      <SectionCard icon={SlidersHorizontal} title="Współczynniki korygujące" sub="Tabela 3 operatu">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-muted-foreground">
+              <th className="py-1 font-medium">Cecha</th>
+              <th className="py-1 font-medium">Waga</th>
+              <th className="py-1 font-medium">Ocena</th>
+              <th className="py-1 text-right font-medium">Ui</th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.ui.map((u) => (
+              <tr key={u.name} className="border-t border-border">
+                <td className="py-1">{u.name}</td>
+                <td className="py-1 num">{Math.round(u.weight * 100)}%</td>
+                <td className="py-1">{RATING_LABEL[u.rating]}</td>
+                <td className="py-1 text-right num">
+                  {u.value.toLocaleString("pl-PL", {
+                    minimumFractionDigits: 4,
+                    maximumFractionDigits: 4,
+                  })}
                 </td>
-                <td className="py-1 text-right num">{r.sumUi.toFixed(3)}</td>
               </tr>
-            </tbody>
-          </table>
-        </section>
-        {/* T4 — wartość rynkowa */}
-        <section className="flex flex-col gap-1 text-sm">
-          <h2 className="text-sm font-semibold text-foreground">Wartość rynkowa (T4)</h2>
+            ))}
+            <tr className="border-t border-border font-medium">
+              <td className="py-1" colSpan={3}>
+                Suma współczynników (ΣUi)
+              </td>
+              <td className="py-1 text-right num">
+                {r.sumUi.toLocaleString("pl-PL", {
+                  minimumFractionDigits: 3,
+                  maximumFractionDigits: 3,
+                })}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </SectionCard>
+      {/* T4 — wartość rynkowa */}
+      <SectionCard icon={Calculator} title="Wartość rynkowa" sub="Tabela 4 operatu">
+        <div className="flex flex-col gap-1 text-sm">
           <p className="text-muted-foreground">
-            WR = Cśr × ΣUi × P = {plnPerM2.format(r.unitValue)}/m² × {inputs.area} m²
+            WR = Cśr × ΣUi × P = {plnPerM2.format(r.unitValue)}/m² ×{" "}
+            {inputs.area.toLocaleString("pl-PL")} m²
           </p>
           <p className="font-medium text-foreground">
             <span className="num">{plnPerM2.format(r.wrUnrounded)}</span> → po zaokrągleniu{" "}
             <span className="num text-primary">{plnPerM2.format(r.wr)}</span>
           </p>
-        </section>
-      </CardContent>
-    </Card>
+        </div>
+      </SectionCard>
+    </>
   );
 }
 
@@ -375,12 +396,14 @@ export function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
     area && (area.source === "akt" || area.source === "odpis_kw")
       ? `powierzchnia: ${AREA_SOURCE_LABEL[area.source]} — ${provenanceStatusText(area.status)}`
       : null;
+  const count = inputs.comparables.length;
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 pt-6">
-        <h2 className="text-sm font-medium text-foreground">
-          Próba ({inputs.comparables.length} transakcji)
-        </h2>
+    <SectionCard
+      icon={Table2}
+      title="Wybrane transakcje"
+      sub={`Tabela 1 operatu · ${count} ${plural(count, "transakcja", "transakcje", "transakcji")}`}
+    >
+      <div className="flex flex-col gap-3">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-muted-foreground">
@@ -417,7 +440,7 @@ export function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
               : ""}
           </p>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }

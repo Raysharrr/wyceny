@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Scale, Table2 } from "lucide-react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import type { z } from "zod";
@@ -22,6 +23,7 @@ import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import { AutoBanner } from "@/components/wizard/auto-banner";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { plural } from "@/components/wizard/plural";
+import { SectionCard } from "@/components/wizard/section-card";
 import type { Comparable, KcsInput } from "@/domain/kcs";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 
@@ -188,154 +190,162 @@ export function StepSample({
   });
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-8">
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <section className="flex flex-col gap-3">
-          {sampleMeta ? (
-            <AutoBanner>
-              Pobrano <b>{sampleMeta.query.count} transakcji</b> z RCN (
-              {new Date(sampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
-            </AutoBanner>
-          ) : null}
+        <SectionCard
+          icon={Table2}
+          title="Próba porównawcza"
+          sub={`${comparablesCount} ${plural(comparablesCount, "transakcja", "transakcje", "transakcji")}`}
+        >
+          <div className="flex flex-col gap-3">
+            {sampleMeta ? (
+              <AutoBanner>
+                Pobrano <b>{sampleMeta.query.count} transakcji</b> z RCN (
+                {new Date(sampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
+              </AutoBanner>
+            ) : null}
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Data transakcji</TableHead>
-                <TableHead>Powierzchnia (m²)</TableHead>
-                <TableHead>Cena (zł/m²)</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {comparableFields.map((field, index) => (
-                <TableRow key={field.id}>
-                  <TableCell>
-                    <Controller
-                      control={control}
-                      name={`comparables.${index}.date`}
-                      render={({ field: dateField }) => (
-                        <Input
-                          id={`comparable-date-${index}`}
-                          placeholder="2024-07"
-                          {...dateField}
-                        />
-                      )}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Controller
-                      control={control}
-                      name={`comparables.${index}.area`}
-                      render={({ field: areaField, fieldState }) => (
-                        <>
-                          <Input
-                            id={`comparable-area-${index}`}
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            inputMode="decimal"
-                            placeholder="m²"
-                            name={areaField.name}
-                            onBlur={areaField.onBlur}
-                            ref={areaField.ref}
-                            value={toInputValue(areaField.value)}
-                            onChange={(e) =>
-                              areaField.onChange(e.target.value === "" ? undefined : e.target.value)
-                            }
-                            aria-invalid={!!fieldState.error}
-                          />
-                          <FieldError errors={[fieldState.error]} />
-                        </>
-                      )}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Controller
-                      control={control}
-                      name={`comparables.${index}.pricePerM2`}
-                      render={({ field: priceField, fieldState }) => (
-                        <>
-                          <Input
-                            id={`comparable-price-${index}`}
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            inputMode="decimal"
-                            placeholder="zł/m²"
-                            aria-invalid={!!fieldState.error}
-                            name={priceField.name}
-                            onBlur={priceField.onBlur}
-                            ref={priceField.ref}
-                            value={toInputValue(priceField.value)}
-                            onChange={(e) => priceField.onChange(e.target.value)}
-                          />
-                          <FieldError errors={[fieldState.error]} />
-                        </>
-                      )}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={comparableFields.length <= 3}
-                      onClick={() => removeComparable(index)}
-                    >
-                      Usuń
-                    </Button>
-                  </TableCell>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data transakcji</TableHead>
+                  <TableHead>Powierzchnia (m²)</TableHead>
+                  <TableHead>Cena (zł/m²)</TableHead>
+                  <TableHead />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {comparableFields.map((field, index) => (
+                  <TableRow key={field.id}>
+                    <TableCell>
+                      <Controller
+                        control={control}
+                        name={`comparables.${index}.date`}
+                        render={({ field: dateField }) => (
+                          <Input
+                            id={`comparable-date-${index}`}
+                            placeholder="2024-07"
+                            {...dateField}
+                          />
+                        )}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Controller
+                        control={control}
+                        name={`comparables.${index}.area`}
+                        render={({ field: areaField, fieldState }) => (
+                          <>
+                            <Input
+                              id={`comparable-area-${index}`}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              inputMode="decimal"
+                              placeholder="m²"
+                              name={areaField.name}
+                              onBlur={areaField.onBlur}
+                              ref={areaField.ref}
+                              value={toInputValue(areaField.value)}
+                              onChange={(e) =>
+                                areaField.onChange(
+                                  e.target.value === "" ? undefined : e.target.value,
+                                )
+                              }
+                              aria-invalid={!!fieldState.error}
+                            />
+                            <FieldError errors={[fieldState.error]} />
+                          </>
+                        )}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Controller
+                        control={control}
+                        name={`comparables.${index}.pricePerM2`}
+                        render={({ field: priceField, fieldState }) => (
+                          <>
+                            <Input
+                              id={`comparable-price-${index}`}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              inputMode="decimal"
+                              placeholder="zł/m²"
+                              aria-invalid={!!fieldState.error}
+                              name={priceField.name}
+                              onBlur={priceField.onBlur}
+                              ref={priceField.ref}
+                              value={toInputValue(priceField.value)}
+                              onChange={(e) => priceField.onChange(e.target.value)}
+                            />
+                            <FieldError errors={[fieldState.error]} />
+                          </>
+                        )}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={comparableFields.length <= 3}
+                        onClick={() => removeComparable(index)}
+                      >
+                        Usuń
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
 
-          {comparablesError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {comparablesError}
-            </p>
-          ) : null}
+            {comparablesError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {comparablesError}
+              </p>
+            ) : null}
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-fit"
-              onClick={() => appendComparable({ ...emptyComparable })}
-            >
-              Dodaj transakcję
-            </Button>
-            <Button
-              type="button"
-              id="fetch-sample"
-              variant="outline"
-              className="w-fit"
-              disabled={isFetchingSample}
-              onClick={onFetchSample}
-            >
-              {isFetchingSample ? "Pobieranie…" : "Pobierz próbę z RCN"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-fit"
+                onClick={() => appendComparable({ ...emptyComparable })}
+              >
+                Dodaj transakcję
+              </Button>
+              <Button
+                type="button"
+                id="fetch-sample"
+                variant="outline"
+                className="w-fit"
+                disabled={isFetchingSample}
+                onClick={onFetchSample}
+              >
+                {isFetchingSample ? "Pobieranie…" : "Pobierz próbę z RCN"}
+              </Button>
+            </div>
+
+            {fetchSampleError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {fetchSampleError}
+              </p>
+            ) : null}
+
+            {comparablesCount < REQUIRED_SAMPLE_SIZE ? (
+              <p className="text-sm text-amber-600 dark:text-amber-500">
+                Operat wymaga co najmniej {REQUIRED_SAMPLE_SIZE} transakcji — masz{" "}
+                {comparablesCount}. Szkic można zapisać, ale zatwierdzenie operatu będzie
+                zablokowane.
+              </p>
+            ) : null}
           </div>
-
-          {fetchSampleError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {fetchSampleError}
-            </p>
-          ) : null}
-
-          {comparablesCount < REQUIRED_SAMPLE_SIZE ? (
-            <p className="text-sm text-amber-600 dark:text-amber-500">
-              Operat wymaga co najmniej {REQUIRED_SAMPLE_SIZE} transakcji — masz {comparablesCount}.
-              Szkic można zapisać, ale zatwierdzenie operatu będzie zablokowane.
-            </p>
-          ) : null}
-        </section>
+        </SectionCard>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
-          <section className="rounded-[14px] border border-border bg-card p-5 shadow-sm">
-            <p className="text-[14.5px] font-semibold">Statystyki próby</p>
-            <div className="mt-3 flex flex-col gap-2 text-sm">
+          <SectionCard icon={Scale} title="Statystyki próby">
+            <div className="flex flex-col gap-2 text-sm">
               <p>
                 <span className="text-muted-foreground">Cmin: </span>
                 <span className="num font-medium text-foreground">{formatStat(cmin)}</span>
@@ -367,7 +377,7 @@ export function StepSample({
                 </p>
               </div>
             ) : null}
-          </section>
+          </SectionCard>
         </aside>
       </div>
 
