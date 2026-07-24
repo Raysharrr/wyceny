@@ -57,6 +57,18 @@ function toInputValue(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
 }
 
+// Display-only formatting for the sidebar tile + FootNav mid (Slice 12
+// review nit): the raw watched area value is a string from the RHF
+// coerced-number input, so rendering it verbatim ("54.3 m²") leaks the
+// dot-decimal HTML number format into PL-locale copy. `null` means
+// non-numeric/empty — callers fall back to their existing "—"/absence
+// behavior exactly as before.
+function formatAreaDisplay(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  const num = Number(value);
+  return Number.isNaN(num) ? null : num.toLocaleString("pl-PL");
+}
+
 // Maps a persisted SubjectSnapshot's numeric fields (plain numbers) to the
 // strings the step-1 form's coerced-number inputs expect — same rationale as
 // `toInputValue`, applied once at the defaults layer instead of per-render.
@@ -217,6 +229,7 @@ export function SubjectForm({
   // same watched values used by the KW mismatch check above, reused rather
   // than re-subscribed.
   const watchedAddress = useWatch({ control, name: "address" });
+  const areaDisplay = formatAreaDisplay(areaValue);
 
   // Surfaced only when a document gave a usable area AND the form's own area
   // disagrees — a nudge, never a block (the appraiser decides which wins).
@@ -521,7 +534,7 @@ export function SubjectForm({
             <dl className="mt-3 grid grid-cols-2 gap-2 text-[12.5px]">
               <div>
                 <dt className="text-muted-foreground">Powierzchnia</dt>
-                <dd className="num text-[15px]">{areaValue ? `${String(areaValue)} m²` : "—"}</dd>
+                <dd className="num text-[15px]">{areaDisplay ? `${areaDisplay} m²` : "—"}</dd>
               </div>
             </dl>
           </section>
@@ -532,7 +545,7 @@ export function SubjectForm({
         back={valuationId ? { href: "/valuations" } : undefined}
         mid={
           <span>
-            Przedmiot: <b>lokal mieszkalny{areaValue ? `, ${String(areaValue)} m²` : ""}</b>
+            Przedmiot: <b>lokal mieszkalny{areaDisplay ? `, ${areaDisplay} m²` : ""}</b>
           </span>
         }
       >

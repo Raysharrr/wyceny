@@ -217,7 +217,7 @@ describe("SubjectForm — step 1 sidebar (Slice 12 Task 7)", () => {
     await user.type(screen.getByLabelText("Adres"), "ul. Sidebar 9, Poznań");
     await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
     expect(await screen.findByText("ul. Sidebar 9, Poznań")).toBeInTheDocument();
-    expect(await screen.findByText("54.3 m²")).toBeInTheDocument();
+    expect(await screen.findByText("54,3 m²")).toBeInTheDocument();
   });
 });
 

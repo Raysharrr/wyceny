@@ -263,12 +263,12 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity)", (
     // occurrences don't collide in an ambiguous getByText query.
     const footNav = screen.getByRole("link", { name: /wstecz/i }).closest(".fixed") as HTMLElement;
     expect(within(footNav).getByText(/Próba:/)).toBeInTheDocument();
-    expect(within(footNav).getByText("2 transakcji")).toBeInTheDocument();
+    expect(within(footNav).getByText("2 transakcje")).toBeInTheDocument();
     expect(within(footNav).getByText(/Cśr/)).toBeInTheDocument();
     expect(within(footNav).getByText("11 000,00 zł/m²")).toBeInTheDocument();
   });
 
-  it("renders the submit button inside the FootNav bar so it still natively submits the form", () => {
+  it("FootNav primary button has type=submit", () => {
     render(
       <StepSample
         valuationId={VID}

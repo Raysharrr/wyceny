@@ -46,7 +46,7 @@ export function ValuationActions({
   canApprove: boolean;
   canSign: boolean;
   canCreateNewVersion: boolean;
-  /** Optional (advisor I2): ValuationActions also mounts on the flat view
+  /** Optional: ValuationActions also mounts on the flat view
    * (page.tsx), whose call site doesn't pass it — `undefined` and `null`
    * both fall back to the WR blocker hint in the FootNav mid slot. */
   wr?: number | null;
@@ -179,7 +179,7 @@ export function ValuationActions({
           {error}
         </p>
       ) : null}
-      {/* Advisor I1: ValuationActions also mounts on the flat view (approved/signed,
+      {/* ValuationActions also mounts on the flat view (approved/signed,
        * canApprove=false) where an unconditional fixed FootNav would overlay the PDF
        * iframe — gate it so it exists only alongside the approve action it carries. */}
       {canApprove ? (

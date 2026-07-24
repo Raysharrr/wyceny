@@ -8,6 +8,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { saveInspectionDate } from "@/app/actions/inspection";
 import { FootNav } from "@/components/wizard/foot-nav";
+import { plural } from "@/components/wizard/plural";
 import { totalInspectionPhotos, type InspectionSnapshot } from "@/domain/inspection";
 import { InspectionSection } from "../inspection-section";
 
@@ -61,7 +62,11 @@ export function StepInspection({
         back={{ href: `/valuations/${valuationId}?step=1` }}
         mid={
           <>
-            Oględziny: <b>{totalInspectionPhotos(inspection)} zdjęć</b>
+            Oględziny:{" "}
+            <b>
+              {totalInspectionPhotos(inspection)}{" "}
+              {plural(totalInspectionPhotos(inspection), "zdjęcie", "zdjęcia", "zdjęć")}
+            </b>
           </>
         }
       >

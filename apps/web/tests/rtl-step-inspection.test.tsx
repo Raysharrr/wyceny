@@ -108,6 +108,6 @@ describe("StepInspection", () => {
     render(<StepInspection valuationId={VID} inspection={inspection} inspectionDate={null} />);
 
     expect(screen.getByText("Oględziny:")).toBeInTheDocument();
-    expect(screen.getByText("3 zdjęć")).toBeInTheDocument();
+    expect(screen.getByText("3 zdjęcia")).toBeInTheDocument();
   });
 });

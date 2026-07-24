@@ -21,6 +21,7 @@ import { sampleStepSchema } from "@/app/actions/wizard-schemas";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import { AutoBanner } from "@/components/wizard/auto-banner";
 import { FootNav } from "@/components/wizard/foot-nav";
+import { plural } from "@/components/wizard/plural";
 import type { Comparable, KcsInput } from "@/domain/kcs";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 
@@ -380,7 +381,10 @@ export function StepSample({
         back={{ href: `/valuations/${valuationId}?step=2` }}
         mid={
           <>
-            Próba: <b>{validCount} transakcji</b>
+            Próba:{" "}
+            <b>
+              {validCount} {plural(validCount, "transakcja", "transakcje", "transakcji")}
+            </b>
             {stats ? (
               <>
                 {" "}
