@@ -158,6 +158,57 @@ describe("SubjectForm — edit mode KW init", () => {
   });
 });
 
+describe("SubjectForm — legacy kw snapshot (Slice 12 Task 1 parity fix)", () => {
+  beforeEach(() => {
+    vi.mocked(saveSubjectAction).mockClear();
+  });
+
+  it("renders and saves a pre-11a draft whose kw snapshot predates kwInne/deweloperski", async () => {
+    const user = userEvent.setup();
+    // A Slice-10-era `inputs.kw` snapshot, saved before `kwInne`/`deweloperski`
+    // existed on the schema — cast past KcsInput's current (complete) KwSnapshot
+    // type since that's the whole point: this legacy shape violates it at runtime.
+    const legacyInputs = {
+      area: 61.2,
+      comparables: [],
+      features: [],
+      kw: {
+        source: "odpis_kw",
+        kwLokalu: "AB1C/1/9",
+      },
+    } as unknown as KcsInput;
+
+    const defaults = step1DefaultsFromInputs({
+      address: "ul. Legacy 3, Poznań",
+      area: 61.2,
+      purpose: "sprzedaz",
+      kwNumber: null,
+      client: "Jan Legacy",
+      inputs: legacyInputs,
+    });
+
+    render(<SubjectForm valuationId="legacy-1" defaults={defaults} />);
+
+    // Render assertion — pre-fix, `kwState`'s useState initializer spreads
+    // `defaults.kw.kwInne` (undefined, non-iterable) and throws a TypeError
+    // before this line is ever reached.
+    const status = screen.getByTestId("kw-fetch-status");
+    expect(status.textContent).toContain("1 KW");
+
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    // Save-path assertion — pre-fix (even with just a render guard), RHF's
+    // form state carries `kw.kwInne`/`kw.deweloperski` as `undefined`;
+    // step1Schema's `kwSchema` requires both, so the submit is invalid and
+    // `saveSubjectAction` is never called.
+    await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
+    const call = vi.mocked(saveSubjectAction).mock.calls.findLast(() => true);
+    const payload = call?.[1] as { kw?: { kwInne: string[]; deweloperski: boolean } };
+    expect(payload.kw?.kwInne).toEqual([]);
+    expect(payload.kw?.deweloperski).toBe(false);
+  });
+});
+
 describe("step1DefaultsFromInputs", () => {
   it("maps a persisted valuation's inputs into step-1 form defaults", () => {
     const inputs: KcsInput = {
