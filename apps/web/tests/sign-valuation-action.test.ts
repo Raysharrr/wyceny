@@ -91,7 +91,7 @@ describe("signValuationAction", () => {
   it("refuses an admin who is not the owner, before touching signature/storage/sign", async () => {
     getMock.mockResolvedValue(approvedValuation); // ownerId "u1"; session below is "admin-1"
     vi.mocked(await import("@/auth/session")).getSession.mockResolvedValueOnce({
-      user: { id: "admin-1", role: "admin" },
+      user: { id: "admin-1", name: "Admin Testowy", role: "admin" },
     });
 
     const result = await signValuationAction("v1");
