@@ -19,9 +19,10 @@ import {
 import { saveSampleAction } from "@/app/actions/wizard";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
+import { AutoBanner } from "@/components/wizard/auto-banner";
+import { FootNav } from "@/components/wizard/foot-nav";
 import type { Comparable, KcsInput } from "@/domain/kcs";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
-import { WizardNav } from "../stepper";
 
 type FormInput = z.input<typeof sampleStepSchema>;
 type FormOutput = z.output<typeof sampleStepSchema>;
@@ -42,8 +43,17 @@ const numberFormatter = new Intl.NumberFormat("pl-PL", {
   maximumFractionDigits: 2,
 });
 
+const ratioFormatter = new Intl.NumberFormat("pl-PL", {
+  minimumFractionDigits: 3,
+  maximumFractionDigits: 3,
+});
+
 function formatStat(value: number | null): string {
   return value === null ? "—" : `${numberFormatter.format(value)} zł/m²`;
+}
+
+function formatRatio(value: number | null): string {
+  return value === null ? "—" : ratioFormatter.format(value);
 }
 
 // zod's coerced-number fields (`z.coerce.number()`) have an `input` type of
@@ -122,6 +132,20 @@ export function StepSample({
     ? validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length
     : null;
 
+  // `stats` only exists once every input is a real, positive number — the
+  // guard against `avg === 0` (impossible in practice, since `validPrices`
+  // already filters to `price > 0`) keeps `vMin`/`vMax` division-safe without
+  // scattering the same three null-checks across the JSX below.
+  const stats =
+    cmin !== null && cmax !== null && csr !== null && csr > 0
+      ? { min: cmin, max: cmax, avg: csr }
+      : null;
+  const vMin = stats ? stats.min / stats.avg : null;
+  const vMax = stats ? stats.max / stats.avg : null;
+  const csrPos =
+    stats && stats.max > stats.min ? (stats.avg - stats.min) / (stats.max - stats.min) : null;
+
+  const validCount = validPrices.length;
   const comparablesCount = (comparables ?? []).length;
   const comparablesError = errors.comparables?.root?.message ?? errors.comparables?.message;
 
@@ -163,15 +187,15 @@ export function StepSample({
   });
 
   return (
-    <>
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-8">
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-8">
+      <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
         <section className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-base font-semibold text-foreground">Próba porównawcza</h2>
-            <p className="text-sm text-muted-foreground">
-              Transakcje porównawcze użyte do wyznaczenia ceny średniej (Cśr) — minimum 3.
-            </p>
-          </div>
+          {sampleMeta ? (
+            <AutoBanner>
+              Pobrano <b>{sampleMeta.query.count} transakcji</b> z RCN (
+              {new Date(sampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
+            </AutoBanner>
+          ) : null}
 
           <Table>
             <TableHeader>
@@ -305,34 +329,71 @@ export function StepSample({
               Szkic można zapisać, ale zatwierdzenie operatu będzie zablokowane.
             </p>
           ) : null}
-
-          <div className="flex flex-wrap gap-4 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
-            <p>
-              <span className="text-muted-foreground">Cmin: </span>
-              <span className="font-medium text-foreground">{formatStat(cmin)}</span>
-            </p>
-            <p>
-              <span className="text-muted-foreground">Cmax: </span>
-              <span className="font-medium text-foreground">{formatStat(cmax)}</span>
-            </p>
-            <p>
-              <span className="text-muted-foreground">Cśr: </span>
-              <span className="font-medium text-foreground">{formatStat(csr)}</span>
-            </p>
-          </div>
         </section>
 
-        {submitError ? (
-          <p role="alert" className="text-sm text-destructive">
-            {submitError}
-          </p>
-        ) : null}
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
+          <section className="rounded-[14px] border border-border bg-card p-5 shadow-sm">
+            <p className="text-[14.5px] font-semibold">Statystyki próby</p>
+            <div className="mt-3 flex flex-col gap-2 text-sm">
+              <p>
+                <span className="text-muted-foreground">Cmin: </span>
+                <span className="num font-medium text-foreground">{formatStat(cmin)}</span>
+              </p>
+              <p>
+                <span className="text-muted-foreground">Cmax: </span>
+                <span className="num font-medium text-foreground">{formatStat(cmax)}</span>
+              </p>
+              <p>
+                <span className="text-muted-foreground">Cśr: </span>
+                <span className="num font-medium text-foreground">{formatStat(csr)}</span>
+              </p>
+            </div>
 
+            {stats ? (
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="relative h-2 overflow-hidden rounded-full bg-border">
+                  <div className="absolute inset-y-0 left-0 right-0 bg-[var(--accent-100)]" />
+                  {csrPos !== null ? (
+                    <div
+                      className="absolute -top-[3px] h-3.5 w-0.5 bg-primary"
+                      style={{ left: `${csrPos * 100}%` }}
+                    />
+                  ) : null}
+                </div>
+                <p className="mt-2 text-[12.5px] text-muted-foreground">
+                  Granice korekty [<span className="num">{formatRatio(vMin)}</span> ;{" "}
+                  <span className="num">{formatRatio(vMax)}</span>]
+                </p>
+              </div>
+            ) : null}
+          </section>
+        </aside>
+      </div>
+
+      {submitError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {submitError}
+        </p>
+      ) : null}
+
+      <FootNav
+        back={{ href: `/valuations/${valuationId}?step=2` }}
+        mid={
+          <>
+            Próba: <b>{validCount} transakcji</b>
+            {stats ? (
+              <>
+                {" "}
+                · Cśr <b className="num">{numberFormatter.format(stats.avg)} zł/m²</b>
+              </>
+            ) : null}
+          </>
+        }
+      >
         <Button type="submit" disabled={isSubmitting} className="w-fit">
           Zatwierdź próbę i dalej
         </Button>
-      </form>
-      <WizardNav valuationId={valuationId} back={2} />
-    </>
+      </FootNav>
+    </form>
   );
 }

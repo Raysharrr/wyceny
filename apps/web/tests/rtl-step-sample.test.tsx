@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import "@testing-library/jest-dom/vitest";
 import type { Comparable } from "@/domain/kcs";
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
@@ -165,6 +166,125 @@ describe("StepSample — submit", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/nie udało się zapisać próby/i),
     );
     expect(pushMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity)", () => {
+  it("shows Statystyki próby with Cmin/Cmax/Cśr and the V-ratio range for ≥2 comparable prices", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[
+          { date: "2024-01", area: 60, pricePerM2: 10000, source: "manual" },
+          { date: "2024-02", area: 61, pricePerM2: 12000, source: "manual" },
+        ]}
+        sampleMeta={null}
+      />,
+    );
+
+    expect(screen.getByText("Statystyki próby")).toBeInTheDocument();
+    // Cmin=10000, Cmax=12000, Cśr=11000 -> Vmin=10000/11000=0,909, Vmax=12000/11000=1,091
+    expect(screen.getByText(/Granice korekty/)).toBeInTheDocument();
+    expect(screen.getByText("0,909")).toBeInTheDocument();
+    expect(screen.getByText("1,091")).toBeInTheDocument();
+  });
+
+  it("hides the V-ratio range when there are no valid comparable prices", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[]}
+        sampleMeta={null}
+      />,
+    );
+
+    expect(screen.getByText("Statystyki próby")).toBeInTheDocument();
+    expect(screen.queryByText(/Granice korekty/)).toBeNull();
+  });
+
+  it("does not show the RCN AutoBanner without sampleMeta", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={null}
+      />,
+    );
+
+    expect(screen.queryByText(/Pobrano/)).toBeNull();
+  });
+
+  it("shows the RCN AutoBanner with fetch count and date when sampleMeta is present", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={{
+          lat: 52.4,
+          lon: 16.9,
+          fetchedAt: "2026-07-23T10:00:00Z",
+          source: "geokoder",
+          query: { bbox: [1, 2, 3, 4], count: 87, sort: "distance" },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/Pobrano/)).toBeInTheDocument();
+    expect(screen.getByText(/87 transakcji/)).toBeInTheDocument();
+    // "z RCN (" (with the opening paren) rather than a bare "z RCN" — the
+    // "Pobierz próbę z RCN" fetch button already contains that substring.
+    expect(screen.getByText(/z RCN \(/)).toBeInTheDocument();
+  });
+
+  it("shows the FootNav mid slot with the valid-price count and Cśr once stats are available", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[
+          { date: "2024-01", area: 60, pricePerM2: 10000, source: "manual" },
+          { date: "2024-02", area: 61, pricePerM2: 12000, source: "manual" },
+        ]}
+        sampleMeta={null}
+      />,
+    );
+
+    // The Cśr value also appears in the sidebar's "Statystyki próby" card
+    // (same format) — scope to the fixed FootNav bar itself so the two
+    // occurrences don't collide in an ambiguous getByText query.
+    const footNav = screen.getByRole("link", { name: /wstecz/i }).closest(".fixed") as HTMLElement;
+    expect(within(footNav).getByText(/Próba:/)).toBeInTheDocument();
+    expect(within(footNav).getByText("2 transakcji")).toBeInTheDocument();
+    expect(within(footNav).getByText(/Cśr/)).toBeInTheDocument();
+    expect(within(footNav).getByText("11 000,00 zł/m²")).toBeInTheDocument();
+  });
+
+  it("renders the submit button inside the FootNav bar so it still natively submits the form", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={null}
+      />,
+    );
+
+    const submitButton = screen.getByRole("button", { name: /zatwierdź próbę i dalej/i });
+    expect(submitButton).toHaveAttribute("type", "submit");
+    expect(screen.getByRole("link", { name: /wstecz/i })).toHaveAttribute(
+      "href",
+      `/valuations/${VID}?step=2`,
+    );
   });
 });
 
