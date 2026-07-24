@@ -3,7 +3,6 @@ import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers } from "@/domain/document-model";
 import type { Valuation } from "@/ports/valuation";
 import { currencyFormatter } from "../cards";
-import { WizardNav } from "../stepper";
 import { ValuationActions } from "../valuation-actions";
 
 /**
@@ -83,11 +82,10 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
             canApprove={valuation.status === "in_progress"}
             canSign={false}
             canCreateNewVersion={false}
+            wr={valuation.wr}
           />
         </CardContent>
       </Card>
-
-      <WizardNav valuationId={valuation.id} back={6} />
     </>
   );
 }

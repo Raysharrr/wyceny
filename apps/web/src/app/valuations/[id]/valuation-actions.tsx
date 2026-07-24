@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { FootNav } from "@/components/wizard/foot-nav";
 import { confirmSample } from "@/app/actions/confirm-sample";
 import { confirmSubject } from "@/app/actions/confirm-subject";
 import { confirmKw } from "@/app/actions/confirm-kw";
@@ -9,6 +10,11 @@ import { confirmFeatures } from "@/app/actions/confirm-features";
 import { approveValuation, type ApproveValuationResult } from "@/app/actions/approve-valuation";
 import { signValuationAction } from "@/app/actions/sign-valuation";
 import { createNewVersionAction } from "@/app/actions/create-new-version";
+import { currencyFormatter } from "./cards";
+
+/** Mirrors the WR blocker label in documentFieldBlockers (document-model.ts) — shown
+ * in the FootNav mid slot when `wr` isn't confirmed yet, instead of a formatted amount. */
+const WR_BLOCKER_HINT = "Wartość rynkowa — kalkulacja niezatwierdzona (krok 5. Kalkulacja).";
 
 /**
  * Owner-only action bar, mounted for the owner across all statuses.
@@ -29,6 +35,7 @@ export function ValuationActions({
   canApprove,
   canSign,
   canCreateNewVersion,
+  wr,
 }: {
   id: string;
   hasToVerify: boolean;
@@ -39,10 +46,15 @@ export function ValuationActions({
   canApprove: boolean;
   canSign: boolean;
   canCreateNewVersion: boolean;
+  /** Optional (advisor I2): ValuationActions also mounts on the flat view
+   * (page.tsx), whose call site doesn't pass it — `undefined` and `null`
+   * both fall back to the WR blocker hint in the FootNav mid slot. */
+  wr?: number | null;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [approveResult, setApproveResult] = useState<ApproveValuationResult>(undefined);
   const [isPending, startTransition] = useTransition();
+  const wrFormatted = wr != null ? currencyFormatter.format(wr) : null;
 
   const run = (action: (id: string) => Promise<{ error: string } | undefined>) => {
     setError(null);
@@ -120,16 +132,6 @@ export function ValuationActions({
             {isPending ? "Potwierdzanie…" : "Potwierdź cechy i wagi"}
           </Button>
         ) : null}
-        {canApprove ? (
-          <Button
-            type="button"
-            data-testid="approve-button"
-            disabled={isPending || !gateOk}
-            onClick={() => handleApprove()}
-          >
-            {isPending ? "Zatwierdzanie…" : "Zatwierdź operat"}
-          </Button>
-        ) : null}
         {canSign ? (
           <Button
             type="button"
@@ -176,6 +178,32 @@ export function ValuationActions({
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
+      ) : null}
+      {/* Advisor I1: ValuationActions also mounts on the flat view (approved/signed,
+       * canApprove=false) where an unconditional fixed FootNav would overlay the PDF
+       * iframe — gate it so it exists only alongside the approve action it carries. */}
+      {canApprove ? (
+        <FootNav
+          back={{ href: "?step=6", label: "Wstecz" }}
+          mid={
+            wrFormatted ? (
+              <span>
+                Wartość rynkowa <b className="num">{wrFormatted}</b>
+              </span>
+            ) : (
+              WR_BLOCKER_HINT
+            )
+          }
+        >
+          <Button
+            type="button"
+            data-testid="approve-button"
+            disabled={isPending || !gateOk}
+            onClick={() => handleApprove()}
+          >
+            {isPending ? "Zatwierdzanie…" : "Zatwierdź operat"}
+          </Button>
+        </FootNav>
       ) : null}
     </div>
   );
