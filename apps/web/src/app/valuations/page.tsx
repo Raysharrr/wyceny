@@ -92,11 +92,11 @@ export default async function ValuationsListPage() {
             </TableHeader>
             <TableBody>
               {valuations.map((v) => (
-                <TableRow key={v.id}>
+                <TableRow key={v.id} className="relative cursor-pointer hover:bg-muted/50">
                   <TableCell className="px-4">
                     <Link
                       href={`/valuations/${v.id}`}
-                      className="font-medium text-foreground hover:text-primary"
+                      className="font-medium text-foreground after:absolute after:inset-0 after:content-[''] hover:text-primary"
                     >
                       {v.address}
                     </Link>
