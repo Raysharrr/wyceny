@@ -6,6 +6,7 @@ export type Role = "admin" | "appraiser";
 export type SessionUser = {
   id: string;
   name: string;
+  email: string;
   role: Role;
 };
 
@@ -33,6 +34,7 @@ export async function getSession(): Promise<Session | null> {
     user: {
       id: session.user.id,
       name: session.user.name,
+      email: session.user.email,
       role: session.user.role as Role,
     },
   };

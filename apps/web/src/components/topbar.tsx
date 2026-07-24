@@ -1,19 +1,21 @@
 import Link from "next/link";
+import { AvatarMenu } from "@/components/avatar-menu";
 
 /**
- * Sticky app chrome for `/valuations/*` (Task 3). Rendered by
- * `valuations/layout.tsx` so it covers the list, wizard, and detail pages.
- * Presentational + RSC-compatible: `children` carries the Profil link /
- * Wyloguj form supplied by the layout (advisor I5).
+ * Sticky app chrome for `/valuations/*` and `/profile` (Task 3, extended
+ * Task 15). Rendered by `AppShellLayout`. Presentational + RSC-compatible:
+ * the avatar on the right is `AvatarMenu`, a client island that owns the
+ * "Profil i ustawienia" / "Wyloguj" dropdown (Task 15) — Topbar itself
+ * needs no client-side state.
  */
 export function Topbar({
   userName,
+  userEmail,
   userRole,
-  children,
 }: {
   userName: string;
+  userEmail: string;
   userRole: string;
-  children?: React.ReactNode;
 }) {
   const safeName = userName?.trim() || "—";
   const initials =
@@ -37,16 +39,7 @@ export function Topbar({
         </span>
       </Link>
       <span className="flex-1" />
-      {children}
-      <span className="flex items-center gap-2.5 text-[12.5px] whitespace-nowrap">
-        <span className="grid size-[30px] place-items-center rounded-full border border-[var(--accent-100)] bg-[var(--accent-050)] text-xs font-semibold text-[var(--accent-700)]">
-          {initials}
-        </span>
-        <span className="leading-tight">
-          <span className="block font-medium">{safeName}</span>
-          <span className="block text-muted-foreground">{userRole}</span>
-        </span>
-      </span>
+      <AvatarMenu name={safeName} email={userEmail} userRole={userRole} initials={initials} />
     </header>
   );
 }
