@@ -84,7 +84,7 @@ describe("StepCalculation — step 5 visual parity (Task 10)", () => {
     expect(screen.queryByText(/Dane wejściowe zmieniły się/)).not.toBeInTheDocument();
   });
 
-  it("shows the warn AutoBanner with the existing invalidation text when wr is null", () => {
+  it("shows the warn AutoBanner with the existing invalidation text when wr is null, and gates the info banner off (Task 12 fix c)", () => {
     render(<StepCalculation valuation={baseValuation({ wr: null })} />);
 
     const warnText = screen.getByText(
@@ -92,6 +92,9 @@ describe("StepCalculation — step 5 visual parity (Task 10)", () => {
     );
     expect(warnText).toBeInTheDocument();
     expect(warnText.closest("[data-kind='warn']")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Wynik policzony automatycznie z zatwierdzonej próby i ocen."),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the confirm button inside a FootNav bar with back link and formatted WR mid when wr is confirmed", () => {

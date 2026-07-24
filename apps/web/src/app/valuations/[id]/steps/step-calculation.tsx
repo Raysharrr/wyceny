@@ -39,18 +39,19 @@ export function StepCalculation({ valuation }: { valuation: Valuation }) {
   const wrFormatted = valuation.wr != null ? `${wrFormatter.format(valuation.wr)} zł` : null;
   return (
     <>
-      <AutoBanner>Wynik policzony automatycznie z zatwierdzonej próby i ocen.</AutoBanner>
-      {valuation.wr == null ? (
-        <AutoBanner kind="warn">
-          Dane wejściowe zmieniły się od ostatniej kalkulacji — zatwierdź ponownie, aby zapisać
-          kwotę.
-        </AutoBanner>
-      ) : null}
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="md:col-span-2">
+      <div className="flex flex-col gap-4">
+        {valuation.wr != null ? (
+          <AutoBanner>Wynik policzony automatycznie z zatwierdzonej próby i ocen.</AutoBanner>
+        ) : (
+          <AutoBanner kind="warn">
+            Dane wejściowe zmieniły się od ostatniej kalkulacji — zatwierdź ponownie, aby zapisać
+            kwotę.
+          </AutoBanner>
+        )}
+        <div className="grid gap-4 md:grid-cols-2">
+          <ComparablesProvenance inputs={inputs!} />
           <KcsBreakdown inputs={inputs!} />
         </div>
-        <ComparablesProvenance inputs={inputs!} />
       </div>
       <FootNav
         back={{ href: backHref }}
