@@ -110,6 +110,46 @@ describe("StepSample — RCN fetch", () => {
     expect(payload.comparables).toHaveLength(3);
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith(`/valuations/${VID}?step=4`));
   });
+
+  it("rounds RCN-proposed price and area to 2 decimals before populating inputs", async () => {
+    const user = userEvent.setup();
+    const proposal = {
+      transactions: [
+        {
+          date: "2024-05",
+          area: 61.567234,
+          pricePerM2: 16030.8916015625,
+          transactionId: "T1",
+        },
+      ],
+      meta: {
+        lat: 52.4,
+        lon: 16.9,
+        fetchedAt: "2026-07-23T10:00:00Z",
+        source: "geokoder",
+        query: { bbox: [1, 2, 3, 4], count: 100, sort: "distance" },
+      },
+    };
+    getSampleProposal.mockResolvedValue({ proposal });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[]}
+        sampleMeta={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+
+    await waitFor(() =>
+      expect(getSampleProposal).toHaveBeenCalledWith({ address: ADDRESS, area: AREA }),
+    );
+    await waitFor(() => expect(screen.getByDisplayValue("16030.89")).toBeDefined());
+    expect(screen.getByDisplayValue("61.57")).toBeDefined();
+  });
 });
 
 describe("StepSample — submit", () => {

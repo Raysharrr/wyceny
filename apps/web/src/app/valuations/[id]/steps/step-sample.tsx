@@ -164,11 +164,14 @@ export function StepSample({
       // Rows stay fully editable after this — a hand-edited row keeps
       // `source: "rcn"` even though its values no longer match the fetch;
       // reconciling edited-vs-fetched fidelity is a later gating-slice concern.
+      // RCN's raw floats (e.g. `16030.8916015625`) are rounded to 2 decimals
+      // here so the value the user sees and accepts in the input is the same
+      // value that feeds the valuation engine.
       replaceComparables(
         result.proposal.transactions.slice(0, 12).map((t) => ({
           date: t.date,
-          area: String(t.area),
-          pricePerM2: String(t.pricePerM2),
+          area: String(Math.round(t.area * 100) / 100),
+          pricePerM2: String(Math.round(t.pricePerM2 * 100) / 100),
           source: "rcn" as const,
           transactionId: t.transactionId,
         })),
