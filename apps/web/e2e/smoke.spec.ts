@@ -74,4 +74,5 @@ test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", asy
   const pdfResponse = await page.request.get((await iframe.getAttribute("src"))!);
   expect(pdfResponse.status()).toBe(200);
   expect((await pdfResponse.body()).subarray(0, 5).toString()).toBe("%PDF-");
+  await expect(page.getByRole("link", { name: "Pobierz DOCX" })).toBeVisible();
 });
