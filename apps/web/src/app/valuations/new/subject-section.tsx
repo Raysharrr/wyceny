@@ -2,6 +2,7 @@
 
 import { Controller, useWatch, type Control } from "react-hook-form";
 import type { z } from "zod";
+import { AutoBanner } from "@/components/wizard/auto-banner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -38,7 +39,6 @@ interface SubjectSectionProps {
   control: Control<FormInput, unknown, FormOutput>;
   fetchState: SubjectFetchState;
   onRetry: () => void;
-  mapPreview: MapPreviewState;
 }
 
 // Mirrors `toInputValue` in `new-valuation-form.tsx`: zod's coerced-number
@@ -90,11 +90,13 @@ function SubjectFetchStatusBar({
       );
     case "done":
       return (
-        <p data-testid="subject-fetch-status" className="text-sm text-muted-foreground">
-          ✓ Pobrano: {fetchState.summary} — do potwierdzenia
-        </p>
+        <div data-testid="subject-fetch-status">
+          <AutoBanner>Pobrano dane przedmiotu: EGiB, MPZP, geokoder</AutoBanner>
+        </div>
       );
     case "outOfCoverage":
+      // Deliberately NOT the amber warn treatment — neutral, non-retryable
+      // info state (see `SubjectFetchState`'s doc comment above).
       return (
         <p data-testid="subject-fetch-status" className="text-sm text-muted-foreground">
           ℹ {fetchState.message}
@@ -102,19 +104,26 @@ function SubjectFetchStatusBar({
       );
     case "error":
       return (
-        <div data-testid="subject-fetch-status" className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-amber-600">⚠ {fetchState.message}</p>
-          <Button type="button" variant="outline" onClick={onRetry}>
-            Spróbuj ponownie
-          </Button>
+        <div data-testid="subject-fetch-status">
+          <AutoBanner kind="warn">
+            <span className="flex flex-wrap items-center gap-2">
+              {fetchState.message}
+              <Button type="button" variant="outline" onClick={onRetry}>
+                Spróbuj ponownie
+              </Button>
+            </span>
+          </AutoBanner>
         </div>
       );
   }
 }
 
 // `switch` rather than an `if`-chain, mirroring `SubjectFetchStatusBar`
-// above — same TS narrowing rationale.
-function MapPreview({ state }: { state: MapPreviewState }) {
+// above — same TS narrowing rationale. Exported (Slice 12 Task 7, advisor
+// I7): the sidebar in `subject-form.tsx` renders this directly now — its
+// render location moved out of `SubjectSection`, but its own state/markup
+// (and `data-testid="map-preview"`) are unchanged.
+export function MapPreview({ state }: { state: MapPreviewState }) {
   switch (state.status) {
     case "idle":
       return null;
@@ -165,23 +174,20 @@ function MapPreview({ state }: { state: MapPreviewState }) {
  * seeded by the address auto-fetch (`onAddressBlur` in the parent) but
  * always editable, since the fetch is a proposal, not an authoritative
  * write. `mpzpAbsent` toggles between the five MPZP fields and the
- * studium/WZ fallback field. `mapPreview` (Task 8) renders the live §8.1
- * map preview under the fetch-status bar.
+ * studium/WZ fallback field. The section's own ad-hoc h2 was removed in
+ * Slice 12 Task 7 — `StepHeader` (via `WizardShell`) owns the step-1 title
+ * now; the map preview moved out to the step-1 sidebar (`subject-form.tsx`).
  */
-export function SubjectSection({ control, fetchState, onRetry, mapPreview }: SubjectSectionProps) {
+export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionProps) {
   const mpzpAbsent = useWatch({ control, name: "subject.mpzpAbsent" });
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold text-foreground">Dane przedmiotu</h2>
-        <p className="text-sm text-muted-foreground">
-          Działka, budynek i MPZP — proponowane automatycznie z adresu, zawsze do potwierdzenia.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Działka, budynek i MPZP — proponowane automatycznie z adresu, zawsze do potwierdzenia.
+      </p>
 
       <SubjectFetchStatusBar fetchState={fetchState} onRetry={onRetry} />
-      <MapPreview state={mapPreview} />
 
       <FieldGroup>
         {TEXT_FIELDS.map(({ name, id, label }) => (

@@ -9,6 +9,7 @@ import type { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { FootNav } from "@/components/wizard/foot-nav";
 import { createDraft, saveSubjectAction } from "@/app/actions/wizard";
 import { step1Schema } from "@/app/actions/wizard-schemas";
 import { getMapPreview } from "@/app/actions/get-map-preview";
@@ -23,7 +24,12 @@ import { EMPTY_SUBJECT, proposalToSubjectValues, type SubjectFormValues } from "
 import { cn } from "@/lib/utils";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 import { KwSection, type KwFetchState, type KwSource } from "./kw-section";
-import { SubjectSection, type MapPreviewState, type SubjectFetchState } from "./subject-section";
+import {
+  MapPreview,
+  SubjectSection,
+  type MapPreviewState,
+  type SubjectFetchState,
+} from "./subject-section";
 
 // KW uploads bypass Vercel's body limit by going straight to the worker
 // (see mint-kw-token.ts). Defaults to the local worker for dev/e2e.
@@ -207,6 +213,10 @@ export function SubjectForm({
 
   const kwValues = useWatch({ control, name: "kw" });
   const areaValue = useWatch({ control, name: "area" });
+  // Live sidebar summary tile + FootNav mid label (Slice 12 Task 7) — the
+  // same watched values used by the KW mismatch check above, reused rather
+  // than re-subscribed.
+  const watchedAddress = useWatch({ control, name: "address" });
 
   // Surfaced only when a document gave a usable area AND the form's own area
   // disagrees — a nudge, never a block (the appraiser decides which wins).
@@ -382,126 +392,154 @@ export function SubjectForm({
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-8">
-      <FieldGroup>
-        <Controller
-          control={control}
-          name="address"
-          render={({ field, fieldState }) => (
-            <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="address">Adres</FieldLabel>
-              <Input
-                id="address"
-                placeholder="np. ul. Wierzbięcice 12/4, Poznań"
-                autoComplete="off"
-                {...field}
-                onBlur={() => {
-                  field.onBlur();
-                  void onAddressBlur();
-                }}
-              />
-              <FieldError errors={[fieldState.error]} />
-            </Field>
-          )}
-        />
-        <Controller
-          control={control}
-          name="area"
-          render={({ field, fieldState }) => (
-            <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="area">Powierzchnia (m²)</FieldLabel>
-              <Input
-                id="area"
-                type="number"
-                step="0.01"
-                min="0"
-                inputMode="decimal"
-                placeholder="np. 54.3"
-                name={field.name}
-                onBlur={field.onBlur}
-                ref={field.ref}
-                value={toInputValue(field.value)}
-                onChange={(e) => field.onChange(e.target.value)}
-              />
-              <FieldError errors={[fieldState.error]} />
-            </Field>
-          )}
-        />
-        <Controller
-          control={control}
-          name="purpose"
-          render={({ field, fieldState }) => (
-            <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="purpose">Cel wyceny</FieldLabel>
-              <select
-                id="purpose"
-                {...field}
-                aria-invalid={!!fieldState.error}
-                className={cn(
-                  "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
-                )}
-              >
-                <option value="">— wybierz —</option>
-                {Object.entries(PURPOSE_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <FieldError errors={[fieldState.error]} />
-            </Field>
-          )}
-        />
-        <Controller
-          control={control}
-          name="client"
-          render={({ field, fieldState }) => (
-            <Field data-invalid={!!fieldState.error}>
-              <FieldLabel htmlFor="client">Zamawiający wycenę</FieldLabel>
-              <Input id="client" placeholder="np. Jan Kowalski" autoComplete="off" {...field} />
-              <FieldError errors={[fieldState.error]} />
-            </Field>
-          )}
-        />
-      </FieldGroup>
+      <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <div className="flex flex-col gap-8">
+          <FieldGroup>
+            <Controller
+              control={control}
+              name="address"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={!!fieldState.error}>
+                  <FieldLabel htmlFor="address">Adres</FieldLabel>
+                  <Input
+                    id="address"
+                    placeholder="np. ul. Wierzbięcice 12/4, Poznań"
+                    autoComplete="off"
+                    {...field}
+                    onBlur={() => {
+                      field.onBlur();
+                      void onAddressBlur();
+                    }}
+                  />
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
+            />
+            <Controller
+              control={control}
+              name="area"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={!!fieldState.error}>
+                  <FieldLabel htmlFor="area">Powierzchnia (m²)</FieldLabel>
+                  <Input
+                    id="area"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    placeholder="np. 54.3"
+                    name={field.name}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    value={toInputValue(field.value)}
+                    onChange={(e) => field.onChange(e.target.value)}
+                  />
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
+            />
+            <Controller
+              control={control}
+              name="purpose"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={!!fieldState.error}>
+                  <FieldLabel htmlFor="purpose">Cel wyceny</FieldLabel>
+                  <select
+                    id="purpose"
+                    {...field}
+                    aria-invalid={!!fieldState.error}
+                    className={cn(
+                      "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+                    )}
+                  >
+                    <option value="">— wybierz —</option>
+                    {Object.entries(PURPOSE_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
+            />
+            <Controller
+              control={control}
+              name="client"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={!!fieldState.error}>
+                  <FieldLabel htmlFor="client">Zamawiający wycenę</FieldLabel>
+                  <Input id="client" placeholder="np. Jan Kowalski" autoComplete="off" {...field} />
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
+            />
+          </FieldGroup>
 
-      <SubjectSection
-        control={control}
-        fetchState={subjectFetch}
-        onRetry={() => {
-          lastFetchedAddress.current = null;
-          void onAddressBlur();
-        }}
-        mapPreview={mapPreview}
-      />
+          <SubjectSection
+            control={control}
+            fetchState={subjectFetch}
+            onRetry={() => {
+              lastFetchedAddress.current = null;
+              void onAddressBlur();
+            }}
+          />
 
-      <KwSection
-        control={control}
-        state={kwState}
-        source={kwSource}
-        onSourceChange={resetKwSection}
-        onFileSelected={onKwFileSelected}
-        onRetry={() => {
-          if (lastKwFile.current) {
-            void runKwExtraction(lastKwFile.current, kwSource === "odpis_kw" ? "odpis_kw" : "akt");
-          }
-        }}
-        onUseDocumentArea={() => {
-          if (kwValues?.powUzytkowaKw != null) {
-            setValue("area", kwValues.powUzytkowaKw, { shouldDirty: true });
-          }
-        }}
-        areaMismatch={areaMismatch}
-      />
+          <KwSection
+            control={control}
+            state={kwState}
+            source={kwSource}
+            onSourceChange={resetKwSection}
+            onFileSelected={onKwFileSelected}
+            onRetry={() => {
+              if (lastKwFile.current) {
+                void runKwExtraction(
+                  lastKwFile.current,
+                  kwSource === "odpis_kw" ? "odpis_kw" : "akt",
+                );
+              }
+            }}
+            onUseDocumentArea={() => {
+              if (kwValues?.powUzytkowaKw != null) {
+                setValue("area", kwValues.powUzytkowaKw, { shouldDirty: true });
+              }
+            }}
+            areaMismatch={areaMismatch}
+          />
 
-      {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
-          {submitError}
-        </p>
-      ) : null}
+          {submitError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {submitError}
+            </p>
+          ) : null}
+        </div>
 
-      <Button type="submit" disabled={isSubmitting} className="w-fit">
-        Dane się zgadzają — dalej
-      </Button>
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
+          <MapPreview state={mapPreview} />
+          <section className="rounded-[14px] border border-border bg-card p-5 shadow-sm">
+            <p className="text-[14.5px] font-semibold">{watchedAddress || "—"}</p>
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-[12.5px]">
+              <div>
+                <dt className="text-muted-foreground">Powierzchnia</dt>
+                <dd className="num text-[15px]">{areaValue ? `${String(areaValue)} m²` : "—"}</dd>
+              </div>
+            </dl>
+          </section>
+        </aside>
+      </div>
+
+      <FootNav
+        back={valuationId ? { href: "/valuations" } : undefined}
+        mid={
+          <span>
+            Przedmiot: <b>lokal mieszkalny{areaValue ? `, ${String(areaValue)} m²` : ""}</b>
+          </span>
+        }
+      >
+        <Button type="submit" disabled={isSubmitting} className="w-fit">
+          Dane się zgadzają — dalej
+        </Button>
+      </FootNav>
     </form>
   );
 }

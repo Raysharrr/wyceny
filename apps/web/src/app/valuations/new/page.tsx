@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
+import { WizardShell } from "@/components/wizard/wizard-shell";
 import { SubjectForm } from "./subject-form";
 
 // The "Pobierz próbę z RCN" button calls a live worker fetch (typically
@@ -14,16 +15,12 @@ export default async function NewValuationPage() {
     redirect("/login");
   }
 
+  // No `valuationId` (Slice 12 Task 7) — the Stepper renders every step as a
+  // disabled span (advisor I6, `wizard-shell.tsx`); `StepHeader` supplies the
+  // step-1 title/description that used to live here as an ad-hoc kicker+h1.
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
-      <div className="flex flex-col gap-1">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Wyceny</p>
-        <h1 className="text-2xl font-semibold text-foreground">Nowa wycena</h1>
-        <p className="text-sm text-muted-foreground">
-          Podaj adres nieruchomości i powierzchnię — wartość rynkową i operat przygotuje system.
-        </p>
-      </div>
+    <WizardShell currentStep={1} maxReachedStep={1}>
       <SubjectForm />
-    </div>
+    </WizardShell>
   );
 }

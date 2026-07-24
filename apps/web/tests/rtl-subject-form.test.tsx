@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
 import userEvent from "@testing-library/user-event";
 import type { z } from "zod";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
@@ -206,6 +207,17 @@ describe("SubjectForm — legacy kw snapshot (Slice 12 Task 1 parity fix)", () =
     const payload = call?.[1] as { kw?: { kwInne: string[]; deweloperski: boolean } };
     expect(payload.kw?.kwInne).toEqual([]);
     expect(payload.kw?.deweloperski).toBe(false);
+  });
+});
+
+describe("SubjectForm — step 1 sidebar (Slice 12 Task 7)", () => {
+  it("reflects the typed address and area live in the sidebar summary tile", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.type(screen.getByLabelText("Adres"), "ul. Sidebar 9, Poznań");
+    await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
+    expect(await screen.findByText("ul. Sidebar 9, Poznań")).toBeInTheDocument();
+    expect(await screen.findByText("54.3 m²")).toBeInTheDocument();
   });
 });
 
