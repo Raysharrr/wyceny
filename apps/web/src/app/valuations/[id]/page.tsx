@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { WizardShell } from "@/components/wizard/wizard-shell";
 import { getSession } from "@/auth/session";
 import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers } from "@/domain/document-model";
@@ -18,7 +19,6 @@ import {
   SubjectCard,
 } from "./cards";
 import { InspectionSection } from "./inspection-section";
-import { Stepper } from "./stepper";
 import { StepCalculation } from "./steps/step-calculation";
 import { StepDescriptions } from "./steps/step-descriptions";
 import { StepFeatures } from "./steps/step-features";
@@ -102,17 +102,7 @@ export default async function ValuationViewPage({
     const max = maxReachedStep(valuation);
     const step = resolveStep((await searchParams).step, max);
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            <Link href="/valuations" className="hover:text-primary">
-              Wyceny
-            </Link>{" "}
-            / Operat
-          </p>
-          <h1 className="text-2xl font-semibold text-foreground">{valuation.address}</h1>
-        </div>
-        <Stepper current={step} maxReached={max} valuationId={valuation.id} />
+      <WizardShell currentStep={step} maxReachedStep={max} valuationId={valuation.id}>
         {step === 1 ? (
           <SubjectForm valuationId={valuation.id} defaults={step1DefaultsFromInputs(valuation)} />
         ) : step === 2 ? (
@@ -142,7 +132,7 @@ export default async function ValuationViewPage({
         ) : (
           <StepOperat valuation={valuation} />
         )}
-      </div>
+      </WizardShell>
     );
   }
 

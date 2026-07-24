@@ -1,14 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { saveInspectionDate } from "@/app/actions/inspection";
-import type { InspectionSnapshot } from "@/domain/inspection";
+import { FootNav } from "@/components/wizard/foot-nav";
+import { totalInspectionPhotos, type InspectionSnapshot } from "@/domain/inspection";
 import { InspectionSection } from "../inspection-section";
-import { WizardNav } from "../stepper";
 
 /**
  * Step 2 ("Oględziny") — photo sections + note already live in
@@ -56,7 +57,21 @@ export function StepInspection({
         </CardContent>
       </Card>
       <InspectionSection valuationId={valuationId} inspection={inspection} />
-      <WizardNav valuationId={valuationId} back={1} next={3} />
+      <FootNav
+        back={{ href: `/valuations/${valuationId}?step=1` }}
+        mid={
+          <>
+            Oględziny: <b>{totalInspectionPhotos(inspection)} zdjęć</b>
+          </>
+        }
+      >
+        <Link
+          href={`/valuations/${valuationId}?step=3`}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-[14.5px] font-medium text-primary-foreground shadow-sm hover:bg-[var(--accent-700)]"
+        >
+          Dalej
+        </Link>
+      </FootNav>
     </>
   );
 }

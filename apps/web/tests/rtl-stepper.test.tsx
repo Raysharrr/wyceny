@@ -58,6 +58,19 @@ describe("Stepper", () => {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
+
+  it("renders every step as a non-link disabled span in create mode (no valuationId)", () => {
+    render(<Stepper current={1} maxReached={1} />);
+
+    // Steps 1-7 are all disabled spans, even step 1 which would otherwise be
+    // reachable — advisor I6: no valuationId means there's nowhere to link.
+    // The "← Wyceny" home link is unaffected (it never depends on valuationId).
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) {
+      expect(screen.getByText(STEP_LABELS[n]).closest("a")).toBeNull();
+      const disabled = screen.getByText(STEP_LABELS[n]).closest("span[aria-disabled]");
+      expect(disabled).toHaveAttribute("aria-disabled", "true");
+    }
+  });
 });
 
 describe("WizardNav", () => {

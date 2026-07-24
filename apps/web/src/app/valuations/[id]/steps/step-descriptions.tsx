@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { WizardNav } from "../stepper";
+import { FootNav } from "@/components/wizard/foot-nav";
 
 /**
  * Step 6 ("Opisy") — FR-6 prose generator is out of scope for 11a (spec
@@ -18,7 +19,17 @@ export function StepDescriptions({ valuationId }: { valuationId: string }) {
           </p>
         </CardContent>
       </Card>
-      <WizardNav valuationId={valuationId} back={5} next={7} />
+      <FootNav
+        back={{ href: `/valuations/${valuationId}?step=5` }}
+        mid="Opisy z szablonu przy zatwierdzeniu"
+      >
+        <Link
+          href={`/valuations/${valuationId}?step=7`}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-[14.5px] font-medium text-primary-foreground shadow-sm hover:bg-[var(--accent-700)]"
+        >
+          Dalej
+        </Link>
+      </FootNav>
     </>
   );
 }
