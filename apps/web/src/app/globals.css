@@ -7,8 +7,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-sans: var(--font-ibm-plex-sans);
+  --font-mono: var(--font-ibm-plex-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -51,27 +51,38 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --background: #f5f3ee;
+  --foreground: #1c1b19;
+  --card: #ffffff;
+  --card-foreground: #1c1b19;
+  --popover: #ffffff;
+  --popover-foreground: #1c1b19;
   /* Brand (mockup "Wyceny — Makieta MVP" v3-r4): teal-green primary + blue accent. */
   --brand-teal: #1f7a5c;
   --brand-blue: #1f4ea3;
   --primary: var(--brand-teal);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --secondary: #faf9f5;
+  --secondary-foreground: #1c1b19;
+  --muted: #faf9f5;
+  --muted-foreground: #6f6c64;
   --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --accent-foreground: #1c1b19;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: #e6e3dc;
+  --input: #d8d4ca;
   --ring: var(--brand-teal);
+  /* accent shades (mockup styles.css L9-12) */
+  --accent-050: color-mix(in oklab, var(--primary) 9%, #fff);
+  --accent-100: color-mix(in oklab, var(--primary) 20%, #fff);
+  --accent-700: color-mix(in oklab, var(--primary) 80%, #000);
+  /* marking system (mockup L26-31) */
+  --amber: #b07a16;
+  --amber-bg: #fbf2dd;
+  --amber-line: #ecd9a6;
+  --human: #6b4fb0;
+  --human-bg: #f1edf9;
+  --human-line: #ddd2f0;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -79,12 +90,12 @@
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-foreground: #1c1b19;
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-accent: #faf9f5;
+  --sidebar-accent-foreground: #1c1b19;
+  --sidebar-border: #e6e3dc;
   --sidebar-ring: oklch(0.708 0 0);
 }
 
@@ -107,6 +118,17 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  /* accent shades for dark mode */
+  --accent-050: color-mix(in oklab, var(--primary) 9%, #000);
+  --accent-100: color-mix(in oklab, var(--primary) 20%, #000);
+  --accent-700: color-mix(in oklab, var(--primary) 80%, #fff);
+  /* marking system for dark mode */
+  --amber: #c4933a;
+  --amber-bg: #3a2f12;
+  --amber-line: #6b5a3d;
+  --human: #9370d9;
+  --human-bg: #2a1d3d;
+  --human-line: #5a4a7a;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -132,4 +154,11 @@
   html {
     @apply font-sans;
   }
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.01em;
 }
