@@ -29,7 +29,7 @@ export function LoginForm() {
   const [state, formAction, pending] = useActionState(signInAction, initialState);
 
   return (
-    <div className="flex w-full max-w-md flex-col gap-6">
+    <div className="flex w-full max-w-[380px] flex-col gap-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Zaloguj się</CardTitle>
