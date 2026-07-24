@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Check } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { WIZARD_STEPS } from "@/domain/wizard";
 import { cn } from "@/lib/utils";
 
@@ -73,36 +72,5 @@ export function Stepper({
         );
       })}
     </nav>
-  );
-}
-
-export function WizardNav({
-  valuationId,
-  back,
-  next,
-  nextLabel,
-}: {
-  valuationId: string;
-  back?: number;
-  next?: number;
-  nextLabel?: string;
-}) {
-  return (
-    <div className="flex items-center justify-between border-t border-border pt-4">
-      {back ? (
-        <Button asChild variant="ghost">
-          <Link href={`/valuations/${valuationId}?step=${back}`}>Wstecz</Link>
-        </Button>
-      ) : (
-        <span />
-      )}
-      {next ? (
-        <Button asChild>
-          <Link href={`/valuations/${valuationId}?step=${next}`}>{nextLabel ?? "Dalej"}</Link>
-        </Button>
-      ) : (
-        <span />
-      )}
-    </div>
   );
 }

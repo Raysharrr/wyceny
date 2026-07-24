@@ -5,7 +5,7 @@ import "@testing-library/jest-dom/vitest";
 
 afterEach(cleanup);
 
-import { Stepper, WizardNav } from "@/app/valuations/[id]/stepper";
+import { Stepper } from "@/app/valuations/[id]/stepper";
 
 const STEP_LABELS: Record<number, string> = {
   1: "Przedmiot",
@@ -70,27 +70,5 @@ describe("Stepper", () => {
       const disabled = screen.getByText(STEP_LABELS[n]).closest("span[aria-disabled]");
       expect(disabled).toHaveAttribute("aria-disabled", "true");
     }
-  });
-});
-
-describe("WizardNav", () => {
-  it("renders back and next links when both provided", () => {
-    render(<WizardNav valuationId="v1" back={2} next={4} nextLabel="Dalej: Cechy" />);
-
-    expect(screen.getByRole("link", { name: "Wstecz" })).toHaveAttribute(
-      "href",
-      "/valuations/v1?step=2",
-    );
-    expect(screen.getByRole("link", { name: "Dalej: Cechy" })).toHaveAttribute(
-      "href",
-      "/valuations/v1?step=4",
-    );
-  });
-
-  it("omits back/next links when not provided", () => {
-    render(<WizardNav valuationId="v1" back={6} />);
-
-    expect(screen.getByRole("link", { name: "Wstecz" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Dalej" })).not.toBeInTheDocument();
   });
 });

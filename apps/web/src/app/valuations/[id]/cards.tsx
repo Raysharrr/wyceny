@@ -41,23 +41,23 @@ export function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
           <dl className="grid grid-cols-2 gap-1 text-sm sm:grid-cols-5">
             <div>
               <dt className="text-xs text-muted-foreground">Cmin</dt>
-              <dd>{plnPerM2.format(r.cmin)}</dd>
+              <dd className="num">{plnPerM2.format(r.cmin)}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Cmax</dt>
-              <dd>{plnPerM2.format(r.cmax)}</dd>
+              <dd className="num">{plnPerM2.format(r.cmax)}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Cśr</dt>
-              <dd>{plnPerM2.format(r.csr)}</dd>
+              <dd className="num">{plnPerM2.format(r.csr)}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Vmin</dt>
-              <dd>{r.vmin.toFixed(3)}</dd>
+              <dd className="num">{r.vmin.toFixed(3)}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Vmax</dt>
-              <dd>{r.vmax.toFixed(3)}</dd>
+              <dd className="num">{r.vmax.toFixed(3)}</dd>
             </div>
           </dl>
         </section>
@@ -77,16 +77,16 @@ export function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
               {r.ui.map((u) => (
                 <tr key={u.name} className="border-t border-border">
                   <td className="py-1">{u.name}</td>
-                  <td className="py-1">{Math.round(u.weight * 100)}%</td>
+                  <td className="py-1 num">{Math.round(u.weight * 100)}%</td>
                   <td className="py-1">{RATING_LABEL[u.rating]}</td>
-                  <td className="py-1 text-right tabular-nums">{u.value.toFixed(4)}</td>
+                  <td className="py-1 text-right num">{u.value.toFixed(4)}</td>
                 </tr>
               ))}
               <tr className="border-t border-border font-medium">
                 <td className="py-1" colSpan={3}>
                   Suma współczynników (ΣUi)
                 </td>
-                <td className="py-1 text-right tabular-nums">{r.sumUi.toFixed(3)}</td>
+                <td className="py-1 text-right num">{r.sumUi.toFixed(3)}</td>
               </tr>
             </tbody>
           </table>
@@ -98,8 +98,8 @@ export function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
             WR = Cśr × ΣUi × P = {plnPerM2.format(r.unitValue)}/m² × {inputs.area} m²
           </p>
           <p className="font-medium text-foreground">
-            {plnPerM2.format(r.wrUnrounded)} → po zaokrągleniu{" "}
-            <span className="text-primary">{plnPerM2.format(r.wr)}</span>
+            <span className="num">{plnPerM2.format(r.wrUnrounded)}</span> → po zaokrągleniu{" "}
+            <span className="num text-primary">{plnPerM2.format(r.wr)}</span>
           </p>
         </section>
       </CardContent>
@@ -393,7 +393,7 @@ export function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
             {inputs.comparables.map((c, i) => (
               <tr key={c.transactionId ?? i} className="border-t border-border">
                 <td className="py-1">{i + 1}</td>
-                <td className="py-1 tabular-nums">{plnPerM2.format(c.pricePerM2)}</td>
+                <td className="py-1 num">{plnPerM2.format(c.pricePerM2)}</td>
                 <td className="py-1">
                   <ProvenanceBadge source={c.source} status={c.status} />
                 </td>
