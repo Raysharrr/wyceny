@@ -77,7 +77,7 @@ If the exact accessible name differs (check the DOCX link JSX in `steps/step-ope
 
 **Interfaces:** none outside the file (private helper; no schema/type/mutation changes; `KwSnapshot` type imported as today).
 
-- [ ] **Step 1: Failing RTL test** (pragma jsdom + cleanup): render `<SubjectForm valuationId="x" defaults={step1DefaultsFromInputs(legacyValuation)} />` where `legacyValuation.inputs` has complete step-1 fields (address/area/purpose/client — synthetic, F-9) and `inputs.kw = { source: "odpis_kw", kwLokalu: "PO1P/00123456/7" }` (NO `kwInne`, NO `deweloperski`). Two assertions:
+- [ ] **Step 1: Failing RTL test** (pragma jsdom + cleanup): render `<SubjectForm valuationId="x" defaults={step1DefaultsFromInputs(legacyValuation)} />` where `legacyValuation.inputs` has complete step-1 fields (address/area/purpose/client — synthetic, F-9) and `inputs.kw = { source: "odpis_kw", kwLokalu: "AB1C/1/9" }` (NO `kwInne`, NO `deweloperski`). Two assertions:
   1. **render:** today throws `TypeError`; after fix renders and the KW section summary shows `1 KW`;
   2. **save path:** click "Dane się zgadzają — dalej" → mocked `saveSubjectAction` receives a payload with `kw.kwInne` equal `[]` and `kw.deweloperski` equal `false` (follow the existing action-mock pattern of subject-form tests, `.findLast()` on `mock.calls`). Without the coercion this submit dies silently on the INVISIBLE `kw.kwInne` field (resolver requires an array) — the test must fail before the fix on this assertion too.
 
