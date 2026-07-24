@@ -123,7 +123,8 @@ export default async function ValuationViewPage({
           <StepFeatures
             valuationId={valuation.id}
             features={valuation.inputs?.features ?? []}
-            comparableAreas={(valuation.inputs?.comparables ?? []).map((c) => c.area)}
+            comparables={valuation.inputs?.comparables ?? []}
+            area={valuation.area}
           />
         ) : step === 5 ? (
           <StepCalculation valuation={valuation} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useRouter } from "next/navigation";
@@ -24,9 +24,9 @@ import {
   powierzchniaDefinitions,
   type LokalFeatureKey,
 } from "@/domain/feature-presets";
-import type { KcsInput } from "@/domain/kcs";
+import { computeKcs, type Comparable, type KcsInput } from "@/domain/kcs";
 import { DEFAULT_FEATURES } from "@/lib/valuation-form-schema";
-import { WizardNav } from "../stepper";
+import { FootNav } from "@/components/wizard/foot-nav";
 
 type FormInput = z.input<typeof featuresStepSchema>;
 type FormOutput = z.output<typeof featuresStepSchema>;
@@ -44,6 +44,18 @@ const numberFormatter = new Intl.NumberFormat("pl-PL", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+// Sidebar/FootNav formatters (Task 9 — live KCS preview).
+const sumUiFormatter = new Intl.NumberFormat("pl-PL", {
+  minimumFractionDigits: 3,
+  maximumFractionDigits: 3,
+});
+const ratioFormatter = new Intl.NumberFormat("pl-PL", {
+  minimumFractionDigits: 3,
+  maximumFractionDigits: 3,
+});
+const unitPriceFormatter = new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" });
+const wrFormatter = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0 });
 
 // zod's coerced-number fields (`z.coerce.number()`) have an `input` type of
 // `unknown` — so RHF's `field.value` for weight is typed `unknown`, not
@@ -99,14 +111,17 @@ function buildDefaultFeatures(
 export function StepFeatures({
   valuationId,
   features: initialFeatures,
-  comparableAreas,
+  comparables,
+  area,
 }: {
   valuationId: string;
   features: KcsInput["features"];
-  comparableAreas: Array<number | undefined>;
+  comparables: Comparable[];
+  area: number;
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const comparableAreas = comparables.map((c) => c.area);
 
   const {
     control,
@@ -140,6 +155,31 @@ export function StepFeatures({
 
   const featuresError = errors.features?.root?.message ?? errors.features?.message;
 
+  // Live KCS preview (Task 9) — mirrors the confirm-path engine call
+  // (`cards.tsx`'s `KcsBreakdown` / `applyCalculationConfirm`) against the
+  // CURRENT form state; never persisted, purely a render-time preview.
+  // `computeKcs` throws on empty comparables / non-positive price or area
+  // (`kcs.ts:104-116`) — any such state collapses to `null`, rendered as
+  // "—" everywhere below instead of crashing the step.
+  const live = useMemo(() => {
+    try {
+      const liveFeatures: KcsInput["features"] = (features ?? []).map((f) => ({
+        name: f?.name ?? "",
+        weight: (Number(f?.weightPct) || 0) / 100,
+        rating: (f?.rating ?? "przecietna") as Rating,
+        key: f?.key,
+      }));
+      return computeKcs({ comparables, area, features: liveFeatures });
+    } catch {
+      return null;
+    }
+  }, [comparables, area, features]);
+
+  const sumUiPos =
+    live && live.vmax > live.vmin
+      ? Math.min(1, Math.max(0, (live.sumUi - live.vmin) / (live.vmax - live.vmin)))
+      : null;
+
   const onSubmit = handleSubmit(async (values) => {
     setSubmitError(null);
     const result = await saveFeaturesAction(valuationId, values);
@@ -151,16 +191,9 @@ export function StepFeatures({
   });
 
   return (
-    <>
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-8">
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-8">
+      <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
         <section className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-base font-semibold text-foreground">Cechy i wagi</h2>
-            <p className="text-sm text-muted-foreground">
-              Ocena nieruchomości względem próby na każdej cesze — wagi muszą sumować się do 100%.
-            </p>
-          </div>
-
           <Table>
             <TableHeader>
               <TableRow>
@@ -317,17 +350,86 @@ export function StepFeatures({
           ) : null}
         </section>
 
-        {submitError ? (
-          <p role="alert" className="text-sm text-destructive">
-            {submitError}
-          </p>
-        ) : null}
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
+          <section className="rounded-[14px] border border-border bg-card p-5 shadow-sm">
+            <p className="text-[14.5px] font-semibold">Wskaźnik korekty ΣUi</p>
+            <p
+              data-testid="sidebar-sum-ui"
+              className="num mt-2 text-[28px] font-semibold text-foreground"
+            >
+              {live ? sumUiFormatter.format(live.sumUi) : "—"}
+            </p>
+            {live ? (
+              <p className="text-[12.5px] text-muted-foreground">
+                lokal {live.sumUi > 1 ? "lepszy" : live.sumUi < 1 ? "gorszy" : "równy"} od średniej
+                rynkowej
+              </p>
+            ) : null}
+            {live ? (
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="relative h-2 overflow-hidden rounded-full bg-border">
+                  <div className="absolute inset-y-0 left-0 right-0 bg-[var(--accent-100)]" />
+                  {sumUiPos !== null ? (
+                    <div
+                      className="absolute -top-[3px] h-3.5 w-0.5 bg-primary"
+                      style={{ left: `${sumUiPos * 100}%` }}
+                    />
+                  ) : null}
+                </div>
+                <p className="mt-2 flex justify-between text-[12.5px] text-muted-foreground">
+                  <span className="num">{ratioFormatter.format(live.vmin)}</span>
+                  <span className="num">1,000</span>
+                  <span className="num">{ratioFormatter.format(live.vmax)}</span>
+                </p>
+              </div>
+            ) : null}
+          </section>
 
+          <section className="rounded-[14px] border border-border bg-card p-5 shadow-sm">
+            <p className="text-[14.5px] font-semibold">Podgląd wartości (WR)</p>
+            <div className="mt-3 flex flex-col gap-1.5 text-sm">
+              <p className="text-muted-foreground">
+                Cśr × ΣUi = cena jedn.{" "}
+                <span className="num font-medium text-foreground">
+                  {live ? `${unitPriceFormatter.format(live.unitValue)}/m²` : "—"}
+                </span>
+              </p>
+              <p className="text-muted-foreground">
+                × {area} m² ={" "}
+                <b data-testid="sidebar-wr-preview" className="num text-foreground">
+                  {live ? `${wrFormatter.format(live.wr)} zł` : "—"}
+                </b>
+              </p>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      {submitError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {submitError}
+        </p>
+      ) : null}
+
+      <FootNav
+        back={{ href: `/valuations/${valuationId}?step=3` }}
+        mid={
+          <span data-testid="footnav-kcs-mid">
+            {live ? (
+              <>
+                ΣUi <b className="num">{sumUiFormatter.format(live.sumUi)}</b> · podgląd WR{" "}
+                <b className="num">{wrFormatter.format(live.wr)} zł</b>
+              </>
+            ) : (
+              "—"
+            )}
+          </span>
+        }
+      >
         <Button type="submit" disabled={isSubmitting} className="w-fit">
           Zatwierdź cechy i dalej
         </Button>
-      </form>
-      <WizardNav valuationId={valuationId} back={3} />
-    </>
+      </FootNav>
+    </form>
   );
 }

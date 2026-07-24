@@ -26,12 +26,24 @@ vi.mock("@/app/actions/wizard", () => ({
 
 import { StepFeatures } from "@/app/valuations/[id]/steps/step-features";
 import { FEATURE_PRESETS } from "@/domain/feature-presets";
+import type { Comparable } from "@/domain/kcs";
 
 const VID = "v1";
 
+// Synthetic placeholder sample (F-9: no PII, no real transactions) used by
+// tests that don't exercise the live KCS sidebar — any positive price/area
+// satisfies `computeKcs` without affecting the assertions below.
+const PLACEHOLDER_AREA = 65;
+
+function placeholderComparables(areas: Array<number | undefined>): Comparable[] {
+  return areas.map((area) => ({ pricePerM2: 10000, area }));
+}
+
 describe("StepFeatures — bag add/remove (Slice 7, migrated Task 10)", () => {
   it("renders the 6 basic features and an add-from-pool select with the 3 exceptional ones", async () => {
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[]} />);
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
     expect(screen.getByText("standard wykończenia")).toBeTruthy();
     expect(screen.getByText("pomieszczenia przynależne")).toBeTruthy();
     const select = screen.getByTestId("add-feature-select") as HTMLSelectElement;
@@ -43,7 +55,9 @@ describe("StepFeatures — bag add/remove (Slice 7, migrated Task 10)", () => {
 
   it("adding from the pool appends a row with weight 0 and removes it from the select", async () => {
     const user = userEvent.setup();
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[]} />);
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
     const select = screen.getByTestId("add-feature-select") as HTMLSelectElement;
     await user.selectOptions(select, "rodzaj-zabudowy");
     expect(screen.getByText("rodzaj zabudowy budynku")).toBeTruthy();
@@ -64,7 +78,9 @@ describe("StepFeatures — bag add/remove (Slice 7, migrated Task 10)", () => {
 
   it("removing a feature deletes its row and returns it to the pool", async () => {
     const user = userEvent.setup();
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[]} />);
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
     await user.click(screen.getByTestId("remove-feature-dodatkowe"));
     // NOTE: don't queryByText("dodatkowe") — the pool <option> now carries that
     // exact text; the row's remove button is the row proxy.
@@ -75,7 +91,9 @@ describe("StepFeatures — bag add/remove (Slice 7, migrated Task 10)", () => {
 
   it("disables the remove button once only one feature row remains", async () => {
     const user = userEvent.setup();
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[]} />);
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
     let removeButtons = screen.getAllByRole("button", { name: /^Usuń cechę /i });
     expect(removeButtons.length).toBeGreaterThan(1);
     while (removeButtons.length > 1) {
@@ -90,7 +108,9 @@ describe("StepFeatures — bag add/remove (Slice 7, migrated Task 10)", () => {
 describe("StepFeatures — rating-scale definitions (Slice 7, migrated Task 10)", () => {
   it("shows editable default definitions per level", async () => {
     const user = userEvent.setup();
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[]} />);
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
     await user.click(screen.getByTestId("feature-defs-summary-standard-wykonczenia"));
     const input = screen.getByTestId("feature-def-standard-wykonczenia-lepsza") as HTMLInputElement;
     expect(input.value).toBe("standard dobry, wykończenie materiałami lepszej jakości");
@@ -104,7 +124,14 @@ describe("StepFeatures — rating-scale definitions (Slice 7, migrated Task 10)"
   // baked in; a filled one doesn't), not the old live-effect mechanism.
   it("seeds an empty powierzchnia definition from the comparableAreas median, once at mount", async () => {
     const user = userEvent.setup();
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[50, 60, 70]} />);
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={placeholderComparables([50, 60, 70])}
+        area={PLACEHOLDER_AREA}
+      />,
+    );
     await user.click(screen.getByTestId("feature-defs-summary-powierzchnia-uzytkowa"));
     const lepsza = screen.getByTestId(
       "feature-def-powierzchnia-uzytkowa-lepsza",
@@ -114,7 +141,14 @@ describe("StepFeatures — rating-scale definitions (Slice 7, migrated Task 10)"
 
   it("a different comparableAreas median seeds a different powierzchnia definition", async () => {
     const user = userEvent.setup();
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[50, 80, 90]} />);
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={placeholderComparables([50, 80, 90])}
+        area={PLACEHOLDER_AREA}
+      />,
+    );
     await user.click(screen.getByTestId("feature-defs-summary-powierzchnia-uzytkowa"));
     const lepsza = screen.getByTestId(
       "feature-def-powierzchnia-uzytkowa-lepsza",
@@ -136,7 +170,8 @@ describe("StepFeatures — rating-scale definitions (Slice 7, migrated Task 10)"
             definitions: { lepsza: "własny próg rzeczoznawcy", gorsza: "" },
           },
         ]}
-        comparableAreas={[50, 60, 70]}
+        comparables={placeholderComparables([50, 60, 70])}
+        area={PLACEHOLDER_AREA}
       />,
     );
     await user.click(screen.getByTestId("feature-defs-summary-powierzchnia-uzytkowa"));
@@ -152,7 +187,9 @@ describe("StepFeatures — rating-scale definitions (Slice 7, migrated Task 10)"
   // `defaultDefinitions`; a pool-add would go through the same spread.
   it("editing a static feature's definitions does not mutate the shared preset", async () => {
     const user = userEvent.setup();
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[]} />);
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
     const originalLepsza = FEATURE_PRESETS.lokal.find((e) => e.key === "standard-wykonczenia")
       ?.defaultDefinitions.lepsza;
     await user.click(screen.getByTestId("feature-defs-summary-standard-wykonczenia"));
@@ -174,7 +211,9 @@ describe("StepFeatures — submit (Task 10)", () => {
   it("saves via saveFeaturesAction and navigates to step 5", async () => {
     const user = userEvent.setup();
     saveFeaturesAction.mockResolvedValue({ ok: true });
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[]} />);
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
 
     await user.click(screen.getByRole("button", { name: /zatwierdź cechy i dalej/i }));
 
@@ -191,7 +230,9 @@ describe("StepFeatures — submit (Task 10)", () => {
     saveFeaturesAction.mockResolvedValue({
       error: "Nie udało się zapisać cech — spróbuj ponownie.",
     });
-    render(<StepFeatures valuationId={VID} features={[]} comparableAreas={[]} />);
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
 
     await user.click(screen.getByRole("button", { name: /zatwierdź cechy i dalej/i }));
 
@@ -199,5 +240,53 @@ describe("StepFeatures — submit (Task 10)", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/nie udało się zapisać cech/i),
     );
     expect(pushMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("StepFeatures — live ΣUi/WR sidebar (Task 9)", () => {
+  // Synthetic priced sample (F-9: no PII/real transactions) — avg 10 000
+  // zł/m², vmin 0,800, vmax 1,200.
+  const PRICED_COMPARABLES: Comparable[] = [
+    { pricePerM2: 8000, area: 60 },
+    { pricePerM2: 10000, area: 65 },
+    { pricePerM2: 12000, area: 70 },
+  ];
+  const SUBJECT_AREA = 71.63;
+
+  it("shows the live ΣUi/WR preview and recomputes it when a rating changes", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={PRICED_COMPARABLES}
+        area={SUBJECT_AREA}
+      />,
+    );
+
+    // DEFAULT_FEATURES starts all "przecietna" — weights sum to 100%, so ΣUi
+    // starts at exactly 1,000 (the rangebar's own "average" midpoint label).
+    expect(screen.getByTestId("sidebar-sum-ui").textContent).toBe("1,000");
+    expect(screen.getByTestId("sidebar-wr-preview").textContent).toMatch(/zł$/);
+    const midInitial = screen.getByTestId("footnav-kcs-mid").textContent ?? "";
+    expect(midInitial).toContain("ΣUi");
+    expect(midInitial).toContain("1,000");
+    expect(midInitial).toMatch(/zł$/);
+
+    // "standard wykończenia" carries 40% weight — flipping it to "lepsza"
+    // moves its contribution from weight·1 to weight·vmax (1,200), i.e.
+    // ΣUi 1,000 → 1,080.
+    await user.click(screen.getByRole("button", { name: "standard wykończenia: lepsza" }));
+
+    await waitFor(() => expect(screen.getByTestId("sidebar-sum-ui").textContent).toBe("1,080"));
+    expect(screen.getByTestId("sidebar-wr-preview").textContent).toMatch(/zł$/);
+    expect(screen.getByTestId("footnav-kcs-mid").textContent).toContain("1,080");
+  });
+
+  it("shows '—' in the sidebar and FootNav when comparables are empty (throw-path guard)", () => {
+    render(<StepFeatures valuationId={VID} features={[]} comparables={[]} area={SUBJECT_AREA} />);
+    expect(screen.getByTestId("sidebar-sum-ui").textContent).toBe("—");
+    expect(screen.getByTestId("sidebar-wr-preview").textContent).toBe("—");
+    expect(screen.getByTestId("footnav-kcs-mid").textContent).toBe("—");
   });
 });
