@@ -20,6 +20,12 @@ async function createDraftStep1(page: import("@playwright/test").Page) {
   await page.locator("#client").fill("p. Test Testowy");
   await page.getByRole("button", { name: "Dane się zgadzają — dalej" }).click();
   await page.waitForURL(/\/valuations\/[0-9a-f-]{36}\?step=2/);
+  // Regression net for the RSC-boundary 500 (server render of an existing
+  // draft's step 1 calling a "use client" module's export): revisiting step 1
+  // on a saved draft must render, not crash.
+  await page.goto(page.url().replace("step=2", "step=1"));
+  await expect(page.getByRole("button", { name: "Dane się zgadzają — dalej" })).toBeVisible();
+  await page.goto(page.url().replace("step=1", "step=2"));
 }
 
 async function walkToOperat(page: import("@playwright/test").Page, prices: string[]) {

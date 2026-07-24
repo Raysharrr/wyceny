@@ -5,7 +5,7 @@ import "@testing-library/jest-dom/vitest";
 import userEvent from "@testing-library/user-event";
 import type { z } from "zod";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
-import { EMPTY_SUBJECT } from "@/lib/subject-form";
+import { EMPTY_SUBJECT, step1DefaultsFromInputs } from "@/lib/subject-form";
 import type { KcsInput } from "@/domain/kcs";
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
@@ -48,7 +48,7 @@ vi.mock("@/app/actions/mint-kw-token", () => ({
 }));
 vi.mock("@/lib/kw-extract-client", () => ({ extractKw: vi.fn() }));
 
-import { SubjectForm, step1DefaultsFromInputs } from "@/app/valuations/new/subject-form";
+import { SubjectForm } from "@/app/valuations/new/subject-form";
 import { createDraft, saveSubjectAction } from "@/app/actions/wizard";
 
 async function fillRequired(user: ReturnType<typeof userEvent.setup>) {

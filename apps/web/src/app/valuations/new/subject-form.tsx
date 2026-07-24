@@ -16,11 +16,8 @@ import { getMapPreview } from "@/app/actions/get-map-preview";
 import { getSubjectData } from "@/app/actions/get-subject-data";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { PURPOSE_LABEL } from "@/domain/document-model";
-import type { KcsInput } from "@/domain/kcs";
-import type { KwSnapshot } from "@/domain/kw-snapshot";
-import type { SubjectSnapshot } from "@/domain/subject-snapshot";
 import { extractKw } from "@/lib/kw-extract-client";
-import { EMPTY_SUBJECT, proposalToSubjectValues, type SubjectFormValues } from "@/lib/subject-form";
+import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
 import { cn } from "@/lib/utils";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 import { KwSection, type KwFetchState, type KwSource } from "./kw-section";
@@ -67,75 +64,6 @@ function formatAreaDisplay(value: unknown): string | null {
   if (value === undefined || value === null || value === "") return null;
   const num = Number(value);
   return Number.isNaN(num) ? null : num.toLocaleString("pl-PL");
-}
-
-// Maps a persisted SubjectSnapshot's numeric fields (plain numbers) to the
-// strings the step-1 form's coerced-number inputs expect — same rationale as
-// `toInputValue`, applied once at the defaults layer instead of per-render.
-function subjectSnapshotToForm(snapshot: SubjectSnapshot): Partial<SubjectFormValues> {
-  return {
-    ...snapshot,
-    powEwidHa: snapshot.powEwidHa != null ? String(snapshot.powEwidHa) : undefined,
-    kondygnacjeNadziemne:
-      snapshot.kondygnacjeNadziemne != null ? String(snapshot.kondygnacjeNadziemne) : undefined,
-    kondygnacjePodziemne:
-      snapshot.kondygnacjePodziemne != null ? String(snapshot.kondygnacjePodziemne) : undefined,
-    rokBudowy: snapshot.rokBudowy != null ? String(snapshot.rokBudowy) : undefined,
-  };
-}
-
-/**
- * Coerces a persisted `kw` snapshot to the current `KwSnapshot` shape.
- * Production drafts created before Slice 11a were saved when `kwInne` and
- * `deweloperski` didn't exist yet — a legacy snapshot spread into
- * `kwState`'s `useState` initializer below (`...defaults.kw.kwInne`) throws a
- * `TypeError` on a non-iterable `undefined`, and even past that, `kwSchema`
- * requires both fields as non-optional, so the form would stay unsaveable.
- * Coercing at this defaults boundary fixes both render and save with no data
- * migration and no change to `normalizeKw`/the mutation/schema layer.
- */
-function coerceLegacyKw(kw: Partial<KwSnapshot>): KwSnapshot {
-  return {
-    source: kw.source ?? "odpis_kw",
-    kwLokalu: kw.kwLokalu ?? null,
-    kwGruntu: kw.kwGruntu ?? null,
-    kwInne: kw.kwInne ?? [],
-    deweloperski: kw.deweloperski ?? false,
-    powUzytkowaKw: kw.powUzytkowaKw ?? null,
-    udzial: kw.udzial ?? null,
-    sad: kw.sad ?? null,
-    wydzial: kw.wydzial ?? null,
-    dataDokumentu: kw.dataDokumentu ?? null,
-    dzial3: kw.dzial3 ?? null,
-    dzial4: kw.dzial4 ?? null,
-  };
-}
-
-/**
- * Builds `SubjectForm`'s `defaults` prop from a persisted valuation record
- * (Task 7 supplies `v` from the draft loaded for edit mode).
- */
-export function step1DefaultsFromInputs(v: {
-  address: string;
-  area: number;
-  purpose: string | null;
-  kwNumber: string | null;
-  client: string | null;
-  inputs: KcsInput | null;
-}): Partial<FormInput> {
-  return {
-    address: v.address,
-    area: String(v.area),
-    purpose: (v.purpose ?? "") as never,
-    kwNumber: v.kwNumber ?? "",
-    client: v.client ?? "",
-    subject: v.inputs?.subject
-      ? { ...EMPTY_SUBJECT, ...subjectSnapshotToForm(v.inputs.subject) }
-      : { ...EMPTY_SUBJECT },
-    subjectMeta: v.inputs?.subjectMeta ?? undefined,
-    kw: v.inputs?.kw ? coerceLegacyKw(v.inputs.kw) : undefined,
-    kwMeta: v.inputs?.kwMeta ?? undefined,
-  };
 }
 
 /**

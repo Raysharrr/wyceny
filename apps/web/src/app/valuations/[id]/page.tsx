@@ -8,8 +8,9 @@ import { getSession } from "@/auth/session";
 import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers } from "@/domain/document-model";
 import { maxReachedStep, resolveStep } from "@/domain/wizard";
+import { step1DefaultsFromInputs } from "@/lib/subject-form";
 import { valuationRepository } from "../_deps";
-import { SubjectForm, step1DefaultsFromInputs } from "../new/subject-form";
+import { SubjectForm } from "../new/subject-form";
 import {
   ComparablesProvenance,
   currencyFormatter,
