@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { WizardShell } from "@/components/wizard/wizard-shell";
 import { getSession } from "@/auth/session";
 import { approvalGate } from "@/domain/provenance";
@@ -11,34 +9,19 @@ import { maxReachedStep, resolveStep } from "@/domain/wizard";
 import { step1DefaultsFromInputs } from "@/lib/subject-form";
 import { valuationRepository } from "../_deps";
 import { SubjectForm } from "../new/subject-form";
-import {
-  ComparablesProvenance,
-  currencyFormatter,
-  FeaturesCard,
-  KcsBreakdown,
-  KwCard,
-  SubjectCard,
-} from "./cards";
-import { InspectionSection } from "./inspection-section";
+import { FlatView } from "./flat-view";
 import { StepCalculation } from "./steps/step-calculation";
 import { StepDescriptions } from "./steps/step-descriptions";
 import { StepFeatures } from "./steps/step-features";
 import { StepInspection } from "./steps/step-inspection";
 import { StepOperat } from "./steps/step-operat";
 import { StepSample } from "./steps/step-sample";
-import { ValuationActions } from "./valuation-actions";
 
 // The approve Server Action invoked from this page generates the operat
 // (DOCX render + LibreOffice PDF conversion in the worker), which can exceed
 // the default serverless function timeout. Page-level route config covers the
 // Server Actions defined for / invoked from this route (Next 16.2.9).
 export const maxDuration = 60;
-
-const STATUS_LABEL: Record<string, string> = {
-  in_progress: "Szkic",
-  approved: "Zatwierdzony",
-  signed: "Podpisany",
-};
 
 // RFC 4122-shaped (any version/variant) — the `id` route param is
 // user-controlled and Postgres' `uuid` column rejects anything else with a
@@ -192,152 +175,20 @@ export default async function ValuationViewPage({
     canCreateNewVersion;
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10">
-      <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          <Link href="/valuations" className="hover:text-primary">
-            Wyceny
-          </Link>{" "}
-          / Operat
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-foreground">{valuation.address}</h1>
-          <Badge
-            data-testid="valuation-status"
-            variant={valuation.status === "in_progress" ? "secondary" : "default"}
-          >
-            {STATUS_LABEL[valuation.status] ?? valuation.status}
-          </Badge>
-        </div>
-        {valuation.supersedesId ? (
-          <p data-testid="supersedes-banner" className="text-sm text-muted-foreground">
-            Zastępuje{" "}
-            <Link
-              href={`/valuations/${valuation.supersedesId}`}
-              className="underline hover:text-primary"
-            >
-              poprzedni operat
-            </Link>
-            .
-          </p>
-        ) : null}
-        {successor ? (
-          <p data-testid="superseded-by-banner" className="text-sm text-muted-foreground">
-            Zastąpiony przez{" "}
-            <Link href={`/valuations/${successor.id}`} className="underline hover:text-primary">
-              nowszą wersję
-            </Link>
-            .
-          </p>
-        ) : null}
-      </div>
-
-      <Card>
-        <CardContent className="grid gap-5 sm:grid-cols-2">
-          <div className="flex flex-col gap-0.5">
-            <p className="text-xs text-muted-foreground">Powierzchnia</p>
-            <p className="text-base font-medium text-foreground">{valuation.area} m²</p>
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <p className="text-xs text-muted-foreground">Wartość rynkowa (WR)</p>
-            <p className="text-base font-medium text-foreground" data-testid="wr-value">
-              {valuation.wr == null ? "—" : currencyFormatter.format(valuation.wr)}
-            </p>
-          </div>
-          <div className="flex flex-col gap-0.5 sm:col-span-2">
-            <p className="text-xs text-muted-foreground">Kwota słownie</p>
-            <p className="text-base font-medium text-primary">{valuation.amountInWords ?? "—"}</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {valuation.wr != null && valuation.inputs ? <KcsBreakdown inputs={valuation.inputs} /> : null}
-
-      {valuation.wr != null && valuation.inputs ? (
-        <ComparablesProvenance inputs={valuation.inputs} />
-      ) : null}
-
-      {valuation.inputs ? <FeaturesCard inputs={valuation.inputs} /> : null}
-
-      {valuation.inputs?.subject ? <SubjectCard inputs={valuation.inputs} /> : null}
-
-      {valuation.inputs?.kw ? <KwCard inputs={valuation.inputs} /> : null}
-
-      {isDraft && isOwner ? (
-        <InspectionSection
-          valuationId={valuation.id}
-          inspection={valuation.inputs?.inspection ?? null}
-        />
-      ) : null}
-
-      {isOwner && hasAnyAction ? (
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-6">
-            {allBlockers.length > 0 ? (
-              <div data-testid="gate-blockers" className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground">
-                  Zatwierdzenie zablokowane — do wyjaśnienia:
-                </p>
-                <ul className="list-disc pl-5 text-sm text-amber-600 dark:text-amber-500">
-                  {allBlockers.map((b) => (
-                    <li key={b.path}>{b.label}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            <ValuationActions
-              id={valuation.id}
-              hasToVerify={hasToVerify}
-              hasSubjectToVerify={hasSubjectToVerify}
-              hasKwToVerify={hasKwToVerify}
-              hasFeaturesToVerify={hasFeaturesToVerify}
-              gateOk={gateOk}
-              canApprove={valuation.status === "in_progress"}
-              canSign={canSign}
-              canCreateNewVersion={canCreateNewVersion}
-            />
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {valuation.status === "approved" && valuation.approvedAt ? (
-        <p className="text-sm text-muted-foreground">
-          Zatwierdzono:{" "}
-          {new Intl.DateTimeFormat("pl-PL", { dateStyle: "long", timeStyle: "short" }).format(
-            valuation.approvedAt,
-          )}
-        </p>
-      ) : null}
-
-      {valuation.status === "signed" && valuation.signedAt ? (
-        <p className="text-sm text-muted-foreground">
-          Podpisano:{" "}
-          {new Intl.DateTimeFormat("pl-PL", { dateStyle: "long", timeStyle: "short" }).format(
-            valuation.signedAt,
-          )}
-        </p>
-      ) : null}
-
-      {valuation.docUrl?.endsWith(".pdf") ? (
-        <div className="flex flex-col gap-2">
-          <iframe
-            title="Operat szacunkowy (PDF)"
-            src={valuation.docUrl}
-            className="h-[80vh] w-full rounded-md border"
-          />
-          {valuation.docxUrl ? (
-            <Button asChild variant="outline" className="w-fit">
-              <a href={valuation.docxUrl}>Pobierz DOCX</a>
-            </Button>
-          ) : null}
-        </div>
-      ) : valuation.docUrl ? (
-        <Button asChild variant="outline" className="w-fit">
-          <a href={valuation.docUrl} target="_blank" rel="noreferrer">
-            Otwórz dokument operatu
-          </a>
-        </Button>
-      ) : null}
-    </div>
+    <FlatView
+      valuation={valuation}
+      isOwner={isOwner}
+      isDraft={isDraft}
+      canSign={canSign}
+      successor={successor}
+      allBlockers={allBlockers}
+      gateOk={gateOk}
+      hasToVerify={hasToVerify}
+      hasSubjectToVerify={hasSubjectToVerify}
+      hasKwToVerify={hasKwToVerify}
+      hasFeaturesToVerify={hasFeaturesToVerify}
+      hasAnyAction={hasAnyAction}
+      canCreateNewVersion={canCreateNewVersion}
+    />
   );
 }
