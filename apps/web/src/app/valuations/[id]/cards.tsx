@@ -1,6 +1,5 @@
-import { Calculator, Scale, SlidersHorizontal, Table2 } from "lucide-react";
+import { Building2, Calculator, FileText, Scale, SlidersHorizontal, Table2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
@@ -178,15 +177,17 @@ export function SubjectCard({ inputs }: { inputs: KcsInput }) {
       : "—";
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 pt-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-foreground">Dane przedmiotu</h2>
-          <div className="flex flex-wrap gap-2">
-            <GroupProvenanceBadge label="EGiB" status={provenance?.ewidencja?.status} />
-            <GroupProvenanceBadge label="MPZP" status={provenance?.mpzp?.status} />
-          </div>
+    <SectionCard
+      icon={Building2}
+      title="Dane przedmiotu"
+      right={
+        <div className="flex flex-wrap gap-2">
+          <GroupProvenanceBadge label="EGiB" status={provenance?.ewidencja?.status} />
+          <GroupProvenanceBadge label="MPZP" status={provenance?.mpzp?.status} />
         </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-xs text-muted-foreground">Obręb</dt>
@@ -254,8 +255,8 @@ export function SubjectCard({ inputs }: { inputs: KcsInput }) {
             </div>
           </dl>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }
 
@@ -288,12 +289,12 @@ export function KwCard({ inputs }: { inputs: KcsInput }) {
   const provenance = inputs.provenance;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 pt-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-foreground">Stan prawny (KW)</h2>
-          <GroupProvenanceBadge label="Stan prawny (KW)" status={provenance?.kw?.status} />
-        </div>
+    <SectionCard
+      icon={FileText}
+      title="Stan prawny (KW)"
+      right={<GroupProvenanceBadge label="Stan prawny (KW)" status={provenance?.kw?.status} />}
+    >
+      <div className="flex flex-col gap-4">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-xs text-muted-foreground">Nr KW lokalu</dt>
@@ -328,8 +329,8 @@ export function KwCard({ inputs }: { inputs: KcsInput }) {
           <KwDzialField label="Dział III — prawa, roszczenia i ograniczenia" dzial={kw.dzial3} />
           <KwDzialField label="Dział IV — hipoteki" dzial={kw.dzial4} />
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }
 
@@ -353,36 +354,36 @@ export function FeaturesCard({ inputs }: { inputs: KcsInput }) {
     }))
     .filter((r) => r.defs.length > 0);
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 pt-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-foreground">Cechy i wagi</h2>
-          <div className="flex flex-wrap gap-2">
-            <GroupProvenanceBadge label="Wagi cech" status={provenance?.weights?.status} />
-            {provenance?.featureDefs ? (
-              <GroupProvenanceBadge
-                label="Definicje skali ocen"
-                status={provenance.featureDefs.status}
-              />
-            ) : null}
-          </div>
+    <SectionCard
+      icon={SlidersHorizontal}
+      title="Cechy i wagi"
+      right={
+        <div className="flex flex-wrap gap-2">
+          <GroupProvenanceBadge label="Wagi cech" status={provenance?.weights?.status} />
+          {provenance?.featureDefs ? (
+            <GroupProvenanceBadge
+              label="Definicje skali ocen"
+              status={provenance.featureDefs.status}
+            />
+          ) : null}
         </div>
-        {rows.length > 0 ? (
-          <dl className="flex flex-col gap-2 text-sm">
-            {rows.map((r) => (
-              <div key={r.name}>
-                <dt className="text-xs text-muted-foreground">{r.name}</dt>
-                {r.defs.map((d) => (
-                  <dd key={d}>{d}</dd>
-                ))}
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="text-xs text-muted-foreground">Brak definicji skali ocen.</p>
-        )}
-      </CardContent>
-    </Card>
+      }
+    >
+      {rows.length > 0 ? (
+        <dl className="flex flex-col gap-2 text-sm">
+          {rows.map((r) => (
+            <div key={r.name}>
+              <dt className="text-xs text-muted-foreground">{r.name}</dt>
+              {r.defs.map((d) => (
+                <dd key={d}>{d}</dd>
+              ))}
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="text-xs text-muted-foreground">Brak definicji skali ocen.</p>
+      )}
+    </SectionCard>
   );
 }
 
