@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
 // auto-cleanup never registers — without this each render leaks into the
@@ -82,5 +83,31 @@ describe("StepInspection", () => {
     expect(input.value).toBe("2026-06-15");
     expect(screen.getByTestId("inspection-section")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Oględziny" })).toBeDefined();
+  });
+
+  it("renders the FootNav back link (step 1) and primary 'Dalej' link (step 3) with correct targets", () => {
+    render(<StepInspection valuationId={VID} inspection={null} inspectionDate={null} />);
+
+    expect(screen.getByRole("link", { name: /Wstecz/ })).toHaveAttribute(
+      "href",
+      `/valuations/${VID}?step=1`,
+    );
+    // e2e/smoke.spec.ts clicks this exact role+name to advance past step 2 —
+    // the label must stay byte-identical to "Dalej".
+    expect(screen.getByRole("link", { name: "Dalej" })).toHaveAttribute(
+      "href",
+      `/valuations/${VID}?step=3`,
+    );
+  });
+
+  it("shows the live photo count in the FootNav mid slot", () => {
+    const inspection = {
+      note: null,
+      photos: { otoczenie: ["a"], budynekZewn: [], wnetrza: ["b", "c"] },
+    };
+    render(<StepInspection valuationId={VID} inspection={inspection} inspectionDate={null} />);
+
+    expect(screen.getByText("Oględziny:")).toBeInTheDocument();
+    expect(screen.getByText("3 zdjęć")).toBeInTheDocument();
   });
 });
