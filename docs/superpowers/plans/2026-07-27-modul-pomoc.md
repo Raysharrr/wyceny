@@ -1143,16 +1143,17 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "docs: methodology pa
 **Files:**
 
 - Modify: dziewięć plików MDX drzewa „Jak korzystać"
-- Modify: `apps/web/tests/rtl-help-nav.test.tsx`
 
 **Interfaces:**
 
 - Consumes: komplet 15 stron
-- Produces: linki z instrukcji do odpowiadających stron metodycznych; notka „wkrótce" znika samoczynnie (drzewo ma już strony) — test z Taska 3 wymaga przepięcia.
+- Produces: linki z instrukcji do odpowiadających stron metodycznych; notka „wkrótce" znika samoczynnie, bo drzewo ma już strony.
 
-- [ ] **Step 1: Przepnij test notki**
+- [ ] **Step 1: Potwierdź test notki (nic do przepisania)**
 
-Przypadek „pokazuje notkę zamiast pustej listy" nie ma już zastosowania na realnym manifeście. Przepisz go tak, by testował samą funkcję renderującą przy pustej liście stron (wstrzyknięta pusta tablica), a nie stan globalnego manifestu. **Nie usuwaj przypadku.**
+**Ten krok jest już wykonany — zrealizował go Task 3 i potwierdziło niezależne review.** Pierwotnie plan zakładał, że test notki asertuje przeciwko globalnemu stanowi manifestu i będzie wymagał przepięcia. Implementer Taska 3 wydzielił jednak `HelpTreeSection` i testuje zachowanie komponentu przy **wstrzykniętej pustej liście**, plus przypadek odwrotny (dwie strony → brak notki). Test nie zapali się od dołożenia stron metodycznych.
+
+Zrób tylko tyle: `cd apps/web && pnpm vitest run tests/rtl-help-nav.test.tsx` → oczekiwane PASS. Jeśli czerwone — dopiero wtedy analizuj, bo to znaczy, że coś się zmieniło wbrew założeniu. **Nie przepisuj i nie usuwaj żadnego przypadku.**
 
 - [ ] **Step 2: Dodaj linki krzyżowe**
 

@@ -40,5 +40,14 @@ export const HELP_PAGES: HelpPage[] = [
 export const getPage = (slug: string): HelpPage | undefined =>
   HELP_PAGES.find((page) => page.slug === slug);
 
+/**
+ * Pure, injectable sort so the ordering is actually testable. Asserting that
+ * `pagesInTree(...)` returns ascending pages proves nothing while the manifest
+ * is authored in ascending order: an independent review deleted the `.sort()`
+ * and every test stayed green. Callers keep using `pagesInTree`.
+ */
+export const sortPages = (pages: HelpPage[]): HelpPage[] =>
+  [...pages].sort((a, b) => a.order - b.order);
+
 export const pagesInTree = (tree: HelpTree): HelpPage[] =>
-  HELP_PAGES.filter((page) => page.tree === tree).sort((a, b) => a.order - b.order);
+  sortPages(HELP_PAGES.filter((page) => page.tree === tree));

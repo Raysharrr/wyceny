@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { HELP_PAGES, getPage, pagesInTree } from "@/content/pomoc/manifest";
+import {
+  HELP_PAGES,
+  getPage,
+  pagesInTree,
+  sortPages,
+  type HelpPage,
+} from "@/content/pomoc/manifest";
 
 describe("manifest Pomocy", () => {
   it("ma unikalne slugi", () => {
@@ -43,5 +49,28 @@ describe("manifest Pomocy", () => {
     expect(pages).toHaveLength(HELP_PAGES.filter((page) => page.tree === tree).length);
     const orders = pages.map((page) => page.order);
     expect(orders).toEqual([...orders].sort((a, b) => a - b));
+  });
+});
+
+describe("sortPages", () => {
+  const page = (slug: string, order: number): HelpPage => ({
+    slug,
+    title: slug,
+    tree: "jak-korzystac",
+    order,
+    tags: [],
+    summary: slug,
+    load: async () => ({ default: () => null }),
+  });
+
+  it("porzadkuje rosnaco po order", () => {
+    const wynik = sortPages([page("c", 3), page("a", 1), page("b", 2)]);
+    expect(wynik.map((p) => p.slug)).toEqual(["a", "b", "c"]);
+  });
+
+  it("nie mutuje wejscia", () => {
+    const wejscie = [page("c", 3), page("a", 1)];
+    sortPages(wejscie);
+    expect(wejscie.map((p) => p.slug)).toEqual(["c", "a"]);
   });
 });
