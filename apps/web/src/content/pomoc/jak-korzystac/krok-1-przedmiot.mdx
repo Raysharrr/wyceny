@@ -1,0 +1,56 @@
+W kroku 1 opisujesz przedmiot wyceny: adres, powierzchnię, stan prawny z księgi wieczystej oraz dane ewidencyjne i planistyczne. To jedyny krok, który tworzy wycenę — po jego pierwszym zapisaniu szkic pojawia się na liście, a kreator przechodzi do oględzin.
+
+## Co wypełnia się samo
+
+### Dane działki, budynku i planu miejscowego
+
+Pobieranie startuje po wpisaniu adresu i opuszczeniu tego pola — nie ma osobnego przycisku. W trakcie widzisz „Pobieram dane działki i MPZP…”, po udanym pobraniu — „Pobrano dane przedmiotu: EGiB, MPZP, geokoder”.
+
+Wypełniane pola:
+
+- z ewidencji gruntów i budynków: obręb, arkusz mapy, nr działki, pow. ewidencyjna działki [ha], użytek, rodzaj budynku, kondygnacje nadziemne i podziemne,
+- z planu miejscowego: symbol MPZP, nazwa planu, uchwała, data uchwały i publikator.
+
+Każde pobrane pole zostaje edytowalne — to propozycja do potwierdzenia, nie zapis nie do ruszenia.
+
+Kolejne pobranie (inny adres albo „Spróbuj ponownie”) czyści całą sekcję danych przedmiotu, **razem z polami wpisanymi ręcznie**. Dzięki temu dane z poprzedniego adresu nie mieszają się z nowymi, ale własne uzupełnienia trzeba po takim pobraniu wprowadzić jeszcze raz.
+
+Gdy adres jest poza obsługiwanym obszarem, dostajesz komunikat informacyjny bez przycisku ponowienia — sekcję wypełniasz wtedy ręcznie. Błąd pobrania (np. chwilowa niedostępność źródła) daje przycisk „Spróbuj ponownie”.
+
+Rok budowy nie występuje w publicznej ewidencji — to pole zostaje puste i uzupełniasz je z dokumentacji albo z oględzin.
+
+### Podgląd map
+
+Po udanym pobraniu w panelu obok formularza pojawia się mapa ewidencyjna działki i ortofotomapa okolicy. To wyłącznie podgląd: mapy do operatu pobierane są osobno przy zatwierdzeniu.
+
+### Księga wieczysta
+
+Wybierasz jedno z trzech źródeł: „Wgraj akt notarialny”, „Wgraj odpis KW” albo „Wpisz ręcznie”.
+
+Z wgranego pliku PDF aplikacja odczytuje numer KW lokalu i gruntu, udział w nieruchomości wspólnej, sąd i wydział ksiąg wieczystych, treść działu III i IV oraz powierzchnię użytkową. Odczyt trwa do około pół minuty, a wynik pojawia się jako „Odczytano: … — do potwierdzenia” w edytowalnych polach. Jeśli dokument okaże się innego typu niż wybrany, zobaczysz ostrzeżenie — dane zostaną wypełnione według typu wykrytego.
+
+Powierzchnię z dokumentu aplikacja wpisze tylko wtedy, gdy pole powierzchni jest puste. Gdy wpisałeś własną wartość i różni się ona od dokumentu, pojawi się ostrzeżenie z przyciskiem „Użyj wartości z dokumentu” — decyzja należy do Ciebie, nic nie jest tu blokowane.
+
+Zmiana źródła KW czyści całą sekcję: wgrany dokument, odczytane pola i ręcznie wpisany numer księgi. Powierzchnia wzięta z dokumentu też znika, o ile jej nie zmieniłeś.
+
+Zaznaczenie „Lokal bez własnej KW (zakup deweloperski)” wyłącza pole numeru KW lokalu — dane pochodzą wtedy z księgi macierzystej gruntu.
+
+## Co musisz uzupełnić ręcznie
+
+- **Adres** — od niego zaczyna się całe pobieranie.
+- **Powierzchnia (m²)** — z dokumentu albo własna.
+- **Cel wyceny** — Sprzedaż, Zabezpieczenie kredytu albo Informacyjny.
+- **Zamawiający wycenę.**
+- **Numer księgi wieczystej** — gdy wybrałeś „Wpisz ręcznie”.
+- Pola, których źródła nie zwróciły — najczęściej rok budowy.
+- **Brak obowiązującego MPZP** — zaznacz, gdy planu nie ma; pola planu ustąpią wtedy miejsca polu „Przeznaczenie wg studium/decyzji WZ”.
+
+## Co blokuje przejście dalej
+
+Przycisk „Dane się zgadzają — dalej” zapisuje krok. Zapis nie przejdzie bez adresu, powierzchni większej od zera, celu wyceny i zamawiającego — brakujące pole dostaje komunikat przy sobie.
+
+Numer księgi wieczystej jest wymagany tylko wtedy, gdy nie wgrałeś dokumentu. W trybie wgrywania pusty formularz kończy się komunikatem „Wgraj dokument albo przełącz na wpis ręczny”.
+
+Plik inny niż PDF albo większy niż 32 MB jest odrzucany od razu, bez wysyłania.
+
+Dane ewidencyjne, plan miejscowy i dane odczytane z dokumentu KW wchodzą do wyceny ze statusem „do weryfikacji”. Praca w kreatorze idzie dalej normalnie, ale zatwierdzenie operatu w kroku 7 wymaga ich zbiorczego potwierdzenia. To, co wpisałeś sam, jest potwierdzone z definicji.

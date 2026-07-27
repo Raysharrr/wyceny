@@ -1,8 +1,41 @@
-## Zanim zaczniesz
+Aplikacja służy do sporządzania operatów szacunkowych metodą korygowania ceny średniej i prowadzi Cię przez wycenę w siedmiu krokach — od danych przedmiotu po zatwierdzony dokument. Ta strona opisuje sam start: logowanie, listę wycen, utworzenie nowej wyceny i poruszanie się po kreatorze.
 
-Aplikacja służy do sporządzania operatów szacunkowych metodą korygowania ceny średniej.
-Dostęp jest zamknięty — konto zakłada administrator.
+## Logowanie
+
+Dostęp jest zamknięty — w aplikacji nie ma rejestracji, konto zakłada administrator. Logujesz się adresem e-mail i hasłem. Każda strona wymaga zalogowania: wejście pod dowolny adres bez ważnej sesji przenosi na ekran logowania.
+
+Konto ma jedną z dwóch ról:
+
+- **rzeczoznawca** — widzi wyłącznie wyceny przypisane do siebie,
+- **administrator** — widzi wszystkie wyceny biura.
 
 ## Lista wycen
 
-Po zalogowaniu widzisz listę swoich wycen. Kliknięcie wiersza otwiera wycenę.
+Po zalogowaniu trafiasz na listę wycen. Rzeczoznawca ma tu nagłówek „Twoje wyceny”, administrator — „Wszystkie wyceny biura”. Gdy nie ma jeszcze żadnej wyceny, lista pokazuje zachętę do utworzenia pierwszej.
+
+Tabela ma trzy kolumny: adres, status i WR (wartość rynkowa). Status przyjmuje jedną z trzech wartości:
+
+- **Szkic** — wycena w trakcie, otwiera się w kreatorze siedmiu kroków,
+- **Zatwierdzony** — operat wygenerowany, wycena czeka na podpis,
+- **Podpisany** — wycena zamknięta.
+
+W kolumnie WR jest kreska dopóki kalkulacja nie została potwierdzona w kroku 5.
+
+Kliknięcie wiersza otwiera wycenę. Własny szkic otwiera się w kreatorze; wycena zatwierdzona lub podpisana — w widoku dokumentu, bez kreatora. Administrator oglądający cudzy szkic również widzi go w widoku dokumentu, a nie w kreatorze.
+
+## Nowa wycena
+
+Przycisk „Nowa wycena” otwiera pierwszy krok kreatora — dane przedmiotu. Wycena powstaje dopiero po zapisaniu tego kroku: aplikacja tworzy szkic i od razu przechodzi do oględzin. Wcześniej na liście nie ma jeszcze czego szukać.
+
+## Poruszanie się po kreatorze
+
+U góry kreatora jest pasek siedmiu kroków. Kroki, do których szkic jeszcze nie dojrzał, są nieaktywne:
+
+- kroki 1–3 są dostępne od początku,
+- krok 4 — po zapisaniu próby transakcji,
+- krok 5 — po zapisaniu cech,
+- wszystkie siedem — po potwierdzeniu kalkulacji.
+
+Do wcześniejszego kroku wracasz klikając jego numer w pasku; zapisane dane zostają. Odnośnik „← Wyceny” wraca do listy.
+
+Znak zapytania obok tytułu kroku otwiera stronę Pomocy dokładnie o tym kroku. Do całej Pomocy wchodzisz też z menu pod awatarem.

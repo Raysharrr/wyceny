@@ -35,6 +35,53 @@ export const HELP_PAGES: HelpPage[] = [
     summary: "Logowanie, lista wycen i utworzenie pierwszej wyceny.",
     load: () => import("./jak-korzystac/pierwsze-kroki.mdx"),
   },
+  {
+    slug: "krok-1-przedmiot",
+    title: "Krok 1 — Dane przedmiotu",
+    tree: "jak-korzystac",
+    order: 2,
+    tags: [
+      "adres",
+      "powierzchnia",
+      "księga wieczysta",
+      "KW",
+      "akt notarialny",
+      "MPZP",
+      "EGiB",
+      "działka",
+      "cel wyceny",
+      "zamawiający",
+    ],
+    summary:
+      "Adres uruchamia pobranie danych działki, budynku i planu; KW z dokumentu albo z ręki.",
+    load: () => import("./jak-korzystac/krok-1-przedmiot.mdx"),
+  },
+  {
+    slug: "krok-2-ogledziny",
+    title: "Krok 2 — Oględziny",
+    tree: "jak-korzystac",
+    order: 3,
+    tags: [
+      "oględziny",
+      "zdjęcia",
+      "fotografie",
+      "notatka",
+      "data oględzin",
+      "GPS",
+      "dokumentacja fotograficzna",
+    ],
+    summary: "Data wizyty, zdjęcia w trzech sekcjach i notatka — jedyny krok bez automatyzacji.",
+    load: () => import("./jak-korzystac/krok-2-ogledziny.mdx"),
+  },
+  {
+    slug: "krok-3-proba",
+    title: "Krok 3 — Próba porównawcza",
+    tree: "jak-korzystac",
+    order: 4,
+    tags: ["próba", "transakcje", "RCN", "porównawcze", "zł/m²", "Cśr", "12 transakcji"],
+    summary: "Pobranie transakcji z RCN, ręczne uzupełnienia i wymagana liczebność próby.",
+    load: () => import("./jak-korzystac/krok-3-proba.mdx"),
+  },
 ];
 
 export const getPage = (slug: string): HelpPage | undefined =>

@@ -1,0 +1,28 @@
+W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m², na których oprze się kalkulacja. Transakcje możesz pobrać z rejestru cen nieruchomości (RCN) albo wpisać ręcznie; oba źródła da się łączyć, bo każdy wiersz tabeli zostaje edytowalny.
+
+## Co wypełnia się samo
+
+Przycisk „Pobierz próbę z RCN” pobiera transakcje dla adresu i powierzchni tej wyceny. Pobieranie trwa zwykle kilka do kilkunastu sekund — przycisk pokazuje wtedy „Pobieranie…”.
+
+- Do tabeli trafia najwyżej dwanaście transakcji: data, powierzchnia i cena zł/m².
+- **Pobranie zastępuje całą dotychczasową zawartość tabeli**, również wiersze wpisane ręcznie.
+- Nad tabelą pojawia się informacja, ile transakcji pobrano i z którego dnia pochodzi pobranie.
+- Gdy pobranie się nie uda, zobaczysz komunikat z powodem, a próbę wpisujesz ręcznie.
+
+Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty. Metodę doboru próby i znaczenie tych wielkości opisujemy osobno.
+
+## Co musisz uzupełnić ręcznie
+
+- **Cena (zł/m²)** w każdym wierszu — bez niej zapis nie przejdzie.
+- **Data transakcji** i **powierzchnia (m²)** — przy pobraniu z RCN wypełniają się same; przy wpisie ręcznym są opcjonalne przy zapisie, ale powierzchnie z próby są używane w kroku 4 przy definicjach cech.
+- Przycisk „Dodaj transakcję” dokłada pusty wiersz. „Usuń” kasuje wiersz, ale tabela nie zejdzie poniżej trzech wierszy — przy trzech przycisk jest nieaktywny.
+
+Wiersze pobrane z RCN możesz poprawiać jak każde inne: zmienić wartość, dopisać transakcję, usunąć niepasującą.
+
+## Co blokuje przejście dalej
+
+- Zapis („Zatwierdź próbę i dalej”) wymaga co najmniej **trzech transakcji** z ceną większą od zera. Przy mniejszej liczbie zobaczysz komunikat „Podaj co najmniej 3 transakcje porównawcze”.
+- Dopóki próba ma mniej niż **dwanaście transakcji**, pod tabelą wisi ostrzeżenie: szkic zapiszesz i przejdziesz dalej, ale zatwierdzenie operatu będzie zablokowane.
+- Transakcje pobrane z RCN wchodzą ze statusem „do weryfikacji”. Potwierdzasz je zbiorczo w kroku 7 przyciskiem „Potwierdź próbę z RCN” — bez tego zatwierdzenie operatu jest zablokowane. Transakcje wpisane ręcznie są potwierdzone z definicji.
+
+Zapis próby odblokowuje krok 4 w pasku kroków.
