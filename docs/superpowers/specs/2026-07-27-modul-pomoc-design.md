@@ -81,7 +81,9 @@ Wartości z kodu wstawiane w MDX przez import stałych — to jest sedno wymogu 
 
 ### Wyszukiwarka
 
-Skrypt `apps/web/scripts/build-help-index.mjs`, podpięty jako `prebuild` w `apps/web/package.json` (oraz `predev`, żeby lokalny serwer też miał świeży indeks), czyta pliki MDX z `src/content/pomoc/**`, usuwa składnię (fence'y, znaczniki, importy) i zapisuje `apps/web/src/content/pomoc/search-index.json` w kształcie `{ slug, title, tree, tags, text }[]`. Plik jest **generowany i gitignorowany** — build zawsze go odtwarza, więc nie może się zestarzeć. `slug` i `tree` muszą zgadzać się z `manifest.ts`; skrypt przerywa build, jeśli plik MDX nie ma wpisu w manifeście albo odwrotnie (tania ochrona przed stroną-widmem w wynikach wyszukiwania).
+Skrypt `apps/web/scripts/build-help-index.ts` (uruchamiany przez `tsx`, już obecny w repo — używa go `pnpm seed`), podpięty jako `prebuild` i `predev` w `apps/web/package.json`, czyta pliki MDX z `src/content/pomoc/**`, usuwa składnię (fence'y, znaczniki, importy) i zapisuje `apps/web/src/content/pomoc/search-index.json` w kształcie `{ slug, title, tree, tags, text }[]`. Plik jest **generowany i gitignorowany** — build zawsze go odtwarza, więc nie może się zestarzeć. Skrypt przerywa build, jeśli plik MDX nie ma wpisu w manifeście albo manifest wymienia stronę bez pliku (tania ochrona przed stroną-widmem w wynikach wyszukiwania).
+
+Funkcje czyste (`stripMdx`, `normalize`, `searchIndex`) mieszkają w `apps/web/src/lib/help-search.ts` — **jedno źródło dla skryptu budującego, komponentu wyszukiwarki i testów**. Skrypt jest w TypeScripcie, a nie w `.mjs`, właśnie po to: plik `.mjs` importowany z testu `.ts` przechodzi w vitest, ale wywraca `pnpm typecheck` na braku deklaracji.
 
 Wyszukiwanie po stronie klienta: proste dopasowanie podciągów bez uwzględniania wielkości liter i polskich znaków diakrytycznych, z podświetleniem trafienia i nazwą drzewa. Treść jest rzędu kilkudziesięciu kilobajtów — indeks pełnotekstowy w pamięci wystarcza, żadnej biblioteki ani backendu.
 
