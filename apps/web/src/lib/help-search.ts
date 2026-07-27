@@ -1,4 +1,4 @@
-import type { HelpTree } from "@/content/pomoc/manifest";
+import type { HelpPage, HelpTree } from "@/content/pomoc/manifest";
 
 /**
  * One row of the generated search index (Slice 13, Task 4). Produced by
@@ -26,6 +26,63 @@ export const stripMdx = (source: string): string =>
     .replace(/[#*_>`|-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+/**
+ * One MDX file as handed to `buildIndex`: `slug` derived from the filename,
+ * `file` its path relative to the content root (error messages only), `text`
+ * the raw source — `stripMdx` runs inside `buildIndex`, so the calling script
+ * stays pure I/O.
+ */
+export type HelpSourceFile = { slug: string; file: string; text: string };
+
+/**
+ * Joins the MDX files with the manifest and refuses anything inconsistent.
+ * Lives here rather than inline in `scripts/build-help-index.mts` for one
+ * reason: nothing imports a `.mts` build script, so the guard had zero test
+ * coverage — an independent review deleted both `throw`s and the whole suite
+ * stayed green. Same lesson as `sortPages` in the manifest.
+ *
+ * A file with no manifest entry would surface in search results and 404 on
+ * click; a manifest entry with no file renders an empty page that the nav
+ * links to. Both are worse than a failed build, and neither is catchable by
+ * the type checker or dependency-cruiser (no `no-unresolved` rule).
+ *
+ * The duplicate pass runs first on purpose. Slugs come from the bare filename,
+ * so `jak-korzystac/zaokraglenia.mdx` and `metodyka/zaokraglenia.mdx` collide;
+ * without this pass the second file falls into the "no manifest entry" branch
+ * (the entry was already consumed by the first) and the message sends the
+ * author looking for a manifest bug that isn't there.
+ */
+export const buildIndex = (files: HelpSourceFile[], pages: HelpPage[]): HelpIndexEntry[] => {
+  const fileBySlug = new Map<string, string>();
+  for (const { slug, file } of files) {
+    const first = fileBySlug.get(slug);
+    if (first !== undefined) {
+      throw new Error(
+        `Pliki ${first} i ${file} daja ten sam slug "${slug}" — nazwa pliku MDX musi byc unikalna w calej Pomocy.`,
+      );
+    }
+    fileBySlug.set(slug, file);
+  }
+
+  const bySlug = new Map(pages.map((page) => [page.slug, page]));
+  const index = files.map(({ slug, text }) => {
+    const page = bySlug.get(slug);
+    if (!page) {
+      throw new Error(`Plik ${slug}.mdx nie ma wpisu w manifest.ts — dodaj wpis albo usun plik.`);
+    }
+    return { slug, title: page.title, tree: page.tree, tags: page.tags, text: stripMdx(text) };
+  });
+
+  const bezPliku = pages.filter((page) => !fileBySlug.has(page.slug)).map((page) => page.slug);
+  if (bezPliku.length > 0) {
+    throw new Error(
+      `Manifest wymienia strony bez pliku MDX: ${bezPliku.join(", ")} — dodaj plik albo usun wpis.`,
+    );
+  }
+
+  return index;
+};
 
 /**
  * Folds case and diacritics so "ksiega" finds „Księga". NFD + `\p{Diacritic}`

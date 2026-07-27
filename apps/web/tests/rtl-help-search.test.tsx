@@ -64,6 +64,24 @@ describe("HelpSearch", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/1/);
   });
 
+  // Usuniecie `<span>{TREE_LABEL[entry.tree]}</span>` zostawialo caly ten plik
+  // zielony. Wlasny, dwuwpisowy indeks zamiast wspoldzielonego: asercja na
+  // jednym wpisie przechodzi takze dla etykiety zaszytej na sztywno, a wpiecie
+  // drugiego trafienia do `index` zepsulo by test regionu `status` (liczy 1).
+  it("etykietuje trafienia drzewem, z ktorego pochodza", async () => {
+    render(
+      <HelpSearch
+        index={[
+          { slug: "a", title: "Krok 3", tree: "jak-korzystac", tags: [], text: "rejestru" },
+          { slug: "b", title: "Operat", tree: "metodyka", tags: [], text: "rejestru" },
+        ]}
+      />,
+    );
+    await userEvent.type(screen.getByRole("searchbox"), "rejestru");
+    expect(screen.getByText("Jak korzystać")).toBeInTheDocument();
+    expect(screen.getByText("Na czym opieramy wynik")).toBeInTheDocument();
+  });
+
   // Zakres: sam komponent, nie cala strona. Chodzi o to, ze wyniki nie
   // wnosza WLASNEGO naglowka — dzieki temu zarys naglowkow /pomoc (h1 +
   // po jednym h2 na drzewo) nie przestawia sie w trakcie pisania.

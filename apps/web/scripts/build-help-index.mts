@@ -1,7 +1,7 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { HELP_PAGES } from "../src/content/pomoc/manifest";
-import { stripMdx, type HelpIndexEntry } from "../src/lib/help-search";
+import { buildIndex } from "../src/lib/help-search";
 
 /**
  * Builds `src/content/pomoc/search-index.json` from the MDX files + manifest
@@ -36,38 +36,38 @@ const collect = async (dir: string): Promise<string[]> => {
 
 const main = async () => {
   const files = await collect(CONTENT);
-  const bySlug = new Map(HELP_PAGES.map((page) => [page.slug, page]));
-  const index: HelpIndexEntry[] = [];
+  // The manifest<->files consistency gate lives in `buildIndex` (src/lib), not
+  // here: nothing imports a `.mts` script, so a guard written inline would be
+  // untestable — and was, until an independent review deleted both `throw`s
+  // without turning the suite red.
+  const index = buildIndex(
+    await Promise.all(
+      files.map(async (file) => ({
+        slug: path.basename(file, ".mdx"),
+        file: path.relative(CONTENT, file),
+        text: await readFile(file, "utf8"),
+      })),
+    ),
+    HELP_PAGES,
+  );
 
-  for (const file of files) {
-    const slug = path.basename(file, ".mdx");
-    const page = bySlug.get(slug);
-    // A page present as a file but absent from the manifest would surface in
-    // search results and 404 on click — a ghost page is worse than no page,
-    // so the build stops here. dependency-cruiser can't catch this (no
-    // `no-unresolved` rule), and neither can the type checker.
-    if (!page) {
-      throw new Error(`Plik ${slug}.mdx nie ma wpisu w manifest.ts — dodaj wpis albo usun plik.`);
-    }
-    index.push({
-      slug,
-      title: page.title,
-      tree: page.tree,
-      tags: page.tags,
-      text: stripMdx(await readFile(file, "utf8")),
-    });
-    bySlug.delete(slug);
+  // Write to a private temp file, then `rename` over the target. `writeFile`
+  // is open(O_TRUNC) + write, which leaves the file empty for as long as the
+  // write takes — and turbo runs `build`, `typecheck` and `test` in parallel
+  // (turbo.json wires none of them to `web#build`), so three generators race
+  // here while tsc/vitest/next read the result. Measured on this repo: 160 of
+  // 175 606 reads saw a zero-byte file, i.e. `SyntaxError: Unexpected end of
+  // JSON input` at random in CI. `rename` within one directory is atomic, so
+  // a reader sees either the previous index or the new one, never a torn one.
+  // The pid keeps the three writers off each other's temp file.
+  const tmp = `${OUT}.${process.pid}.tmp`;
+  try {
+    await writeFile(tmp, `${JSON.stringify(index, null, 2)}\n`, "utf8");
+    await rename(tmp, OUT);
+  } catch (error) {
+    await unlink(tmp).catch(() => {});
+    throw error;
   }
-
-  // The mirror image: a manifest entry with no file renders an empty page and
-  // links to it from the nav. Same verdict — stop the build.
-  if (bySlug.size > 0) {
-    throw new Error(
-      `Manifest wymienia strony bez pliku MDX: ${[...bySlug.keys()].join(", ")} — dodaj plik albo usun wpis.`,
-    );
-  }
-
-  await writeFile(OUT, `${JSON.stringify(index, null, 2)}\n`, "utf8");
   console.log(`search-index.json: ${index.length} stron`);
 };
 

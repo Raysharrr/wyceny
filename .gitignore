@@ -8,7 +8,10 @@ dist/
 
 # Generated artefacts — rebuilt by `pnpm help-index` (apps/web), wired into
 # pre{dev,build,typecheck,test} so a clean clone regenerates it before use.
+# The `.tmp` sibling is the staging file of the atomic write (write + rename);
+# it is unlinked on error, but a hard kill mid-write would strand one.
 apps/web/src/content/pomoc/search-index.json
+apps/web/src/content/pomoc/*.tmp
 
 # Env files
 .env*

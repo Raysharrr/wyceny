@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { normalize, searchIndex, stripMdx, type HelpIndexEntry } from "@/lib/help-search";
+import {
+  buildIndex,
+  normalize,
+  searchIndex,
+  stripMdx,
+  type HelpIndexEntry,
+} from "@/lib/help-search";
+import type { HelpPage } from "@/content/pomoc/manifest";
 
 describe("stripMdx", () => {
   it("usuwa naglowki, importy i bloki kodu", () => {
@@ -59,5 +66,75 @@ describe("searchIndex", () => {
   // wyszukiwarka wysypywalaby cala Pomoc na pierwszy fokus w polu.
   it("zwraca pusto dla pustego zapytania", () => {
     expect(searchIndex(index, "   ")).toEqual([]);
+  });
+});
+
+// Bramka spojnosci manifest<->pliki byla wczesniej zaszyta w skrypcie `.mts`,
+// ktorego zaden test nie importuje: niezalezny przeglad usunal OBA `throw` i
+// caly pakiet pozostal zielony. Kazda asercja ponizej celuje we FRAGMENT
+// komunikatu, nie w sam fakt rzucenia — inaczej jeden `throw` maskowalby drugi.
+describe("buildIndex", () => {
+  const page = (slug: string, over: Partial<HelpPage> = {}): HelpPage => ({
+    slug,
+    title: `Tytul ${slug}`,
+    tree: "jak-korzystac",
+    order: 1,
+    tags: ["tag"],
+    summary: slug,
+    load: async () => ({ default: () => null }),
+    ...over,
+  });
+
+  it("przepisuje metadane z manifestu i oczyszcza tresc pliku", () => {
+    const wynik = buildIndex(
+      [
+        {
+          slug: "a",
+          file: "jak-korzystac/a.mdx",
+          text: 'import X from "y";\n\n## Naglowek\n\nTresc.',
+        },
+      ],
+      [page("a", { title: "Pierwsze kroki", tree: "metodyka", tags: ["konto"] })],
+    );
+    expect(wynik).toEqual([
+      {
+        slug: "a",
+        title: "Pierwsze kroki",
+        tree: "metodyka",
+        tags: ["konto"],
+        text: "Naglowek Tresc.",
+      },
+    ]);
+  });
+
+  it("odrzuca plik bez wpisu w manifescie — inaczej strona-widmo trafia do wynikow i 404-uje po kliknieciu", () => {
+    expect(() =>
+      buildIndex([{ slug: "widmo", file: "jak-korzystac/widmo.mdx", text: "x" }], []),
+    ).toThrow(/widmo\.mdx nie ma wpisu w manifest\.ts/);
+  });
+
+  it("odrzuca wpis w manifescie bez pliku — inaczej nawigacja linkuje do pustej strony", () => {
+    expect(() => buildIndex([], [page("sierota")])).toThrow(
+      /Manifest wymienia strony bez pliku MDX: sierota/,
+    );
+  });
+
+  it("nazywa po imieniu kolizje nazw plikow z roznych katalogow", () => {
+    const kolizja = () =>
+      buildIndex(
+        [
+          { slug: "zaokraglenia", file: "jak-korzystac/zaokraglenia.mdx", text: "x" },
+          { slug: "zaokraglenia", file: "metodyka/zaokraglenia.mdx", text: "y" },
+        ],
+        [page("zaokraglenia")],
+      );
+    // Slug bierze sie z samej nazwy pliku, wiec te dwa kolidują. Poprzednia
+    // wersja skryptu zglaszala wtedy „brak wpisu w manifescie" (wpis zuzyl juz
+    // pierwszy plik) i wysylala autora tresci pod zly adres; ta bramka to
+    // jedyne, co kolizje w ogole wykrywa. Asercje ida na fragment komunikatu i
+    // na obie sciezki — sam `toThrow()` przechodzilby takze dla mylacej galezi.
+    expect(kolizja).toThrow(/ten sam slug/);
+    expect(kolizja).toThrow(/jak-korzystac\/zaokraglenia\.mdx/);
+    expect(kolizja).toThrow(/metodyka\/zaokraglenia\.mdx/);
   });
 });
