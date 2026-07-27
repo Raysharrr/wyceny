@@ -16,6 +16,9 @@
 - **Brak migracji DDL** w tym slice'ie.
 - **Etykiety przycisków objęte smoke pozostają byte-identical.**
 - **Vitest:** globalne środowisko to `node`; testy DOM-owe wymagają pragmy `// @vitest-environment jsdom` w pierwszej linii pliku. **Brak globals** — jawne `import { describe, it, expect } from "vitest"` oraz `import "@testing-library/jest-dom/vitest"` tam, gdzie używane są matchery DOM.
+- **Lokalizacja testów: `apps/web/tests/`** — tam mieszka wszystkie 65 istniejących plików testowych repo; testy DOM-owe z prefiksem `rtl-`. Testowany moduł importuj przez alias (`@/app/pomoc/page`), nie ścieżką względną. Nie zakładamy katalogów `__tests__` obok kodu. _(Poprawka po review Taska 1 — pierwotny plan wprowadzał niepotrzebny rozjazd konwencji.)_
+- **Auto-cleanup RTL nie działa bez globals** — każdy plik testowy DOM potrzebuje `afterEach(cleanup)`. Gdy mocki są w zasięgu modułu, dołóż `beforeEach(() => vi.clearAllMocks())`, inaczej liczniki wywołań przeciekają między testami.
+- **Test guardu sesji musi asertować OBIE strony** — że przekierowanie następuje bez sesji **i że NIE następuje z sesją** (`expect(redirect).not.toHaveBeenCalled()`). Mockowany `redirect` nie przerywa wykonania, więc bezwarunkowe `redirect("/login")` — czyli strona niedostępna dla wszystkich — przechodzi testy sprawdzające tylko pierwszy warunek. Realna wada złapana w review Taska 1 przez mutation testing.
 - **Język:** kod, nazwy plików i identyfikatory po angielsku; **treść MDX i copy UI po polsku**.
 - **Środowisko robocze to staging** (`https://wyceny-mu.vercel.app`) — tak je opisujemy w raportach; produkcji jeszcze nie ma.
 - **Ochrona tras per strona** — `getSession()` + `redirect`, wzorzec z `valuations`/`profile`; `AppShellLayout` sam nie blokuje.
@@ -35,7 +38,7 @@
 - Create: `apps/web/src/mdx-components.tsx`
 - Create: `apps/web/src/app/pomoc/layout.tsx`
 - Create: `apps/web/src/app/pomoc/page.tsx`
-- Test: `apps/web/src/app/pomoc/__tests__/page.test.tsx`
+- Test: `apps/web/tests/rtl-pomoc-page.test.tsx`
 
 **Interfaces:**
 
@@ -50,7 +53,7 @@ cd ~/Development/wyceny-app/apps/web && pnpm add @next/mdx @mdx-js/loader @mdx-j
 
 - [ ] **Step 2: Napisz failing test trasy**
 
-Plik `apps/web/src/app/pomoc/__tests__/page.test.tsx`:
+Plik `apps/web/tests/rtl-pomoc-page.test.tsx`:
 
 ```tsx
 // @vitest-environment jsdom
@@ -85,7 +88,7 @@ describe("/pomoc", () => {
 
 - [ ] **Step 3: Uruchom test — musi paść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/app/pomoc`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/rtl-pomoc-page.test.tsx`
 Expected: FAIL — brak modułu `../page`
 
 - [ ] **Step 4: Skonfiguruj MDX**
@@ -150,7 +153,7 @@ export default async function Page() {
 
 - [ ] **Step 6: Uruchom testy — muszą przejść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/app/pomoc`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/rtl-pomoc-page.test.tsx`
 Expected: PASS (2 testy)
 
 - [ ] **Step 7: Zweryfikuj build z MDX (Turbopack)**
@@ -173,7 +176,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "feat: mdx setup and 
 - Create: `apps/web/src/content/pomoc/manifest.ts`
 - Create: `apps/web/src/content/pomoc/jak-korzystac/pierwsze-kroki.mdx`
 - Create: `apps/web/src/app/pomoc/[slug]/page.tsx`
-- Test: `apps/web/src/content/pomoc/__tests__/manifest.test.ts`
+- Test: `apps/web/tests/help-manifest.test.ts`
 
 **Interfaces:**
 
@@ -182,7 +185,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "feat: mdx setup and 
 
 - [ ] **Step 1: Napisz failing test manifestu**
 
-Plik `apps/web/src/content/pomoc/__tests__/manifest.test.ts`:
+Plik `apps/web/tests/help-manifest.test.ts`:
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -217,7 +220,7 @@ describe("manifest Pomocy", () => {
 
 - [ ] **Step 2: Uruchom test — musi paść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/content/pomoc`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/help-manifest.test.ts`
 Expected: FAIL — brak modułu `../manifest`
 
 - [ ] **Step 3: Utwórz pierwszą stronę MDX**
@@ -313,7 +316,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
 - [ ] **Step 6: Uruchom testy — muszą przejść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/content/pomoc`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/help-manifest.test.ts`
 Expected: PASS (4 testy)
 
 - [ ] **Step 7: Commit i push**
@@ -330,7 +333,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "feat: help content m
 
 - Modify: `apps/web/src/app/pomoc/page.tsx`
 - Create: `apps/web/src/components/help/help-nav.tsx`
-- Test: `apps/web/src/components/help/__tests__/help-nav.test.tsx`
+- Test: `apps/web/tests/rtl-help-nav.test.tsx`
 
 **Interfaces:**
 
@@ -339,7 +342,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "feat: help content m
 
 - [ ] **Step 1: Napisz failing test**
 
-Plik `apps/web/src/components/help/__tests__/help-nav.test.tsx`:
+Plik `apps/web/tests/rtl-help-nav.test.tsx`:
 
 ```tsx
 // @vitest-environment jsdom
@@ -370,7 +373,7 @@ describe("HelpNav", () => {
 
 - [ ] **Step 2: Uruchom test — musi paść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/components/help`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/rtl-help-nav.test.tsx tests/rtl-help-search.test.tsx`
 Expected: FAIL — brak modułu `../help-nav`
 
 - [ ] **Step 3: Zaimplementuj nawigację**
@@ -419,7 +422,7 @@ W `apps/web/src/app/pomoc/page.tsx` dodaj `import { HelpNav } from "@/components
 
 - [ ] **Step 5: Uruchom testy — muszą przejść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/components/help src/app/pomoc`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/rtl-help-nav.test.tsx tests/rtl-pomoc-page.test.tsx`
 Expected: PASS
 
 - [ ] **Step 6: Commit i push**
@@ -439,8 +442,8 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "feat: help navigatio
 - Modify: `apps/web/package.json` (skrypty `prebuild`, `predev`)
 - Modify: `.gitignore`
 - Create: `apps/web/src/components/help/help-search.tsx`
-- Test: `apps/web/src/lib/__tests__/help-search.test.ts`
-- Test: `apps/web/src/components/help/__tests__/help-search.test.tsx`
+- Test: `apps/web/tests/help-search.test.ts`
+- Test: `apps/web/tests/rtl-help-search.test.tsx`
 
 **Interfaces:**
 
@@ -451,7 +454,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "feat: help navigatio
 
 - [ ] **Step 1: Napisz failing testy funkcji czystych**
 
-Plik `apps/web/src/lib/__tests__/help-search.test.ts`:
+Plik `apps/web/tests/help-search.test.ts`:
 
 ````ts
 import { describe, expect, it } from "vitest";
@@ -501,7 +504,7 @@ describe("searchIndex", () => {
 
 - [ ] **Step 2: Uruchom testy — muszą paść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/lib`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/help-search.test.ts`
 Expected: FAIL — brak modułu `../help-search`
 
 - [ ] **Step 3: Zaimplementuj funkcje czyste**
@@ -621,7 +624,7 @@ apps/web/src/content/pomoc/search-index.json
 
 - [ ] **Step 6: Napisz failing test wyszukiwarki**
 
-Plik `apps/web/src/components/help/__tests__/help-search.test.tsx`:
+Plik `apps/web/tests/rtl-help-search.test.tsx`:
 
 ```tsx
 // @vitest-environment jsdom
@@ -744,7 +747,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "feat: full-text help
 **Files:**
 
 - Modify: `apps/web/src/components/avatar-menu.tsx`
-- Test: `apps/web/src/components/__tests__/avatar-menu.test.tsx` (rozszerzyć istniejący, jeśli jest)
+- Test: `apps/web/tests/rtl-avatar-menu.test.tsx` (rozszerzyć istniejący, jeśli jest)
 
 **Interfaces:**
 
@@ -757,7 +760,7 @@ Dopisz do testów `AvatarMenu` przypadek: po otwarciu menu istnieje `link` o naz
 
 - [ ] **Step 2: Uruchom test — musi paść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/components/__tests__/avatar-menu.test.tsx`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/rtl-avatar-menu.test.tsx`
 Expected: FAIL — brak pozycji „Pomoc"
 
 - [ ] **Step 3: Dodaj pozycję menu**
@@ -766,7 +769,7 @@ W `avatar-menu.tsx` dodaj element menu „Pomoc" z `href="/pomoc"` przed pozycj�
 
 - [ ] **Step 4: Uruchom testy — muszą przejść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/components`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/rtl-avatar-menu.test.tsx`
 Expected: PASS
 
 - [ ] **Step 5: Commit i push**
@@ -783,7 +786,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "feat: help entry in 
 
 - Modify: `apps/web/src/components/wizard/step-meta.ts`
 - Modify: `apps/web/src/components/wizard/step-header.tsx`
-- Test: `apps/web/src/components/wizard/__tests__/step-header.test.tsx`
+- Test: `apps/web/tests/rtl-step-header.test.tsx`
 
 **Interfaces:**
 
@@ -819,7 +822,7 @@ Uwaga: drugi przypadek działa dopóki strona kroku 6 nie istnieje (dochodzi w T
 
 - [ ] **Step 2: Uruchom testy — muszą paść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/components/wizard/__tests__/step-header.test.tsx`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/rtl-step-header.test.tsx`
 Expected: FAIL — brak linku
 
 - [ ] **Step 3: Dodaj `helpSlug` do metadanych kroków**
@@ -832,7 +835,7 @@ W `step-header.tsx` obok `<h1>` dodaj link do `/pomoc/${helpSlug}` renderowany t
 
 - [ ] **Step 5: Uruchom testy — muszą przejść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/components/wizard`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/rtl-step-header.test.tsx tests/rtl-step-inspection.test.tsx`
 Expected: PASS, bez regresji pozostałych testów wizarda
 
 - [ ] **Step 6: Commit i push**
@@ -891,7 +894,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "docs: help content f
 - Create: `apps/web/src/content/pomoc/jak-korzystac/krok-7-operat.mdx`
 - Create: `apps/web/src/content/pomoc/jak-korzystac/po-zatwierdzeniu.mdx`
 - Modify: `apps/web/src/content/pomoc/manifest.ts`
-- Modify: `apps/web/src/components/wizard/__tests__/step-header.test.tsx`
+- Modify: `apps/web/tests/rtl-step-header.test.tsx`
 
 **Interfaces:**
 
@@ -979,7 +982,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "docs: staging screen
 **Files:**
 
 - Modify: `apps/web/src/domain/kcs.ts`
-- Test: `apps/web/src/domain/__tests__/kcs.test.ts` (rozszerzyć istniejący)
+- Test: `apps/web/tests/kcs-rounding.test.ts` (rozszerzyć istniejący)
 
 **Interfaces:**
 
@@ -1003,7 +1006,7 @@ describe("ROUNDING", () => {
 
 - [ ] **Step 2: Uruchom test — musi paść**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/domain/__tests__/kcs.test.ts`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/kcs-rounding.test.ts`
 Expected: FAIL — brak eksportu `ROUNDING`
 
 - [ ] **Step 3: Wyodrębnij stałe**
@@ -1012,7 +1015,7 @@ W `kcs.ts` dodaj eksport `ROUNDING` i zastąp literały w `computeKcs` odwołani
 
 - [ ] **Step 4: Uruchom pełny zestaw testów domeny**
 
-Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run src/domain`
+Run: `cd ~/Development/wyceny-app/apps/web && pnpm vitest run tests/golden-wr.test.ts tests/kcs-reproducibility.test.ts tests/kcs-rounding.test.ts`
 Expected: PASS, w tym **golden F-1 = 1 044 400 zł**. Jakakolwiek zmiana goldena oznacza błąd refaktoru — cofnij i popraw, nie aktualizuj wartości oczekiwanej.
 
 - [ ] **Step 5: Commit i push**
@@ -1140,7 +1143,7 @@ cd ~/Development/wyceny-app && git add -A && git commit -m "docs: methodology pa
 **Files:**
 
 - Modify: dziewięć plików MDX drzewa „Jak korzystać"
-- Modify: `apps/web/src/components/help/__tests__/help-nav.test.tsx`
+- Modify: `apps/web/tests/rtl-help-nav.test.tsx`
 
 **Interfaces:**
 
