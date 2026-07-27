@@ -7,3 +7,5 @@ pnpm-lock.yaml
 apps/web/drizzle
 apps/worker
 .superpowers
+apps/web/test-results/
+apps/web/playwright-report/
