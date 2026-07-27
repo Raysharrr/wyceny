@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "help-index": "tsx scripts/build-help-index.mts",
+    "predev": "pnpm help-index",
     "dev": "next dev",
+    "prebuild": "pnpm help-index",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "pretypecheck": "pnpm help-index",
     "typecheck": "tsc --noEmit",
+    "pretest": "pnpm help-index",
     "test": "vitest run",
     "seed": "tsx scripts/seed.ts",
     "e2e": "playwright test"
