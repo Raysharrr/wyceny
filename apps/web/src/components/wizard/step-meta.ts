@@ -4,37 +4,44 @@ export const STEP_META = {
     title: "Dane przedmiotu",
     description:
       "Dane pobierane są automatycznie ze źródeł — zweryfikuj, uzupełnij braki; każde pole jest edytowalne.",
+    helpSlug: "krok-1-przedmiot",
   },
   2: {
     eyebrow: "KROK 2/7 — OGLĘDZINY",
     title: "Oględziny nieruchomości",
     description: "Jedyny krok, którego nie da się zautomatyzować — zdjęcia i notatka z wizyty.",
+    helpSlug: "krok-2-ogledziny",
   },
   3: {
     eyebrow: "KROK 3/7 — DOBÓR PRÓBY TRANSAKCJI",
     title: "Próba porównawcza",
     description: "Pobierz transakcje z RCN i zbuduj próbę (min. 12).",
+    helpSlug: "krok-3-proba",
   },
   4: {
     eyebrow: "KROK 4/7 — CECHY RYNKOWE",
     title: "Cechy, oceny i wagi",
     description: "Wagi domyślne dla typu obiektu (lokal) — oceny i wagi należą do Ciebie.",
+    helpSlug: "krok-4-cechy",
   },
   5: {
     eyebrow: "KROK 5/7 — KALKULACJA",
     title: "Kalkulacja i wynik",
     description: "Każda liczba ma widoczne źródło i wzór — Tabele 1–4 trafiają wprost do operatu.",
+    helpSlug: "krok-5-kalkulacja",
   },
   6: {
     eyebrow: "KROK 6/7 — SEKCJE OPISOWE",
     title: "Sekcje opisowe",
     description:
       "Generator prozy (FR-6) w przygotowaniu — opisy powstają z szablonu przy zatwierdzeniu.",
+    helpSlug: "krok-6-opisy",
   },
   7: {
     eyebrow: "KROK 7/7 — PODGLĄD OPERATU",
     title: "Operat szacunkowy",
     description:
       "Sprawdź kompletność danych i zatwierdź operat — PDF wygeneruje się po zatwierdzeniu.",
+    helpSlug: "krok-7-operat",
   },
 } as const;
