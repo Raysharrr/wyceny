@@ -1,8 +1,20 @@
 import "dotenv/config";
 import { fileURLToPath } from "node:url";
+import mdx from "@mdx-js/rollup";
 import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
+  plugins: [
+    // Next builds `.mdx` through `@next/mdx`; vitest has its own pipeline and
+    // would hand the file to rolldown, which fails on `Invalid Character '#'`.
+    // Needed by tests/help-manifest.test.ts, which really imports every help
+    // page — the only automated guard against a mistyped `import("./….mdx")`
+    // in the manifest (dependency-cruiser has no `no-unresolved` rule).
+    // `enforce: "pre"` claims the file before Vite's own transform; the
+    // explicit `include` keeps this off `.md` (the plugin default is
+    // `/\.mdx?$/`) so nothing else in the suite changes shape.
+    { enforce: "pre", ...mdx({ include: /\.mdx$/ }) },
+  ],
   resolve: {
     // Mirrors tsconfig.json's "@/*" -> "./src/*" path alias (Next.js
     // resolves this natively; Vite/Vitest need it spelled out). Needed by
