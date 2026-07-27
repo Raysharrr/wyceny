@@ -6,6 +6,10 @@ import {
   sortPages,
   type HelpPage,
 } from "@/content/pomoc/manifest";
+// Imported straight from `step-meta` (a dependency-free object literal), NOT
+// through `step-header` — that module pulls next/link + lucide and would drag
+// this node-environment file into needing jsdom.
+import { STEP_META } from "@/components/wizard/step-meta";
 
 describe("manifest Pomocy", () => {
   it("ma unikalne slugi", () => {
@@ -38,6 +42,21 @@ describe("manifest Pomocy", () => {
 
   it("getPage zwraca undefined dla nieznanego sluga", () => {
     expect(getPage("nie-ma-takiej")).toBeUndefined();
+  });
+
+  // Spojnosc manifestu ze STEP_META (Task 8). `rtl-step-header` mockuje
+  // manifest, wiec sprawdza tylko PREDYKAT ("link tylko gdy strona istnieje")
+  // — nigdy tego, ze siedem realnych slugow naprawde sie rozwiazuje. Bez tej
+  // asercji literowka w `helpSlug` albo skasowany wpis w manifescie po cichu
+  // gasi znak zapytania w kroku: zero martwych linkow zamienia sie w zero
+  // linkow, a caly pakiet zostaje zielony. Wykonalna dopiero teraz — do Taska
+  // 8 czesc stron nie istniala. Zweryfikowane mutacja: podmiana jednego
+  // `helpSlug` na nieistniejacy czerwieni ten przypadek.
+  it("kazdy helpSlug ze STEP_META ma strone w manifescie", () => {
+    const nierozwiazane = Object.values(STEP_META)
+      .map((meta) => meta.helpSlug)
+      .filter((slug) => getPage(slug) === undefined);
+    expect(nierozwiazane).toEqual([]);
   });
 
   // Deliberately phrased against whatever the manifest holds: later tasks add

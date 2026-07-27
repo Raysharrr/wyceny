@@ -1,0 +1,35 @@
+W kroku 7 sprawdzasz komplet danych i zatwierdzasz operat. Zatwierdzenie generuje dokument — DOCX i PDF — i wyprowadza wycenę z kreatora: od tej chwili otwiera się ona w widoku dokumentu, a nie w siedmiu krokach.
+
+## Co wypełnia się samo
+
+Karta „Podsumowanie operatu” pokazuje powierzchnię i wartość rynkową. Kwota słownie powstaje automatycznie z wartości rynkowej dopiero przy zatwierdzeniu i trafia wprost do treści operatu — w kreatorze pole „Kwota słownie” pozostaje puste (kreska) i nie ma go gdzie wpisać.
+
+Karta „Zatwierdzenie” zbiera wszystko, co blokuje zatwierdzenie, w jedną listę „Zatwierdzenie zablokowane — do wyjaśnienia”.
+
+Samo zatwierdzenie robi w tle całą resztę: pobiera mapy do operatu, dokłada zdjęcia z oględzin jako dokumentację fotograficzną, składa dokument i zapisuje go przy wycenie w obu formatach. Chwilę to trwa — przycisk pokazuje wtedy „Zatwierdzanie…”.
+
+Mapy są pobierane w momencie zatwierdzenia i zamrażane przy wycenie: podpisany dokument użyje dokładnie tych samych map, bez ponownego pobierania. Gdy pobranie się nie uda, zamiast zatwierdzenia dostajesz ostrzeżenie z dwoma wyjściami — „Spróbuj ponownie” albo „Zatwierdź bez map”. To drugie jest świadomą decyzją i zostaje odnotowane przy wycenie.
+
+## Co musisz uzupełnić ręcznie
+
+Przyciski potwierdzeń pojawiają się tylko wtedy, gdy jest co potwierdzać:
+
+- **„Potwierdź próbę z RCN”** — transakcje pobrane z rejestru oraz geokodowanie adresu,
+- **„Potwierdź dane przedmiotu”** — dane ewidencyjne (EGiB) i przeznaczenie planistyczne (MPZP),
+- **„Potwierdź dane KW”** — dane odczytane z aktu notarialnego albo odpisu księgi, wraz z powierzchnią, jeśli wzięła się z tego dokumentu,
+- **„Potwierdź cechy i wagi”** — wagi i definicje skali ocen w wersji zaproponowanej przez aplikację.
+
+Każde kliknięcie potwierdza całą grupę naraz. Reguła jest jedna: czego nie wpisałeś sam, to musisz potwierdzić.
+
+## Co blokuje przejście dalej
+
+Przycisk „Zatwierdź operat” jest nieaktywny, dopóki lista blokad nie jest pusta. Pozycje, które się na niej pojawiają:
+
+- **liczebność próby** — „Próba ma N transakcji — wymagane co najmniej 12.”,
+- **niepotwierdzone dane** — „Transakcja N (RCN) — do weryfikacji.”, „Geokodowanie adresu — do weryfikacji.”, „Dane ewidencyjne przedmiotu (EGiB) — do weryfikacji.”, „Przeznaczenie planistyczne (MPZP) — do weryfikacji.”, „Stan prawny (KW) — do weryfikacji.”, „Powierzchnia — do weryfikacji.”, „Wagi cech — do weryfikacji.”, „Definicje skali ocen — do weryfikacji.”,
+- **braki w danych dokumentu** — „Cel wyceny — brak.”, „Numer księgi wieczystej — brak.”, „Klient — brak.”, „Data oględzin — brak.”, „Wartość rynkowa — kalkulacja niezatwierdzona (krok 5. Kalkulacja).”,
+- **braki w danych z KW** (tylko gdy wgrałeś dokument) — „Numer KW gruntu (księgi macierzystej) — brak.” oraz „Numer KW lokalu — brak (zaznacz wariant deweloperski, jeśli lokal nie ma własnej księgi).”.
+
+Blokady rozwiązuje się tam, gdzie powstały: brakujące pola w krokach 1–2, liczebność próby w kroku 3, kwotę w kroku 5, a niepotwierdzone dane — przyciskami potwierdzeń na tym ekranie.
+
+Zatwierdzenie jest jednorazowe: druga próba kończy się komunikatem „Wycena jest już zatwierdzona.”. Co dzieje się dalej — podgląd operatu, pobieranie plików, podpis i nowa wersja — opisuje strona o wycenie po zatwierdzeniu.

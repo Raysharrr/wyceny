@@ -1,0 +1,26 @@
+Krok 5 nie ma żadnego pola do wypełnienia. Aplikacja liczy wynik z próby transakcji (krok 3) i z ocen cech (krok 4), a Twoja rola to sprawdzić liczby i zatwierdzić kwotę — dopiero zatwierdzenie zapisuje wartość rynkową na wycenie.
+
+## Co wypełnia się samo
+
+Ekran pokazuje cztery karty, opisane numerami tabel, którymi trafią do operatu:
+
+- **„Wybrane transakcje” (Tabela 1)** — ceny zł/m² z próby wraz z pochodzeniem każdego wiersza (RCN albo rzeczoznawca) i jego statusem potwierdzenia. Gdy powierzchnia wyceny pochodzi z wgranego dokumentu, karta pokazuje też jej źródło i status.
+- **„Ceny jednostkowe próby” (Tabela 2)** — Cmin, Cmax, Cśr oraz Vmin i Vmax.
+- **„Współczynniki korygujące” (Tabela 3)** — wiersz na każdą cechę z jej wagą, oceną i współczynnikiem Ui, a pod nimi suma ΣUi.
+- **„Wartość rynkowa” (Tabela 4)** — wynik wyliczenia i kwota po zaokrągleniu.
+
+Znaczenie Cśr, Vmin, Vmax i ΣUi oraz samą metodę korygowania ceny średniej opisujemy osobno.
+
+Dopóki kwota nie jest zatwierdzona, nad kartami wisi ostrzeżenie „Dane wejściowe zmieniły się od ostatniej kalkulacji — zatwierdź ponownie, aby zapisać kwotę.” — widzisz je również przy pierwszym wejściu w ten krok. Po zatwierdzeniu ustępuje miejsca informacji „Wynik policzony automatycznie z zatwierdzonej próby i ocen.”.
+
+## Co musisz uzupełnić ręcznie
+
+Nic. Jedyne działanie w tym kroku to przycisk „Zatwierdź kalkulację i dalej” — zapisuje wartość rynkową i przechodzi do kroku 6. Po powrocie do kroku 5 ten sam przycisk nazywa się już „Dalej”; kliknięcie go przelicza wycenę jeszcze raz z tych samych danych, więc nic nie ryzykujesz.
+
+Gdy próba ma mniej niż trzy transakcje albo nie ma ani jednej cechy, zamiast kart widać kartę „Kalkulacja niedostępna” z odesłaniem do kroków 3 i 4.
+
+## Co blokuje przejście dalej
+
+- Kroki 6 i 7 otwierają się dopiero po zatwierdzeniu kalkulacji.
+- Bez zatwierdzonej kwoty kolumna WR na liście wycen pokazuje kreskę, a zatwierdzenie operatu jest zablokowane pozycją „Wartość rynkowa — kalkulacja niezatwierdzona (krok 5. Kalkulacja).”.
+- Każdy powrót do kroku 1, 3 albo 4 i ponowny zapis kasuje zatwierdzoną kwotę. Trzeba wtedy wrócić tutaj i zatwierdzić kalkulację jeszcze raz — inaczej kroki 6 i 7 pozostaną zamknięte.

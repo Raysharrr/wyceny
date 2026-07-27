@@ -1,0 +1,27 @@
+Po zatwierdzeniu wycena opuszcza kreator i otwiera się w widoku dokumentu: operat jako główny obiekt strony, obok panel z wynikiem, danymi przedmiotu i dostępnymi akcjami. Zostają jeszcze dwa kroki — podpis i, gdy trzeba coś zmienić, nowa wersja.
+
+## Widok zatwierdzonego operatu
+
+Status wyceny — w nagłówku i na liście — zmienia się na „Zatwierdzony”, a pod tytułem pojawia się data zatwierdzenia.
+
+Operat wyświetla się bezpośrednio na stronie, a przyciski „Pobierz PDF” i „Pobierz DOCX” pobierają pliki. Dokumenty są dostępne wyłącznie po zalogowaniu i tylko dla osób, które widzą tę wycenę — jej właściciela i administratora biura.
+
+Pod dokumentem zostają karty z danymi wyceny: rozbicie kalkulacji, wybrane transakcje z ich pochodzeniem, cechy z wagami, dane przedmiotu i dane z księgi wieczystej. Po prawej stronie panel „Wynik” powtarza powierzchnię i wartość rynkową, a panel „Przedmiot” — adres, cel wyceny, numer KW i klienta. Kwoty słownie szukaj w samym operacie: na ekranie to pole zostaje puste, bo powstaje ona przy składaniu dokumentu.
+
+Kreator jest dla tej wyceny zamknięty: danych nie da się już edytować i nie ma w aplikacji akcji cofającej zatwierdzenie.
+
+## Podpisanie operatu
+
+Podpisać wycenę może wyłącznie jej właściciel — administrator oglądający cudzy operat przycisku nie zobaczy, a próba podpisania kończy się odmową.
+
+Wcześniej trzeba wgrać skan podpisu w „Profil i ustawienia” (PNG albo JPEG, do 1 MB). Bez skanu podpisanie kończy się komunikatem „Brak skanu podpisu — wgraj go w profilu, a potem podpisz operat.”.
+
+Przycisk „Podpisz operat (nieodwracalne)” składa dokument jeszcze raz — z tych samych zamrożonych danych, tych samych map i tych samych zdjęć — dokłada skan podpisu i zapisuje podpisaną wersję w PDF i DOCX. Po podpisaniu status to „Podpisany”, pod tytułem pojawia się data podpisania, a wycena jest zamknięta na stałe.
+
+## Nowa wersja
+
+Jedyny sposób, żeby cokolwiek zmienić w podpisanym operacie, to przycisk „Utwórz nową wersję”. Powstaje wtedy nowy szkic powiązany z oryginałem: nowa wycena ma notkę „Zastępuje poprzedni operat”, stara — „Zastąpiony przez nowszą wersję”. Podpisany oryginał zostaje nietknięty.
+
+Nowa wersja przenosi dane i kwotę, więc otwiera się od razu na ostatnim kroku, z wszystkimi siedmioma krokami dostępnymi. Wraca za to do stanu „do weryfikacji” wszystko, czego nie wpisałeś ręcznie: transakcje z RCN, dane ewidencyjne, plan miejscowy, dane z księgi wieczystej i zestaw cech w wersji zaproponowanej przez aplikację. Cykl potwierdzeń, zatwierdzenia i podpisu przechodzisz od nowa.
+
+Z jednego podpisanego operatu robi się jedną nową wersję — gdy następca już istnieje, przycisk znika.

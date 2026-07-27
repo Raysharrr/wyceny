@@ -1,0 +1,44 @@
+W kroku 4 ustalasz cechy rynkowe: ich wagi oraz ocenę wycenianego lokalu na tle próby z kroku 3. Tabela startuje z gotowym zestawem — Twoja praca to poprawić wagi, wskazać oceny i ewentualnie zamienić cechy na inne z puli.
+
+## Co wypełnia się samo
+
+### Zestaw cech i wagi
+
+Nowa wycena dostaje sześć cech podstawowych z wagami sumującymi się do 100%:
+
+- standard wykończenia — 40%,
+- położenie na piętrze — 30%,
+- lokalizacja — 10%,
+- powierzchnia użytkowa — 10%,
+- pomieszczenia przynależne — 4%,
+- dodatkowe — 6%.
+
+Każda cecha startuje z oceną „przeciętna”.
+
+### Definicje skali ocen
+
+Pod każdym wierszem kryje się rozwijane „Definicje skali ocen — …” z tekstem dla poziomów lepsza, przeciętna i gorsza. Teksty są wpisane z góry, ale nie wszystkie cechy mają wypełnione wszystkie trzy poziomy — puste pole oznacza, że ten poziom nie pojawi się w operacie.
+
+Wyjątkiem jest „powierzchnia użytkowa”: jej progi wyliczają się z mediany powierzchni transakcji z próby („powierzchnia użytkowa poniżej N m²” / „N m² i więcej”). Gdy próba nie ma podanych powierzchni, oba pola zostają puste. Wartość wchodzi tylko do pustych pól — własnego tekstu aplikacja nie nadpisze.
+
+### Podgląd wyniku
+
+Panel obok tabeli przelicza się przy każdej zmianie wagi i oceny: „Wskaźnik korekty ΣUi” z pozycją na skali oraz „Podgląd wartości (WR)”. To samo skrótowo powtarza pasek na dole ekranu. Nic z tego podglądu nie jest zapisywane — kwotę zapisuje dopiero krok 5. Gdy próby nie da się przeliczyć (np. brak cen), w panelu widnieje „—”.
+
+## Co musisz uzupełnić ręcznie
+
+- **Ocena każdej cechy** — trzy przyciski w wierszu: „gorsza”, „przeciętna”, „lepsza”.
+- **Wagi** — pole liczbowe przy każdej cesze, w procentach.
+- **Definicje skali ocen** — do poprawienia pod każdym wierszem; wyczyszczenie pola usuwa ten poziom z operatu.
+- **Cechy z puli** — lista „+ Dodaj cechę z puli…” dokłada cechę spoza zestawu podstawowego: funkcjonalność lokalu, liczba izb, rodzaj zabudowy budynku. Dodana cecha wchodzi z wagą 0, więc trzeba jej nadać wagę i odjąć ją innym.
+- Przycisk „Usuń” kasuje wiersz, a cecha wraca do puli. Ostatniego wiersza nie da się usunąć.
+
+Cecha z wagą 0 nie trafia do operatu — dokument opisuje wyłącznie cechy o wadze większej od zera.
+
+## Co blokuje przejście dalej
+
+- Przycisk „Zatwierdź cechy i dalej” nie zapisze kroku, dopóki **suma wag nie wyniesie 100%** (z tolerancją 0,1 pkt proc.). Dopóki się nie zgadza, pod tabelą widać „Suma wag wynosi X% — powinna wynosić 100%.”. Waga nie może być ujemna, a każda cecha może wystąpić w tabeli najwyżej raz.
+- Zapis kroku **kasuje zatwierdzoną wartość rynkową**. Po każdej zmianie cech kwotę trzeba potwierdzić w kroku 5 jeszcze raz, a do tego czasu kroki 6 i 7 są z powrotem niedostępne.
+- Jeśli zostawisz wagi dokładnie takie, jakie zaproponowała aplikacja, wchodzą one ze statusem „do weryfikacji”; tak samo definicje skali ocen, dopóki są w wersji zaproponowanej. Przed zatwierdzeniem operatu trzeba je potwierdzić przyciskiem „Potwierdź cechy i wagi” w kroku 7. Własna zmiana wagi albo definicji jest potwierdzona z definicji, a same oceny cech są potwierdzone zawsze — wskazujesz je sam.
+
+Zapis cech odblokowuje krok 5 w pasku kroków.

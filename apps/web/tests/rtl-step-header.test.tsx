@@ -3,13 +3,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
-// The live manifest has no step pages yet — they land in Tasks 7 and 8. A test
-// pinned to "today's manifest happens to lack krok-6-opisy" would prove the
-// guard now and go red for the wrong reason the moment that page ships, so the
-// lookup is injected instead (same reasoning as `HelpTreeSection`'s injected
-// `pages` in tests/rtl-help-nav.test.tsx). Exactly one slug resolves here, which
+// Since Task 8 every one of the seven steps HAS a Pomoc page, so the negative
+// case can no longer lean on a step the manifest happens to miss. The lookup is
+// injected instead (same reasoning as `HelpTreeSection`'s injected `pages` in
+// tests/rtl-help-nav.test.tsx): this stub resolves exactly one slug, so the
+// "no page → no link" branch stays exercised no matter what the live manifest
+// holds, and stays green when Fala 2 adds more pages. The single resolving slug
 // also pins that `getPage` is called with the step's own `helpSlug` — and that
-// StepHeader really consults the manifest at all.
+// StepHeader really consults the manifest at all. That the seven real slugs do
+// resolve against the real manifest is the complementary assertion, in
+// tests/help-manifest.test.ts.
 // The literal is inlined: the factory runs while `@/components/wizard/step-header`
 // is being imported, before any module-scope const of this file exists.
 vi.mock("@/content/pomoc/manifest", () => ({
@@ -46,8 +49,9 @@ describe("StepHeader — wejście do Pomocy", () => {
   });
 
   // The other half — without it, an unconditional link satisfies the case above
-  // and every step gets a dead link until Task 8. Queried without a name filter
-  // on purpose: a link that lost its label too must still fail here.
+  // and a step whose page is missing gets a dead link. `step={6}` is arbitrary:
+  // any step but 1 hits the stub's `undefined` branch. Queried without a name
+  // filter on purpose: a link that lost its label too must still fail here.
   it("nie renderuje linku, gdy strona kroku nie istnieje w manifeście", () => {
     render(<StepHeader step={6} />);
 
@@ -55,8 +59,8 @@ describe("StepHeader — wejście do Pomocy", () => {
   });
 
   // `step-meta.ts` is not mocked, so this is the real slug table. The manifest
-  // side of the contract (that these 7 slugs exist) becomes assertable only once
-  // Tasks 7–8 add the pages.
+  // side of the contract — that these 7 slugs really resolve — lives in
+  // tests/help-manifest.test.ts (assertable since Task 8 shipped the pages).
   it("mapuje każdy krok na slug strony Pomocy", () => {
     const slugs = Object.fromEntries(
       Object.entries(STEP_META).map(([step, meta]) => [step, meta.helpSlug]),
