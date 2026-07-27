@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
+import { HelpNav } from "@/components/help/help-nav";
 
 /**
  * Help module landing page (Slice 13, Task 1) — RSC behind the session gate,
- * matching the `valuations`/`profile` pattern. The two content trees and the
- * search box land in later tasks.
+ * matching the `valuations`/`profile` pattern. Task 3 added the listing of
+ * both content trees; the search box lands in a later task.
  */
 export default async function Page() {
   const session = await getSession();
@@ -17,6 +18,7 @@ export default async function Page() {
       <p className="max-w-[70ch] text-[14.5px] text-muted-foreground">
         Instrukcja obsługi aplikacji oraz opis metody, na której opieramy wyniki.
       </p>
+      <HelpNav />
     </main>
   );
 }
