@@ -20,6 +20,14 @@ describe("stripMdx", () => {
   it("usuwa znaczniki JSX, zostawiajac ich tresc", () => {
     expect(stripMdx("<Callout>Uwaga na zaokraglenia</Callout>")).toBe("Uwaga na zaokraglenia");
   });
+
+  // Task 14 wstawil odnosniki do tresci. Bez tego przejscia adres celu trafia
+  // do indeksu jako proza (mysliniki zamieniaja sie w spacje), wiec zapytanie
+  // "pomoc" pasowaloby do kazdej strony z jakimkolwiek odnosnikiem.
+  it("zwija odnosniki do samego tekstu, bez adresu", () => {
+    const out = stripMdx("Opisuje je [Metoda KCS](/pomoc/metoda-kcs).");
+    expect(out).toBe("Opisuje je Metoda KCS.");
+  });
 });
 
 describe("normalize", () => {

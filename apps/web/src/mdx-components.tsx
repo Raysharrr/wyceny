@@ -13,6 +13,13 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     p: (props) => <p className="mb-4 max-w-[70ch] text-[14.5px] leading-relaxed" {...props} />,
     ul: (props) => <ul className="mb-4 ml-5 list-disc space-y-1 text-[14.5px]" {...props} />,
     ol: (props) => <ol className="mb-4 ml-5 list-decimal space-y-1 text-[14.5px]" {...props} />,
+    // Tailwind's preflight resets anchors to `color: inherit; text-decoration:
+    // inherit`, so a markdown link inside MDX renders indistinguishable from
+    // the surrounding prose (Slice 13, Task 14 — first task to put links in
+    // content). Plain `<a>`, not `next/link`: MDX types `href` as optional, so
+    // Link would need a narrowing wrapper — and a full page load is an
+    // acceptable trade on a docs page. Styling matches `flat-view.tsx`.
+    a: (props) => <a className="underline underline-offset-4 hover:text-primary" {...props} />,
     ...components,
   };
 }

@@ -35,7 +35,7 @@ Blokady zbierane są **wszystkie naraz** — brama zwraca listę, a nie pierwsz�
 - **Liczebność próby** — mniej niż {REQUIRED_SAMPLE_SIZE} transakcji blokuje. Etykieta podaje liczbę faktyczną i wymaganą; próg jest importowany do tej strony wprost ze stałej `REQUIRED_SAMPLE_SIZE`.
 - **Każda transakcja z osobna** — pozycja o statusie innym niż potwierdzona daje własną blokadę z numerem wiersza. Dopisek „(RCN)" pojawia się tylko przy transakcjach z rejestru; transakcje wpisane ręcznie są w tym miejscu opisane bez dopisku.
 - **Cztery wartości skalarne** — adres, powierzchnia, wagi cech, oceny cech.
-- **Cztery pola nagłówkowe dokumentu i kwota** — cel wyceny, numer księgi wieczystej, klient, data oględzin oraz wartość rynkowa. Ta ostatnia blokuje, dopóki kalkulacja nie zostanie zatwierdzona w kroku kalkulacji.
+- **Cztery pola nagłówkowe dokumentu i kwota** — cel wyceny, numer księgi wieczystej, klient, data oględzin oraz wartość rynkowa. Ta ostatnia blokuje, dopóki kalkulacja nie zostanie zatwierdzona [w kroku kalkulacji](/pomoc/krok-5-kalkulacja).
 
 ### Sprawdzane warunkowo
 
@@ -79,7 +79,7 @@ Potwierdzenie nie jest wieczne. Każda edycja danych wejściowych silnika — pr
 - **Nie ocenia treści.** Nie wie, czy adres jest właściwy, czy transakcje są porównywalne, ani czy oceny cech są uczciwe. Sprawdza status, nie sens.
 - **Nie sprawdza, czy potwierdzenie było świadome.** Potwierdzenie jest zbiorcze — jedno kliknięcie przestawia całą grupę. Aplikacja nie ma jak odróżnić przejrzenia danych od kliknięcia w przycisk; bierze na siebie tylko to, że kliknięcie jest jawną decyzją rzeczoznawcy.
 - **Nie odpytuje źródła ponownie.** Potwierdzenie niczego nie weryfikuje u wystawcy danych ani nie sprawdza ich aktualności. Znaczy wyłącznie tyle, że rzeczoznawca je przyjął.
-- **Nie pilnuje sumy wag.** Wagi sumujące się do jedności są założeniem metody, nie warunkiem bramy — silnik policzy wynik z dowolnym zestawem, a pilnuje tego krok cech.
+- **Nie pilnuje sumy wag.** Wagi sumujące się do jedności są założeniem metody, nie warunkiem bramy — silnik policzy wynik z dowolnym zestawem, a pilnuje tego [krok cech](/pomoc/krok-4-cechy).
 - **Nie obejmuje oględzin poza datą.** Zdjęcia i notatka z oględzin nie mają wpisu prowenancji i nie blokują zatwierdzenia; wymagana jest wyłącznie data oględzin.
 - **Nie działa wstecz.** Migawki sprzed wprowadzenia danej grupy przechodzą mniej warunków — celowo, żeby nowa reguła nie unieruchomiła szkiców istniejących już w bazie.
 - **Nie zna górnej granicy próby.** Sprawdzany jest wyłącznie próg dolny; próba liczniejsza niż {REQUIRED_SAMPLE_SIZE} pozycji przechodzi bez uwag.

@@ -16,12 +16,18 @@ export type HelpIndexEntry = {
  * Strips MDX syntax down to the prose worth indexing. Code fences go first —
  * they routinely contain `import`/`export` lines and angle brackets that the
  * later passes would otherwise turn into noise words.
+ *
+ * Links collapse to their text before the punctuation pass: without it the
+ * target ends up in the index as prose (`-` becomes a space, so
+ * `[Metoda KCS](/pomoc/metoda-kcs)` indexes the words "pomoc metoda kcs"),
+ * and a query like "pomoc" starts matching every page that links anywhere.
  */
 export const stripMdx = (source: string): string =>
   source
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/^import .*$/gm, " ")
     .replace(/^export .*$/gm, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/<[^>]+>/g, " ")
     .replace(/[#*_>`|-]/g, " ")
     .replace(/\s+/g, " ")
