@@ -1,0 +1,85 @@
+import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+
+Zatwierdzenie operatu jest jedyną bramą między szkicem wyceny a dokumentem: przed nim wszystko da się poprawić, po nim aplikacja nie ma akcji cofającej. Brama nie ocenia treści wyceny — sprawdza, czy każda wartość wchodząca do dokumentu ma znane pochodzenie i czy rzeczoznawca wziął za nią odpowiedzialność. Reguła mieszka w warstwie domeny (`apps/web/src/domain/provenance.ts` oraz `apps/web/src/domain/document-model.ts`), jest czystym rachunkiem bez odwołań do sieci i bazy, i wykonuje się po stronie serwera — nie w przeglądarce.
+
+## Prowenancja wartości
+
+Każda wartość, która trafia do operatu, niesie ze sobą parę: **źródło** i **status**.
+
+Źródła są zamkniętą listą (`packages/shared/src/sourced.ts`): geokoder, ewidencja gruntów i budynków, plan miejscowy, odpis księgi wieczystej, akt notarialny, rejestr cen nieruchomości, oględziny, rzeczoznawca oraz zestaw proponowany przez aplikację. Statusy są trzy: **potwierdzona**, **do weryfikacji** i **brak prowenancji**.
+
+Reguła bramy mieści się w jednym zdaniu: blokuje **każdy status inny niż „potwierdzona"**. Nie ma tu stopniowania ani ulgi dla źródeł uznanych za wiarygodne — dane z rejestru państwowego blokują zatwierdzenie dokładnie tak samo jak dane nieznanego pochodzenia, dopóki rzeczoznawca ich nie potwierdzi. Wiarygodność źródła jest argumentem przy potwierdzaniu, a nie zwolnieniem z niego.
+
+## Wpis ręczny a propozycja ze źródła
+
+Statusy nadaje **serwer**, przy zapisie kroku, na podstawie zaufanego znacznika źródła (`apps/web/src/lib/assign-provenance.ts`, ADR-010). Nie przysyła ich przeglądarka i nie ustala worker — i to jest cała mechanika różnicy między wpisem ręcznym a propozycją, bo formularz mógłby zadeklarować, że wszystko wpisał człowiek.
+
+Podział wygląda tak:
+
+- **wpisane przez rzeczoznawcę — potwierdzone z definicji**: adres, oceny cech, transakcje dopisane do próby ręcznie, dane przedmiotu wprowadzone bez pobrania;
+- **przyniesione ze źródła zewnętrznego — do weryfikacji**: transakcje z rejestru cen, geokodowanie adresu, dane ewidencyjne i plan miejscowy z pobrania, dane odczytane z aktu albo odpisu księgi;
+- **zaproponowane przez aplikację — do weryfikacji**: wagi cech i definicje skali ocen, o ile pozostały identyczne z zestawem proponowanym.
+
+Zasada jest jedna i wynika z tego, że produkt jest z założenia automatyczny: potwierdza się to, czego się samemu nie wpisało. Dwa przypadki z tego podziału są nieoczywiste i warto je znać.
+
+**Wagi i definicje skali.** O tym, czy zestaw cech jest „zaproponowany", czy „własny", rozstrzyga porównanie po stronie serwera z zestawem oczekiwanym — a nie deklaracja z formularza, której klient mógłby użyć, by udać ręczną edycję. Zestaw ruszony przez rzeczoznawcę jest potwierdzony z definicji; nietknięty wymaga potwierdzenia, nawet jeśli jest dokładnie tym, czego rzeczoznawca chciał. Próg powierzchni w definicji skali jest przy tym przeliczany z przesłanych transakcji, więc definicja wypełniona medianą próby nadal liczy się jako propozycja aplikacji.
+
+**Powierzchnia.** Status „do weryfikacji" dostaje wyłącznie wtedy, gdy zapisana wartość jest dokładnie równa tej z wgranego dokumentu — czyli gdy rzeczoznawca przyjął liczbę z dokumentu zamiast wpisać własną. Powierzchnia wpisana z ręki jest potwierdzona, nawet gdy dokument też jakąś podał.
+
+## Pełna lista warunków blokujących zatwierdzenie
+
+Blokady zbierane są **wszystkie naraz** — brama zwraca listę, a nie pierwszą napotkaną przeszkodę. Ekran zatwierdzenia pokazuje ją w całości; komunikat błędu samej akcji cytuje z niej tylko pozycję pierwszą.
+
+### Sprawdzane zawsze
+
+- **Liczebność próby** — mniej niż {REQUIRED_SAMPLE_SIZE} transakcji blokuje. Etykieta podaje liczbę faktyczną i wymaganą; próg jest importowany do tej strony wprost ze stałej `REQUIRED_SAMPLE_SIZE`.
+- **Każda transakcja z osobna** — pozycja o statusie innym niż potwierdzona daje własną blokadę z numerem wiersza. Dopisek „(RCN)" pojawia się tylko przy transakcjach z rejestru; transakcje wpisane ręcznie są w tym miejscu opisane bez dopisku.
+- **Cztery wartości skalarne** — adres, powierzchnia, wagi cech, oceny cech.
+- **Cztery pola nagłówkowe dokumentu i kwota** — cel wyceny, numer księgi wieczystej, klient, data oględzin oraz wartość rynkowa. Ta ostatnia blokuje, dopóki kalkulacja nie zostanie zatwierdzona w kroku kalkulacji.
+
+### Sprawdzane warunkowo
+
+Pozostałe grupy **istnieją tylko wtedy, gdy do wyceny dołączono odpowiednią migawkę**. Nie jest to ustępstwo, tylko konsekwencja: nie ma czego potwierdzać w danych, których w wycenie nie ma.
+
+- **Definicje skali ocen** — tylko gdy migawka niesie ten klucz. Wyceny sprzed wprowadzenia gotowego zestawu cech go nie mają i nie dostają blokady wstecz.
+- **Geokodowanie adresu** — tylko gdy próba pochodzi z pobrania z rejestru. Próba wpisana w całości ręcznie nie ma czego geokodować.
+- **Dane ewidencyjne (EGiB) oraz przeznaczenie planistyczne (MPZP)** — obie grupy naraz, gdy do wyceny dołączono migawkę przedmiotu. Potwierdzony brak planu jest tu równie świadomą decyzją co potwierdzenie jego treści, więc grupa planu obejmuje oba przypadki.
+- **Stan prawny (KW)** — tylko gdy dołączono odczyt aktu notarialnego albo odpisu księgi. Numer księgi wpisany ręcznie nie tworzy migawki i nie dokłada tu żadnej blokady.
+
+Grupa stanu prawnego ma dodatkowo dwa warunki, które nie dotyczą statusów, tylko kompletności:
+
+- **brak numeru KW gruntu** (księgi macierzystej) blokuje zawsze,
+- **brak numeru KW lokalu** blokuje, chyba że zaznaczono wariant deweloperski. Lokal bez własnej księgi jest stanem dopuszczalnym, ale musi zostać zadeklarowany, a nie przemilczany.
+
+## Domyślna odmowa
+
+Brak wpisu prowenancji nie oznacza „w porządku" — liczy się jak status „brak prowenancji" i blokuje. Stąd druga etykieta, której w normalnej pracy się nie widuje: obok „— do weryfikacji." istnieje „— brak prowenancji.".
+
+Konsekwencje tej reguły są trzy i wszystkie zamierzone. Migawka bez mapy prowenancji daje od razu cztery blokady skalarne naraz, zamiast przejść bramę „bo nie było czego sprawdzać". Transakcja bez zapisanego statusu blokuje tak samo jak transakcja oznaczona do weryfikacji. Szkic bez migawki wejść jest odrzucany jedną blokadą mówiącą o braku danych wejściowych operatu — nie ma stanu, w którym pustka przechodzi.
+
+## Dlaczego brama stoi po stronie serwera
+
+Na ekranie widać jej skutek: przycisk zatwierdzenia jest nieaktywny, dopóki lista blokad nie jest pusta. Nieaktywny przycisk jest jednak własnością ekranu, nie dokumentu — i nie jest tym, co chroni operat.
+
+Zatwierdzenie przechodzi przez bramę **dwa razy**:
+
+1. w akcji serwerowej, zanim ruszy kosztowne składanie dokumentu — po to, żeby odmówić szybko i tanio;
+2. wewnątrz transakcji bazodanowej, w chwili przestawiania statusu — ponownie, na wierszu odczytanym z bazy, a nie na tym, co przysłał klient.
+
+Obok samej bramy stoją jeszcze dwa zabezpieczenia. Zapis statusu jest warunkowy: przechodzi tylko wtedy, gdy wycena wciąż jest szkicem, więc dwa równoległe zatwierdzenia nie zatwierdzą jej dwa razy. Do tego migawka wejść odczytana przy zapisie jest porównywana z tą, z której złożono dokument — gdy dane zmieniły się w międzyczasie, zatwierdzenie jest odrzucane, zamiast utrwalić dokument niezgodny z danymi.
+
+Czego to broni: **żądania wysłanego z pominięciem interfejsu**. Ten przypadek jest sprawdzany wprost. Test integracyjny w `apps/web/tests/valuation-repo.test.ts` wywołuje repozytorium bezpośrednio — obok ekranu i obok akcji — na szkicu z niepotwierdzonymi danymi; zatwierdzenie kończy się wyjątkiem bramy. Test nosi ten wniosek w nazwie: „server-side gate — API bypass impossible".
+
+## Potwierdzenia a późniejsze zmiany
+
+Potwierdzenie nie jest wieczne. Każda edycja danych wejściowych silnika — przedmiotu, próby albo cech — kasuje zatwierdzoną wartość rynkową, więc blokada „Wartość rynkowa — kalkulacja niezatwierdzona" wraca i kalkulację trzeba zatwierdzić ponownie. Zmiana danych przedmiotu idzie o krok dalej: grupy prowenancji należące do tego kroku (dane ewidencyjne, plan, stan prawny) są **zastępowane**, a nie scalane — odłączenie przedmiotu nie zostawia po sobie potwierdzeń dla danych, których w wycenie już nie ma.
+
+## Czego ta brama nie robi
+
+- **Nie ocenia treści.** Nie wie, czy adres jest właściwy, czy transakcje są porównywalne, ani czy oceny cech są uczciwe. Sprawdza status, nie sens.
+- **Nie sprawdza, czy potwierdzenie było świadome.** Potwierdzenie jest zbiorcze — jedno kliknięcie przestawia całą grupę. Aplikacja nie ma jak odróżnić przejrzenia danych od kliknięcia w przycisk; bierze na siebie tylko to, że kliknięcie jest jawną decyzją rzeczoznawcy.
+- **Nie odpytuje źródła ponownie.** Potwierdzenie niczego nie weryfikuje u wystawcy danych ani nie sprawdza ich aktualności. Znaczy wyłącznie tyle, że rzeczoznawca je przyjął.
+- **Nie pilnuje sumy wag.** Wagi sumujące się do jedności są założeniem metody, nie warunkiem bramy — silnik policzy wynik z dowolnym zestawem, a pilnuje tego krok cech.
+- **Nie obejmuje oględzin poza datą.** Zdjęcia i notatka z oględzin nie mają wpisu prowenancji i nie blokują zatwierdzenia; wymagana jest wyłącznie data oględzin.
+- **Nie działa wstecz.** Migawki sprzed wprowadzenia danej grupy przechodzą mniej warunków — celowo, żeby nowa reguła nie unieruchomiła szkiców istniejących już w bazie.
+- **Nie zna górnej granicy próby.** Sprawdzany jest wyłącznie próg dolny; próba liczniejsza niż {REQUIRED_SAMPLE_SIZE} pozycji przechodzi bez uwag.

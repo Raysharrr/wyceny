@@ -320,6 +320,130 @@ export const HELP_PAGES: HelpPage[] = [
       "Jakie dokumenty czytamy, co z nich bierzemy, czego świadomie nie bierzemy i dlaczego wynik zawsze wymaga potwierdzenia.",
     load: () => import("./metodyka/ekstrakcja-kw-akt.mdx"),
   },
+  /**
+   * Uwaga dla utrzymujących treść: `zasady-zatwierdzania.mdx` importuje próg
+   * `REQUIRED_SAMPLE_SIZE` wprost (jedyna liczba na tej stronie). Wszystko
+   * pozostałe to reguły bez liczb — opisane z odczytu kodu, więc przy każdej
+   * zmianie bramy trzeba przejść listę poniżej. Komentarz stoi w manifeście, a
+   * nie w MDX, z powodu opisanego przy `dobor-proby-rcn` powyżej.
+   *
+   * Źródła do sprawdzenia przy każdej zmianie zasad zatwierdzania:
+   *   apps/web/src/domain/provenance.ts:8      REQUIRED_SAMPLE_SIZE (IMPORTOWANE do MDX)
+   *   apps/web/src/domain/provenance.ts:57     statusLabel — DWIE etykiety, w tym "brak prowenancji"
+   *   apps/web/src/domain/provenance.ts:61     approvalGate — komplet blokad, zbierane wszystkie naraz
+   *   apps/web/src/domain/provenance.ts:96     featureDefs gated TYLKO gdy migawka niesie klucz
+   *   apps/web/src/domain/provenance.ts:107    geocode gated tylko przy sampleMeta
+   *   apps/web/src/domain/provenance.ts:121    ewidencja + mpzp gated razem, przy subject
+   *   apps/web/src/domain/provenance.ts:142    grupa kw gated tylko przy migawce kw
+   *   apps/web/src/domain/provenance.ts:151    kwGruntu — warunek kompletności, nie statusu
+   *   apps/web/src/domain/provenance.ts:157    kwLokalu — z wyjątkiem wariantu deweloperskiego
+   *   packages/shared/src/sourced.ts:7         ZAMKNIĘTA lista źródeł prowenancji
+   *   packages/shared/src/sourced.ts:33        isBlocking — blokuje wszystko poza "confirmed"
+   *   apps/web/src/lib/assign-provenance.ts:18 statusy nadaje serwer (ADR-010)
+   *   apps/web/src/lib/assign-provenance.ts:26 powierzchnia to_verify TYLKO przy dokładnej równości
+   *   apps/web/src/lib/assign-provenance.ts:64 wykrycie zestawu cech po stronie serwera, próg z mediany
+   *   apps/web/src/domain/document-model.ts:241 documentFieldBlockers — cztery pola + wr
+   *   apps/web/src/domain/valuation.ts:246,279,296  każda edycja wejść silnika zeruje wr
+   *   apps/web/src/domain/valuation.ts:251     grupy kroku 1 ZASTĘPOWANE, nie scalane
+   *   apps/web/src/domain/valuation.ts:337     szkic bez migawki — jedna blokada "brak danych wejściowych"
+   *   apps/web/src/app/actions/approve-valuation.ts:54  pierwszy przebieg bramy (szybka odmowa)
+   *   apps/web/src/adapters/valuation-drizzle.ts:405    porównanie migawki (InputsChangedError)
+   *   apps/web/src/adapters/valuation-drizzle.ts:411    DRUGI przebieg bramy, w transakcji
+   *   apps/web/src/adapters/valuation-drizzle.ts:423    warunkowy UPDATE (status = in_progress)
+   *   apps/web/tests/valuation-repo.test.ts:148         test "API bypass impossible" — cytowany na stronie
+   */
+  {
+    slug: "zasady-zatwierdzania",
+    title: "Zasady zatwierdzania i prowenancja danych",
+    tree: "metodyka",
+    order: 5,
+    tags: [
+      "prowenancja",
+      "zatwierdzenie",
+      "brama zatwierdzenia",
+      "blokady",
+      "potwierdzenia",
+      "do weryfikacji",
+      "brak prowenancji",
+      "źródło danych",
+      "ADR-010",
+      "F-4",
+      "domyślna odmowa",
+      "wpis ręczny",
+    ],
+    summary:
+      "Skąd wiadomo, kto odpowiada za każdą wartość w operacie, komplet warunków blokujących zatwierdzenie i dlaczego brama stoi po stronie serwera.",
+    load: () => import("./metodyka/zasady-zatwierdzania.mdx"),
+  },
+  /**
+   * Uwaga dla utrzymujących treść: `operat-i-niezmiennosc.mdx` importuje
+   * `OPERAT_SECTIONS` i renderuje ich liczbę — nie wpisywać jej ręcznie.
+   * Liczba sekcji zmienia się razem z szablonem, więc rzeczownik przy niej
+   * odmienia `plural()` (dziś 23 → "numerowane sekcje", ale np. 25 →
+   * "numerowanych sekcji"); nie zastępować tego wywołania stałym napisem.
+   * Wyzwalacze bazy, algorytm sumy kontrolnej i sekwencja zatwierdzenia to
+   * reguły bez liczb, opisane z odczytu kodu. Komentarz stoi w manifeście, a
+   * nie w MDX, z powodu opisanego przy `dobor-proby-rcn` powyżej.
+   *
+   * UWAGA na trzy RÓŻNE zakresy niezmienności — strona rozdziela je celowo i
+   * spłaszczenie ich do jednego zdania czyni ją nieprawdziwą:
+   *   apps/web/drizzle/0009_f7_immutability_audit_sign.sql:22  RLS omijalne, wyzwalacze nie
+   *   apps/web/drizzle/0009_f7_immutability_audit_sign.sql:29  valuation_write_once WHEN status='signed'
+   *   apps/web/drizzle/0009_f7_immutability_audit_sign.sql:39  audit_log_append_only — BEZWARUNKOWY
+   *   apps/web/drizzle/0009_f7_immutability_audit_sign.sql:47  document_frozen — tylko dokumenty podpisanej wyceny
+   *
+   * Źródła do sprawdzenia przy każdej zmianie operatu, audytu lub podpisu:
+   *   apps/web/src/domain/operat-sections.ts:7          OPERAT_SECTIONS (IMPORTOWANE do MDX)
+   *   apps/web/src/domain/document-model.ts:78          maskowanie: miesiąc zamiast pełnej daty (F-12)
+   *   apps/web/src/domain/document-model.ts:277         mpzp / mpzp_brak — wzajemnie wykluczające się
+   *   apps/web/src/domain/document-model.ts:285         cechy o wadze 0 poza dokumentem
+   *   apps/web/src/domain/document-model.ts:374         kolumna ulicy — kreska (brak w źródle)
+   *   apps/web/src/domain/document-model.ts:399,400     honest silence: skala ocen, uwagi z oględzin
+   *   apps/web/src/app/actions/approve-valuation.ts:20  KOLEJNOŚĆ, nie transakcyjność
+   *   apps/web/src/app/actions/approve-valuation.ts:50  odmowa PRZED generowaniem (nie nadpisz operatu)
+   *   apps/web/src/app/actions/approve-valuation.ts:109 kasowanie osieroconych map przy "bez map"
+   *   apps/web/src/app/actions/approve-valuation.ts:117 brak zdjęcia z manifestu = twardy błąd
+   *   apps/web/src/app/actions/sign-valuation.ts:17     SHA-256 liczone przy podpisie
+   *   apps/web/src/app/actions/sign-valuation.ts:41     podpisuje WYŁĄCZNIE właściciel (nie admin)
+   *   apps/web/src/app/actions/sign-valuation.ts:69     data sporządzenia z approvedAt, nie z zegara
+   *   apps/web/src/app/actions/sign-valuation.ts:84     mapy z magazynu, bez kontaktu z WMS
+   *   apps/web/src/domain/valuation.ts:353              zamknięta lista akcji audytu (bez liczby na stronie)
+   *   apps/web/src/domain/valuation.ts:400,412          reguła resetu: rcn / "rzeczoznawca"
+   *   apps/web/src/domain/valuation.ts:420              newVersionOf — tylko z PODPISANEJ
+   *   apps/web/src/adapters/valuation-drizzle.ts:426    wiersz "approved": docUrl/docxUrl, BEZ haszy
+   *   apps/web/src/adapters/valuation-drizzle.ts:462    wiersz "signed": sha256Docx/sha256Pdf
+   *   apps/web/src/app/valuations/[id]/page.tsx:128     jeden następca — pilnuje UI, nie serwer
+   *   apps/web/tests/f12-document-sections.test.ts:20   komplet sekcji, brak "undefined", brak przecieku
+   *   apps/web/tests/audit-log.test.ts:166              nieudana mutacja nie zostawia wiersza
+   *
+   * Sumy kontrolne NIE są nigdzie weryfikowane — strona mówi to wprost.
+   * Sprawdzenie: `grep -rn "sha256" apps/web/src` (wyłącznie zapis i typy).
+   */
+  {
+    slug: "operat-i-niezmiennosc",
+    title: "Operat i niezmienność dokumentu",
+    tree: "metodyka",
+    order: 6,
+    tags: [
+      "operat",
+      "niezmienność",
+      "write-once",
+      "suma kontrolna",
+      "SHA-256",
+      "dziennik audytu",
+      "audit log",
+      "podpis",
+      "nowa wersja",
+      "wersjonowanie",
+      "maskowanie",
+      "F-7",
+      "F-12",
+      "sekcje operatu",
+    ],
+    summary:
+      "Z czego powstaje operat, co dzieje się przy zatwierdzeniu, co dokładnie zamraża podpis i co zapisuje dziennik audytu.",
+    load: () => import("./metodyka/operat-i-niezmiennosc.mdx"),
+  },
 ];
 
 export const getPage = (slug: string): HelpPage | undefined =>

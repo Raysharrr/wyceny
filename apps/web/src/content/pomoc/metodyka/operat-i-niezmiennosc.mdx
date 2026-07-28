@@ -1,0 +1,102 @@
+import { OPERAT_SECTIONS } from "@/domain/operat-sections";
+import { plural } from "@/components/wizard/plural";
+
+Operat nie jest w tej aplikacji plikiem, który się redaguje — jest wynikiem złożenia zamrożonych danych wyceny z produkcyjnym szablonem, wykonanego raz, w chwili zatwierdzenia. Ta strona opisuje, z czego ten dokument powstaje i jakie gwarancje ma po powstaniu: co dokładnie jest niezmienne, od kiedy, co pilnuje tej niezmienności i czego ona nie obejmuje. Rozróżnienia są tu istotniejsze niż hasła — „niezmienny" znaczy co innego dla operatu zatwierdzonego, a co innego dla podpisanego.
+
+## Z czego składa się operat
+
+Dokument ma **{OPERAT_SECTIONS.length} {plural(OPERAT_SECTIONS.length, "numerowaną sekcję", "numerowane sekcje", "numerowanych sekcji")}** — od wyciągu z operatu, przez podstawy prawne, opis stanu nieruchomości, przeznaczenie planistyczne i metodologię, po uzasadnienie wyniku, zastrzeżenia i załączniki. Kanoniczna lista tytułów nie jest pisana ręcznie: została wygenerowana z produkcyjnego szablonu i żyje w kodzie (`apps/web/src/domain/operat-sections.ts`), skąd ta strona bierze ich liczbę. Osobny test składa dokument z prawdziwego szablonu na danych syntetycznych i sprawdza, że wszystkie sekcje są obecne, że nie został żaden nierozwiązany znacznik, że nigdzie nie pojawia się słowo „undefined" i że nic z operatu źródłowego, na którym szablon powstał, nie przecieka do cudzego dokumentu.
+
+Treść wypełniana jest z jednego miejsca — modelu dokumentu (`apps/web/src/domain/document-model.ts`), czystej funkcji, która zamienia dane wyceny na gotowe polskie napisy. Renderowanie robi już tylko podstawienie. Do modelu wchodzą: dane przedmiotu i pola nagłówkowe wyceny, zamrożona migawka wejść, wynik kalkulacji, kwota słownie wyliczona przez worker oraz data zatwierdzenia — to ona jest datą sporządzenia operatu i podpisem pod blokiem map.
+
+Kilka reguł modelu wpływa na to, co w dokumencie widać:
+
+- **Maskowanie danych transakcji.** Wiersze próby porównawczej pokazują wyłącznie miesiąc transakcji (RRRR-MM), miasto wzięte z adresu przedmiotu, powierzchnię i cenę jednostkową. Pełna data, identyfikator transakcji z rejestru i cokolwiek z zapisu prowenancji nie trafiają do dokumentu. Kolumna ulicy jest kreską, bo dzisiejsze źródło transakcji ulicy nie podaje.
+- **Cechy o wadze zero nie istnieją w dokumencie.** Nie ma ich w tabeli cech, w opisach ani w skali ocen — wiersz z zerową wagą tylko zapraszałby do pytania, po co go drukować.
+- **Milczenie zamiast twierdzenia.** Blok skali ocen drukuje się tylko wtedy, gdy jakakolwiek definicja została wypełniona; sekcja uwag z oględzin — tylko gdy notatka jest niepusta; blok planu miejscowego ma dwa warianty (plan albo jego potwierdzony brak), nigdy oba i nigdy żaden, gdy do wyceny dołączono migawkę przedmiotu.
+
+Obrazy dokładane są do dokumentu w chwili składania: dwie mapy z sekcji stanu otoczenia, zdjęcia z oględzin w trzech blokach (otoczenie, budynek z zewnątrz, wnętrza) oraz — wyłącznie w wersji podpisanej — skan podpisu rzeczoznawcy. Dokument powstaje jako DOCX, a PDF jest jego konwersją wykonaną przez worker. Oba pliki zapisują się przy wycenie i są dostępne tylko po zalogowaniu, dla właściciela wyceny i administratora.
+
+## Co dzieje się w chwili zatwierdzenia
+
+Zatwierdzenie jest jedną akcją serwerową, ale sekwencją kilku kroków wykonywanych w ustalonej kolejności (`apps/web/src/app/actions/approve-valuation.ts`):
+
+1. **Sprawdzenie statusu.** Wycena musi być szkicem. Ponowne zatwierdzenie jest odrzucane **przed** jakimkolwiek składaniem dokumentu — właśnie po to, żeby nie nadpisać istniejącego, zamrożonego pliku.
+2. **Brama zatwierdzenia.** Warunki prowenancji i kompletności pól dokumentu, z szybką odmową przy pierwszej blokadzie.
+3. **Kalkulacja i kwota słownie.** Wynik liczony z migawki wejść; kwota słownie wyliczana przez worker i wstawiana do treści.
+4. **Mapy.** Pobierane i zamrażane w tym właśnie momencie. Nieudane pobranie zatrzymuje zatwierdzenie i pozostawia wybór: ponowić albo zatwierdzić bez map. Wybór „bez map" jest świadomą decyzją i zostaje odnotowany w dzienniku audytu. W tym wariancie ewentualne mapy osierocone przez wcześniejszą nieudaną próbę są kasowane, żeby podpis nie wkleił później map, których ten operat nie zawiera.
+5. **Zdjęcia z oględzin.** Odczytywane z manifestu zapisanego w migawce. Brak któregokolwiek pliku jest twardym błędem integralności i przerywa zatwierdzenie — inaczej niż przy mapach, gdzie brak może być stanem legalnym.
+6. **Złożenie i zapis plików.** Render DOCX, konwersja do PDF, zapis obu.
+7. **Przestawienie statusu.** W jednej transakcji bazodanowej: ponowne uruchomienie bramy na wierszu z bazy, porównanie migawki z tą, z której złożono dokument, warunkowy zapis (tylko gdy wycena wciąż jest szkicem) i wpis do dziennika audytu.
+
+Warto zauważyć, czego w tym opisie **nie ma**: całość nie jest jedną transakcją. Składanie dokumentu i zapis plików dzieją się poza nią. Niezmienna reguła „zatwierdzony operat istnieje jako plik" wynika z **kolejności**, a nie z transakcyjności — pliki najpierw, przestawienie statusu na końcu. Nieudane przestawienie zostawia więc nieszkodliwe pliki-sieroty, które ponowienie nadpisuje pod tymi samymi kluczami. Odwrotna kolejność dawałaby stan gorszy: wycenę oznaczoną jako zatwierdzona, bez dokumentu.
+
+## Trzy różne zakresy niezmienności
+
+To rozróżnienie jest najczęstszym źródłem nieporozumień, więc warto je umieć powiedzieć z pamięci. „Niezmienne" znaczy tu trzy różne rzeczy, o trzech różnych mocach.
+
+**Szkic** jest w pełni edytowalny. Wszystkie operacje domeny odmawiają jednak pracy na czymkolwiek innym niż szkic — po zatwierdzeniu żadna z nich nie ruszy danych wyceny.
+
+**Operat zatwierdzony, jeszcze niepodpisany**, jest chroniony **kodem aplikacji**: kreator jest dla niego zamknięty, nie ma akcji cofającej zatwierdzenie, a mutacje domeny odmawiają wykonania. Na poziomie bazy danych nic go jednak jeszcze nie broni. Jest to świadomy kompromis: gdyby dokumenty zamrażały się już przy zatwierdzeniu, opisana wyżej ścieżka ponowienia (nadpisanie plików pod tymi samymi kluczami) przestałaby działać.
+
+**Operat podpisany** jest chroniony **przez bazę danych**. Wyzwalacz odrzuca każdą modyfikację i każde usunięcie wiersza podpisanej wyceny — również próbę cofnięcia statusu. Drugi wyzwalacz zamraża wiersze dokumentów, do których odwołuje się podpisana wycena; jest warunkowy właśnie dlatego, że blankietowe zamrożenie wszystkich dokumentów zepsułoby ponowienie zatwierdzenia.
+
+Osobno i **bezwarunkowo** chroniony jest dziennik audytu: modyfikacja i usunięcie odrzucane są na każdym jego wierszu, niezależnie od statusu jakiejkolwiek wyceny. Dziennik przyjmuje wyłącznie dopisanie.
+
+Dlaczego wyzwalacze bazy, a nie reguły dostępu do wierszy: aplikacja łączy się z bazą na koncie, które **reguły dostępu omija, a wyzwalaczy nie**. Wyzwalacz jest więc jedyną gwarancją na poziomie bazy, która wiąże samą aplikację — a nie tylko cudzy dostęp z zewnątrz. To dopełnienie zasady znanej z bramy zatwierdzenia: ochrona ma działać także wtedy, gdy żądanie przychodzi z zaufanego miejsca.
+
+## Suma kontrolna
+
+Przy podpisywaniu liczone są sumy kontrolne SHA-256 z bajtów obu wygenerowanych plików — DOCX i PDF — i zapisywane w metadanych wiersza audytu o podpisaniu (`apps/web/src/app/actions/sign-valuation.ts`). Wiersz o zatwierdzeniu sum nie zawiera: odcisk powstaje dopiero dla wersji podpisanej, czyli tej, która wychodzi z biura.
+
+Trzeba przy tym powiedzieć wprost, czym ta suma **nie** jest. Nic w aplikacji jej nie sprawdza — ani przy pobraniu pliku, ani później. Nie ma ekranu, na którym rozjazd sumy się zapali, i nie ma zadania, które by je porównywało. Jest to **zapisany odcisk do porównania ręcznego**, dowodzący, że plik przedstawiony po latach jest tym samym plikiem, a nie automatyczna kontrola integralności.
+
+## Dziennik audytu
+
+Każda zmiana stanu wyceny zostawia wiersz w dzienniku (`audit_log`). Lista możliwych akcji jest zamknięta w kodzie — nie ma wpisów o dowolnej treści. Obejmuje utworzenie wyceny, zapis danych przedmiotu, próby i cech, zatwierdzenie kalkulacji, cztery rodzaje potwierdzeń (próby, danych przedmiotu, danych z księgi wieczystej oraz cech i wag), zmianę w oględzinach, zatwierdzenie operatu, podpisanie i utworzenie nowej wersji. Jest to katalog akcji możliwych, nie obowiązkowych: pojedyncza wycena zostawia wyłącznie te wiersze, które odpowiadają temu, co się w niej wydarzyło — wycena bez wgranego dokumentu nigdy nie ma wiersza o potwierdzeniu danych z księgi wieczystej.
+
+Wiersz zapisuje: której wyceny dotyczy, kto go wywołał, jaka to akcja, kiedy nastąpiła oraz metadane zależne od akcji. Metadane są oszczędne i celowo różne dla każdej akcji — adresy zapisanych plików przy zatwierdzeniu (i znacznik zatwierdzenia bez map, gdy taki wybór zapadł), sumy kontrolne przy podpisie, identyfikator poprzednika przy nowej wersji, rodzaj operacji i liczba zdjęć przy oględzinach, informacja o dołączeniu dokumentu przy zapisie przedmiotu.
+
+Dwie własności dziennika warto znać:
+
+- **Wpis powstaje w tej samej transakcji co sama zmiana.** Nieudana operacja nie zostawia po sobie wiersza; dziennik nie zawiera prób, które się nie powiodły.
+- **Wiersze nie mają klucza obcego do wyceny.** Jest to decyzja, nie przeoczenie: wpisy audytu mają przetrwać każdą przyszłą operację na danych wyceny.
+
+Czego dziennik **nie** zapisuje: treści zmiany. Nie ma w nim wartości sprzed i po edycji, więc nie odtworzy się z niego historii pól — odtworzy się z niego sekwencja zdarzeń, ich autorzy i czas.
+
+## Podpis
+
+Podpisanie jest ostatnim krokiem i jedynym, który zamyka wycenę na stałe.
+
+Podpisać może **wyłącznie właściciel** wyceny. Administrator biura widzi cudze operaty, ale jego próba podpisania jest odrzucana, zanim odczytany zostanie cudzy skan podpisu i zanim powstanie jakikolwiek plik. Wymagany jest wcześniej wgrany skan podpisu w profilu; bez niego akcja kończy się odmową.
+
+Sam podpis jest **ponownym złożeniem dokumentu z tych samych zamrożonych danych**: ta sama migawka wejść, te same mapy odczytane z magazynu (bez ponownego kontaktu z usługą map), te same zdjęcia z manifestu, a data sporządzenia wzięta z zapisanej daty zatwierdzenia — nie z zegara. Dzięki temu tekst operatu podpisanego jest identyczny z zatwierdzonym; pilnuje tego osobny test. Jedyną różnicą jest dołożony skan podpisu. Pliki zapisują się pod osobnymi kluczami, a wycena zaczyna wskazywać na wersję podpisaną.
+
+Dwa zachowania przy odczycie zamrożonych zasobów są tu różne i celowo:
+
+- **Brak zamrożonych map** oznacza operat zatwierdzony świadomie bez map — i jest jedynym przypadkiem, w którym ich nieobecność jest milcząca. Każdy **inny** błąd odczytu map przerywa podpisywanie, żeby awaria nie została zinterpretowana jako legalny brak.
+- **Każdy błąd odczytu zdjęć** przerywa podpisywanie. Manifest i pliki powstają w jednej transakcji, więc brak pliku wymienionego w manifeście jest błędem integralności, a nie stanem dopuszczalnym.
+
+Dla rzeczoznawcy podpis oznacza tyle: od tej chwili wiersz wyceny i oba pliki są zamrożone na poziomie bazy danych. Aplikacja nie ma akcji cofającej podpis, a gdyby ją kiedyś napisano przez pomyłkę, wyzwalacz i tak by ją odrzucił. Wycen starego typu — sprzed wprowadzenia migawki wejść i generowania DOCX — nie da się podpisać: nie ma z czego złożyć dokumentu końcowego.
+
+## Nowa wersja
+
+Nowa wersja jest jedynym sposobem, by zmienić cokolwiek w podpisanym operacie — i powstaje **wyłącznie z wyceny podpisanej**. Operat zatwierdzony, ale niepodpisany, tej ścieżki nie ma; jego stan rozwiązuje się podpisem.
+
+Powstaje wtedy nowy szkic wskazujący na poprzednika. Przenoszą się **wartości**: adres, powierzchnia, migawka wejść, cel wyceny, numer księgi, klient, data oględzin oraz wartość rynkowa. Ich statusy to osobna sprawa, opisana niżej — przeniesiona wartość nie znaczy przeniesionego potwierdzenia. Zerowane są kwota słownie i adresy obu plików — nowa wersja startuje bez dokumentu, bo dokument powstaje dopiero przy jej własnym zatwierdzeniu.
+
+Najważniejsza jest reguła, według której statusy wracają do weryfikacji, bo jest węższa, niż brzmi potoczne „wszystko, czego nie wpisałeś ręcznie":
+
+- **transakcja** wraca do weryfikacji tylko wtedy, gdy pochodzi z rejestru cen; transakcja wpisana ręcznie zostaje potwierdzona,
+- **wpis prowenancji** zostaje potwierdzony wyłącznie wtedy, gdy jego źródłem jest rzeczoznawca; **każde inne źródło** — geokoder, ewidencja, plan miejscowy, akt, odpis księgi, zestaw proponowany — wraca do weryfikacji.
+
+Podpisany oryginał zostaje nietknięty, a cykl potwierdzeń, zatwierdzenia i podpisu przechodzi się od nowa.
+
+## Czego niezmienność nie obejmuje
+
+- **Operatu zatwierdzonego, jeszcze niepodpisanego.** Chroni go kod aplikacji, nie baza. Dopiero podpis daje gwarancję na poziomie bazy danych.
+- **Automatycznej kontroli sum kontrolnych.** Sumy są zapisywane, ale nigdzie nie sprawdzane — porównanie jest czynnością ludzką.
+- **Treści zmian w dzienniku.** Dziennik zapisuje, kto i co zrobił, nie zapisuje, co dokładnie zmienił.
+- **Skanu podpisu w profilu.** Skan jest wymienialny — zamrożone są wyrenderowane dokumenty, nie wzorzec podpisu. Wgranie nowego skanu nie zmienia operatów już podpisanych, ale nie zostawia też śladu w dzienniku żadnej wyceny.
+- **Dokumentu źródłowego odczytu.** Wgrany akt albo odpis księgi nie jest nigdzie przechowywany, więc do materiału, z którego wzięły się dane, nie da się wrócić z poziomu aplikacji.
+- **Liczby następców podpisanej wyceny.** Interfejs pokazuje przycisk nowej wersji tylko dopóki następca nie istnieje, ale sama operacja po stronie serwera nie sprawdza, czy jakiś już powstał. Wersjonowanie jest łańcuchem z założenia, nie z wymuszenia.
