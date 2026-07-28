@@ -4,8 +4,14 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Ships the DOCX operat template with the serverless bundle for the
   // route that renders it (Task 4: docx-render adapter, F-12).
+  //
+  // Same deal for the Pomoc screenshots: they live outside `public/` so that
+  // only `/api/pomoc/[name]` can hand them out (Slice 13 follow-up), which
+  // means the bundler never sees an import for them — read at runtime via
+  // `fs`, they would simply be missing on Vercel without this entry.
   outputFileTracingIncludes: {
     "/valuations/[id]": ["./templates/**"],
+    "/api/pomoc/[name]": ["./src/content/pomoc/img/**"],
   },
 };
 
