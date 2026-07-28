@@ -1,0 +1,85 @@
+Dane przedmiotu wyceny — działka, budynek, przeznaczenie planistyczne i mapy do operatu — pochodzą z publicznych rejestrów i są pobierane automatycznie na podstawie samego adresu. Ta strona mówi, z których dokładnie usług, co z nich bierzemy, czego w nich nie ma i gdzie kończy się zasięg pobrania. Wszystkie adresy usług i progi wymienione niżej są przepisane ze stałych workera (`apps/worker/app/subject.py`, `apps/worker/app/maps.py`) — po stronie aplikacji nie ma ich odpowiedników.
+
+## Cztery usługi, z których pochodzą dane
+
+Pobranie danych przedmiotu idzie po kolei przez cztery źródła:
+
+- **Geokoder UUG (GUGiK)** — `https://services.gugik.gov.pl/uug/`. Zamienia adres na współrzędne w układzie EPSG:2180 i zwraca kod TERYT. Zapytanie jest przedtem normalizowane: najpierw miasto, potem ulica, przedrostki „ul.”, „pl.”, „al.”, „os.” są tolerowane, a numer mieszkania obcinany (z „Wierzbięcice 12/4” zostaje „Wierzbięcice 12”) — adres z numerem lokalu geokoder zwraca jako nieznaleziony.
+- **ULDK (GUGiK)** — `https://uldk.gugik.gov.pl/`. Z punktu ustala identyfikator działki, a następnie oddaje jej geometrię jako WKT: w EPSG:2180 (do przecięć i do kadrowania map) oraz w EPSG:4326 (do wyznaczenia centroidu).
+- **WMS ewidencji gruntów i budynków miasta Poznania (GEOPOZ)** — `https://portal.geopoz.poznan.pl/wmsegib`. Zapytanie `GetFeatureInfo` o warstwy `dzialki` i `budynki`, w kwadracie ±50 m wokół geokodowanego punktu, z `FEATURE_COUNT` równym 10.
+- **WFS funkcji planistycznych (GEOPOZ)** — `https://sip.poznan.pl/geoserver/ows`, warstwa `mpzp_poznan:mpzp_funkcje`, pytana prostokątem opisanym na geometrii działki, z limitem 50 obiektów. Metryka samych planów pochodzi z osobnej warstwy miejskiej (`https://www.poznan.pl/mim/plan/map_service.html`), buforowanej w workerze przez godzinę.
+
+Ogólnokrajowa usługa planów miejscowych nie obejmuje Poznania — stąd dwa źródła miejskie zamiast jednego krajowego.
+
+## Co bierzemy o działce i budynku
+
+Odpowiedź ewidencji czytamy jako płaski zestaw par `<TAG>wartość</TAG>`. Z warstwy `dzialki` bierzemy:
+
+- `ID_DZIALKI` — identyfikator działki,
+- `NAZWA_OBREBU` — obręb (zapisywany z wielkiej litery),
+- `NUMER_ARKUSZA` — arkusz mapy,
+- `NUMER_DZIALKI` — numer działki; jego brak traktujemy jako brak odpowiedzi o działce,
+- `POLE_EWIDENCYJNE` — powierzchnia ewidencyjna w hektarach,
+- `KLASOUZYTKI_EGIB` — użytek.
+
+Z warstwy `budynki`:
+
+- `ID_BUDYNKU` — warunek konieczny; bez niego danych budynku nie ma,
+- `RODZAJ` — rodzaj budynku,
+- `KONDYGNACJE_NADZIEMNE` i `KONDYGNACJE_PODZIEMNE`.
+
+I to jest cała lista. **Roku budowy w warstwie budynków nie ma** — sprawdzono to zrzutem wszystkich pól odpowiedzi (notatka w nagłówku modułu `apps/worker/app/subject.py`), więc pole roku budowy zostaje puste i uzupełnia je rzeczoznawca z dokumentacji albo z oględzin. Nie pobieramy również niczego o samym lokalu: rejestry, z których korzystamy, opisują działkę i budynek, nie mieszkanie.
+
+Odczyt nie ma reguły wyboru „tego właściwego” obiektu. Zapytanie dopuszcza do dziesięciu obiektów w odpowiedzi, a wartości scalane są w jeden zestaw pól: wartość pusta nie nadpisuje wcześniejszej niepustej, ale gdy dwa obiekty podadzą to samo pole niepusto, zostaje wartość późniejsza. Przy zabudowie, gdzie w zasięgu ±50 m stoi więcej niż jeden budynek, dane budynku warto obejrzeć uważniej.
+
+## Przeznaczenie w planie miejscowym — dwa źródła, dwie reguły
+
+Symbol funkcji i metryka planu to dwie niezależne rzeczy, ustalane różnymi metodami:
+
+- **Symbol funkcji** (np. `4MW/U`) — z warstwy funkcji planistycznych, przez **przecięcie geometryczne**: wybieramy tę funkcję, której część wspólna z geometrią działki ma największą powierzchnię. To nie jest trafienie punktem — działka leżąca na styku dwóch funkcji dostaje tę, która zajmuje jej większą część.
+- **Metryka planu** — nazwa planu, uchwała, data uchwały i publikator — z miejskiej warstwy planów, przez **punkt w wielokącie**: sprawdzamy, w którym planie leży centroid działki.
+
+Wynik planistyczny powstaje, gdy zadziała **którakolwiek** z tych dwóch dróg. Symbol bez metryki planu i metryka bez symbolu to stany dopuszczalne, nie awarie — w formularzu widać je jako część pól planistycznych wypełnioną, a część pustą.
+
+## Gdy planu miejscowego nie ma
+
+Pusta odpowiedź warstw planistycznych jest **poprawną odpowiedzią**, a nie błędem pobrania: znacznej części Poznania żaden plan miejscowy nie obejmuje (ustalenie ze spike'u, odnotowane w nagłówku modułu `apps/worker/app/subject.py`). Wtedy:
+
+- worker zwraca dane przedmiotu bez części planistycznej i odnotowuje brak planu w metryce pobrania,
+- formularz zaznacza „Brak obowiązującego MPZP” i w miejsce pięciu pól planu pokazuje jedno pole „Przeznaczenie wg studium/decyzji WZ”, które wypełnia rzeczoznawca,
+- operat drukuje zdanie o braku planu zamiast bloku planistycznego.
+
+Dokument stosuje przy tym własny, ostrzejszy warunek: blok planistyczny pojawia się tylko wtedy, gdy dane przedmiotu w ogóle istnieją, brak planu nie jest zaznaczony **i** wypełniony jest przynajmniej jeden z trzech elementów — symbol, nazwa planu albo uchwała (`apps/web/src/domain/document-model.ts`). Samo pobranie z pustym symbolem i pustą metryką nie wystarczy, by operat twierdził cokolwiek o planie.
+
+## Mapy do operatu
+
+Mapy pochodzą z dwóch krajowych usług WMS i pobierane są niezależnie od danych przedmiotu (`apps/worker/app/maps.py`):
+
+- **mapa ewidencyjna** — Krajowa Integracja Ewidencji Gruntów GUGiK, warstwy `dzialki`, `numery_dzialek`, `budynki`, `obreby`, format PNG,
+- **ortofotomapa** — usługa ORTO Geoportalu (`https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolution`), format JPEG, dla zdjęcia lotniczego około sześć razy lżejszy od PNG.
+
+Kadru nikt nie wybiera ręcznie — liczy go geometria działki. Prostokąt o proporcjach 4:3 jest wyśrodkowany na działce, a jego połowa szerokości to większa z dwóch wielkości: 125 m albo półtorakrotność dłuższego boku działki. Ortofotomapa dostaje kadr dwa razy szerszy, żeby pokazać otoczenie. Obie mapy renderowane są w 1800 na 1350 pikseli, co przy szerokości druku 16 cm daje około 285 DPI.
+
+Usługa ORTO potrafi odpowiedzieć błędem 404 na żądanie identyczne z tym, które przed chwilą się powiodło — zmierzono to spike'em i wygląda to na ograniczanie tempa zapytań podszyte pod 404. Dlatego pobranie mapy ponawiane jest do czterech razy z sekundową przerwą, a odpowiedź, która nie zaczyna się nagłówkiem PNG albo JPEG, jest odrzucana jako nie-obraz, nawet gdy przyszła ze statusem 200.
+
+Mapa pokazywana obok formularza w kroku 1 jest podglądem na żywo i nie jest nigdzie zapisywana. Mapy do operatu pobierane są ponownie w chwili zatwierdzenia i zamrażane przy wycenie; podpisywanie dokumentu nie sięga już do żadnej usługi WMS.
+
+## Zasięg terytorialny
+
+Po geokodowaniu sprawdzamy kod TERYT: pobranie idzie dalej wyłącznie dla Poznania (prefiks `3064`). Adres spoza tego zasięgu kończy się osobną odpowiedzią — inną niż awaria usługi — bez propozycji ponowienia, bo ponawianie niczego nie zmieni; dane wpisuje się wtedy ręcznie. Ten sam warunek obowiązuje mapy do operatu. Ograniczenie bierze się stąd, że ewidencję i plany czerpiemy z usług miejskich; mapy z usług krajowych działałyby szerzej, ale bramka zasięgu jest dla obu pobrań wspólna.
+
+## Status danych z rejestrów
+
+Każde pole wypełnione przez pobranie pozostaje edytowalne i wchodzi do wyceny ze statusem „do weryfikacji” — osobno dane ewidencyjne, osobno przeznaczenie planistyczne. Status nadaje serwer przy zapisie kroku, na podstawie tego, czy do wyceny dołączona jest metryka pobrania: dane z rejestru są do potwierdzenia, dane wpisane przez rzeczoznawcę są potwierdzone z definicji. Nie jest to konwencja interfejsu — przeglądarka nie może przysłać własnego statusu, worker też go nie ustala (`apps/web/src/lib/assign-provenance.ts`, ADR-010).
+
+Razem z danymi zapisujemy metrykę pobrania: współrzędne, TERYT, znacznik czasu i nazwę źródła. Dzięki temu po latach widać nie tylko, jakie dane trafiły do operatu, ale też skąd i kiedy.
+
+## Czego to pobranie nie robi
+
+- **Nie weryfikuje adresu.** Punkt zwrócony przez geokoder wyznacza całą resztę łańcucha; adres zbyt ogólny albo trafiony w sąsiedni budynek da dane niewłaściwej działki, a nie komunikat o błędzie.
+- **Nie wybiera budynku spośród kilku.** Zapytanie jest punktowe, z tolerancją ±50 m, i nie sprawdza, czy znaleziony budynek jest tym, w którym leży wyceniany lokal.
+- **Nie zna roku budowy ani niczego o lokalu.** Metraż, standard, piętro i stan techniczny nie pochodzą z żadnego z tych źródeł.
+- **Nie uzgadnia symbolu funkcji z metryką planu.** Pochodzą z dwóch warstw, wybierane dwiema różnymi regułami; zgodność jednego z drugim nie jest sprawdzana.
+- **Nie ocenia aktualności planu.** Bierzemy to, co w danej chwili zwraca warstwa miejska — bez porównania z dziennikiem urzędowym i bez wiedzy o toczącej się procedurze zmiany planu.
+- **Nie działa poza Poznaniem.** Poza zasięgiem cała sekcja danych przedmiotu i obie mapy powstają ręcznie.
+- **Nie przechowuje podglądu map.** Mapa z kroku 1 nie jest tą, która trafia do operatu — dokument dostaje własne, pobrane przy zatwierdzeniu.

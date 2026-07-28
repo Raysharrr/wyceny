@@ -1,0 +1,77 @@
+Numer księgi wieczystej, udział w nieruchomości wspólnej, sąd i wydział, treść działów III i IV oraz powierzchnia użytkowa mogą pochodzić z wgranego dokumentu — aktu notarialnego albo odpisu księgi wieczystej. Odczytuje je model językowy, a nie parser formatu, więc ta strona mówi nie tylko, co z dokumentu wyciągamy, ale przede wszystkim czego z niego nie wyciągamy i jaki status ma wynik. Mechanizm żyje w workerze (`apps/worker/app/kw.py`, `apps/worker/app/main.py`).
+
+## Jakie dokumenty przyjmujemy
+
+- **Wyłącznie PDF.** Plik innego typu odrzuca przeglądarka, zanim cokolwiek zostanie wysłane; worker odrzuca go drugi raz u siebie.
+- **Do 32 MB.** Próg pochodzi z ograniczenia zapytania do API modelu. Sprawdzany jest dwukrotnie — w przeglądarce przed wysłaniem i w workerze przy odbiorze — dwiema osobnymi stałymi opisującymi tę samą granicę.
+- **Skan i zdjęcie są w porządku.** Model dostaje cały dokument jako PDF i nie wymaga warstwy tekstowej.
+- **Dwa rodzaje dokumentu**: akt notarialny i odpis księgi wieczystej. Rodzaj deklarujesz przed wgraniem, ale rozstrzyga to, co wykryje model.
+
+Plik idzie z przeglądarki wprost do workera, z pominięciem naszej aplikacji: hosting warstwy web ma limit ciała żądania rzędu 4,5 MB, przez który dokument by nie przeszedł. Wgranie upoważnia krótkotrwały token podpisany współdzielonym sekretem, wystawiany przez serwer aplikacji osobno dla każdego wgrania, tuż przed wysyłką, z pięciominutowym terminem ważności. Worker sprawdza podpis i termin porównaniem o stałym czasie; token przeterminowany albo podrobiony kończy się odmową.
+
+**Plik nie jest nigdzie zapisywany ani logowany.** Bajty dokumentu żyją tyle, co obsługa jednego żądania w workerze — do wyceny trafia wyłącznie odczytany zestaw pól. Nie ma więc sposobu, by wrócić do wgranego dokumentu z poziomu aplikacji: nie ma go gdzie trzymać.
+
+## Co wyciągamy
+
+Odczyt wypełnia zamknięty schemat pól — model nie zwraca swobodnego tekstu, tylko strukturę:
+
+- rodzaj dokumentu: akt notarialny, odpis księgi albo dokument nierozpoznany,
+- numer KW lokalu i numer KW gruntu (księgi macierzystej), a także pozostałe numery ksiąg wymienione w dokumencie, na przykład garażu,
+- znacznik lokalu bez własnej księgi (wariant deweloperski),
+- powierzchnię użytkową w m² — **tylko wtedy, gdy dokument podaje ją wprost liczbą**; osobna flaga oznacza przypadek, w którym powierzchnia jest określona samym odwołaniem do księgi (dziś odczytywana, ale przy wycenie nieutrwalana),
+- udział w nieruchomości wspólnej,
+- sąd rejonowy i wydział ksiąg wieczystych,
+- datę dokumentu,
+- dział III i dział IV: informację, czy dział ma jakiekolwiek wpisy, oraz treść wpisów ograniczoną do rodzaju wpisu, instytucji i kwoty.
+
+Odczytu dokonuje model Claude z wymuszoną strukturą odpowiedzi, w jednym przebiegu, bez trybu rozumowania — spike pokazał identyczną jakość przy czystym wyjściu JSON.
+
+Po odczycie dokładane są dwie reguły. Akt notarialny bez numeru KW lokalu jest automatycznie oznaczany jako wariant deweloperski. Dokument rozpoznany jako inny niż akt i inny niż odpis kończy się odmową — nie próbujemy wyciągać z niego czegokolwiek. Gdy rodzaj wykryty różni się od zadeklarowanego, dostajesz ostrzeżenie, a pola wypełniają się według rodzaju wykrytego.
+
+## Czego nie wyciągamy — i dlaczego
+
+W schemacie odczytu **nie ma pól na osoby**: żadnych imion, nazwisk, numerów PESEL, dat urodzenia ani adresów stron. To pierwsza i najskuteczniejsza warstwa ochrony — czego nie ma w schemacie, tego model nie ma gdzie zwrócić. Polecenie dla modelu powtarza tę zasadę wprost przy działach III i IV: rodzaj wpisu, instytucja (bank, spółdzielnia, gmina) i kwota, bez osób fizycznych.
+
+Druga warstwa działa na tych nielicznych polach, które są tekstem swobodnym — udziale, sądzie, wydziale i wpisach działów. Zanim wynik opuści proces workera, wycinane są z nich:
+
+- ciągi jedenastu cyfr, czyli kształt numeru PESEL,
+- fragmenty w kontekście osoby: od słowa „PESEL”, „urodzony”, „ur.”, „syn”, „córka” do najbliższego przecinka, średnika albo kropki.
+
+W miejsce wyciętego fragmentu wchodzi znacznik „[dane osobowe usunięte]”. Jest to heurystyka na liście słów, a nie rozpoznawanie nazwanych bytów, i celowo tnie z nadmiarem: nadmiarowe cięcie rzeczoznawca zobaczy i poprawi, przeoczone dane osobowe zostałyby w bazie na zawsze.
+
+Poza osobami nie wyciągamy również rzeczy, których czasem można by się spodziewać:
+
+- **ceny ani kwoty transakcji z aktu** — schemat nie ma na nie pola,
+- **działów I i II księgi** — schemat nie ma na nie pól: oznaczenie nieruchomości pokrywają dane ewidencyjne, a własność opisywałaby strony, których nie zbieramy; wyjątkiem jest udział w nieruchomości wspólnej, który odczytujemy,
+- **numerów i dat poszczególnych wpisów** — zostaje sam opis wpisu.
+
+Nie odpytujemy też rejestru ksiąg wieczystych. Wszystko, co tu powstaje, pochodzi z dokumentu, który wgrał rzeczoznawca — dokument nie jest z niczym konfrontowany ani sprawdzany pod kątem aktualności.
+
+## Wynik jest propozycją, nie faktem
+
+To najważniejsza zasada tej strony i jedyna, którą trzeba umieć powiedzieć z pamięci. Odczyt niczego nie ustala — proponuje:
+
+- każde odczytane pole pozostaje edytowalne,
+- dane z dokumentu wchodzą do wyceny ze statusem „do weryfikacji”, a zatwierdzenie operatu wymaga ich zbiorczego potwierdzenia,
+- statusy nadaje serwer przy zapisie kroku; nie przysyła ich przeglądarka i nie ustala worker (`apps/web/src/lib/assign-provenance.ts`, ADR-010).
+
+Powierzchnia jest tu osobnym przypadkiem, wartym zapamiętania. Status „do weryfikacji” dostaje **tylko wtedy, gdy zapisana powierzchnia jest dokładnie równa tej z dokumentu** — czyli gdy rzeczoznawca przyjął wartość dokumentu zamiast wpisać własną. Powierzchnia wpisana z ręki jest potwierdzona z definicji, nawet gdy dokument też jakąś podał. Aplikacja wstawia powierzchnię z dokumentu wyłącznie do pustego pola; gdy wpisana wartość różni się od dokumentowej, pokazuje ostrzeżenie z możliwością przyjęcia wartości z dokumentu — i na tym kończy swoją rolę. Nic tu nie jest blokowane, bo która wartość jest właściwa, rozstrzyga rzeczoznawca, nie odczyt.
+
+## Ostrożność w treści operatu
+
+Kilka reguł pilnuje, żeby dokument nie twierdził więcej, niż wynika z odczytu:
+
+- **Pusto nie znaczy „brak wpisów”.** Gdy dział ma wpisy, ale ich treść po oczyszczeniu jest pusta, operat nie drukuje ani zdania o braku wpisów, ani listy — milczy. Zdanie o braku wpisów pojawia się wyłącznie wtedy, gdy dział rzeczywiście był badany i wrócił pusty. Odwrotna konwencja produkowałaby fałszywe twierdzenie o czystej księdze albo o braku hipoteki.
+- **Akt notarialny nie udaje odpisu.** Zdanie o oparciu ustaleń na odpisie księgi drukuje się dla odpisu i dla starszych wycen sprzed wprowadzenia odczytu; akt go nie dostaje.
+- **Udział bez pokrycia to kreska.** Gdy dokument był badany, ale udziału nie podał, operat drukuje kreskę zamiast adnotacji „wg odpisu księgi wieczystej” — ta adnotacja została wyłącznie dla wycen, przy których żadnego dokumentu nie badano.
+- **Puste ciągi znikają.** Pola zwrócone jako pusty tekst zamieniają się przy zapisie na brak wartości, żeby w operacie nie powstało zdanie w rodzaju „Sąd: .” ani widmowy numer księgi.
+
+## Gdy odczyt się nie uda
+
+Odmowy są trzy i różnią się tym, co da się z nimi zrobić:
+
+- **dokument nierozpoznany** — „To nie wygląda na akt notarialny ani odpis księgi wieczystej”; ponawianie nie ma sensu, potrzebny jest inny plik,
+- **błąd odczytu** — na przykład chwilowa niedostępność modelu; tu ponowienie ma sens i aplikacja je proponuje,
+- **odmowa autoryzacji** — token wygasł albo nie przeszedł weryfikacji; ponieważ wystawiany jest tuż przed wysyłką, w praktyce zdarza się to tylko przy bardzo długim wysyłaniu pliku.
+
+W każdym z tych przypadków zostaje wpis ręczny. Numer księgi wpisany z ręki jest pełnoprawnym wejściem do operatu i — jak każda dana wpisana przez rzeczoznawcę — nie wymaga potwierdzania.
