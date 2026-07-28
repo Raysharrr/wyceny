@@ -1,12 +1,24 @@
 import { expect, test } from "@playwright/test";
 
 // Offline smoke: manual-entry paths only (the RCN fetch needs live GUGiK).
-// Demo credentials come from scripts/seed.ts (local/dev only, not secrets).
+// The admin password is read from the SAME variable the seed script uses
+// (`scripts/seed-users.ts`) — hard-coding it here would silently drift from
+// the seeded account the moment the password is rotated.
+const ADMIN_PASSWORD = ((): string => {
+  const password = process.env.SEED_ADMIN_PASSWORD;
+  if (!password) {
+    throw new Error(
+      "Brak SEED_ADMIN_PASSWORD — smoke loguje się na konto zasiane przez `pnpm seed`. " +
+        "Ustaw tę samą wartość, której użyto przy zasiewie bazy.",
+    );
+  }
+  return password;
+})();
 
 async function login(page: import("@playwright/test").Page) {
   await page.goto("/login");
   await page.locator("#email").fill("aneta@wyceny.test");
-  await page.locator("#password").fill("Admin123!");
+  await page.locator("#password").fill(ADMIN_PASSWORD);
   await page.getByRole("button", { name: "Zaloguj się", exact: true }).click();
   await page.waitForURL("**/valuations");
 }

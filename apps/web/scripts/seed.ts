@@ -3,9 +3,10 @@ import { eq } from "drizzle-orm";
 import { auth } from "../src/auth/auth";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
+import { resolveSeedUsers, type SeedUser } from "./seed-users";
 
 /**
- * Seeds the two demo users required by Task 6 (Better Auth + roles):
+ * Seeds the two users required by Task 6 (Better Auth + roles):
  * one `admin` (Aneta) and one `appraiser` (Zenon).
  *
  * Public sign-up is disabled (`emailAndPassword.disableSignUp: true` in
@@ -19,60 +20,61 @@ import * as schema from "../src/db/schema";
  * `signUpEmail` uses internally — so the resulting hash is login-compatible.
  * No hand-rolled hashing.
  *
- * Idempotent: safe to re-run. Skips creation if the email already exists,
- * and always re-asserts the intended role afterwards (in case a previous
- * partial run left the wrong role, or the account default changes).
+ * Passwords come from the environment (see `seed-users.ts`); this file holds
+ * none. That also makes the script the *rotation* tool: re-running it with a
+ * new `SEED_*_PASSWORD` sets that password on the existing account.
  *
- * Demo credentials (local/dev only — not for production data):
- *   admin:     aneta@wyceny.test / Admin123!
- *   appraiser: zenon@wyceny.test / Rzeczoznawca123!
+ * Idempotent: safe to re-run. Creates the user only if the e-mail is new, but
+ * always re-asserts both the password and the intended role afterwards — so a
+ * previous partial run (or a stale password) converges on the intent.
  */
-const DEMO_USERS = [
-  {
-    role: "admin" as const,
-    name: "Aneta",
-    email: "aneta@wyceny.test",
-    password: "Admin123!",
-  },
-  {
-    role: "appraiser" as const,
-    name: "Zenon",
-    email: "zenon@wyceny.test",
-    password: "Rzeczoznawca123!",
-  },
-];
+async function seedUser(seed: SeedUser) {
+  const ctx = await auth.$context;
+  const hashedPassword = await ctx.password.hash(seed.password);
+  const [existing] = await db.select().from(schema.user).where(eq(schema.user.email, seed.email));
 
-async function seedUser(demo: (typeof DEMO_USERS)[number]) {
-  const [existing] = await db.select().from(schema.user).where(eq(schema.user.email, demo.email));
+  let userId = existing?.id;
 
-  if (!existing) {
-    const ctx = await auth.$context;
-    const hashedPassword = await ctx.password.hash(demo.password);
+  if (!userId) {
     const createdUser = await ctx.internalAdapter.createUser({
-      email: demo.email,
-      name: demo.name,
+      email: seed.email,
+      name: seed.name,
       emailVerified: false,
-      role: demo.role,
+      role: seed.role,
     });
+    userId = createdUser.id;
+    console.log(`created ${seed.role} ${seed.email}`);
+  } else {
+    console.log(`${seed.role} ${seed.email} already exists`);
+  }
+
+  // Re-assert the password on every run — this is what makes rotation work.
+  // `updatePassword` only touches the `credential` account row, so a user
+  // left without one by a partial run needs `linkAccount` instead (same
+  // branch Better Auth's own reset-password route takes).
+  const accounts = await ctx.internalAdapter.findAccounts(userId);
+  if (accounts.some((account) => account.providerId === "credential")) {
+    await ctx.internalAdapter.updatePassword(userId, hashedPassword);
+    console.log(`  password set for ${seed.email}`);
+  } else {
     await ctx.internalAdapter.linkAccount({
-      userId: createdUser.id,
+      userId,
       providerId: "credential",
-      accountId: createdUser.id,
+      accountId: userId,
       password: hashedPassword,
     });
-    console.log(`created ${demo.role} ${demo.email}`);
-  } else {
-    console.log(`${demo.role} ${demo.email} already exists, skipping creation`);
+    console.log(`  credential account created for ${seed.email}`);
   }
 
   // Belt-and-suspenders: re-assert the intended role in case a previous
   // partial run left it wrong.
-  await db.update(schema.user).set({ role: demo.role }).where(eq(schema.user.email, demo.email));
+  await db.update(schema.user).set({ role: seed.role }).where(eq(schema.user.email, seed.email));
 }
 
 async function main() {
-  for (const demo of DEMO_USERS) {
-    await seedUser(demo);
+  // Throws (before touching the DB) if the password variables are unset.
+  for (const user of resolveSeedUsers()) {
+    await seedUser(user);
   }
 }
 

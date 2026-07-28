@@ -12,7 +12,7 @@ This repo currently implements a **walking skeleton**: the thinnest possible end
 
 - Web: <https://wyceny-mu.vercel.app>
 - Worker: <https://worker-production-c672.up.railway.app>
-- Demo users: `aneta@wyceny.test` / `Admin123!` (admin), `zenon@wyceny.test` / `Rzeczoznawca123!` (appraiser)
+- Seeded users: `aneta@wyceny.test` (admin), `zenon@wyceny.test` (appraiser). Passwords are not in this repo — they are set at seed time from `SEED_ADMIN_PASSWORD` / `SEED_APPRAISER_PASSWORD` (see [Local dev](#local-dev)).
 
 ## Tech stack
 
@@ -165,11 +165,14 @@ cp apps/web/.env.example apps/web/.env
 # generate BETTER_AUTH_SECRET:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # paste it into apps/web/.env
+# also pick your own SEED_ADMIN_PASSWORD and SEED_APPRAISER_PASSWORD there —
+# the seed has no defaults and aborts if either is missing (that is what keeps
+# these passwords out of the repo). Note: the seed reads .env, not .env.local.
 
 # 4. Apply migrations
 cd apps/web && pnpm exec drizzle-kit migrate
 
-# 5. Seed demo users (admin + appraiser)
+# 5. Seed the two users (admin + appraiser) with those passwords
 pnpm run seed
 
 # 6. Run the worker (separate terminal)
@@ -179,9 +182,13 @@ cd apps/worker && uv run uvicorn app.main:app --reload
 pnpm dev
 ```
 
-Web runs at <http://localhost:3000>, worker at <http://localhost:8000>. Log in with the seeded demo users (see `apps/web/scripts/seed.ts` for credentials).
+Web runs at <http://localhost:3000>, worker at <http://localhost:8000>. Log in as `aneta@wyceny.test` (admin) or `zenon@wyceny.test` (appraiser) with the passwords you set in step 3.
+
+**Rotating a password** (local, staging or prod): set the new `SEED_ADMIN_PASSWORD` / `SEED_APPRAISER_PASSWORD` in that environment and re-run `pnpm seed` against its `DATABASE_URL`. The seed is idempotent and re-asserts the password on every run, so it updates the existing account rather than skipping it. Password hashes are scrypt with an embedded salt and do not depend on `BETTER_AUTH_SECRET`, so seeding a remote database from a local machine produces a hash that environment can verify. These two variables are **not** app runtime config — nothing in Vercel or Railway reads them; they belong only in the shell that runs the seed (and in the CI workflow).
 
 **Tests / lint / typecheck / build** (from repo root): `pnpm turbo lint typecheck test build`. Worker tests: `cd apps/worker && uv run pytest`. Dependency rule (F-10): `pnpm depcruise`. No-PII scan (F-9): `bash scripts/check-no-pii.sh`.
+
+**E2E** (`cd apps/web && pnpm e2e`): the smoke logs in as the seeded admin and reads `SEED_ADMIN_PASSWORD` from the environment, so seed and login cannot drift apart. Playwright does not load `.env` — export the variable in your shell (`SEED_ADMIN_PASSWORD='…' pnpm e2e`), matching what you seeded the database with. CI sets it at job level.
 
 ## Environment variables (production)
 

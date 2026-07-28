@@ -123,6 +123,19 @@ jobs:
       # the smoke path stays network-free (see inspection-section.tsx's
       # `uploadEnabled` guard).
       NEXT_PUBLIC_PHOTO_UPLOAD: "off"
+      # Seeded login credentials. `scripts/seed-users.ts` has no default, so
+      # the "Migrate + seed" step below aborts without these; the smoke spec
+      # reads SEED_ADMIN_PASSWORD from here too, so the seeded password and
+      # the one the smoke types can never drift apart. Job-level `env`
+      # reaches both steps.
+      #
+      # Written in the clear on purpose: this Postgres is a throwaway service
+      # container that lives and dies with the job — no real data, reachable
+      # by nothing outside the runner. This value must NOT be reused anywhere
+      # that outlives CI; staging/prod passwords live in the hosting
+      # platform's env vars and never in this repo.
+      SEED_ADMIN_PASSWORD: "ci-only-not-a-real-secret"
+      SEED_APPRAISER_PASSWORD: "ci-only-not-a-real-secret"
     services:
       postgres:
         image: postgres:16

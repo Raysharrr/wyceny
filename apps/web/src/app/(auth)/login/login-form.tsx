@@ -9,22 +9,6 @@ import { signInAction, type SignInState } from "./actions";
 
 const initialState: SignInState = { error: null };
 
-/** Seeded demo users (see `scripts/seed.ts`) — credentials are for local/demo use only. */
-const DEMO_ACCOUNTS = [
-  {
-    role: "admin" as const,
-    label: "Administrator (Aneta)",
-    email: "aneta@wyceny.test",
-    password: "Admin123!",
-  },
-  {
-    role: "appraiser" as const,
-    label: "Rzeczoznawca (Zenon)",
-    email: "zenon@wyceny.test",
-    password: "Rzeczoznawca123!",
-  },
-];
-
 export function LoginForm() {
   const [state, formAction, pending] = useActionState(signInAction, initialState);
 
@@ -64,34 +48,6 @@ export function LoginForm() {
           </form>
         </CardContent>
       </Card>
-
-      <div className="flex flex-col gap-3">
-        <p className="text-center text-xs text-muted-foreground">Konta demonstracyjne</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {DEMO_ACCOUNTS.map((account) => (
-            <Card key={account.role} size="sm">
-              <CardHeader>
-                <CardTitle className="text-sm">{account.label}</CardTitle>
-                <CardDescription className="text-xs">{account.email}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form action={formAction}>
-                  <input type="hidden" name="email" value={account.email} />
-                  <input type="hidden" name="password" value={account.password} />
-                  <Button
-                    type="submit"
-                    variant="outline"
-                    disabled={pending}
-                    className="w-full px-2 text-xs"
-                  >
-                    Zaloguj jako {account.role === "admin" ? "administrator" : "rzeczoznawca"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

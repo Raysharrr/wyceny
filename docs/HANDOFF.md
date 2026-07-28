@@ -29,7 +29,7 @@ Poprowadź **Slice 3 — Prowenancja `Sourced<T>` E2E + brama gatingu (F-4)** pr
 
 - App repo `Raysharrr/wyceny` (`~/Development/wyceny-app`), main NIEchroniony, commit+push wprost. CI: joby `ci` + `e2e`.
 - Wiki repo `make-it-simple-rayshar/wyceny` — main CHRONIONY (PR + podpisane commity; branch dla S6: NOWY z origin/main). PR #4 (docs Slice 2) zmergowany.
-- Prod: web https://wyceny-mu.vercel.app (`vercel deploy --prod` Z KORZENIA monorepo), worker **https://worker-v2-production.up.railway.app** (serwis `worker-v2`, region EU; deploy `railway up ./apps/worker --path-as-root --service worker-v2` — config-as-code w `apps/worker/railway.json`). Demo: aneta@wyceny.test/Admin123!, zenon@wyceny.test/Rzeczoznawca123! (strona logowania ma przyciski demo — bez wpisywania haseł).
+- Prod: web https://wyceny-mu.vercel.app (`vercel deploy --prod` Z KORZENIA monorepo), worker **https://worker-v2-production.up.railway.app** (serwis `worker-v2`, region EU; deploy `railway up ./apps/worker --path-as-root --service worker-v2` — config-as-code w `apps/worker/railway.json`). Konta: aneta@wyceny.test (admin), zenon@wyceny.test (rzeczoznawca) — hasła NIE są w repo, ustawia je zasiew ze zmiennych `SEED_ADMIN_PASSWORD` / `SEED_APPRAISER_PASSWORD` (rotacja: ustaw nową wartość i uruchom `pnpm seed` na danym `DATABASE_URL`). Strona logowania nie ma już przycisków demo — logowanie tylko e-mailem i hasłem.
 - Railway plan Free (limit na NOWE projekty); stary serwis `worker` — sprawdź w ledgerze, czy już wygaszony.
 
 **CHECKPOINTY (pauzuj, pytaj usera):** (a) zakres/outcome po brainstormie, (b) akceptacja planu, (c) deploye/sekrety w S5, (d) merge wiki-PR robi user. Między checkpointami działaj autonomicznie.
