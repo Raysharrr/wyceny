@@ -10,7 +10,7 @@
  * OPERAT ROUNDING CONVENTION (domain rule — F-1 depends on it): the operat
  * document rounds intermediates as it prints them and keeps calculating on
  * the ROUNDED values. The engine mirrors the document, not pure arithmetic:
- * csr→2dp, vmin/vmax→3dp, sumUi→3dp, unitValue→2dp, wr→nearest 100 zł;
+ * the convention itself is declared in `ROUNDING` below;
  * half-up everywhere (values are always positive here). Full-precision math
  * would yield 1 043 900 for Kościelna instead of the operat's 1 044 400.
  */
@@ -95,6 +95,20 @@ export type KcsResult = {
   wr: number;
 };
 
+/**
+ * The operat rounding convention as data — the single source of truth for
+ * these numbers, so the help pages import them instead of restating them.
+ * Decimal places, except `wrNearest` which is in zł.
+ */
+export const ROUNDING = {
+  csr: 2,
+  vmin: 3,
+  vmax: 3,
+  sumUi: 3,
+  unitValue: 2,
+  wrNearest: 100,
+} as const;
+
 /** Half-up decimal rounding (positive inputs only in this domain). */
 const roundTo = (value: number, dp: number): number => {
   const factor = 10 ** dp;
@@ -117,9 +131,9 @@ export function computeKcs(input: KcsInput): KcsResult {
 
   const cmin = Math.min(...prices);
   const cmax = Math.max(...prices);
-  const csr = roundTo(prices.reduce((sum, p) => sum + p, 0) / prices.length, 2);
-  const vmin = roundTo(cmin / csr, 3);
-  const vmax = roundTo(cmax / csr, 3);
+  const csr = roundTo(prices.reduce((sum, p) => sum + p, 0) / prices.length, ROUNDING.csr);
+  const vmin = roundTo(cmin / csr, ROUNDING.vmin);
+  const vmax = roundTo(cmax / csr, ROUNDING.vmax);
 
   const ui: FeatureShare[] = input.features.map((f) => ({
     ...f,
@@ -128,12 +142,14 @@ export function computeKcs(input: KcsInput): KcsResult {
   }));
   const sumUi = roundTo(
     ui.reduce((sum, share) => sum + share.value, 0),
-    3,
+    ROUNDING.sumUi,
   );
 
-  const unitValue = roundTo(csr * sumUi, 2);
+  const unitValue = roundTo(csr * sumUi, ROUNDING.unitValue);
+  // Groszy precision before the final 100 zł step. Plain currency precision,
+  // kept as a literal — ROUNDING names the six steps of the convention above.
   const wrUnrounded = roundTo(unitValue * input.area, 2);
-  const wr = Math.round(wrUnrounded / 100) * 100;
+  const wr = Math.round(wrUnrounded / ROUNDING.wrNearest) * ROUNDING.wrNearest;
 
   return { csr, cmin, cmax, vmin, vmax, ui, sumUi, unitValue, wrUnrounded, wr };
 }
