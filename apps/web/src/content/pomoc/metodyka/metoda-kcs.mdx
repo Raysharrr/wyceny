@@ -1,0 +1,79 @@
+import { ROUNDING } from "@/domain/kcs";
+
+Wartość rynkowa powstaje tu metodą korygowania ceny średniej (KCS) — odmianą podejścia porównawczego, w której punktem wyjścia jest średnia cena jednostkowa z próby transakcji, a cechy wycenianego lokalu przesuwają tę średnią w granicach wyznaczonych przez samą próbę. Poniższy opis odpowiada temu, co liczy silnik wyceny (`apps/web/src/domain/kcs.ts`), łącznie z konwencją zaokrągleń — to ona decyduje o ostatnich cyfrach wyniku i o tym, czy operat da się odtworzyć z wydrukowanych w nim liczb.
+
+## Cena średnia i granice korekty
+
+Z każdej transakcji porównawczej silnik czyta wyłącznie cenę jednostkową w zł/m². Data transakcji i powierzchnia lokalu porównawczego są w modelu opisem: trafiają do operatu i do dokumentacji doboru próby, ale do rachunku nie wchodzą. Z cen próby powstają trzy wielkości:
+
+- **Cśr** — średnia arytmetyczna wszystkich cen jednostkowych w próbie,
+- **Cmin** — cena najniższa w próbie,
+- **Cmax** — cena najwyższa w próbie.
+
+Cśr jest bazą wyceny, Cmin i Cmax wyznaczają rozpiętość rynku, w której wolno poruszać się korekcie. Silnik nie waży transakcji i nie koryguje ich ze względu na datę ani odległość — każda transakcja wchodzi do średniej z tą samą wagą.
+
+## Współczynniki Vmin i Vmax
+
+Rozpiętość próby przeliczana jest na dwa mnożniki:
+
+- **Vmin** = Cmin ÷ Cśr — jak nisko schodzi rynek względem swojej średniej,
+- **Vmax** = Cmax ÷ Cśr — jak wysoko nad tę średnią wychodzi.
+
+Vmin jest zawsze mniejszy lub równy jedności, Vmax większy lub równy. To one, a nie żaden zewnętrzny cennik, ograniczają korektę: wynik wyceny nie może wyjść poza przedział wyznaczony przez najtańszą i najdroższą transakcję w próbie. Próba jest więc jednocześnie źródłem poziomu cen i źródłem dopuszczalnej amplitudy korekty.
+
+## Współczynniki cech i ich suma
+
+Każda cecha ma wagę (udział w całości korekty; wagi sumują się do jedności) oraz ocenę w trzystopniowej skali. Współczynnik cechy Ui zależy od oceny:
+
+- ocena **lepsza** — Ui = waga × Vmax,
+- ocena **przeciętna** — Ui = waga,
+- ocena **gorsza** — Ui = waga × Vmin.
+
+ΣUi, czyli suma współczynników wszystkich cech, jest łącznym mnożnikiem korekty. Poniższe własności zakładają, że wagi sumują się do jedności — silnik tego nie sprawdza i policzy wynik z dowolnym zestawem wag; pilnuje tego krok ocen. Gdy wszystkie cechy są przeciętne, ΣUi wynosi dokładnie 1 i wycena zatrzymuje się na cenie średniej. Gdy wszystkie są lepsze, ΣUi równa się Vmax i wycena dobija do najdroższej transakcji z próby. Każda pojedyncza ocena przesuwa wynik dokładnie o tyle, ile wynosi jej waga pomnożona przez odległość odpowiedniego współczynnika od jedności.
+
+## Wartość jednostkowa i wartość rynkowa
+
+- **Wartość jednostkowa** (zł/m²) = Cśr × ΣUi.
+- **Wartość dokładna** = wartość jednostkowa × powierzchnia użytkowa przedmiotu wyceny, co do grosza.
+- **Wartość rynkowa** = wartość dokładna zaokrąglona do pełnych {ROUNDING.wrNearest} zł.
+
+Obie ostatnie kwoty są widoczne, i to jest źródłem pytań przy czytaniu operatu. Tabela 4 operatu drukuje wartość dokładną obok kwoty końcowej, a karta „Wartość rynkowa” w kalkulacji pokazuje je w tej samej kolejności — kwota dokładna, strzałka, kwota po zaokrągleniu. Na operacie referencyjnym są to 1 044 388,32 zł i 1 044 400 zł.
+
+Wartością rynkową jest **wyłącznie kwota po zaokrągleniu**: to ona idzie do wniosków operatu, to ona zapisuje się na wycenie przy zatwierdzeniu kalkulacji i to ona pojawia się na liście wycen. Kwota dokładna nie jest drugim wynikiem ani wariantem do wyboru — jest jawnym śladem rachunku, który pokazuje, że między iloczynem a kwotą końcową stoi jeden krok zaokrąglenia, a nie korekta wyniku. Różnica między nimi zawsze mieści się w połowie kroku zaokrąglenia, czyli tutaj w {ROUNDING.wrNearest / 2} zł.
+
+Silnik odmawia policzenia wyniku, gdy próba jest pusta, gdy którakolwiek cena jednostkowa nie jest dodatnia albo gdy powierzchnia przedmiotu wyceny nie jest dodatnia. W żadnym z tych przypadków nie podstawia wartości domyślnej ani nie pomija wadliwego wiersza — zgłasza błąd i wycena nie powstaje.
+
+## Konwencja zaokrągleń
+
+Silnik nie liczy w pełnej precyzji. Odwzorowuje operat: dokument drukuje wielkości pośrednie i liczy dalej na wartościach wydrukowanych, a nie na tych, które zostały w pamięci kalkulatora. Kolejność jest następująca, a zaokrąglenie zawsze idzie w górę przy połówce (wszystkie wielkości są tu dodatnie):
+
+1. **Cśr** — do {ROUNDING.csr} miejsc po przecinku.
+2. **Vmin i Vmax** — liczone z już zaokrąglonej Cśr, każdy do {ROUNDING.vmin} miejsc po przecinku.
+3. **ΣUi** — liczona z już zaokrąglonych Vmin i Vmax, do {ROUNDING.sumUi} miejsc po przecinku.
+4. **Wartość jednostkowa** — iloczyn zaokrąglonej Cśr i zaokrąglonej ΣUi, do {ROUNDING.unitValue} miejsc po przecinku.
+5. **Wartość dokładna** — iloczyn zaokrąglonej wartości jednostkowej i powierzchni, do pełnych groszy.
+6. **Wartość rynkowa** — do pełnych {ROUNDING.wrNearest} zł.
+
+Krok piąty łatwo przeoczyć, a bez niego rachunek się rozjeżdża: zanim wynik trafi na pełne {ROUNDING.wrNearest} zł, jest najpierw zaokrąglany do groszy. Nie jest to wielkość rachunkowo pomocnicza, ukryta wewnątrz kalkulacji — to właśnie ta kwota trafia do Tabeli 4 operatu i na kartę wyniku, więc rzeczoznawca ma ją przed oczami i musi umieć powiedzieć, czym różni się od wartości rynkowej. W kodzie sześć pozostałych kroków jest nazwaną stałą konwencji operatu (`ROUNDING`), a krok groszowy stoi obok niej jako zwykła precyzja walutowa — ta strona renderuje liczby wprost z tej stałej, więc jeśli kiedykolwiek się zmieni, zmieni się też ten opis.
+
+## Dlaczego operat pokazuje 1 044 400 zł, a nie 1 043 900 zł
+
+To najważniejsza konsekwencja powyższej konwencji i jedyna rzecz z tej strony, którą warto umieć powiedzieć z pamięci. Na operacie referencyjnym (lokal przy Kościelnej: 12 transakcji, 71,63 m², pięć cech), na którym pinujemy poprawność silnika, te same dane wejściowe dają dwa różne wyniki:
+
+- **rachunek zgodny z konwencją operatu**: 1 044 388,32 zł, po zaokrągleniu **1 044 400 zł**,
+- **rachunek w pełnej precyzji**, bez zaokrągleń pośrednich: 1 043 921,58 zł, po zaokrągleniu **1 043 900 zł**.
+
+Różnica na wyniku końcowym to 500 zł, czyli około 0,05%. Składają się na nią głównie dwa kroki, oba działające tutaj w górę:
+
+- Vmax rośnie z 1,131769… do 1,132 — to +184,70 zł,
+- ΣUi rośnie z 1,1107 do 1,111 — to +282,01 zł.
+
+Zaokrąglenie Cśr (13 123,6033… do 13 123,60) i wartości jednostkowej (14 580,3196 do 14 580,32) zmieniają wynik o mniej niż złotówkę. Kierunek różnicy nie jest z góry przesądzony — przy innych danych zaokrąglenia mogą się znosić albo działać w dół; przesądzone jest tylko to, że pełna precyzja i konwencja operatu prawie nigdy nie dadzą tej samej liczby.
+
+Konwencja nie jest niedokładnością, którą się toleruje, tylko warunkiem sprawdzalności dokumentu. Operat drukuje Cśr, Vmin, Vmax, ΣUi i wartość jednostkową; ktokolwiek weźmie te wydrukowane liczby i przemnoży je kalkulatorem, musi dojść do wydrukowanej wartości rynkowej. Gdyby silnik liczył w pełnej precyzji, odtworzenie rachunku z tabel operatu dawałoby 1 044 400 zł przy dokumencie twierdzącym 1 043 900 zł — rozbieżność nie do wyjaśnienia dla czytelnika, który nie ma dostępu do wnętrza kalkulacji. Ceną za tę spójność jest zależność wyniku od zaokrągleń; korzyścią — dokument, który broni się sam.
+
+Osobna drobna rozbieżność dotyczy samego dokumentu referencyjnego: drukuje on Vmin 0,920, podczas gdy silnik z tej samej próby wylicza 0,919 (odnotowane przy teście złotym `apps/web/tests/golden-wr.test.ts`). Na wartość rynkową nie ma to wpływu, bo jedyna cecha oceniona jako gorsza ma wagę 0,1: różnica 0,001 przesuwa surową ΣUi o 0,0001, a więc po zaokrągleniu do {ROUNDING.sumUi} miejsc po przecinku znika. Przyczyny rozbieżności w dokumencie źródłowym nie ustalono.
+
+## Powtarzalność wyniku
+
+Silnik nie czyta zegara, nie losuje i nie sięga po żadne dane spoza przekazanego mu wejścia. Ta sama próba, te same wagi i te same oceny zawsze dają tę samą wartość rynkową — również za rok i również bez dostępu do sieci, bo dane wejściowe wyceny są zapisywane w migawce razem z wynikiem. Wycena da się więc odtworzyć co do złotówki, a nie tylko opisać.

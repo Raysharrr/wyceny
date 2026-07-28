@@ -144,6 +144,70 @@ export const HELP_PAGES: HelpPage[] = [
     summary: "Widok dokumentu, podpisanie operatu i tworzenie nowej wersji podpisanej wyceny.",
     load: () => import("./jak-korzystac/po-zatwierdzeniu.mdx"),
   },
+  {
+    slug: "metoda-kcs",
+    title: "Metoda KCS — korygowanie ceny średniej",
+    tree: "metodyka",
+    order: 1,
+    tags: [
+      "KCS",
+      "korygowanie ceny średniej",
+      "podejście porównawcze",
+      "Cśr",
+      "Vmin",
+      "Vmax",
+      "ΣUi",
+      "zaokrąglenia",
+      "wartość jednostkowa",
+      "wartość rynkowa",
+    ],
+    summary:
+      "Jak z próby powstaje cena średnia, granice korekty i wartość rynkowa — z konwencją zaokrągleń operatu.",
+    load: () => import("./metodyka/metoda-kcs.mdx"),
+  },
+  /**
+   * Uwaga dla utrzymujących treść (ograniczenie R1 ze specu): stałe doboru
+   * próby żyją w workerze (Python), więc `dobor-proby-rcn.mdx` przepisuje je
+   * ręcznie — importowalny jest tylko web-owy `REQUIRED_SAMPLE_SIZE`
+   * (`@/domain/provenance`, brama zatwierdzenia). Komentarz stoi tutaj, a nie
+   * w samym MDX, bo prettier formatuje `.mdx` markdownowo i przerabia
+   * `{/* … *\/}` na `{/_ … _/}` — plik przestaje się kompilować, a CI (`pnpm
+   * format:check`) i tak wywala różnicę.
+   *
+   * Źródła do sprawdzenia przy każdej zmianie doboru:
+   *   apps/worker/app/rcn.py:27   POOL_N = 19
+   *   apps/worker/app/rcn.py:28   AREA_BAND_PCT = 0.30
+   *   apps/worker/app/rcn.py:29   DATE_WINDOW_MONTHS = 24
+   *   apps/worker/app/rcn.py:32   WFS_URL (RCN w Geoportalu)
+   *   apps/worker/app/rcn.py:33   NOMINATIM (geokoder)
+   *   apps/worker/app/rcn.py:109  próg 8 rekordów dla przycinania IQR
+   *   apps/worker/app/main.py:125 bbox ±0.018° / ±0.029°
+   *   apps/worker/app/main.py:135 próg 12 wybranych transakcji przy pobraniu
+   *   apps/worker/app/main.py:159 count=5000, sortBy="dok_data D"
+   *   apps/web/src/app/valuations/[id]/steps/step-sample.tsx:171 slice(0, 12)
+   */
+  {
+    slug: "dobor-proby-rcn",
+    title: "Dobór próby porównawczej z RCN",
+    tree: "metodyka",
+    order: 2,
+    tags: [
+      "RCN",
+      "rejestr cen nieruchomości",
+      "Geoportal",
+      "GUGiK",
+      "WFS",
+      "geokodowanie",
+      "pasmo metrażu",
+      "okno czasowe",
+      "IQR",
+      "odstające",
+      "12 transakcji",
+    ],
+    summary:
+      "Skąd pochodzą transakcje, jakie filtry przechodzą i dlaczego próba liczy dwanaście pozycji.",
+    load: () => import("./metodyka/dobor-proby-rcn.mdx"),
+  },
 ];
 
 export const getPage = (slug: string): HelpPage | undefined =>
