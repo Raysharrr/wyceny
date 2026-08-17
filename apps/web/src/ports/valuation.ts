@@ -9,6 +9,7 @@
  */
 
 import type { KcsInput } from "../domain/kcs";
+import type { ProseSnapshot } from "../domain/prose-snapshot";
 import type {
   FeaturesUpdate,
   InspectionOp,
@@ -123,6 +124,18 @@ export interface PortValuation {
    * null/throw contract as `updateInspection`.
    */
   saveFeatures(id: string, user: SessionUser, u: FeaturesUpdate): Promise<Valuation | null>;
+  /**
+   * Persists a fresh set of LLM prose proposals on a draft (ADR-014) and
+   * records ONE `prose_generated` audit row — carrying the model and the
+   * token cost, a product requirement, not decoration — in the same
+   * transaction. Same null/throw contract as `updateInspection`.
+   */
+  saveProse(
+    id: string,
+    user: SessionUser,
+    snapshot: ProseSnapshot,
+    usage: { inputTokens: number; outputTokens: number },
+  ): Promise<Valuation | null>;
   /**
    * Step-5 (Kalkulacja) confirm: runs the KCS engine and persists `wr` —
    * the only mutation that writes it. Same null/throw contract as

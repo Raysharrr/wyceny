@@ -33,8 +33,12 @@ const RATING_TEXT: Record<FeatureRating, string> = {
   gorsza: "wartość najniższa cechy",
 };
 
-/** Document label per rating level — the internal enum stays diacritic-free. */
-const LEVEL_LABEL: Record<FeatureRating, string> = {
+/**
+ * Document label per rating level — the internal enum stays diacritic-free.
+ * Exported so the prose facts (`domain/prose.ts`) name the levels exactly as
+ * the §12.1 scale block does, instead of keeping a second diacritic map.
+ */
+export const LEVEL_LABEL: Record<FeatureRating, string> = {
   lepsza: "lepsza",
   przecietna: "przeciętna",
   gorsza: "gorsza",

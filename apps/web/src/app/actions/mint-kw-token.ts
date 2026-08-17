@@ -1,10 +1,8 @@
 "use server";
 
-import { createHmac, randomBytes } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-
-const TOKEN_TTL_SECONDS = 300;
+import { mintWorkerToken } from "@/lib/worker-token";
 
 /**
  * Mints a short-lived HMAC token for the browser's direct-to-worker KW
@@ -17,12 +15,9 @@ export async function mintKwUploadToken(): Promise<{ token: string } | { error: 
   if (!session) {
     redirect("/login");
   }
-  const secret = process.env.WORKER_SHARED_SECRET;
-  if (!secret) {
+  const token = mintWorkerToken();
+  if (!token) {
     return { error: "Upload nie jest skonfigurowany — skontaktuj się z administratorem." };
   }
-  const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS;
-  const nonce = randomBytes(8).toString("hex");
-  const signature = createHmac("sha256", secret).update(`${exp}.${nonce}`).digest("hex");
-  return { token: `${exp}.${nonce}.${signature}` };
+  return { token };
 }

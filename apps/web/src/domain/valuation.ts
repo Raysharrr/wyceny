@@ -3,6 +3,7 @@ import { documentFieldBlockers } from "./document-model";
 import { computeKcs, type Comparable, type KcsInput } from "./kcs";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
+import type { ProseSnapshot } from "./prose-snapshot";
 import {
   EMPTY_INSPECTION,
   INSPECTION_SECTIONS,
@@ -228,6 +229,22 @@ export function applyInspectionOp(v: Valuation, op: InspectionOp): Valuation {
   return { ...v, inputs: { ...v.inputs, inspection } };
 }
 
+/**
+ * Persists a fresh set of LLM prose proposals on the draft (ADR-014).
+ * Draft-only sibling of the apply* family. Unlike them it does NOT null `wr`:
+ * prose is display/render material, never an engine input (F-1), so a new
+ * proposal cannot invalidate a confirmed calculation.
+ *
+ * The snapshot REPLACES `inputs.prose` wholesale — T5 has no edit path, so
+ * there is nothing to merge yet. Once T7 gives the appraiser an edit/confirm
+ * path, "regenerate" must decide what happens to text they already accepted.
+ */
+export function applyProseProposal(v: Valuation, prose: ProseSnapshot): Valuation {
+  assertDraft(v);
+  if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
+  return { ...v, inputs: { ...v.inputs, prose } };
+}
+
 export type SubjectUpdate = {
   address: string;
   area: number;
@@ -361,6 +378,7 @@ export const AUDIT_ACTIONS = [
   "kw_confirmed",
   "features_confirmed",
   "inspection_updated",
+  "prose_generated",
   "approved",
   "signed",
   "version_created",

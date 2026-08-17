@@ -21,6 +21,7 @@ import type { KwMetaSnapshot, KwSnapshot } from "./kw-snapshot";
 import type { InputsProvenance } from "./provenance";
 import type { SubjectMetaSnapshot, SubjectSnapshot } from "./subject-snapshot";
 import type { InspectionSnapshot } from "./inspection";
+import type { ProseSnapshot } from "./prose-snapshot";
 
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
 
@@ -74,6 +75,8 @@ export type KcsInput = {
   kwMeta?: KwMetaSnapshot | null;
   /** Inspection photos manifest + note (Slice 10, FR-2) — display/render only; computeKcs never reads this. */
   inspection?: InspectionSnapshot | null;
+  /** LLM prose proposals + appraiser-confirmed text (ADR-014) — display/render only; computeKcs never reads this. */
+  prose?: ProseSnapshot | null;
 };
 
 export type FeatureShare = Feature & {

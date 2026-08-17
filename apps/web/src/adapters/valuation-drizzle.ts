@@ -5,6 +5,7 @@ import {
   applyCalculationConfirm,
   applyFeaturesUpdate,
   applyInspectionOp,
+  applyProseProposal,
   applySampleUpdate,
   applySubjectUpdate,
   approveValuation,
@@ -22,6 +23,7 @@ import {
   type SubjectUpdate,
 } from "../domain/valuation";
 import { totalInspectionPhotos } from "../domain/inspection";
+import type { ProseSnapshot } from "../domain/prose-snapshot";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -349,6 +351,49 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           actorId: user.id,
           action: "features_updated",
           meta: { count: u.features.length },
+        });
+        return toValuation(saved);
+      });
+    },
+
+    async saveProse(
+      id: string,
+      user: SessionUser,
+      snapshot: ProseSnapshot,
+      usage: { inputTokens: number; outputTokens: number },
+    ): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        // .for("update") — same read-modify-write rationale as updateInspection:
+        // this rewrites one key of the inputs jsonb, so a concurrent draft save
+        // must not be lost to last-write-wins.
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.id, id))
+          .for("update");
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = applyProseProposal(valuation, snapshot);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "prose_generated",
+          // Cost is logged even for a generation whose sections were rejected —
+          // those tokens were spent. The generated TEXT never enters the audit.
+          meta: {
+            model: snapshot.model,
+            sections: Object.keys(snapshot.sections),
+            rejected: snapshot.rejected,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+          },
         });
         return toValuation(saved);
       });

@@ -297,7 +297,8 @@ describe("AUDIT_ACTIONS gained the four wizard actions", () => {
     expect(AUDIT_ACTIONS).toContain("sample_updated");
     expect(AUDIT_ACTIONS).toContain("features_updated");
     expect(AUDIT_ACTIONS).toContain("calculation_confirmed");
-    expect(AUDIT_ACTIONS).toHaveLength(13);
+    // 14 since ADR-014 added prose_generated.
+    expect(AUDIT_ACTIONS).toHaveLength(14);
   });
 });
 

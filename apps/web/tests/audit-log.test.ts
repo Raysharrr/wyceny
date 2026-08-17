@@ -6,6 +6,7 @@ import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import type { FeaturesUpdate, SampleUpdate, SubjectUpdate } from "../src/domain/valuation";
 import type { SessionUser } from "../src/ports/valuation";
+import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import {
   approvableInput,
   confirmableInput,
@@ -89,6 +90,44 @@ describe("audit_log per mutation", () => {
   // Wizard draft mutations (Slice 11a, Task 4) — same select->domain->CAS
   // update->audit shape as confirmSample above; one assertion each closes
   // FR-12 coverage across all four.
+  it("saveProse writes a 'prose_generated' row carrying the model and the token cost", async () => {
+    const v = await repo.create({
+      ...valuationInput(owner.id, "Audit Prose"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+    const snapshot: ProseSnapshot = {
+      sections: {
+        opis_lokalu: {
+          value: "Lokal obejmuje dwa pokoje z kuchnią.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+      },
+      rejected: { analiza_rynku: ["9 871,00"] },
+      factsHash: "a".repeat(64),
+      model: "claude-sonnet-5",
+      generatedAt: "2026-08-18T07:30:00.000Z",
+    };
+
+    const saved = await repo.saveProse(v.id, owner, snapshot, {
+      inputTokens: 3120,
+      outputTokens: 480,
+    });
+
+    expect(saved?.inputs?.prose).toEqual(snapshot);
+    const rows = await auditRows(v.id);
+    expect(rows.map((r) => r.action)).toEqual(["created", "prose_generated"]);
+    // FR-6: the cost of a generation is logged even when a section failed —
+    // those tokens were spent too. The prose TEXT never enters the audit row.
+    expect(rows[1].meta).toEqual({
+      model: "claude-sonnet-5",
+      sections: ["opis_lokalu"],
+      rejected: { analiza_rynku: ["9 871,00"] },
+      inputTokens: 3120,
+      outputTokens: 480,
+    });
+  });
+
   it("saveSubject writes a 'subject_updated' row", async () => {
     const v = await repo.create({
       ...valuationInput(owner.id, "Audit Subject"),

@@ -79,7 +79,8 @@ describe("inspection keys + audit action", () => {
   });
   it("AUDIT_ACTIONS contains inspection_updated", () => {
     expect(AUDIT_ACTIONS).toContain("inspection_updated");
-    // Slice 11a (wizard-domain.test.ts) added 4 more actions on top of these 9.
-    expect(AUDIT_ACTIONS).toHaveLength(13);
+    // Slice 11a (wizard-domain.test.ts) added 4 more actions on top of these 9,
+    // ADR-014 (prose) one more.
+    expect(AUDIT_ACTIONS).toHaveLength(14);
   });
 });
