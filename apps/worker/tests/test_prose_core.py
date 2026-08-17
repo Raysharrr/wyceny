@@ -5,6 +5,7 @@ same fictional world the committed prompts use). No addresses or prices from
 real operat documents.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -92,6 +93,33 @@ class TestBuildPrompt:
         assert prompt.count("\nPRZYKŁAD — TEKST SEKCJI:\n") == len(examples)
         assert "\n\nDANE:\n" in prompt
         assert prompt.endswith("\nTEKST SEKCJI:")
+
+    def test_layout_is_byte_identical_to_the_validated_assembly(self):
+        # review finding M-1. The `in`/`startswith` assertions above pass even
+        # when the separators BETWEEN example blocks change — a mutation to a
+        # single "\n" or to indent=2 left the suite green. The prompts shipped
+        # here were validated empirically (18 generations, K1-K4) against ONE
+        # exact assembly; if production drifts from it, that evidence no longer
+        # covers production. So reconstruct the whole string from the parsed
+        # parts and demand full equality — this is the layout's only real lock.
+        section, facts = "analiza_rynku", FACTS_RYNEK
+        style = (PROMPTS_DIR / "_style.md").read_text(encoding="utf-8").strip()
+        task, examples = parse_section_file(PROMPTS_DIR / f"{section}.md")
+        blocks = "\n\n".join(
+            "PRZYKŁAD — DANE:\n"
+            + json.dumps(data, indent=1, ensure_ascii=False)
+            + "\nPRZYKŁAD — TEKST SEKCJI:\n"
+            + text
+            for data, text in examples
+        )
+        expected = (
+            f"{style}\n\nZADANIE: {task}\n\n"
+            + blocks
+            + "\n\nDANE:\n"
+            + json.dumps(facts, indent=1, ensure_ascii=False)
+            + "\nTEKST SEKCJI:"
+        )
+        assert build_prompt(section, facts) == expected
 
     def test_sections_appear_in_order(self):
         prompt = build_prompt("analiza_rynku", FACTS_RYNEK)
@@ -226,7 +254,7 @@ FACTS_GUARD = {
         "cena_max_zl_m2": "12 480,00",
     },
     "transakcje": [
-        {"data": "05-2025", "cena_m2": "12 061,94"},
+        {"data": "05-2025", "cena_m2": "11 111,94"},
         {"data": "07-2025", "cena_m2": "10 500,00"},
     ],
 }
@@ -258,7 +286,7 @@ class TestValidateNumbers:
         assert validate_numbers("Powierzchnia użytkowa wynosi 45,70 m².", facts) == []
 
     def test_number_broken_across_a_line_is_not_a_violation(self):
-        text = "Cena transakcyjna wyniosła 12 061,\n94 zł za 1 m2."
+        text = "Cena transakcyjna wyniosła 11 111,\n94 zł za 1 m2."
         assert validate_numbers(text, FACTS_GUARD) == []
 
     def test_number_from_a_list_in_facts_is_allowed(self):
@@ -284,6 +312,30 @@ class TestValidateNumbers:
         # A comma + space is a list separator, so a foreign second number is caught.
         facts = {"zakres_dat": "03-2024 – 11-2025"}
         assert validate_numbers("Transakcje z lat 2024, 2019.", facts) == ["2019"]
+
+    # --- review finding I-1: joining a line-broken decimal must be CONDITIONAL.
+    # Joining unconditionally let an invented number hide behind a line break —
+    # "2024,\n2019" collapsed into "2024,2019", whose integer part "2024" IS a
+    # fact, so the lenient fallback waved the whole thing through. These are the
+    # counterexamples found in review; they go red if the condition is dropped.
+    def test_line_break_does_not_launder_a_foreign_year(self):
+        facts = {"proba": {"zakres_dat": "03-2024 – 11-2024"}}
+        assert validate_numbers("Transakcje pochodzą z lat 2024,\n2019.", facts) == ["2019"]
+
+    def test_line_break_does_not_launder_a_foreign_count(self):
+        facts = {"proba": {"liczba_transakcji": 14}}
+        assert validate_numbers("W próbie 14,\n99 transakcji.", facts) == ["99"]
+
+    def test_windows_line_break_joins_a_factual_decimal(self):
+        # \r\n is a line break too — the join must not depend on the platform.
+        facts = {"cena": "11 111,94"}
+        assert validate_numbers("Cena wyniosła 11 111,\r\n94 zł.", facts) == []
+
+    def test_dashed_float_repr_does_not_widen_the_allowed_set(self):
+        # review m-3: the spike split dashed tokens into components, so a fact of
+        # 1e-05 (repr "1e-05") licensed "05" anywhere in the operat. The split is
+        # gone; the guard must no longer accept a number it never received.
+        assert validate_numbers("W obrębie 05 odnotowano transakcje.", {"x": 1e-05}) == ["05"]
 
 
 class TestNoApiSurface:

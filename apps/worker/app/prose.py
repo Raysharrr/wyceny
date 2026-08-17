@@ -109,7 +109,7 @@ def price_trend(transakcje: list[dict], *, prog: float = 0.05) -> str:
 
 
 _NUM_RE = re.compile(r"\d[\d\s]*(?:,\d+)?")
-_BROKEN_DECIMAL_RE = re.compile(r"(?<=\d),[ \t]*\n[ \t]*(?=\d)")
+_BROKEN_DECIMAL_RE = re.compile(r"(\d[\d\s]*),[ \t]*\r?\n[ \t]*(\d+)")
 _UNIT_IDIOM_RE = re.compile(r"\b1\s*m2\b|\b1\s*m²\b")
 _UNIT_RE = re.compile(r"m2\b|m²")
 
@@ -145,15 +145,11 @@ def _allowed_numbers(facts: dict) -> set[str]:
         allowed.add(number)
         allowed.add(number.replace(".", ","))  # float 10815.5 -> PL notation "10815,5"
         allowed.add(re.split(r"[.,]", number)[0])  # integer part written without decimals
-    # Defensive leftover from the spike: split dashed tokens (dates MM-RRRR,
-    # ranges) into components. A no-op for the current tokenization — _NUM_RE
-    # yields digits/whitespace/comma only, so it already splits "03-2024" into
-    # "03" and "2024" — kept only in case a future fact type produces a dashed
-    # numeric token. It must never LOOSEN the guard silently: see report backlog.
-    for number in list(allowed):
-        for part in re.split(r"[–\-]", number):
-            if part:
-                allowed.add(part)
+    # NOTE: the spike also split dashed tokens into components. Dropped in
+    # review: _NUM_RE never yields a dash from a string fact ("03-2024" is
+    # already two tokens), so the loop only ever fired on float reprs — it
+    # turned a fact of 1e-05 into permission to write "05" anywhere in the
+    # operat. A guard against invented numbers must not widen itself.
     return allowed
 
 
@@ -165,10 +161,20 @@ def validate_numbers(text: str, facts: dict) -> list[str]:
     carry a number of its own (style rule 4).
     """
     allowed = _allowed_numbers(facts)
-    # A decimal split by a line break ("12 061,\n94") is one number, not two —
-    # rejoin it before scanning. Only a line break is joined: a comma plus a
-    # plain space usually separates two numbers ("w latach 2024, 2025").
-    joined = _BROKEN_DECIMAL_RE.sub(",", text)
+
+    # A decimal split by a line break ("12 061,\n94") is one number, not two.
+    # Rejoin it ONLY when the joined form is itself an allowed fact: joining
+    # unconditionally would let the model smuggle a number past the guard by
+    # breaking the line ("z lat 2024,\n2019" would collapse into the allowed
+    # "2024,2019" and the integer-part fallback would wave it through). When
+    # the join is not a fact, the break is left in place and both halves are
+    # scanned separately — which is exactly what catches the invented one.
+    def _join_if_factual(match: re.Match[str]) -> str:
+        head, tail = match.group(1), match.group(2)
+        candidate = f"{_norm_num(head)},{tail}"
+        return f"{head},{tail}" if candidate in allowed else match.group(0)
+
+    joined = _BROKEN_DECIMAL_RE.sub(_join_if_factual, text)
     stripped = _UNIT_IDIOM_RE.sub(" ", joined)
     stripped = _UNIT_RE.sub(" ", stripped)
 
