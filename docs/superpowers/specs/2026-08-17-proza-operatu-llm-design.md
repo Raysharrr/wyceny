@@ -83,9 +83,20 @@ Kościelnej w tych sekcjach (audyt szablonu = task 0 slice'a).
 - Sekcje 8.1/8.3 mapy-proza i pełna proza uzasadnienia — jeśli spike'owy wzorzec się
   utrzyma, dołożyć w tym samym wzorcu w kolejnej iteracji.
 
-## Otwarte kwestie do brainstormu przed planem
+## Rozstrzygnięcia brainstormu (user, 2026-08-17)
 
-1. Kiedy generować: przycisk na kroku 6 (jawnie, koszt świadomy) vs auto przy wejściu na krok.
-2. Koszt/limit: ~1–3 gr/sekcję; per wycena łącznie < 0,5 zł — akceptowalne? Limit prób?
-3. Czy `ai` jako NOWE źródło w enum (`Sourced`) vs reużycie `akt`-wzorca — decyzja kernelowa.
-4. Odpowiedzialność: komunikat przy propozycjach (rzeczoznawca odpowiada za treść operatu).
+1. **Auto-generacja przy wejściu na krok 6** (pierwsze wejście lub nieaktualne propozycje po
+   zmianie danych) + przycisk „Wygeneruj ponownie"; stan ładowania na kroku.
+2. **Bez limitu generacji**; każda generacja logowana w audycie z licznikiem tokenów/kosztu
+   (koszty raportowane userowi; szacunek: ~0,3–0,4 zł za komplet 6 sekcji, sonnet-5).
+3. **Nowe źródło `ai`** w zamkniętym enumie `Sourced` (@wyceny/shared) — reużyje je także
+   slice „AI-ocena cech ze zdjęć".
+4. **Stała adnotacja** przy propozycjach („Propozycja wygenerowana automatycznie — za treść
+   operatu odpowiada rzeczoznawca") + akapit w Pomocy; bez dodatkowych checkboxów.
+
+## Uwaga F-9 (repo publiczne!)
+
+Produkcyjny few-shot NIE może zawierać fragmentów realnych operatów (adresy, ceny, dane
+nieruchomości = F-9 zakazuje w VCS). Wzorce few-shot do repo = **syntetyczne przykłady
+w stylu kancelarii** (fikcyjny adres/liczby, zredagowane na bazie stylu — nie kopie).
+Spike z realnymi fragmentami żyje wyłącznie w prywatnym wiki-repo.
