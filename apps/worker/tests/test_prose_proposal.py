@@ -5,8 +5,10 @@ zero API key in CI. Fixtures are fictional (ul. Klonowa, m. Nowogród — F-9)."
 import hashlib
 import hmac
 import inspect
+import sys
 import threading
 import time
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -300,3 +302,104 @@ def test_api_failure_502(monkeypatch):
     resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"])
     assert resp.status_code == 502
     assert "spróbuj ponownie" in resp.json()["detail"].lower()
+
+
+def test_one_failing_section_does_not_discard_the_others(monkeypatch):
+    """Review finding: six sections run in parallel, so a single failing call
+    (a rate limit on one of them) must not throw away the five that already
+    succeeded AND were already paid for. The failed section is reported with an
+    EMPTY violation list, which is how the web side tells "the guard rejected
+    this" apart from "the call never landed"."""
+    ok = FakeLlm({})
+
+    def flaky(section, prompt, correction=None):
+        if section == "otoczenie":
+            raise RuntimeError("429 rate limit")
+        return ok(section, prompt, correction)
+
+    monkeypatch.setattr(main, "_generate_prose_section", flaky)
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie", "analiza_rynku"])
+    assert resp.status_code == 200
+    body = resp.json()
+    assert sorted(body["sekcje"]) == ["analiza_rynku", "opis_lokalu"]
+    assert body["odrzucone"] == {"otoczenie": []}
+
+
+# --- The interior of `_generate_prose_section`: the ONE place where a wrong SDK
+# parameter would surface only in production. Every other test monkeypatches
+# this function away, so without the stub below the model name, max_tokens,
+# thinking flag, content-block order and the truncation guard are unverified.
+
+
+def install_stub_anthropic(monkeypatch, *, text="Proza sekcji.", stop_reason="end_turn"):
+    """Minimal stand-in for the anthropic SDK. Returns the list of kwargs each
+    `messages.create` call received, so the test can assert what really went out."""
+    calls: list[dict] = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            stop_reason=stop_reason,
+            content=[SimpleNamespace(type="text", text=text)],
+            usage=SimpleNamespace(input_tokens=123, output_tokens=45),
+        )
+
+    stub = ModuleType("anthropic")
+    stub.Anthropic = lambda: SimpleNamespace(messages=SimpleNamespace(create=create))
+    monkeypatch.setitem(sys.modules, "anthropic", stub)
+    return calls
+
+
+def test_llm_call_uses_the_validated_parameters(monkeypatch):
+    calls = install_stub_anthropic(monkeypatch)
+    completion = main._generate_prose_section("opis_lokalu", "PROMPT")
+
+    assert completion == main.ProseCompletion("Proza sekcji.", 123, 45)
+    assert len(calls) == 1
+    sent = calls[0]
+    assert sent["model"] == "claude-sonnet-5"
+    # Literal on purpose: asserting against PROSE_MAX_TOKENS would compare the
+    # constant with itself and stay green for ANY value, including one that
+    # truncates every section. The measured cost of the longest validated
+    # section was ~650 output tokens, and a truncation cannot be cleared by
+    # retrying (same facts -> same length), so the floor is asserted too.
+    assert sent["max_tokens"] == 2500
+    assert main.PROSE_MAX_TOKENS >= 2000
+    # The prompts were validated on this exact pairing — thinking enabled is a
+    # different model configuration than the one the evidence covers.
+    assert sent["thinking"] == {"type": "disabled"}
+    assert sent["messages"] == [{"role": "user", "content": [{"type": "text", "text": "PROMPT"}]}]
+
+
+def test_correction_block_precedes_the_prompt(monkeypatch):
+    """The validated prompt ENDS at "TEKST SEKCJI:" — the slot the model writes
+    into. A correction appended after it would land inside that slot, so it must
+    come first, and the prompt block must stay byte-identical."""
+    calls = install_stub_anthropic(monkeypatch)
+    main._generate_prose_section("opis_lokalu", "PROMPT", "KOREKTA\n\n")
+
+    assert calls[0]["messages"][0]["content"] == [
+        {"type": "text", "text": "KOREKTA\n\n"},
+        {"type": "text", "text": "PROMPT"},
+    ]
+
+
+def test_retry_instruction_ends_with_a_blank_line():
+    """Nothing guarantees the API separates two adjacent text blocks; without
+    the trailing break the model could read "…z DANE poniżej.Jesteś rzeczoznawcą…"
+    — the validated layout mangled on its very first line."""
+    assert main.PROSE_RETRY_INSTRUCTION.endswith("\n\n")
+
+
+def test_truncated_response_is_refused(monkeypatch):
+    """Identical facts produce an identically long text, so a truncation would
+    repeat on every retry. It must be refused here, not shipped half-written."""
+    install_stub_anthropic(monkeypatch, stop_reason="max_tokens")
+    with pytest.raises(RuntimeError, match="ucięta"):
+        main._generate_prose_section("opis_lokalu", "PROMPT")
+
+
+def test_empty_response_is_refused(monkeypatch):
+    install_stub_anthropic(monkeypatch, text="   ")
+    with pytest.raises(RuntimeError, match="pusta"):
+        main._generate_prose_section("opis_lokalu", "PROMPT")

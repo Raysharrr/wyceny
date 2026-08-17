@@ -415,10 +415,14 @@ def kw_extract(
 
 
 PROSE_MODEL = "claude-sonnet-5"
-# Empirical validation: the longest accepted section ran ~180 words, so 1000
-# tokens is ~2.5x headroom. A response that still hits the cap is truncated
-# mid-sentence and must never reach an operat — the helper raises instead.
-PROSE_MAX_TOKENS = 1000
+# Measured on the 18 validation generations: 3.71 output tokens per word, and
+# the longest accepted section (analiza_rynku, 177 words) cost ~650 tokens.
+# The validation itself ran at 1000, i.e. barely 1.5x headroom — and production
+# facts are richer than the validation's. max_tokens is a CAP, not a
+# reservation (billing follows usage.output_tokens), so raising it costs
+# nothing and removes a failure mode that no retry can clear: identical facts
+# produce an identically long text, so a truncation repeats forever.
+PROSE_MAX_TOKENS = 2500
 
 
 class ProseTransaction(BaseModel):
@@ -445,8 +449,10 @@ class ProseUsage(BaseModel):
 class ProseProposalResponse(BaseModel):
     """F-11: no market value and no unit value of the result — section prose in,
     section prose out. `odrzucone` maps a section to the numbers the guard found
-    outside the facts twice in a row; such a section is left for the appraiser to
-    write by hand ("honest silence") instead of failing the whole request."""
+    outside the facts twice in a row; an EMPTY list there means the call itself
+    failed. Either way that section is left for the appraiser to write by hand
+    ("honest silence") instead of failing the whole request — the sections that
+    did succeed are returned and stay paid for."""
 
     sekcje: dict[str, str]
     odrzucone: dict[str, list[str]]
@@ -500,11 +506,19 @@ class _SectionOutcome(NamedTuple):
     violations: list[str]
     input_tokens: int
     output_tokens: int
+    # The API call itself failed (as opposed to the guard rejecting the text).
+    # Kept apart so the response can tell the two cases apart downstream.
+    failed: bool = False
 
 
 PROSE_RETRY_INSTRUCTION = (
     "UWAGA: poprzednia wersja tej sekcji zawierała liczby spoza DANE: {numbers}. "
-    "Napisz ją ponownie, używając wyłącznie liczb z DANE poniżej."
+    "Napisz ją ponownie, używając wyłącznie liczb z DANE poniżej.\n\n"
+    # Trailing blank line on purpose: this block sits directly in front of the
+    # validated prompt, and nothing guarantees the API puts a separator between
+    # two adjacent text blocks. Without it the model could see
+    # "…z DANE poniżej.Jesteś rzeczoznawcą…" — the validated layout mangled on
+    # its very first line, which is what putting the correction first was for.
 )
 
 PROSE_FAILED_DETAIL = (
@@ -516,27 +530,40 @@ def _prose_section(section: str, facts: dict) -> _SectionOutcome:
     """One section: generate, run the number guard, and on violations give the
     model exactly one more attempt. Still dirty -> the section is reported as
     rejected instead of failing the whole request; the appraiser writes that one
-    field by hand ("honest silence") and the valuation stays finishable."""
-    prompt = prose_core.build_prompt(section, facts)
-    completion = _generate_prose_section(section, prompt)
-    text = completion.text.strip()
-    violations = prose_core.validate_numbers(text, facts)
-    input_tokens, output_tokens = completion.input_tokens, completion.output_tokens
+    field by hand ("honest silence") and the valuation stays finishable.
 
-    if violations:
-        logger.warning("prose section %s: retry after violations %s", section, violations)
-        # The validated prompt goes back unchanged — the correction rides along
-        # as a separate content block.
-        retry = _generate_prose_section(
-            section, prompt, PROSE_RETRY_INSTRUCTION.format(numbers=", ".join(violations))
-        )
-        input_tokens += retry.input_tokens
-        output_tokens += retry.output_tokens
-        text = retry.text.strip()
+    A failing API call is contained here for the same reason: six sections run
+    in parallel, so one rate-limited call must not discard the five that already
+    succeeded and were already paid for — and retrying the whole request would
+    re-send the same burst of six, the very shape that trips the limit."""
+    prompt = prose_core.build_prompt(section, facts)
+    input_tokens = output_tokens = 0
+    try:
+        completion = _generate_prose_section(section, prompt)
+        input_tokens += completion.input_tokens
+        output_tokens += completion.output_tokens
+        text = completion.text.strip()
         violations = prose_core.validate_numbers(text, facts)
+
         if violations:
-            logger.warning("prose section %s rejected, violations %s", section, violations)
-            text = ""
+            logger.warning("prose section %s: retry after violations %s", section, violations)
+            # The validated prompt goes back unchanged — the correction rides
+            # along as a separate content block.
+            retry = _generate_prose_section(
+                section, prompt, PROSE_RETRY_INSTRUCTION.format(numbers=", ".join(violations))
+            )
+            input_tokens += retry.input_tokens
+            output_tokens += retry.output_tokens
+            text = retry.text.strip()
+            violations = prose_core.validate_numbers(text, facts)
+            if violations:
+                logger.warning("prose section %s rejected, violations %s", section, violations)
+                text = ""
+    except Exception as exc:
+        # Tokens already spent are still reported: the cost audit must not lose
+        # them just because the section did not finish.
+        logger.error("prose section %s failed: %s", section, exc)
+        return _SectionOutcome("", [], input_tokens, output_tokens, failed=True)
     # Only section names and offending numbers are logged — never the facts
     # (they carry the address) and never the generated text.
     return _SectionOutcome(text, violations, input_tokens, output_tokens)
@@ -558,7 +585,7 @@ def _validated_sections(sekcje: list[str]) -> list[str]:
 
 def _float_paths(value, path: str = "fakty") -> list[str]:
     """Paths of float leaves in the facts. Numbers must arrive already formatted
-    in Polish ("12 061,94") because the number guard compares written forms —
+    in Polish ("11 111,94") because the number guard compares written forms —
     a raw float would make the model's correct wording look hallucinated.
     `bool` is deliberately not a float, `int` is the documented exception
     (proba.liczba_transakcji)."""
@@ -607,12 +634,10 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
     facts = _facts_with_trend(request.fakty, request.transakcje)
 
     # Parallel: six sections at ~8 s each would block the wizard for ~50 s.
-    try:
-        with ThreadPoolExecutor(max_workers=len(sections)) as pool:
-            outcomes = list(pool.map(lambda section: _prose_section(section, facts), sections))
-    except Exception as exc:  # the API call itself failed — retryable, unlike a rejection
-        logger.error("prose generation failed: %s", exc)
-        raise HTTPException(status_code=502, detail=PROSE_FAILED_DETAIL) from exc
+    # `_prose_section` never raises — a failing section is contained there, so
+    # one bad call cannot discard the sections that already succeeded.
+    with ThreadPoolExecutor(max_workers=len(sections)) as pool:
+        outcomes = list(pool.map(lambda section: _prose_section(section, facts), sections))
 
     sekcje: dict[str, str] = {}
     odrzucone: dict[str, list[str]] = {}
@@ -620,13 +645,15 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
     for section, outcome in zip(sections, outcomes):
         input_tokens += outcome.input_tokens  # retries included — the tokens were spent
         output_tokens += outcome.output_tokens
-        if outcome.violations:
+        if outcome.failed:
+            odrzucone[section] = []  # empty list = the call failed, no offending numbers
+        elif outcome.violations:
             odrzucone[section] = outcome.violations
         else:
             sekcje[section] = outcome.text
 
     if not sekcje:
-        logger.error("prose: every section rejected by the number guard, %s", odrzucone)
+        logger.error("prose: no section survived, %s", odrzucone)
         raise HTTPException(status_code=502, detail=PROSE_FAILED_DETAIL)
 
     return ProseProposalResponse(
