@@ -10,17 +10,20 @@ import base64
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import app.rcn as rcn
 import app.subject as subject
 from app import kw as kw_core
 import app.maps as maps
 from app import photo as photo_core
+from app import prose as prose_core
 from app.amount_in_words import to_amount_in_words
 from app.convert import ConversionError, docx_to_pdf
 
@@ -408,6 +411,229 @@ def kw_extract(
         docTypeDetected=payload.docType,
         typeMismatch=payload.docType != expected_type,
         model=KW_MODEL,
+    )
+
+
+PROSE_MODEL = "claude-sonnet-5"
+# Empirical validation: the longest accepted section ran ~180 words, so 1000
+# tokens is ~2.5x headroom. A response that still hits the cap is truncated
+# mid-sentence and must never reach an operat — the helper raises instead.
+PROSE_MAX_TOKENS = 1000
+
+
+class ProseTransaction(BaseModel):
+    """One sample transaction. Never reaches the prompt — it only feeds
+    `prose.price_trend` (rule 2 of the T3 contract), so raw prices never widen
+    the number guard's allowed set."""
+
+    data: str  # "MM-RRRR"
+    cena_m2: float
+
+
+class ProseProposalRequest(BaseModel):
+    token: str
+    sekcje: list[str]
+    fakty: dict
+    transakcje: list[ProseTransaction] = Field(default_factory=list)
+
+
+class ProseUsage(BaseModel):
+    input_tokens: int
+    output_tokens: int
+
+
+class ProseProposalResponse(BaseModel):
+    """F-11: no market value and no unit value of the result — section prose in,
+    section prose out. `odrzucone` maps a section to the numbers the guard found
+    outside the facts twice in a row; such a section is left for the appraiser to
+    write by hand ("honest silence") instead of failing the whole request."""
+
+    sekcje: dict[str, str]
+    odrzucone: dict[str, list[str]]
+    model: str
+    usage: ProseUsage
+
+
+class ProseCompletion(NamedTuple):
+    text: str
+    input_tokens: int
+    output_tokens: int
+
+
+def _generate_prose_section(
+    section: str, prompt: str, correction: str | None = None
+) -> ProseCompletion:
+    """The ONLY anthropic touchpoint — monkeypatched in every CI test (ADR-009).
+
+    `prompt` arrives pre-assembled by `prose.build_prompt`: that layout is what
+    the empirical validation ran against, so a correction after a failed number
+    guard goes in as a SEPARATE content block instead of reshaping it.
+    thinking disabled: the prompts were validated on this exact pairing."""
+    import anthropic
+
+    client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from worker env (Railway secret)
+    # Content blocks concatenate, and the validated prompt ENDS at "TEKST SEKCJI:" —
+    # the slot the model writes into. A correction appended after it would sit in
+    # that slot; it goes in front, so the prompt still terminates the message.
+    content: list[dict] = []
+    if correction:
+        content.append({"type": "text", "text": correction})
+    content.append({"type": "text", "text": prompt})
+    response = client.messages.create(
+        model=PROSE_MODEL,
+        max_tokens=PROSE_MAX_TOKENS,
+        thinking={"type": "disabled"},
+        messages=[{"role": "user", "content": content}],
+    )
+    # Truncated prose would enter an operat mid-sentence — refuse it like kw
+    # refuses an unparsed payload, rather than pass half a sentence downstream.
+    if response.stop_reason == "max_tokens":
+        raise RuntimeError(f"sekcja {section}: odpowiedź ucięta na max_tokens")
+    text = "".join(block.text for block in response.content if block.type == "text")
+    if not text.strip():
+        raise RuntimeError(f"sekcja {section}: pusta odpowiedź ({response.stop_reason})")
+    return ProseCompletion(text, response.usage.input_tokens, response.usage.output_tokens)
+
+
+class _SectionOutcome(NamedTuple):
+    text: str
+    violations: list[str]
+    input_tokens: int
+    output_tokens: int
+
+
+PROSE_RETRY_INSTRUCTION = (
+    "UWAGA: poprzednia wersja tej sekcji zawierała liczby spoza DANE: {numbers}. "
+    "Napisz ją ponownie, używając wyłącznie liczb z DANE poniżej."
+)
+
+PROSE_FAILED_DETAIL = (
+    "Nie udało się wygenerować opisów — spróbuj ponownie albo napisz teksty ręcznie."
+)
+
+
+def _prose_section(section: str, facts: dict) -> _SectionOutcome:
+    """One section: generate, run the number guard, and on violations give the
+    model exactly one more attempt. Still dirty -> the section is reported as
+    rejected instead of failing the whole request; the appraiser writes that one
+    field by hand ("honest silence") and the valuation stays finishable."""
+    prompt = prose_core.build_prompt(section, facts)
+    completion = _generate_prose_section(section, prompt)
+    text = completion.text.strip()
+    violations = prose_core.validate_numbers(text, facts)
+    input_tokens, output_tokens = completion.input_tokens, completion.output_tokens
+
+    if violations:
+        logger.warning("prose section %s: retry after violations %s", section, violations)
+        # The validated prompt goes back unchanged — the correction rides along
+        # as a separate content block.
+        retry = _generate_prose_section(
+            section, prompt, PROSE_RETRY_INSTRUCTION.format(numbers=", ".join(violations))
+        )
+        input_tokens += retry.input_tokens
+        output_tokens += retry.output_tokens
+        text = retry.text.strip()
+        violations = prose_core.validate_numbers(text, facts)
+        if violations:
+            logger.warning("prose section %s rejected, violations %s", section, violations)
+            text = ""
+    # Only section names and offending numbers are logged — never the facts
+    # (they carry the address) and never the generated text.
+    return _SectionOutcome(text, violations, input_tokens, output_tokens)
+
+
+def _validated_sections(sekcje: list[str]) -> list[str]:
+    """Requested sections, deduplicated, order preserved (a section listed twice
+    would otherwise cost a second LLM call and collapse in the response dict)."""
+    unknown = [s for s in sekcje if s not in prose_core.SECTIONS]
+    if unknown:
+        raise HTTPException(
+            status_code=400, detail=f"Nieznana sekcja operatu: {', '.join(unknown)}."
+        )
+    sections = list(dict.fromkeys(sekcje))
+    if not sections:
+        raise HTTPException(status_code=400, detail="Nie wskazano żadnej sekcji do wygenerowania.")
+    return sections
+
+
+def _float_paths(value, path: str = "fakty") -> list[str]:
+    """Paths of float leaves in the facts. Numbers must arrive already formatted
+    in Polish ("12 061,94") because the number guard compares written forms —
+    a raw float would make the model's correct wording look hallucinated.
+    `bool` is deliberately not a float, `int` is the documented exception
+    (proba.liczba_transakcji)."""
+    if isinstance(value, dict):
+        return [p for k, v in value.items() for p in _float_paths(v, f"{path}.{k}")]
+    if isinstance(value, list):
+        return [p for i, v in enumerate(value) for p in _float_paths(v, f"{path}[{i}]")]
+    return [path] if isinstance(value, float) else []
+
+
+def _facts_with_trend(fakty: dict, transakcje: list[ProseTransaction]) -> dict:
+    """Facts as the prompt will see them: the sample collapses into a single
+    deterministic `proba.trend_cen`. The transactions themselves stay out —
+    their prices in the facts would authorise the model to write any of them
+    anywhere. No sample or no `proba` in the facts: no trend, no error."""
+    proba = fakty.get("proba")
+    if not transakcje or not isinstance(proba, dict):
+        return fakty
+    try:
+        trend = prose_core.price_trend([t.model_dump() for t in transakcje])
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail="Daty transakcji muszą być w formacie MM-RRRR."
+        ) from exc
+    return {**fakty, "proba": {**proba, "trend_cen": trend}}
+
+
+@app.post("/prose-proposal")
+def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
+    secret = os.environ.get("WORKER_SHARED_SECRET", "")
+    if not secret or not kw_core.verify_token(request.token, secret, time.time()):
+        raise HTTPException(
+            status_code=401,
+            detail="Nieprawidłowy lub wygasły token — odśwież stronę i spróbuj ponownie.",
+        )
+    sections = _validated_sections(request.sekcje)
+    floats = _float_paths(request.fakty)
+    if floats:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Liczby w faktach muszą być tekstem w formacie polskim (np. „71,63”) — "
+                f"pola z liczbą zmiennoprzecinkową: {', '.join(floats)}."
+            ),
+        )
+    facts = _facts_with_trend(request.fakty, request.transakcje)
+
+    # Parallel: six sections at ~8 s each would block the wizard for ~50 s.
+    try:
+        with ThreadPoolExecutor(max_workers=len(sections)) as pool:
+            outcomes = list(pool.map(lambda section: _prose_section(section, facts), sections))
+    except Exception as exc:  # the API call itself failed — retryable, unlike a rejection
+        logger.error("prose generation failed: %s", exc)
+        raise HTTPException(status_code=502, detail=PROSE_FAILED_DETAIL) from exc
+
+    sekcje: dict[str, str] = {}
+    odrzucone: dict[str, list[str]] = {}
+    input_tokens = output_tokens = 0
+    for section, outcome in zip(sections, outcomes):
+        input_tokens += outcome.input_tokens  # retries included — the tokens were spent
+        output_tokens += outcome.output_tokens
+        if outcome.violations:
+            odrzucone[section] = outcome.violations
+        else:
+            sekcje[section] = outcome.text
+
+    if not sekcje:
+        logger.error("prose: every section rejected by the number guard, %s", odrzucone)
+        raise HTTPException(status_code=502, detail=PROSE_FAILED_DETAIL)
+
+    return ProseProposalResponse(
+        sekcje=sekcje,
+        odrzucone=odrzucone,
+        model=PROSE_MODEL,
+        usage=ProseUsage(input_tokens=input_tokens, output_tokens=output_tokens),
     )
 
 
