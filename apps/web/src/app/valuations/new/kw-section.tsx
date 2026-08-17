@@ -6,6 +6,7 @@ import type { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { FileInput } from "@/components/ui/file-input";
 import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/wizard/section-card";
 import { cn } from "@/lib/utils";
@@ -182,11 +183,12 @@ export function KwSection(props: KwSectionProps) {
         </div>
 
         {source !== "reczny" && uploadEnabled ? (
-          <input
-            type="file"
+          <FileInput
             accept="application/pdf"
             aria-label="Plik dokumentu (PDF)"
             data-testid="kw-file-input"
+            label="Wybierz plik PDF"
+            hint="Akt notarialny lub odpis KW (PDF, do 32 MB)"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) props.onFileSelected(file);

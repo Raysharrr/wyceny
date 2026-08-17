@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { FileInput } from "@/components/ui/file-input";
 import { saveSignature } from "@/app/actions/save-signature";
 
 export function SignatureForm({ hasSignature }: { hasSignature: boolean }) {
@@ -26,10 +27,15 @@ export function SignatureForm({ hasSignature }: { hasSignature: boolean }) {
           Nie wgrano jeszcze skanu podpisu — bez niego nie podpiszesz operatu.
         </p>
       )}
-      <label className="flex flex-col gap-1 text-sm font-medium">
-        Skan podpisu (PNG lub JPEG, do 1 MB; najlepiej szeroki, np. 510×170 px)
-        <input type="file" name="signature" accept="image/png,image/jpeg" />
-      </label>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">Skan podpisu</span>
+        <FileInput
+          name="signature"
+          accept="image/png,image/jpeg"
+          aria-label="Skan podpisu"
+          hint="PNG lub JPEG, do 1 MB; najlepiej szeroki, np. 510×170 px"
+        />
+      </div>
       <Button type="submit" disabled={isPending}>
         {isPending ? "Zapisywanie…" : "Zapisz podpis"}
       </Button>

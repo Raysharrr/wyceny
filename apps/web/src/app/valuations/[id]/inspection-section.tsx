@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FileInput } from "@/components/ui/file-input";
 import {
   removeInspectionPhoto,
   saveInspectionNote,
@@ -138,14 +139,16 @@ export function InspectionSection({
                 ))}
               </div>
               {uploadEnabled ? (
-                <input
+                <FileInput
                   ref={(el) => {
                     inputRefs.current[section] = el;
                   }}
-                  type="file"
                   multiple
                   accept="image/jpeg,image/png"
                   aria-label={`Dodaj zdjęcia — ${SECTION_LABELS[section]}`}
+                  label="Dodaj zdjęcia"
+                  hint="JPEG lub PNG, do 10 MB każde"
+                  showSelected={false}
                   disabled={uploading !== null || total >= MAX_INSPECTION_PHOTOS}
                   onChange={(e) => {
                     if (e.target.files?.length) void uploadFiles(section, e.target.files);
