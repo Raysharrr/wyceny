@@ -3,10 +3,6 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { FootNav } from "@/components/wizard/foot-nav";
-import { confirmSample } from "@/app/actions/confirm-sample";
-import { confirmSubject } from "@/app/actions/confirm-subject";
-import { confirmKw } from "@/app/actions/confirm-kw";
-import { confirmFeatures } from "@/app/actions/confirm-features";
 import { approveValuation, type ApproveValuationResult } from "@/app/actions/approve-valuation";
 import { signValuationAction } from "@/app/actions/sign-valuation";
 import { createNewVersionAction } from "@/app/actions/create-new-version";
@@ -18,19 +14,27 @@ const WR_BLOCKER_HINT = "Wartość rynkowa — kalkulacja niezatwierdzona (krok 
 
 /**
  * Owner-only action bar, mounted for the owner across all statuses.
- * `draft` → confirm-* + approve buttons (gated by `canApprove`); `approved`
- * → sign button (gated by `canSign`); `signed` → new-version button (gated
- * by `canCreateNewVersion`, Task 9). `gateOk`/`hasToVerify`/
- * `hasSubjectToVerify`/`hasKwToVerify`/`hasFeaturesToVerify` are computed
- * server-side by the RSC (approvalGate) — the disabled state is UX sugar;
- * the actions re-check everything server-side (F-4 is an invariant, not UI).
+ * `draft` → approve button (gated by `canApprove`); `approved` → sign button
+ * (gated by `canSign`); `signed` → new-version button (gated by
+ * `canCreateNewVersion`, Task 9). `gateOk` is computed server-side by the RSC
+ * (approvalGate) — the disabled state is UX sugar; the actions re-check
+ * everything server-side (F-4 is an invariant, not UI).
+ *
+ * T8 removed the four bulk `confirm-*` buttons that used to lead this bar.
+ * They flipped whole provenance groups from a screen that showed none of the
+ * underlying data — the "I confirm what I cannot see" problem this slice
+ * exists to remove. Each group is now confirmed by the save on the step that
+ * displays it (T7: steps 1, 3 and 4), and what is left of the refusal here is
+ * a list of blockers, each linking to its own step.
+ *
+ * The four Server Actions (`confirmSample`/`confirmSubject`/`confirmKw`/
+ * `confirmFeatures`) and their repo methods are deliberately KEPT: they are
+ * owner-gated, audited and idempotent, and they remain the operator-side
+ * rescue path for a draft whose group somehow outlives its step. Nothing in
+ * the UI calls them any more.
  */
 export function ValuationActions({
   id,
-  hasToVerify,
-  hasSubjectToVerify,
-  hasKwToVerify,
-  hasFeaturesToVerify,
   gateOk,
   canApprove,
   canSign,
@@ -38,10 +42,6 @@ export function ValuationActions({
   wr,
 }: {
   id: string;
-  hasToVerify: boolean;
-  hasSubjectToVerify: boolean;
-  hasKwToVerify: boolean;
-  hasFeaturesToVerify: boolean;
   gateOk: boolean;
   canApprove: boolean;
   canSign: boolean;
@@ -88,50 +88,6 @@ export function ValuationActions({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
-        {hasToVerify ? (
-          <Button
-            type="button"
-            variant="outline"
-            data-testid="confirm-sample-button"
-            disabled={isPending}
-            onClick={() => run(confirmSample)}
-          >
-            {isPending ? "Potwierdzanie…" : "Potwierdź próbę z RCN"}
-          </Button>
-        ) : null}
-        {hasSubjectToVerify ? (
-          <Button
-            type="button"
-            variant="outline"
-            data-testid="confirm-subject-button"
-            disabled={isPending}
-            onClick={() => run(confirmSubject)}
-          >
-            {isPending ? "Potwierdzanie…" : "Potwierdź dane przedmiotu"}
-          </Button>
-        ) : null}
-        {hasKwToVerify ? (
-          <Button
-            type="button"
-            variant="outline"
-            data-testid="confirm-kw-button"
-            disabled={isPending}
-            onClick={() => run(confirmKw)}
-          >
-            {isPending ? "Potwierdzanie…" : "Potwierdź dane KW"}
-          </Button>
-        ) : null}
-        {hasFeaturesToVerify ? (
-          <Button
-            type="button"
-            variant="outline"
-            data-testid="confirm-features-button"
-            disabled={isPending}
-            onClick={() => run(confirmFeatures)}
-          >
-            {isPending ? "Potwierdzanie…" : "Potwierdź cechy i wagi"}
-          </Button>
-        ) : null}
         {canSign ? (
           <Button
             type="button"

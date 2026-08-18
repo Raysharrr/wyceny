@@ -162,36 +162,15 @@ export default async function ValuationViewPage({
   // check (spec §4) — the button is enabled only when neither has a blocker.
   const allBlockers = [...(gate && !gate.ok ? gate.blockers : []), ...fieldBlockers];
   const gateOk = gate?.ok === true && fieldBlockers.length === 0;
-  const hasToVerify =
-    isDraft && valuation.inputs
-      ? valuation.inputs.comparables.some((c) => c.status === "to_verify")
-      : false;
-  // `geocode` sits with the subject group since T7 — the sample button no
-  // longer flips it, so offering it for a pending geocoding would be a button
-  // that visibly does nothing.
-  const hasSubjectToVerify =
-    isDraft && valuation.inputs
-      ? valuation.inputs.provenance?.ewidencja?.status === "to_verify" ||
-        valuation.inputs.provenance?.mpzp?.status === "to_verify" ||
-        valuation.inputs.provenance?.geocode?.status === "to_verify"
-      : false;
-  const hasKwToVerify =
-    isDraft && valuation.inputs
-      ? valuation.inputs.kw != null && valuation.inputs.provenance?.kw?.status === "to_verify"
-      : false;
-  const hasFeaturesToVerify =
-    isDraft && valuation.inputs
-      ? valuation.inputs.provenance?.weights?.status === "to_verify" ||
-        valuation.inputs.provenance?.featureDefs?.status === "to_verify"
-      : false;
   // A legacy `approved` row (no inputs) or a superseded `signed` row leaves
-  // every can*/has* flag false — without this check the action-bar Card
-  // would render empty for the owner.
+  // every can* flag false — without this check the action-bar Card would
+  // render empty for the owner.
+  //
+  // The four `has*ToVerify` flags that used to feed this are gone with the
+  // step-7 confirm buttons (T8). They never carried weight here anyway: each
+  // was `isDraft && …`, and an OWNER's draft never reaches the flat view —
+  // the wizard branch above returns first.
   const hasAnyAction =
-    hasToVerify ||
-    hasSubjectToVerify ||
-    hasKwToVerify ||
-    hasFeaturesToVerify ||
     valuation.status === "in_progress" || // canApprove
     canSign ||
     canCreateNewVersion;
@@ -205,10 +184,6 @@ export default async function ValuationViewPage({
       successor={successor}
       allBlockers={allBlockers}
       gateOk={gateOk}
-      hasToVerify={hasToVerify}
-      hasSubjectToVerify={hasSubjectToVerify}
-      hasKwToVerify={hasKwToVerify}
-      hasFeaturesToVerify={hasFeaturesToVerify}
       hasAnyAction={hasAnyAction}
       canCreateNewVersion={canCreateNewVersion}
     />

@@ -21,20 +21,13 @@ const signValuationAction = vi.hoisted(() => vi.fn());
 const createNewVersionAction = vi.hoisted(() => vi.fn());
 vi.mock("@/app/actions/sign-valuation", () => ({ signValuationAction }));
 vi.mock("@/app/actions/create-new-version", () => ({ createNewVersionAction }));
-vi.mock("@/app/actions/confirm-sample", () => ({ confirmSample: vi.fn() }));
-vi.mock("@/app/actions/confirm-subject", () => ({ confirmSubject: vi.fn() }));
-vi.mock("@/app/actions/confirm-kw", () => ({ confirmKw: vi.fn() }));
-vi.mock("@/app/actions/confirm-features", () => ({ confirmFeatures: vi.fn() }));
 vi.mock("@/app/actions/approve-valuation", () => ({ approveValuation: vi.fn() }));
 
 import { ValuationActions } from "@/app/valuations/[id]/valuation-actions";
 
 const baseProps = {
   id: "v1",
-  hasToVerify: false,
-  hasSubjectToVerify: false,
-  hasKwToVerify: false,
-  hasFeaturesToVerify: false,
+
   gateOk: true,
   canApprove: false,
   canCreateNewVersion: false,
