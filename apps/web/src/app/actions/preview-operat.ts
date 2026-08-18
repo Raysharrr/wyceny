@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
+import type { SessionUser, Valuation } from "@/ports/valuation";
 import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
@@ -44,6 +45,56 @@ async function readFrozenMaps(id: string): Promise<RenderMaps | null> {
     console.error("previewOperat: reading frozen maps failed, re-fetching", error);
   }
   return null;
+}
+
+/**
+ * Drops the §8.1 map bytes this preview just wrote — but ONLY on positive
+ * evidence that they are still this draft's to drop.
+ *
+ * `freezeMaps` answers `null` for three different reasons and the caller
+ * cannot tell them apart from the return value alone:
+ *
+ *  1. **not the owner** — this action authorises through `get`, which admits
+ *     an admin, while `freezeMaps` is owner-only. The bytes just written then
+ *     sit under whatever marker was there BEFORE, which may be the previous
+ *     address: correct the address back and the next reader gets the other
+ *     parcel's maps under a marker that looks perfectly valid. These bytes
+ *     must GO.
+ *  2. **no longer a draft** — an approve committed while this preview was
+ *     inside its multi-second WMS call, which Task 10 made reachable by
+ *     rendering on mount. The bytes under those keys are now the ISSUE's:
+ *     `signValuationAction` re-renders from exactly them and reads their
+ *     absence as "approved without maps", silently. These bytes must STAY —
+ *     deleting them would put an illustrated operat in the record and an
+ *     unillustrated one under the signature, the very drift
+ *     `approveValuation` refuses to create from the other side.
+ *  3. **the row is gone** — or the read that would tell us fails. Unknowable,
+ *     and it is the case where a stale answer is most likely.
+ *
+ * So the condition is single and positive: delete only when a fresh read
+ * still shows a draft we can see. Everything else keeps the bytes, because
+ * the two costs are not comparable — an orphaned byte pair costs one
+ * re-fetch and is overwritten by the next render, while bytes deleted out
+ * from under an issued operat cost a signed document that silently differs
+ * from the approved one.
+ */
+async function dropBytesIfStillOurDraft(id: string, user: SessionUser): Promise<void> {
+  let still: Valuation | null = null;
+  try {
+    still = await valuationRepository.get(id, user);
+  } catch (error) {
+    console.error(`previewOperat: could not establish why the freeze on ${id} failed`, error);
+    return;
+  }
+  if (still?.status !== "in_progress") {
+    console.error(
+      `previewOperat: the map freeze on ${id} failed and this is no longer our draft — bytes left for the issued operat`,
+    );
+    return;
+  }
+  console.warn(`previewOperat: could not record the map freeze on ${id} — dropping bytes`);
+  await storage.delete(ewidencyjnaKey(id));
+  await storage.delete(ortoKey(id));
 }
 
 /**
@@ -140,21 +191,15 @@ export async function previewOperat(
         maps = fetched.maps;
         await storage.put(ewidencyjnaKey(id), maps.ewidencyjna);
         await storage.put(ortoKey(id), maps.orto);
-        // Same `null` case as above — a write that did not happen — and here
-        // the bytes have to go with it. Left in place they sit under whatever
-        // marker was there BEFORE, which is the previous address: correct the
-        // address back and the next reader gets the other parcel's maps under
-        // a marker that looks perfectly valid. The rule this design rests on
-        // is one line long — bytes exist only under a marker that describes
-        // them — and this is the second way to break it.
+        // Same `null` case as above — a write that did not happen — but NOT
+        // the same answer, because `null` has more than one cause and they
+        // pull in opposite directions. See `dropBytesIfStillOurDraft`.
         //
         // The render below still uses the maps held in memory; only the reuse
         // is given up, so the next preview fetches again.
         const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
         if (!frozen) {
-          console.warn(`previewOperat: could not record the map freeze on ${id} — dropping bytes`);
-          await storage.delete(ewidencyjnaKey(id));
-          await storage.delete(ortoKey(id));
+          await dropBytesIfStillOurDraft(id, session.user);
         }
       }
     }

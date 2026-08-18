@@ -134,8 +134,15 @@ function reconfirmAt(address: string) {
  * The repo's freeze write, as the adapter performs it. Named so a test can put
  * it back after forcing the `null` return (a write that legitimately did not
  * happen — see the tests that use it).
+ *
+ * The status predicate is the adapter's, not decoration: `valuation-drizzle.ts`
+ * scopes the UPDATE with `and(eq(id), eq(status, "in_progress"))` and returns
+ * `null` when it matches nothing. Without it here, the ONE cause of `null` that
+ * a concurrent approve produces cannot be reproduced in this file at all, and
+ * the interleaving probe below would be a stub asserting on itself.
  */
 const freezeMapsFake = async (_id: string, _user: unknown, address: string | null) => {
+  if (current.status !== "in_progress") return null;
   current = { ...current, mapsFrozenFor: address };
   return current;
 };
@@ -378,6 +385,61 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
 
     expect(fetchMapsMock).toHaveBeenCalledTimes(1);
     expect(fetchMapsMock).toHaveBeenCalledWith(ADDRESS);
+  });
+
+  it("a preview still in flight must not delete the maps an approve just froze for the issue", async () => {
+    // The window Task 10 opened. Step 7 renders on MOUNT, so a preview is
+    // running whenever the appraiser opens or reloads that screen — including
+    // while an approve, started from another tab, is committing. Both write
+    // the same two map keys.
+    //
+    // The interleave is real rather than stubbed: the preview is suspended
+    // INSIDE its own `fetchMaps` (3-6 s against the Geoportal in production)
+    // and the approve runs to completion underneath it. `freezeMaps` then
+    // returns `null` for the one cause this file could not previously
+    // reproduce — the row stopped being a draft — and the bytes under those
+    // keys are no longer the preview's to remove: `signValuationAction` reads
+    // exactly them, and reads their absence as "approved without maps",
+    // silently. Deleting them here would put an illustrated operat in the
+    // record and an unillustrated one under the signature.
+    let releaseMaps!: () => void;
+    const wmsGate = new Promise<void>((resolve) => {
+      releaseMaps = resolve;
+    });
+    fetchMapsMock.mockImplementationOnce(async () => {
+      await wmsGate;
+      return { kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } };
+    });
+    approveMock.mockImplementation(async (_id, _user, docs) => {
+      current = {
+        ...current,
+        status: "approved",
+        approvedAt: new Date("2026-08-18T10:00:00.000Z"),
+        docUrl: docs?.docUrl ?? null,
+        docxUrl: docs?.docxUrl ?? null,
+      };
+      return current;
+    });
+
+    const inFlight = previewOperat(ID);
+    // Nothing else awaits the gate, so the approve below is what runs while
+    // the preview sits inside the WMS call.
+    expect(await approveValuation(ID)).toBeUndefined();
+    expect(current.status).toBe("approved");
+    expect(blobs.has(EWIDENCYJNA_KEY)).toBe(true);
+
+    releaseMaps();
+    const result = await inFlight;
+
+    // The bytes the signature will re-render from are still there.
+    expect(blobs.has(EWIDENCYJNA_KEY)).toBe(true);
+    expect(blobs.has(ORTO_KEY)).toBe(true);
+    expect(current.mapsFrozenFor).toBe(ADDRESS);
+    // And the appraiser's screen does not break because they approved
+    // underneath it: the render completes and hands back a URL. That URL is
+    // dead on arrival — `/api/podglad/[id]` refuses a non-draft (Task 9) — and
+    // that is the design: the flat view has the issued operat by then.
+    expect(result).toHaveProperty("url");
   });
 
   it("skipMaps lifts the freeze before it drops the bytes — never bytes gone under a standing marker", async () => {
