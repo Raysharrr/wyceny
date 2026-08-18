@@ -296,32 +296,53 @@ describe("F-7 + FR-6 — the confirmed prose is frozen with everything else", ()
     expect(approved!.status).toBe("approved");
   });
 
-  it("REPLACES the caller's fingerprints — matching hashes, or none at all, buy nothing", async () => {
-    // The gate takes its per-section hashes as an OPTION (T4), and
-    // `approveValuation` in the domain takes the whole options object as a
-    // parameter — so a caller could hand in the snapshot's own hashes, or an
-    // empty map (which disables the check section by section), and the domain
-    // would have no way to know. ADR-012's answer is that the repo OVERWRITES
-    // that field with hashes computed from the row it just read; these two
-    // payloads pin it. Both would approve if the repo merged instead.
+  /**
+   * The gate takes its per-section hashes as an OPTION (T4), and
+   * `approveValuation` in the domain takes the whole options object as a
+   * parameter — so a caller can hand in whatever it likes and the domain has
+   * no way to know. ADR-012's answer is that the repo OVERWRITES that field
+   * with hashes computed from the row it just read. The two payloads below
+   * are the two ways a caller could otherwise buy an approval, and they are
+   * separate tests on purpose: in one `it` the first failure would abort
+   * before the second was ever exercised.
+   */
+  async function staleDraft() {
     const base = approvableInput(OWNER);
-    const claimed: Array<Partial<Record<ProseSection, string>>> = [
-      confirmedProse("9".repeat(64)).factsHashes,
-      {},
-    ];
+    return repo.create({
+      ...base,
+      inputs: { ...base.inputs!, prose: confirmedProse("9".repeat(64)) },
+    });
+  }
 
-    for (const currentSectionHashes of claimed) {
-      const stale = await repo.create({
-        ...base,
-        inputs: { ...base.inputs!, prose: confirmedProse("9".repeat(64)) },
-      });
-      await expect(
-        repo.approve(stale.id, ownerUser, undefined, undefined, undefined, undefined, {
-          requireProse: true,
-          currentSectionHashes,
-        }),
-      ).rejects.toThrow(ApprovalBlockedError);
-    }
+  it("REPLACES fingerprints the caller claims match the snapshot", async () => {
+    // Hashes copied straight off the stale snapshot: `stored === claimed` for
+    // all six, so a repo that merged instead of replacing would find nothing
+    // stale and approve prose written against facts that have moved.
+    const stale = await staleDraft();
+    const claimed: Partial<Record<ProseSection, string>> = confirmedProse(
+      "9".repeat(64),
+    ).factsHashes;
+
+    await expect(
+      repo.approve(stale.id, ownerUser, undefined, undefined, undefined, undefined, {
+        requireProse: true,
+        currentSectionHashes: claimed,
+      }),
+    ).rejects.toThrow(ApprovalBlockedError);
+  });
+
+  it("REPLACES an EMPTY map, which would switch the check off section by section", async () => {
+    // The quieter of the two: an absent entry means "the caller cannot tell"
+    // and the gate skips that section — so `{}` disables staleness for all
+    // six while every section is still `confirmed` with text.
+    const stale = await staleDraft();
+
+    await expect(
+      repo.approve(stale.id, ownerUser, undefined, undefined, undefined, undefined, {
+        requireProse: true,
+        currentSectionHashes: {},
+      }),
+    ).rejects.toThrow(ApprovalBlockedError);
   });
 
   it("a new version inherits the text but NOT the confirmation (through the real jsonb round trip)", async () => {
