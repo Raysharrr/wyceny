@@ -274,14 +274,26 @@ export function applyProseConfirmation(
 }
 
 /**
- * Identity of a comparable for the purpose of keeping its confirmation.
- * NOT the array index: deleting row 3 shifts every later row, and a
- * position-matched confirmation would then stay attached to a DIFFERENT
- * transaction than the one the appraiser verified — in a document with legal
- * effects, the worst failure this file could produce.
+ * Bucket key for a comparable — it NARROWS the candidates, it never selects
+ * one. What decides whether a confirmation carries over is
+ * {@link sameComparable} plus the one-for-one consumption in
+ * {@link carryComparableConfirmations}; the key exists so that lookup is not
+ * a scan of the whole snapshot. Keep it that way: the moment the key is
+ * trusted to identify a row on its own, a stamp can move to a neighbour.
+ *
+ * Never the array index, for the same reason: deleting row 3 shifts every
+ * later row, and a position-matched confirmation would then stay attached to
+ * a DIFFERENT transaction than the one the appraiser verified — in a
+ * document with legal effects, the worst failure this file could produce.
+ *
+ * `||`, not `??`: the worker emits an EMPTY id when RCN has none
+ * (`rcn.py`: `get("tran_lokalny_id_iip") or ""`) and the HTTP adapter casts
+ * the response without validating it, so `""` reaches real snapshots. It must
+ * fall through to the content key like any other missing id, or every id-less
+ * fetched row files under one bucket.
  */
 function comparableKey(c: Comparable): string {
-  return c.transactionId ?? `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
+  return c.transactionId || `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
 }
 
 /**

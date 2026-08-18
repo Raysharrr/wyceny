@@ -294,6 +294,53 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
   });
 
   /**
+   * A live shape, not a hypothetical: the worker emits
+   * `"transaction_id": get("tran_lokalny_id_iip") or ""` (`rcn.py:68`) and
+   * `sample-http.ts` casts the response without validating it, so a genuinely
+   * fetched row can reach the snapshot with an EMPTY id. `??` would take that
+   * `""` as the row's key and file every such row under one bucket; `||` lets
+   * it fall through to the content key like any other missing id.
+   */
+  const twelveWithEmptyIds = () =>
+    Array.from({ length: 12 }, (_, i) => ({
+      date: `2025-${String(i + 1).padStart(2, "0")}`,
+      area: 50 + i,
+      pricePerM2: 10_000 + i,
+      source: "rcn" as const,
+      transactionId: "",
+      status: "to_verify" as const,
+    }));
+
+  it("keys a row with an empty fetched id by content: editing one unconfirms only it", () => {
+    const confirmed = confirmSampleProvenance(
+      draftWith({ ...rcnInputs(), comparables: twelveWithEmptyIds() }),
+    );
+    const edited = applySampleUpdate(confirmed, {
+      comparables: confirmed.inputs!.comparables.map((c, i) =>
+        i === 6 ? { ...c, pricePerM2: 9_999 } : c,
+      ),
+      sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+      geocode: confirmed.inputs!.provenance?.geocode,
+    });
+    const statuses = edited.inputs!.comparables.map((c) => c.status);
+    expect(statuses[6]).toBe("to_verify");
+    expect(statuses.filter((s) => s === "confirmed")).toHaveLength(11);
+  });
+
+  it("keeps every empty-id survivor confirmed when a row is deleted", () => {
+    const confirmed = confirmSampleProvenance(
+      draftWith({ ...rcnInputs(), comparables: twelveWithEmptyIds() }),
+    );
+    const edited = applySampleUpdate(confirmed, {
+      comparables: confirmed.inputs!.comparables.filter((_, i) => i !== 2),
+      sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+      geocode: confirmed.inputs!.provenance?.geocode,
+    });
+    expect(edited.inputs!.comparables).toHaveLength(11);
+    expect(edited.inputs!.comparables.every((c) => c.status === "confirmed")).toBe(true);
+  });
+
+  /**
    * The matcher is only worth anything if the boundary preserves what it
    * matches on. This runs the REAL step-3 ACL over form-shaped rows, exactly
    * as `saveSampleAction` does — `assignSampleProvenance` re-derives every
