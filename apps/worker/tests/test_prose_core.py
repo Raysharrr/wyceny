@@ -351,3 +351,36 @@ class TestNoApiSurface:
         prompt = build_prompt("uzasadnienie", facts)
         assert "w przedziale cen próby, powyżej średniej" in prompt
         assert validate_numbers("Wynik mieści się w przedziale cen próby.", facts) == []
+
+
+class TestGuardAcceptsOnlyExactForms:
+    """The guard's one job: a number in the operat must be a number from the data.
+
+    The ported evaluator accepted a number whose INTEGER PART was a fact, which
+    let an invented decimal through — with an area of "71,63" it passed
+    "71,99 m2", i.e. a different flat, stated as fact in a document with legal
+    effects. Found by an evidence-based audit of the Help module, reproduced by
+    running the guard, and closed here. Re-evaluating the 18 recorded validation
+    generations under the strict rule gave ZERO violations: the tolerance was
+    carrying risk, not output.
+    """
+
+    FACTS = {
+        "pow_uzytkowa": "71,63",
+        "proba": {"cena_srednia_zl_m2": "13 123,60", "liczba_transakcji": 12},
+    }
+
+    def test_invented_decimals_behind_a_factual_integer_part_are_caught(self):
+        assert validate_numbers("Lokal ma 71,99 m2.", self.FACTS) == ["71,99"]
+        assert validate_numbers("Średnia to 13 123,99 zł.", self.FACTS) == ["13 123,99"]
+
+    def test_rounding_a_fact_away_is_caught_too(self):
+        # "71" is not the area; 71,63 is. The style guide already demands the
+        # exact written form, so honouring a rounded one only hid drift.
+        assert validate_numbers("Lokal ma 71 m2.", self.FACTS) == ["71"]
+
+    def test_exact_forms_still_pass(self):
+        assert (
+            validate_numbers("Lokal 71,63 m2, średnia 13 123,60 zł, 12 transakcji.", self.FACTS)
+            == []
+        )

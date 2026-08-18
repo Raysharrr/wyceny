@@ -144,7 +144,6 @@ def _allowed_numbers(facts: dict) -> set[str]:
         number = _norm_num(number)
         allowed.add(number)
         allowed.add(number.replace(".", ","))  # float 10815.5 -> PL notation "10815,5"
-        allowed.add(re.split(r"[.,]", number)[0])  # integer part written without decimals
     # NOTE: the spike also split dashed tokens into components. Dropped in
     # review: _NUM_RE never yields a dash from a string fact ("03-2024" is
     # already two tokens), so the loop only ever fired on float reprs — it
@@ -159,6 +158,15 @@ def validate_numbers(text: str, facts: dict) -> list[str]:
     Ported from the spike's K1 evaluator, traps included: the digit inside the
     "m2"/"m²" unit is not a fact, and "za 1 m2" is the single idiom allowed to
     carry a number of its own (style rule 4).
+
+    A number must appear in the facts EXACTLY as written. The ported evaluator
+    also accepted a number whose INTEGER PART was a fact — which let an invented
+    decimal through: with an area of "71,63" the guard passed "71,99 m2", a
+    different flat stated as fact in a document with legal effects. The mirror
+    tolerance (fact "71,63" licensing the text "71") is gone for the same
+    reason: a rounded area is not the area. Re-evaluating the 18 recorded
+    validation generations under the strict rule produced ZERO violations, so
+    neither tolerance was ever carrying real output — only risk.
     """
     allowed = _allowed_numbers(facts)
 
@@ -183,7 +191,7 @@ def validate_numbers(text: str, facts: dict) -> list[str]:
         number = _norm_num(match.group(0).strip())
         if not number:
             continue
-        if number in allowed or number.split(",")[0] in allowed:
+        if number in allowed:
             continue
         violations.append(match.group(0).strip())
     return violations
