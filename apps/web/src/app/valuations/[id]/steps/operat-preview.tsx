@@ -5,6 +5,7 @@ import { FileSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/wizard/section-card";
 import { previewOperat, type PreviewOperatResult } from "@/app/actions/preview-operat";
+import { usePreviewMaps } from "./preview-maps-state";
 
 /**
  * Reader chrome, chosen by measurement rather than taste (spec §C). The
@@ -31,6 +32,10 @@ const READER_CHROME = "#toolbar=0&navpanes=0";
  *    (F-4: nothing here approves anything).
  *  - **gotowe** — the render starts on mount, because a document the
  *    appraiser has to ask to see is a document they will sign unseen.
+ *  - **bez map** — a variant of "gotowe" rather than a fourth state: the
+ *    document rendered, the §8.1 section is simply absent from it, and a
+ *    standing notice says so and offers the way back. The issue button reads
+ *    the same fact through `usePreviewMaps` and issues what is on screen.
  *  - **wydany** — not reachable from the wizard: `page.tsx` routes anything
  *    that is no longer a draft to the flat view, which embeds `docUrl`. That
  *    is deliberate rather than incidental — `/api/podglad/[id]` answers 404
@@ -50,6 +55,8 @@ export function OperatPreview({
   const [pending, setPending] = useState(!hasBlockers);
   const [error, setError] = useState<string | null>(null);
   const [mapsUnavailable, setMapsUnavailable] = useState(false);
+  // What the issue button reads to decide whether to embed maps (Task 12).
+  const { previewWithoutMaps, setPreviewWithoutMaps } = usePreviewMaps();
   /** "I already started one." Survives StrictMode's double-invoked mount. */
   const autoStarted = useRef(false);
   const mounted = useRef(true);
@@ -85,6 +92,10 @@ export function OperatPreview({
       setMapsUnavailable(result.mapsUnavailable === true);
       return;
     }
+    // Only a render that LANDED says what is on screen. A failed one leaves
+    // the previous answer standing, because the previous document is the last
+    // one the appraiser actually read.
+    setPreviewWithoutMaps(opts?.skipMaps === true);
     // Verbatim. The blob key is stable and every render overwrites it in
     // place, so the `?v=` the action derived from the bytes is the only thing
     // standing between the appraiser and the render they just replaced —
@@ -167,6 +178,33 @@ export function OperatPreview({
                 </Button>
               ) : null}
             </div>
+          </div>
+        ) : null}
+
+        {/* A mapless render SUCCEEDS, so the error block that offered „Pokaż
+            podgląd bez map" goes away with it — and what is missing from the
+            document below is a section that simply is not there, which no
+            reader can show. Hence a standing notice: it says what this
+            document is, says what issuing it will produce, and holds the only
+            way back to the maps. */}
+        {previewWithoutMaps && url ? (
+          <div
+            data-testid="preview-without-maps"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2"
+          >
+            <p className="text-sm text-amber-700">
+              ⚠ Ten podgląd jest bez map. Zatwierdzenie wyda operat bez dokumentacji kartograficznej
+              — i tak zostanie to odnotowane przy wycenie.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="preview-retry-maps"
+              disabled={pending}
+              onClick={() => void build()}
+            >
+              Spróbuj pobrać mapy
+            </Button>
           </div>
         ) : null}
 

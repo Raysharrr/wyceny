@@ -48,17 +48,22 @@ describe("ValuationActions — step 7 FootNav (Task 6)", () => {
     expect(screen.queryByText(wrTextRegex, { selector: "b" })).not.toBeInTheDocument();
   });
 
-  it("shows the existing WR blocker hint in mid when wr is null", () => {
+  /**
+   * T12: the bar's middle slot carries STATE, in the shape every other step
+   * uses — a label and a value, or "—" when there is none (steps 4 and 5).
+   * It used to carry the WR blocker's sentence, an INSTRUCTION, which is the
+   * one thing the bar is not for: that blocker is already on the list above,
+   * with a link to the step that clears it, so nothing was lost by the swap.
+   */
+  it('falls back to "—" in mid when wr is null, like every other step', () => {
     render(<ValuationActions {...baseProps} wr={null} />);
-    expect(
-      screen.getByText(/wartość rynkowa — kalkulacja niezatwierdzona \(krok 5\. kalkulacja\)/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText(/kalkulacja niezatwierdzona/i)).not.toBeInTheDocument();
   });
 
-  it("shows the existing WR blocker hint in mid when wr is omitted entirely (optional prop, advisor I2)", () => {
+  it('falls back to "—" when wr is omitted entirely (optional prop, advisor I2)', () => {
     render(<ValuationActions {...baseProps} />);
-    expect(
-      screen.getByText(/wartość rynkowa — kalkulacja niezatwierdzona \(krok 5\. kalkulacja\)/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText(/kalkulacja niezatwierdzona/i)).not.toBeInTheDocument();
   });
 });

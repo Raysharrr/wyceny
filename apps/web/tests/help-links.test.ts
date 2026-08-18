@@ -101,8 +101,15 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
  * przeniesieniu komponentu, a oba historyczne rozjazdy polegaly na tym, ze
  * przycisk PRZESTAL istniec.
  *
- * Zakres na dzis: 28 wystapien, 16 unikalnych etykiet. To siec bezpieczenstwa
+ * Zakres na dzis: 28 wystapien, 15 unikalnych etykiet. To siec bezpieczenstwa
  * na jedna, najczestsza klase bledu — nie dowod zgodnosci Pomocy z aplikacja.
+ *
+ * T12 potwierdzil to empirycznie po raz trzeci: skasowanie przycisku
+ * „bez map" z paska akcji zaczerwienilo ten plik na cytacie w instrukcji
+ * kroku 7, zanim ktokolwiek zdazyl ja przeczytac. Zlapal tez wlasne
+ * ograniczenie nr 1 — etykieta przezyla najpierw w KOMENTARZU opisujacym jej
+ * usuniecie i przez chwile przepuszczala martwy cytat; komentarz zostal
+ * przeformulowany tak, zeby nie cytowal nazwy, ktorej juz nie ma.
  */
 const ETYKIETA_RE =
   /„((?:Potwierdź|Zatwierdź|Dane się zgadzają|Pobierz|Dodaj|Utwórz|Podpisz|Wgraj)[^„”]{0,60})”/g;
@@ -137,9 +144,9 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
   // zakres straznika, a to jest dokladnie ten rodzaj cichej utraty pokrycia,
   // przed ktorym ten plik ma bronic. Rosna, gdy Pomoc cytuje nowy przycisk —
   // wtedy zaktualizuj tez liczby w komentarzu wyzej.
-  it("zna dokladny zakres: 28 wystapien, 16 unikalnych etykiet", () => {
+  it("zna dokladny zakres: 28 wystapien, 15 unikalnych etykiet", () => {
     expect(cytaty.length).toBe(28);
-    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(16);
+    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(15);
   });
 
   it("kazda cytowana etykieta wystepuje w zrodlach aplikacji", () => {

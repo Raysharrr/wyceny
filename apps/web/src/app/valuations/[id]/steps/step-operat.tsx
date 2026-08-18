@@ -9,6 +9,7 @@ import type { Valuation } from "@/ports/valuation";
 import { currencyFormatter } from "../cards";
 import { ValuationActions } from "../valuation-actions";
 import { OperatPreview } from "./operat-preview";
+import { PreviewMapsProvider } from "./preview-maps-state";
 
 /**
  * Step 7 ("Operat") — the wizard's final step. Only ever reached for an
@@ -53,7 +54,12 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
   const gateOk = gate?.ok === true && fieldBlockers.length === 0;
 
   return (
-    <>
+    // T12: the reader and the issue button are separate components with these
+    // cards between them, and they have to agree on ONE thing — whether the
+    // document on screen has its §8.1 maps. The provider is what carries it;
+    // without it the issue would read the no-reader default and fetch maps
+    // for a document the appraiser chose to read without them.
+    <PreviewMapsProvider>
       <div className="flex flex-col gap-4">
         <SectionCard icon={FileStack} title="Podsumowanie operatu">
           <div className="grid gap-5 sm:grid-cols-2">
@@ -98,6 +104,6 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
             keeps the fixed FootNav off its final rows. */}
         <OperatPreview valuationId={valuation.id} hasBlockers={allBlockers.length > 0} />
       </div>
-    </>
+    </PreviewMapsProvider>
   );
 }
