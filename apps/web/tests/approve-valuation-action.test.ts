@@ -674,21 +674,28 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
    * own, so the assertion cannot pass on static text.
    */
   it("the issued operat carries no preview marker, not even with the prose requirement off (Task 11)", async () => {
+    // try/finally, unlike the test above: this is the LAST test in the
+    // describe, so a failure here would leak NEXT_PUBLIC_PROSE=off into the
+    // next one — turning one red into a confusing cascade during exactly the
+    // debugging session that matters.
     vi.stubEnv("NEXT_PUBLIC_PROSE", "off");
-    getMock.mockResolvedValue(withProse(null));
+    try {
+      getMock.mockResolvedValue(withProse(null));
 
-    expect(await approveValuation(draftBase.id)).toBeUndefined();
+      expect(await approveValuation(draftBase.id)).toBeUndefined();
 
-    const docxCall = storagePutMock.mock.calls.find(
-      ([key]) => key === `operat-${draftBase.id}.docx`,
-    );
-    const text = new PizZip(docxCall![1] as Buffer)
-      .file("word/document.xml")!
-      .asText()
-      .replace(/<[^>]+>/g, "");
-    expect(text).not.toContain("brak treści");
-    expect(text).not.toContain("Sekcja nie została uzupełniona");
-    vi.unstubAllEnvs();
+      const docxCall = storagePutMock.mock.calls.find(
+        ([key]) => key === `operat-${draftBase.id}.docx`,
+      );
+      const text = new PizZip(docxCall![1] as Buffer)
+        .file("word/document.xml")!
+        .asText()
+        .replace(/<[^>]+>/g, "");
+      expect(text).not.toContain("brak treści");
+      expect(text).not.toContain("Sekcja nie została uzupełniona");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
