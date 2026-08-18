@@ -10,11 +10,16 @@ import type { NewValuationInput } from "../../src/ports/valuation";
  * `confirmProseSnapshot` leaves behind after the appraiser submits step 6.
  * Fictional text (F-9): no sentence here describes a real property.
  *
- * `factsHash` names the SAME fingerprint for all six sections (T2: the
- * snapshot now carries one hash per section) — good enough for callers that
- * only need "some fingerprint present", e.g. checking that a confirm mutates
- * it. Callers that need a fixture that actually clears a PER-SECTION
- * staleness check want {@link confirmedProseFor} instead.
+ * ⚠️ `factsHash` names the SAME made-up fingerprint for all six sections (T2:
+ * the snapshot carries one hash per section), and it is not any real draft's —
+ * so to the F-4 gate EVERY section of this snapshot reads STALE, and a gate
+ * test built on it blocks on all six no matter what the code under test does.
+ * That makes it the right fixture for exactly two things: callers that only
+ * need "some fingerprint present" (e.g. checking that a confirm mutates it),
+ * and the migration path (a snapshot whose hashes predate today's facts).
+ * Anything that has to CLEAR a per-section staleness check — or prove that one
+ * section blocks while the others do not — wants {@link confirmedProseFor},
+ * which fingerprints against the draft it is attached to.
  */
 export function confirmedProse(factsHash = "0".repeat(64)): ProseSnapshot {
   return {
