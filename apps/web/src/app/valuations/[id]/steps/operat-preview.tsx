@@ -57,6 +57,12 @@ export function OperatPreview({
   const build = async (opts?: { skipMaps?: boolean }) => {
     setError(null);
     setMapsUnavailable(false);
+    // The previous render goes NOW, not when the new one lands. Everything on
+    // this screen is supposed to describe the draft as it stands; a document
+    // left up while its replacement is being composed — or, worse, above the
+    // red message saying the replacement failed — is the one thing this step
+    // must never show.
+    setUrl(null);
     setPending(true);
     let result: PreviewOperatResult;
     try {

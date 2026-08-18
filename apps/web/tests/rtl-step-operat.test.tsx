@@ -306,3 +306,25 @@ describe("StepOperat — the document on the screen (Task 10)", () => {
     expect(screen.queryByTitle("Podgląd operatu (PDF)")).toBeNull();
   });
 });
+
+describe("StepOperat — what is on screen is the current render (fix round 1)", () => {
+  it("a failed re-render clears the document instead of leaving the previous one up", async () => {
+    // Reachable only in braki, which is the only state with a control that
+    // starts a second build. Leaving the first render above a red alert would
+    // show the appraiser a document that no longer corresponds to the draft —
+    // the exact failure class this slice exists to remove.
+    render(<StepOperat valuation={draft(null)} />);
+    await userEvent.click(screen.getByRole("button", { name: "Pokaż podgląd mimo braków" }));
+    await screen.findByTitle("Podgląd operatu (PDF)");
+
+    preview.mockResolvedValueOnce({
+      error: "Nie udało się złożyć podglądu operatu — sprawdź dane wyceny i spróbuj ponownie.",
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Pokaż podgląd mimo braków" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Nie udało się złożyć podglądu operatu",
+    );
+    expect(screen.queryByTitle("Podgląd operatu (PDF)")).toBeNull();
+  });
+});
