@@ -214,6 +214,16 @@ export async function saveSubjectAction(
  * Step-3 (Próba) draft save. Comparables pass through
  * `assignSampleProvenance` unchanged — unlike features, the sample carries no
  * percentage-to-fraction conversion.
+ *
+ * The draft is read first (the `saveFeaturesAction` pattern) so the ACL can
+ * see which rows the server itself fetched: without it, a request that
+ * strips a row's `transactionId` and relabels it `manual` decides its own
+ * provenance, and a fetched transaction would print in the operat as one the
+ * appraiser established themselves (F-5).
+ *
+ * The read is outside the row lock `saveSample` takes, like the median in
+ * `saveFeaturesAction`: two step-3 saves racing each other can miss a row the
+ * other has just added, and that row then falls back to the id rule.
  */
 export async function saveSampleAction(
   valuationId: string,
@@ -229,7 +239,12 @@ export async function saveSampleAction(
     return { error: firstIssueMessage(parsed.error) };
   }
 
-  const comparables = assignSampleProvenance(parsed.data);
+  const current = await valuationRepository.get(valuationId, session.user);
+  if (!current) {
+    return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+  }
+
+  const comparables = assignSampleProvenance(parsed.data, current.inputs?.comparables ?? []);
 
   try {
     const updated = await valuationRepository.saveSample(valuationId, session.user, {

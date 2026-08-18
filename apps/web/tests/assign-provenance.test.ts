@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Comparable } from "../src/domain/kcs";
 import {
   assignProvenance,
   assignFeaturesProvenance,
@@ -61,6 +62,68 @@ describe("assignProvenance (the ADR-010 ACL — statuses are born here, server-s
     expect(comparables[0].status).toBe("to_verify");
     expect(comparables[1].source).toBe("manual");
     expect(comparables[1].status).toBe("confirmed");
+  });
+
+  /**
+   * The last path where the client's label decided trust. `sameComparable`
+   * cannot catch it — it compares `transactionId`, and stripping the id is
+   * the move — so the draft itself is the evidence: the server put those rows
+   * there when the RCN fetch returned them.
+   */
+  it("a row the draft already holds as rcn stays rcn when the id is stripped and the label rewritten", () => {
+    const stored: Comparable[] = [
+      {
+        date: "2025-03",
+        area: 50,
+        pricePerM2: 10_000,
+        source: "rcn",
+        transactionId: "tx-0",
+        status: "confirmed",
+      },
+    ];
+
+    const comparables = assignSampleProvenance(
+      { comparables: [{ date: "2025-03", area: 50, pricePerM2: 10_000, source: "manual" }] },
+      stored,
+    );
+
+    expect(comparables[0].source).toBe("rcn");
+    expect(comparables[0].status).toBe("to_verify");
+  });
+
+  it("promotes only: a stored manual row never demotes an incoming rcn one", () => {
+    const stored: Comparable[] = [
+      { date: "2025-03", area: 50, pricePerM2: 10_000, source: "manual", status: "confirmed" },
+    ];
+
+    const comparables = assignSampleProvenance(
+      { comparables: [{ date: "2025-03", area: 50, pricePerM2: 10_000, source: "rcn" }] },
+      stored,
+    );
+
+    expect(comparables[0].source).toBe("rcn");
+    expect(comparables[0].status).toBe("to_verify");
+  });
+
+  it("a hand-typed row matching nothing in the draft stays manual/confirmed", () => {
+    const stored: Comparable[] = [
+      {
+        date: "2025-03",
+        area: 50,
+        pricePerM2: 10_000,
+        source: "rcn",
+        transactionId: "tx-0",
+        status: "confirmed",
+      },
+    ];
+
+    const comparables = assignSampleProvenance(
+      { comparables: [{ date: "2025-04", area: 61, pricePerM2: 11_000 }] },
+      stored,
+    );
+
+    expect(comparables[0].source).toBe("manual");
+    expect(comparables[0].status).toBe("confirmed");
   });
 
   it("never downgrades: an rcn label with no id stays rcn/to_verify", () => {
