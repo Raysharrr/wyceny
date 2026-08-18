@@ -77,15 +77,17 @@ export interface PortValuation {
    */
   getByDocKey(key: string, user: SessionUser): Promise<Valuation | null>;
   /**
-   * Confirms sample provenance on a draft (rcn rows + geocode → confirmed).
+   * Confirms sample provenance on a draft (rcn rows → confirmed; geocoding
+   * moved to `confirmSubject` in T7).
    * Owner-only (admin included only if they own it). Returns null when the
    * valuation doesn't exist or the user isn't the owner; throws for
    * status violations (not a draft).
    */
   confirmSample(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
-   * Confirms subject-snapshot provenance on a draft (ewidencja/mpzp →
-   * confirmed). Mirrors `confirmSample`'s owner-only null/throw contract.
+   * Confirms subject-snapshot provenance on a draft (ewidencja/mpzp and the
+   * address's geocoding → confirmed). Mirrors `confirmSample`'s owner-only
+   * null/throw contract.
    */
   confirmSubject(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
@@ -115,8 +117,7 @@ export interface PortValuation {
   saveSubject(id: string, user: SessionUser, u: SubjectUpdate): Promise<Valuation | null>;
   /**
    * Step-3 (Próba) wizard draft save: replaces the comparables + sample
-   * metadata + geocode provenance, NULLing `wr`. Same null/throw contract
-   * as `updateInspection`.
+   * metadata, NULLing `wr`. Same null/throw contract as `updateInspection`.
    */
   saveSample(id: string, user: SessionUser, u: SampleUpdate): Promise<Valuation | null>;
   /**

@@ -15,6 +15,7 @@ import {
 } from "../src/domain/valuation";
 import { WIZARD_STEPS, calculationReady, maxReachedStep, resolveStep } from "../src/domain/wizard";
 import { computeKcs, type Comparable, type Feature, type KcsInput } from "../src/domain/kcs";
+import type { InputsProvenance } from "../src/domain/provenance";
 
 const VID = "11111111-2222-3333-4444-555555555555";
 
@@ -67,6 +68,13 @@ function fullInputs(): KcsInput {
   };
 }
 
+/** A provenance map as it looks before anything geocoded the draft. */
+function withoutGeocode(p: InputsProvenance): InputsProvenance {
+  const copy = { ...p };
+  delete copy.geocode;
+  return copy;
+}
+
 const draft = (overrides: Partial<Valuation> = {}): Valuation =>
   ({
     id: VID,
@@ -84,7 +92,7 @@ const draft = (overrides: Partial<Valuation> = {}): Valuation =>
   }) as unknown as Valuation;
 
 describe("applySampleUpdate", () => {
-  it("replaces comparables+sampleMeta, nulls wr, drops stale geocode when none provided, keeps rest of provenance", () => {
+  it("replaces comparables+sampleMeta, nulls wr, keeps the whole provenance map", () => {
     const v = draft({ wr: 500_000 });
     const newComparables: Comparable[] = [
       { pricePerM2: 9_000, source: "manual", status: "confirmed" },
@@ -98,25 +106,31 @@ describe("applySampleUpdate", () => {
     expect(updated.wr).toBeNull();
     expect(updated.inputs!.comparables).toEqual(newComparables);
     expect(updated.inputs!.sampleMeta).toBeNull();
-    expect(updated.inputs!.provenance!.geocode).toBeUndefined();
-    expect(updated.inputs!.provenance!.address).toEqual(v.inputs!.provenance!.address);
-    expect(updated.inputs!.provenance!.weights).toEqual(v.inputs!.provenance!.weights);
-    expect(updated.inputs!.provenance!.ewidencja).toEqual(v.inputs!.provenance!.ewidencja);
-    expect(updated.inputs!.provenance!.kw).toEqual(v.inputs!.provenance!.kw);
+    expect(updated.inputs!.provenance).toEqual(v.inputs!.provenance);
   });
 
-  it("sets a fresh geocode entry when one is provided", () => {
-    const v = draft();
-    const newGeocode = { source: "geokoder" as const, status: "to_verify" as const };
-    const update: SampleUpdate = {
-      comparables: v.inputs!.comparables,
-      sampleMeta: v.inputs!.sampleMeta,
-      geocode: newGeocode,
-    };
+  /**
+   * T7 (routed from the T6 review): step 3 owns the transactions and nothing
+   * else. Re-stamping `geocode` here meant one corrected transaction price
+   * wiped a geocoding confirmation given on step 1 — exactly the annoyance
+   * T6 existed to remove, surviving in the one key T6 did not cover.
+   */
+  it("leaves a geocode confirmation alone — a corrected price is not a new geocoding", () => {
+    const base = draft();
+    const confirmedGeocode = { source: "geokoder" as const, status: "confirmed" as const };
+    const v = draft({
+      inputs: {
+        ...base.inputs!,
+        provenance: { ...base.inputs!.provenance!, geocode: confirmedGeocode },
+      },
+    });
 
-    const updated = applySampleUpdate(v, update);
+    const updated = applySampleUpdate(v, {
+      comparables: v.inputs!.comparables.map((c, i) => (i === 0 ? { ...c, pricePerM2: 9_999 } : c)),
+      sampleMeta: v.inputs!.sampleMeta ?? null,
+    });
 
-    expect(updated.inputs!.provenance!.geocode).toEqual(newGeocode);
+    expect(updated.inputs!.provenance!.geocode).toEqual(confirmedGeocode);
   });
 });
 
@@ -179,7 +193,12 @@ describe("applySubjectUpdate", () => {
     expect(updated.inputs!.provenance!.ewidencja).toEqual(update.provenance.ewidencja);
     expect(updated.inputs!.provenance!.mpzp).toEqual(update.provenance.mpzp);
     expect(updated.inputs!.provenance!.kw).toEqual(update.provenance.kw);
-    expect(updated.inputs!.provenance!.geocode).toEqual(v.inputs!.provenance!.geocode);
+    // The address moved, so the geocoding it resolved to is a different point
+    // and goes back for verification with the rest of the step-1 group (T7).
+    expect(updated.inputs!.provenance!.geocode).toEqual({
+      source: "geokoder",
+      status: "to_verify",
+    });
     expect(updated.inputs!.provenance!.weights).toEqual(v.inputs!.provenance!.weights);
   });
 
@@ -206,10 +225,107 @@ describe("applySubjectUpdate", () => {
     expect(updated.inputs!.provenance!.ewidencja).toBeUndefined();
     expect(updated.inputs!.provenance!.mpzp).toBeUndefined();
     expect(updated.inputs!.provenance!.kw).toBeUndefined();
-    expect(updated.inputs!.provenance!.geocode).toEqual(v.inputs!.provenance!.geocode);
+    // Detaching the subject removes the step-1 fetch, but the sample's own
+    // geocoding is still on file (sampleMeta), so the entry stays — and the
+    // moved address sends it back for verification.
+    expect(updated.inputs!.provenance!.geocode).toEqual({
+      source: "geokoder",
+      status: "to_verify",
+    });
     expect(updated.inputs!.provenance!.weights).toEqual(v.inputs!.provenance!.weights);
     expect(updated.inputs!.subject).toBeNull();
     expect(updated.inputs!.kw).toBeNull();
+  });
+
+  /**
+   * T7: `geocode` is a step-1 key — stamped here, confirmed by
+   * `confirmSubjectProvenance`. It exists once something has actually
+   * geocoded this draft's address: the step-1 EGiB/MPZP fetch
+   * (`subjectMeta`) or the step-3 RCN fetch (`sampleMeta` — the worker
+   * resolves the same address to a point). The second disjunct is what keeps
+   * the F-4 gate REACHABLE: the gate demands the entry whenever `sampleMeta`
+   * is set, so a draft that skipped the step-1 fetch would otherwise be
+   * blocked on an entry no step could create.
+   */
+  const unchangedSubjectUpdate = (v: Valuation): SubjectUpdate => ({
+    address: v.address,
+    area: v.inputs!.area,
+    purpose: "sprzedaz",
+    kwNumber: v.kwNumber,
+    client: v.client!,
+    subject: v.inputs!.subject ?? null,
+    subjectMeta: v.inputs!.subjectMeta ?? null,
+    kw: v.inputs!.kw ?? null,
+    kwMeta: v.inputs!.kwMeta ?? null,
+    provenance: {
+      address: { source: "rzeczoznawca", status: "confirmed" },
+      area: { source: "rzeczoznawca", status: "confirmed" },
+      ewidencja: { source: "ewidencja", status: "to_verify" },
+      mpzp: { source: "mpzp", status: "to_verify" },
+      kw: { source: "odpis_kw", status: "to_verify" },
+    },
+  });
+
+  it("keeps the geocode confirmation when the address stands", () => {
+    const base = draft();
+    const v = draft({
+      inputs: {
+        ...base.inputs!,
+        provenance: {
+          ...base.inputs!.provenance!,
+          geocode: { source: "geokoder", status: "confirmed" },
+        },
+      },
+    });
+
+    const updated = applySubjectUpdate(v, unchangedSubjectUpdate(v));
+
+    expect(updated.inputs!.provenance!.geocode).toEqual({
+      source: "geokoder",
+      status: "confirmed",
+    });
+  });
+
+  it("stamps an entry for a draft whose only geocoding arrived with the sample", () => {
+    const base = draft();
+    const provenance = withoutGeocode(base.inputs!.provenance!);
+    const v = draft({
+      inputs: { ...base.inputs!, subject: null, subjectMeta: null, provenance },
+    });
+    expect(v.inputs!.sampleMeta).not.toBeNull();
+
+    const updated = applySubjectUpdate(v, {
+      ...unchangedSubjectUpdate(v),
+      subject: null,
+      subjectMeta: null,
+    });
+
+    expect(updated.inputs!.provenance!.geocode).toEqual({
+      source: "geokoder",
+      status: "to_verify",
+    });
+  });
+
+  it("stamps no entry when nothing has geocoded the draft", () => {
+    const base = draft();
+    const provenance = withoutGeocode(base.inputs!.provenance!);
+    const v = draft({
+      inputs: {
+        ...base.inputs!,
+        subject: null,
+        subjectMeta: null,
+        sampleMeta: null,
+        provenance,
+      },
+    });
+
+    const updated = applySubjectUpdate(v, {
+      ...unchangedSubjectUpdate(v),
+      subject: null,
+      subjectMeta: null,
+    });
+
+    expect(updated.inputs!.provenance!.geocode).toBeUndefined();
   });
 });
 

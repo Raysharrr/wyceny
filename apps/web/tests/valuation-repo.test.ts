@@ -130,7 +130,7 @@ describe("valuationRepo (integration, real Postgres)", () => {
 });
 
 describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
-  it("confirmSample flips rcn rows + geocode to confirmed and persists", async () => {
+  it("confirmSample flips rcn rows to confirmed and persists, leaving geocode to step 1", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 1"),
       inputs: approvableInputs(),
@@ -139,7 +139,10 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(confirmed).not.toBeNull();
     const reread = await repo.get(created.id, appraiserA);
     expect(reread!.inputs!.comparables.every((c) => c.status === "confirmed")).toBe(true);
-    expect(reread!.inputs!.provenance!.geocode!.status).toBe("confirmed");
+    // T7: geocoding belongs to the address — `confirmSubject` flips it.
+    expect(reread!.inputs!.provenance!.geocode!.status).toBe("to_verify");
+    const withSubject = await repo.confirmSubject(created.id, appraiserA);
+    expect(withSubject!.inputs!.provenance!.geocode!.status).toBe("confirmed");
   });
 
   it("confirmSample is owner-only: another appraiser AND a non-owner admin get null", async () => {
@@ -168,6 +171,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inputs: withConfirmedProse("ul. Gating 4", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const approved = await repo.approve(created.id, appraiserA);
     expect(approved!.status).toBe("approved");
     expect(approved!.approvedAt).toBeInstanceOf(Date);
@@ -182,6 +186,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inputs: withConfirmedProse("ul. Gating 5", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     await repo.approve(created.id, appraiserA);
     await expect(repo.confirmSample(created.id, appraiserA)).rejects.toThrow(/not a draft/i);
     await expect(repo.approve(created.id, appraiserA)).rejects.toThrow(/not a draft/i);
@@ -216,6 +221,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inspectionDate: null,
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     try {
       await repo.approve(created.id, appraiserA);
       expect.unreachable("should have thrown");
@@ -234,6 +240,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inputs: withConfirmedProse("ul. Gating 8", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const updated = await repo.approve(created.id, appraiserA, {
       docUrl: "/api/docs/operat-x.pdf",
       docxUrl: "/api/docs/operat-x.docx",
@@ -253,6 +260,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inputs: withConfirmedProse("ul. Gating 9", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     await repo.approve(
       created.id,
       appraiserA,
@@ -276,6 +284,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inputs: approvableInputs(),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const current = (await repo.get(created.id, appraiserA))!.inputs!;
     // Simulates a photo added mid-render via updateInspection — the caller
     // rendered from `current`, but the row has since drifted.
@@ -307,6 +316,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inputs: withConfirmedProse("ul. Gating 11", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const current = (await repo.get(created.id, appraiserA))!.inputs!;
 
     const approved = await repo.approve(
@@ -426,6 +436,7 @@ describe("F-5: confirmKw mutation (KW-extract provenance, Task 8)", () => {
       inputs: withConfirmedProse("ul. Gating 13", kwApprovableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     await repo.confirmKw(created.id, appraiserA);
     const approved = await repo.approve(created.id, appraiserA);
     expect(approved!.status).toBe("approved");
@@ -475,6 +486,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
       inputs: withConfirmedProse("ul. Ogledziny 3", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const approved = await repo.approve(created.id, appraiserA);
     expect(approved!.status).toBe("approved");
     await expect(

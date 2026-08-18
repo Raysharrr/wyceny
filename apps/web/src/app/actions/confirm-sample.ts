@@ -8,7 +8,8 @@ import { valuationRepository } from "@/app/valuations/_deps";
 export type ConfirmSampleResult = { error: string } | undefined;
 
 /**
- * Bulk-confirm (spec §5): flips the draft's rcn rows + geocode to confirmed.
+ * Bulk-confirm (spec §5): flips the draft's rcn rows to confirmed. Geocoding
+ * left the sample group in T7 — `confirmSubject` owns it now.
  * Owner-only; the repo returns null for not-found/not-owner and throws for
  * non-draft status.
  */

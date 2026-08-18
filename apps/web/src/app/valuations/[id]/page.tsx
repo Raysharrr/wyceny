@@ -164,13 +164,16 @@ export default async function ValuationViewPage({
   const gateOk = gate?.ok === true && fieldBlockers.length === 0;
   const hasToVerify =
     isDraft && valuation.inputs
-      ? valuation.inputs.comparables.some((c) => c.status === "to_verify") ||
-        valuation.inputs.provenance?.geocode?.status === "to_verify"
+      ? valuation.inputs.comparables.some((c) => c.status === "to_verify")
       : false;
+  // `geocode` sits with the subject group since T7 — the sample button no
+  // longer flips it, so offering it for a pending geocoding would be a button
+  // that visibly does nothing.
   const hasSubjectToVerify =
     isDraft && valuation.inputs
       ? valuation.inputs.provenance?.ewidencja?.status === "to_verify" ||
-        valuation.inputs.provenance?.mpzp?.status === "to_verify"
+        valuation.inputs.provenance?.mpzp?.status === "to_verify" ||
+        valuation.inputs.provenance?.geocode?.status === "to_verify"
       : false;
   const hasKwToVerify =
     isDraft && valuation.inputs

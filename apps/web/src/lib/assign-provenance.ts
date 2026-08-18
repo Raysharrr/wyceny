@@ -42,9 +42,16 @@ export function assignSubjectProvenance(
   };
 }
 
+/**
+ * Step-3's ACL. Returns the comparables ALONE: since T7 this step assigns no
+ * provenance entry at all. `geocode` describes the address, so step 1 stamps
+ * it (`applySubjectUpdate`) and step 1 confirms it — re-deriving it here made
+ * a corrected transaction price cost the appraiser a geocoding confirmation
+ * they had already given.
+ */
 export function assignSampleProvenance(
-  values: Pick<ValuationFormValues, "comparables" | "sampleMeta">,
-): { comparables: Comparable[]; geocode?: InputsProvenance["geocode"] } {
+  values: Pick<ValuationFormValues, "comparables">,
+): Comparable[] {
   const comparables: Comparable[] = values.comparables.map((c) => {
     // The source is DERIVED, not taken on the client's word — the same rule
     // the prose fingerprints and the FR-6 gate flag already follow: a check
@@ -58,10 +65,7 @@ export function assignSampleProvenance(
     const source = c.transactionId ? "rcn" : (c.source ?? "manual");
     return { ...c, source, status: source === "rcn" ? "to_verify" : "confirmed" };
   });
-  return {
-    comparables,
-    ...(values.sampleMeta ? { geocode: { source: "geokoder", status: "to_verify" } as const } : {}),
-  };
+  return comparables;
 }
 
 export function assignFeaturesProvenance(
@@ -85,22 +89,30 @@ export function assignFeaturesProvenance(
   };
 }
 
+/**
+ * The whole-form ACL from the single-screen era (the wizard calls the three
+ * scoped functions above instead, one per step). It keeps stamping `geocode`
+ * off `sampleMeta` because on ONE screen the address and the sample were read
+ * together; in the wizard that entry is step 1's, and `applySubjectUpdate`
+ * stamps it there.
+ */
 export function assignProvenance(
   values: Pick<
     ValuationFormValues,
     "comparables" | "features" | "sampleMeta" | "subject" | "subjectMeta" | "kw" | "kwMeta" | "area"
   >,
 ): { comparables: Comparable[]; provenance: InputsProvenance } {
-  const { comparables, geocode } = assignSampleProvenance(values);
   return {
-    comparables,
+    comparables: assignSampleProvenance(values),
     provenance: {
       ...assignSubjectProvenance(values),
       ...assignFeaturesProvenance(
         values.features,
         values.comparables.map((c) => c.area),
       ),
-      ...(geocode ? { geocode } : {}),
+      ...(values.sampleMeta
+        ? { geocode: { source: "geokoder", status: "to_verify" } as const }
+        : {}),
     },
   };
 }

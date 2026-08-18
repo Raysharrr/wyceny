@@ -51,12 +51,11 @@ describe("assignProvenance (the ADR-010 ACL — statuses are born here, server-s
     // input for one. A row carrying an id while calling itself "manual" is a
     // relabelled fetch, and must still be re-verified rather than entering
     // `confirmed` as though the appraiser had typed it.
-    const { comparables } = assignSampleProvenance({
+    const comparables = assignSampleProvenance({
       comparables: [
         { pricePerM2: 10_000, source: "manual", transactionId: "tx-1" },
         { pricePerM2: 11_000, source: "manual" },
       ],
-      sampleMeta,
     });
     expect(comparables[0].source).toBe("rcn");
     expect(comparables[0].status).toBe("to_verify");
@@ -68,9 +67,8 @@ describe("assignProvenance (the ADR-010 ACL — statuses are born here, server-s
     // The trust only ever moves one way. An id can PROMOTE a row to rcn;
     // its absence must not DEMOTE a machine row to manual/confirmed, or a
     // legacy row saved before ids existed would silently confirm itself.
-    const { comparables } = assignSampleProvenance({
+    const comparables = assignSampleProvenance({
       comparables: [{ pricePerM2: 10_000, source: "rcn" }],
-      sampleMeta,
     });
     expect(comparables[0].source).toBe("rcn");
     expect(comparables[0].status).toBe("to_verify");
@@ -272,17 +270,17 @@ describe("scoped provenance (Slice 11a)", () => {
       area: { source: "rzeczoznawca", status: "confirmed" },
     });
   });
-  it("assignSampleProvenance: rcn rows to_verify, manual confirmed, geocode only with sampleMeta", () => {
-    const r = assignSampleProvenance({
+  it("assignSampleProvenance: rcn rows to_verify, manual confirmed, and no provenance entry", () => {
+    const comparables = assignSampleProvenance({
       comparables: [
         { pricePerM2: 12000, source: "rcn", transactionId: "t1" },
         { pricePerM2: 13000 },
       ],
-      sampleMeta: undefined,
     });
-    expect(r.comparables[0]!.status).toBe("to_verify");
-    expect(r.comparables[1]!.status).toBe("confirmed");
-    expect(r.geocode).toBeUndefined();
+    expect(comparables[0]!.status).toBe("to_verify");
+    expect(comparables[1]!.status).toBe("confirmed");
+    // T7: the step assigns comparables only — `geocode` is step 1's key now.
+    expect(Array.isArray(comparables)).toBe(true);
   });
   it("assignFeaturesProvenance: preset weights → to_verify", () => {
     const p = assignFeaturesProvenance(DEFAULT_FEATURES, []);

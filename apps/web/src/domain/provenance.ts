@@ -25,7 +25,11 @@ export type InputsProvenance = {
    * on old prod drafts).
    */
   featureDefs?: Provenance;
-  /** Present only when the draft was seeded by an RCN fetch (sampleMeta set). */
+  /**
+   * The address's resolved point. Present once something has geocoded the
+   * draft — the step-1 EGiB/MPZP fetch or the step-3 RCN fetch — and stamped
+   * by step 1, which owns the address (T7).
+   */
   geocode?: Provenance;
   /** Present only when a subject snapshot (EGiB/MPZP) was attached to the draft. */
   ewidencja?: Provenance;

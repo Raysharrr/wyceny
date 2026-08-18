@@ -79,12 +79,23 @@ function rcnInputs(): KcsInput {
 }
 
 describe("confirmSampleProvenance", () => {
-  it("flips rcn rows and geocode to confirmed, leaves scalars untouched", () => {
+  it("flips rcn rows to confirmed, leaves scalars untouched", () => {
     const v = confirmSampleProvenance(draftWith(rcnInputs()));
     expect(v.inputs!.comparables.every((c) => c.status === "confirmed")).toBe(true);
-    expect(v.inputs!.provenance!.geocode).toEqual({ source: "geokoder", status: "confirmed" });
     expect(v.inputs!.provenance!.address.status).toBe("confirmed");
     expect(v.status).toBe("in_progress");
+  });
+
+  /**
+   * T7: geocoding is a property of the ADDRESS, and the address is read on
+   * step 1 — so step 1 confirms it (`confirmSubjectProvenance`) and step 3
+   * must not. Confirming it here meant the appraiser vouched, from a screen
+   * that never shows the point, for the coordinate the whole RCN/map chain
+   * hangs off.
+   */
+  it("leaves the geocode entry to step 1", () => {
+    const v = confirmSampleProvenance(draftWith(rcnInputs()));
+    expect(v.inputs!.provenance!.geocode).toEqual({ source: "geokoder", status: "to_verify" });
   });
 
   it("does not touch manual rows (already confirmed) and is idempotent", () => {
@@ -102,6 +113,13 @@ describe("confirmSampleProvenance", () => {
     expect(() => confirmSampleProvenance(draftWith(null))).toThrow(/inputs/i);
   });
 });
+
+/** A provenance map as it looks before anything geocoded the draft. */
+function withoutGeocode(p: InputsProvenance): InputsProvenance {
+  const copy = { ...p };
+  delete copy.geocode;
+  return copy;
+}
 
 function subjectInputs(): KcsInput {
   return {
@@ -136,8 +154,28 @@ describe("confirmSubjectProvenance", () => {
     expect(v.inputs!.provenance!.mpzp).toEqual({ source: "mpzp", status: "confirmed" });
   });
 
+  /** T7: the address's geocoding is confirmed on the step that reads the address. */
+  it("flips geocode to confirmed — it belongs to the address, not to the sample", () => {
+    const inputs = subjectInputs();
+    const v = confirmSubjectProvenance(
+      draftWith({
+        ...inputs,
+        provenance: {
+          ...inputs.provenance!,
+          geocode: { source: "geokoder", status: "to_verify" },
+        },
+      }),
+    );
+    expect(v.inputs!.provenance!.geocode).toEqual({ source: "geokoder", status: "confirmed" });
+  });
+
   it("no-op on legacy inputs without subject", () => {
-    const legacy = draftWith(rcnInputs());
+    // Geocode stripped from the fixture: since T7 this function owns that key
+    // too, so inputs carrying one are no longer an untouched-map case.
+    const legacy = draftWith({
+      ...rcnInputs(),
+      provenance: withoutGeocode(rcnInputs().provenance!),
+    });
     const v = confirmSubjectProvenance(legacy);
     expect(v.inputs).toEqual(legacy.inputs);
   });
@@ -252,7 +290,6 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
         i === 6 ? { ...c, pricePerM2: 9999 } : c,
       ),
       sampleMeta: confirmed.inputs!.sampleMeta ?? null,
-      geocode: confirmed.inputs!.provenance?.geocode,
     });
     const statuses = edited.inputs!.comparables.map((c) => c.status);
     expect(statuses[6]).toBe("to_verify");
@@ -265,7 +302,6 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
     const edited = applySampleUpdate(confirmed, {
       comparables: withoutThird,
       sampleMeta: confirmed.inputs!.sampleMeta ?? null,
-      geocode: confirmed.inputs!.provenance?.geocode,
     });
     // The eleven survivors keep their own confirmations — matched by content,
     // so nothing shifted onto a neighbour.
@@ -282,12 +318,13 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
    * entered themselves.
    */
   it("leaves a transaction the appraiser typed themselves confirmed — nothing else could clear it", () => {
-    const confirmed = confirmSampleProvenance(draftWithTwelveConfirmed);
+    // Step 1's confirmation too: since T7 the geocoding is confirmed there,
+    // and this assertion is about the gate seeing no SAMPLE blocker.
+    const confirmed = confirmSubjectProvenance(confirmSampleProvenance(draftWithTwelveConfirmed));
     const typed: Comparable = { pricePerM2: 11_000, source: "manual", status: "confirmed" };
     const edited = applySampleUpdate(confirmed, {
       comparables: [...confirmed.inputs!.comparables, typed],
       sampleMeta: confirmed.inputs!.sampleMeta ?? null,
-      geocode: confirmed.inputs!.provenance?.geocode,
     });
     expect(edited.inputs!.comparables[12].status).toBe("confirmed");
     expect(approvalGate(edited.inputs!).ok).toBe(true);
@@ -320,7 +357,6 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
         i === 6 ? { ...c, pricePerM2: 9_999 } : c,
       ),
       sampleMeta: confirmed.inputs!.sampleMeta ?? null,
-      geocode: confirmed.inputs!.provenance?.geocode,
     });
     const statuses = edited.inputs!.comparables.map((c) => c.status);
     expect(statuses[6]).toBe("to_verify");
@@ -334,7 +370,6 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
     const edited = applySampleUpdate(confirmed, {
       comparables: confirmed.inputs!.comparables.filter((_, i) => i !== 2),
       sampleMeta: confirmed.inputs!.sampleMeta ?? null,
-      geocode: confirmed.inputs!.provenance?.geocode,
     });
     expect(edited.inputs!.comparables).toHaveLength(11);
     expect(edited.inputs!.comparables.every((c) => c.status === "confirmed")).toBe(true);
@@ -363,15 +398,11 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
       }),
     );
     const posted = fetched.map((c, i) => (i === 6 ? { ...c, pricePerM2: 9_999 } : c));
-    const { comparables, geocode } = assignSampleProvenance({
-      comparables: posted,
-      sampleMeta: confirmed.inputs!.sampleMeta ?? undefined,
-    });
+    const comparables = assignSampleProvenance({ comparables: posted });
 
     const edited = applySampleUpdate(confirmed, {
       comparables,
       sampleMeta: confirmed.inputs!.sampleMeta ?? null,
-      geocode,
     });
 
     const statuses = edited.inputs!.comparables.map((c) => c.status);
@@ -396,7 +427,6 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
       // Exactly what the step-3 ACL re-derives for these rows.
       comparables: unstamped.map((c) => ({ ...c, status: "to_verify" as const })),
       sampleMeta: legacy.inputs!.sampleMeta ?? null,
-      geocode: legacy.inputs!.provenance?.geocode,
     });
     expect(saved.inputs!.comparables.every((c) => c.status === "to_verify")).toBe(true);
     expect(
@@ -536,6 +566,15 @@ describe("applyFeaturesUpdate — the feature group survives an unrelated save (
 describe("approveValuation", () => {
   const now = new Date("2026-07-14T12:00:00Z");
 
+  /**
+   * Everything the appraiser confirms before an approval can pass. Since T7
+   * that is TWO acts, not one: the sample lives on step 3 and the address's
+   * geocoding on step 1, so a draft confirmed only through the sample still
+   * blocks on `provenance.geocode` — which is the point of the move.
+   */
+  const fullyConfirmed = (overrides: Partial<Valuation> = {}) =>
+    confirmSubjectProvenance(confirmSampleProvenance(draftWith(rcnInputs(), overrides)));
+
   it("blocks (ApprovalBlockedError with blockers) while anything is to_verify", () => {
     try {
       approveValuation(draftWith(rcnInputs()), now);
@@ -547,7 +586,7 @@ describe("approveValuation", () => {
   });
 
   it("approves after confirmation: status approved + approvedAt set", () => {
-    const confirmed = confirmSampleProvenance(draftWith(rcnInputs()));
+    const confirmed = fullyConfirmed();
     const approved = approveValuation(confirmed, now);
     expect(approved.status).toBe("approved");
     expect(approved.approvedAt).toBe(now);
@@ -558,22 +597,17 @@ describe("approveValuation", () => {
   });
 
   it("throws for non-draft status (write-once after approval)", () => {
-    const approved = {
-      ...confirmSampleProvenance(draftWith(rcnInputs())),
-      status: "approved" as const,
-    };
+    const approved = { ...fullyConfirmed(), status: "approved" as const };
     expect(() => approveValuation(approved, now)).toThrow(/draft/i);
   });
 
   it("blocks a legacy draft missing document fields, naming purpose (spec §4)", () => {
-    const legacy = confirmSampleProvenance(
-      draftWith(rcnInputs(), {
-        purpose: null,
-        kwNumber: null,
-        client: null,
-        inspectionDate: null,
-      }),
-    );
+    const legacy = fullyConfirmed({
+      purpose: null,
+      kwNumber: null,
+      client: null,
+      inspectionDate: null,
+    });
     try {
       approveValuation(legacy, now);
       expect.unreachable("should have thrown");
@@ -584,7 +618,7 @@ describe("approveValuation", () => {
   });
 
   it("persists docUrl + docxUrl when passed, alongside status approved", () => {
-    const confirmed = confirmSampleProvenance(draftWith(rcnInputs()));
+    const confirmed = fullyConfirmed();
     const approved = approveValuation(confirmed, now, {
       docUrl: "/api/docs/operat-x.pdf",
       docxUrl: "/api/docs/operat-x.docx",

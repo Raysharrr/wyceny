@@ -36,12 +36,15 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
   const allBlockers = [...(gate && !gate.ok ? gate.blockers : []), ...fieldBlockers];
   const gateOk = gate?.ok === true && fieldBlockers.length === 0;
   const hasToVerify = valuation.inputs
-    ? valuation.inputs.comparables.some((c) => c.status === "to_verify") ||
-      valuation.inputs.provenance?.geocode?.status === "to_verify"
+    ? valuation.inputs.comparables.some((c) => c.status === "to_verify")
     : false;
+  // `geocode` sits with the subject group since T7 — the sample button no
+  // longer flips it, so offering it for a pending geocoding would be a button
+  // that visibly does nothing.
   const hasSubjectToVerify = valuation.inputs
     ? valuation.inputs.provenance?.ewidencja?.status === "to_verify" ||
-      valuation.inputs.provenance?.mpzp?.status === "to_verify"
+      valuation.inputs.provenance?.mpzp?.status === "to_verify" ||
+      valuation.inputs.provenance?.geocode?.status === "to_verify"
     : false;
   const hasKwToVerify = valuation.inputs
     ? valuation.inputs.kw != null && valuation.inputs.provenance?.kw?.status === "to_verify"

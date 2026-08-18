@@ -212,13 +212,12 @@ export async function saveSampleAction(
     return { error: firstIssueMessage(parsed.error) };
   }
 
-  const { comparables, geocode } = assignSampleProvenance(parsed.data);
+  const comparables = assignSampleProvenance(parsed.data);
 
   try {
     const updated = await valuationRepository.saveSample(valuationId, session.user, {
       comparables,
       sampleMeta: parsed.data.sampleMeta ?? null,
-      geocode,
     });
     if (!updated) {
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
