@@ -37,7 +37,7 @@ const previous: ProseSnapshot = {
     },
   },
   rejected: { analiza_rynku: ["9 871,00"] },
-  factsHash: "a".repeat(64),
+  factsHashes: { opis_lokalu: "a".repeat(64), otoczenie: "a".repeat(64) },
   model: "claude-sonnet-5",
   generatedAt: "2026-08-01T09:00:00.000Z",
 };
@@ -55,7 +55,7 @@ const incoming: ProseSnapshot = {
     },
   },
   rejected: { uzasadnienie: [] },
-  factsHash: "b".repeat(64),
+  factsHashes: { opis_lokalu: "b".repeat(64), otoczenie: "b".repeat(64), standard: "b".repeat(64) },
   model: "claude-sonnet-5",
   generatedAt: "2026-08-18T07:30:00.000Z",
 };
@@ -68,21 +68,29 @@ describe("mergeProseProposal — regeneration keeps the appraiser's text", () =>
     expect(merged.sections.opis_lokalu?.provenance.source).toBe("rzeczoznawca");
   });
 
-  // Review finding I-A. The merge adopts the INCOMING fingerprint (see the test
-  // below for why it must), so a preserved text would inherit a claim of being
-  // current that it has not earned: every character of it predates the edit
-  // that changed the facts. That was a one-click, full-price bypass of the F-4
-  // staleness blocker — and the in-transaction gate cannot see it, because the
-  // adapter recomputes the same hash and finds the snapshot self-consistent.
+  // Review finding I-A. The merge adopts the INCOMING per-section fingerprint
+  // (see the test below for why it must), so a preserved text would inherit a
+  // claim of being current that it has not earned: every character of it
+  // predates the edit that changed the facts. That was a one-click,
+  // full-price bypass of the F-4 staleness blocker — and the in-transaction
+  // gate cannot see it, because the adapter recomputes the same hash and
+  // finds the snapshot self-consistent.
   it("a confirmed section goes back to to_verify when the facts changed under it", () => {
     const merged = mergeProseProposal(previous, incoming);
 
-    expect(previous.factsHash).not.toBe(incoming.factsHash);
+    expect(previous.factsHashes.opis_lokalu).not.toBe(incoming.factsHashes.opis_lokalu);
     expect(merged.sections.opis_lokalu?.provenance.status).toBe("to_verify");
   });
 
   it("...and keeps its confirmed status when the facts did NOT change", () => {
-    const merged = mergeProseProposal(previous, { ...incoming, factsHash: previous.factsHash });
+    // opis_lokalu's incoming hash is set EQUAL to the previous one — present
+    // on both sides, not merely absent from the incoming run — so this
+    // exercises the real equality check, not the "this run never touched the
+    // section" shortcut.
+    const merged = mergeProseProposal(previous, {
+      ...incoming,
+      factsHashes: { ...incoming.factsHashes, opis_lokalu: previous.factsHashes.opis_lokalu },
+    });
 
     expect(merged.sections.opis_lokalu).toEqual({
       value: HUMAN_TEXT,
@@ -97,13 +105,15 @@ describe("mergeProseProposal — regeneration keeps the appraiser's text", () =>
     expect(merged.sections.standard).toEqual(incoming.sections.standard);
   });
 
-  it("takes the INCOMING fingerprint, model and timestamp", () => {
-    // Keeping the old factsHash while keeping the old text would make the
-    // step permanently stale: every mount would fire (and pay for) a
+  it("sections take their INCOMING fingerprint (even a preserved confirmed one); model and timestamp always come from incoming", () => {
+    // Keeping the old factsHashes entry while keeping the old text would make
+    // that section permanently stale: every mount would fire (and pay for) a
     // generation whose result it then discards.
     const merged = mergeProseProposal(previous, incoming);
 
-    expect(merged.factsHash).toBe(incoming.factsHash);
+    expect(merged.factsHashes.opis_lokalu).toBe(incoming.factsHashes.opis_lokalu);
+    expect(merged.factsHashes.otoczenie).toBe(incoming.factsHashes.otoczenie);
+    expect(merged.factsHashes.standard).toBe(incoming.factsHashes.standard);
     expect(merged.model).toBe(incoming.model);
     expect(merged.generatedAt).toBe(incoming.generatedAt);
   });
@@ -133,7 +143,14 @@ describe("mergeProseProposal — regeneration keeps the appraiser's text", () =>
 });
 
 describe("confirmProseSnapshot — the appraiser takes responsibility", () => {
-  const meta = { factsHash: "c".repeat(64), now: new Date("2026-08-18T10:15:00.000Z") };
+  const meta = {
+    factsHashes: {
+      opis_lokalu: "c".repeat(64),
+      otoczenie: "c".repeat(64),
+      analiza_rynku: "c".repeat(64),
+    },
+    now: new Date("2026-08-18T10:15:00.000Z"),
+  };
 
   it("every non-blank field becomes rzeczoznawca/confirmed", () => {
     const confirmed = confirmProseSnapshot(previous, { opis_lokalu: AI_TEXT }, meta);
@@ -198,16 +215,17 @@ describe("confirmProseSnapshot — the appraiser takes responsibility", () => {
   });
 
   it("stamps the CURRENT fingerprint — the appraiser accepted the text against today's facts", () => {
-    // T7 redefinition (T6 review, I-2): `factsHash` records the facts the
-    // text was last ACCEPTED AGAINST, not only the ones it was generated
-    // from. The F-4 gate blocks prose whose fingerprint no longer matches the
-    // draft, and re-reading the text on step 6 has to be a way out of that —
-    // otherwise the only remedy would be a paid regeneration. `model` and
-    // `generatedAt` still describe the generation and are untouched.
+    // T7 redefinition (T6 review, I-2): `factsHashes` records, per section,
+    // the facts the text was last ACCEPTED AGAINST, not only the ones it was
+    // generated from. The F-4 gate blocks prose whose fingerprint no longer
+    // matches the draft, and re-reading the text on step 6 has to be a way
+    // out of that — otherwise the only remedy would be a paid regeneration.
+    // `model` and `generatedAt` still describe the generation and are
+    // untouched.
     const confirmed = confirmProseSnapshot(previous, { opis_lokalu: HUMAN_TEXT }, meta);
 
-    expect(confirmed.factsHash).toBe(meta.factsHash);
-    expect(confirmed.factsHash).not.toBe(previous.factsHash);
+    expect(confirmed.factsHashes.opis_lokalu).toBe(meta.factsHashes.opis_lokalu);
+    expect(confirmed.factsHashes.opis_lokalu).not.toBe(previous.factsHashes.opis_lokalu);
     expect(confirmed.model).toBe(previous.model);
     expect(confirmed.generatedAt).toBe(previous.generatedAt);
   });
@@ -217,7 +235,7 @@ describe("confirmProseSnapshot — the appraiser takes responsibility", () => {
     // visit and keep triggering generations it does not need.
     const confirmed = confirmProseSnapshot(null, { opis_lokalu: HUMAN_TEXT }, meta);
 
-    expect(confirmed.factsHash).toBe(meta.factsHash);
+    expect(confirmed.factsHashes.opis_lokalu).toBe(meta.factsHashes.opis_lokalu);
     expect(confirmed.model).toBe("");
     expect(confirmed.generatedAt).toBe("2026-08-18T10:15:00.000Z");
     expect(confirmed.rejected).toEqual({});
@@ -235,14 +253,17 @@ const draft = (prose?: ProseSnapshot): Valuation =>
   }) as unknown as Valuation;
 
 describe("applyProseProposal / applyProseConfirmation (draft mutations)", () => {
-  const meta = { factsHash: "d".repeat(64), now: new Date("2026-08-18T10:15:00.000Z") };
+  const meta = {
+    factsHashes: { opis_lokalu: "d".repeat(64), otoczenie: "d".repeat(64) },
+    now: new Date("2026-08-18T10:15:00.000Z"),
+  };
 
   it("a regeneration on a draft leaves the appraiser's confirmed section standing", () => {
     const v = applyProseProposal(draft(previous), incoming);
 
     expect(v.inputs!.prose!.sections.opis_lokalu?.value).toBe(HUMAN_TEXT);
     expect(v.inputs!.prose!.sections.otoczenie).toEqual(incoming.sections.otoczenie);
-    expect(v.inputs!.prose!.factsHash).toBe(incoming.factsHash);
+    expect(v.inputs!.prose!.factsHashes.otoczenie).toBe(incoming.factsHashes.otoczenie);
   });
 
   it("neither mutation NULLs wr — prose is render material, never an engine input (F-1)", () => {

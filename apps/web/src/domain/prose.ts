@@ -111,6 +111,15 @@ export const PROSE_SECTION_FACTS: Record<ProseSection, readonly (keyof ProseFact
  * by the worker FROM THE TRANSACTIONS, which travel outside `fakty`, so these
  * two sections must fingerprint the transactions too or a reordered-in-time
  * sample would leave a contradicted trend claim in the operat.
+ *
+ * `uzasadnienie` stays in this set even though its prompt never mentions
+ * `trend_cen` — that is a deliberate over-approximation, not an oversight to
+ * "clean up". Its facts include `proba`, whose min/mean/max/count move
+ * whenever the transaction sample moves, so the section is exposed to sample
+ * edits regardless of the trend. The asymmetry that matters is legal, not
+ * computational: under-approximating staleness here would leave stale prose
+ * standing in a SIGNED appraisal — a legal defect — while over-approximating
+ * merely costs one redundant LLM call. Do not drop it from this set.
  */
 export const SECTIONS_USING_TRANSACTIONS: ReadonlySet<ProseSection> = new Set([
   "analiza_rynku",
@@ -329,11 +338,33 @@ export function selectProseSections(facts: ProseFacts): ProseSection[] {
   return PROSE_SECTIONS.filter((section) => has[section]);
 }
 
+/**
+ * Sections whose stored text no longer matches the facts behind them. Absent
+ * fingerprint counts as stale (pre-change snapshots) — see `factsHashes`.
+ *
+ * `currentHash` is INJECTED rather than called directly (F-10): this module
+ * must stay importable from a Client Component (the step-6 editors), and
+ * `currentSectionFactsHash` needs `node:crypto`, which lives only in
+ * `prose-hash.ts`. The caller — a Server Component or a server action —
+ * supplies `currentSectionFactsHash` itself.
+ */
+export function staleProseSections(
+  snapshot: Pick<ProseSnapshot, "sections" | "factsHashes"> | null | undefined,
+  input: ProseFactsInput,
+  currentHash: (section: ProseSection, input: ProseFactsInput) => string,
+): ProseSection[] {
+  if (!snapshot) return [];
+  return PROSE_SECTIONS.filter((section) => {
+    if (!snapshot.sections[section]) return false;
+    return snapshot.factsHashes[section] !== currentHash(section, input);
+  });
+}
+
 export type ProseProposalOutcome = {
   sections: Partial<Record<ProseSection, string>>;
   rejected: Partial<Record<ProseSection, string[]>>;
   model: string;
-  factsHash: string;
+  factsHashes: Partial<Record<ProseSection, string>>;
   /** Passed in by the caller — the domain never reads the clock (F-2). */
   generatedAt: Date;
 };
@@ -352,7 +383,7 @@ export function proseSnapshotOf(outcome: ProseProposalOutcome): ProseSnapshot {
   return {
     sections,
     rejected: outcome.rejected,
-    factsHash: outcome.factsHash,
+    factsHashes: outcome.factsHashes,
     model: outcome.model,
     generatedAt: outcome.generatedAt.toISOString(),
   };

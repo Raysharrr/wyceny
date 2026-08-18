@@ -1,6 +1,6 @@
 import type { KcsInput } from "../../src/domain/kcs";
 import type { InputsProvenance } from "../../src/domain/provenance";
-import { currentProseFactsHash } from "../../src/domain/prose-hash";
+import { currentSectionFactsHash } from "../../src/domain/prose-hash";
 import { PROSE_SECTIONS, type ProseSnapshot } from "../../src/domain/prose-snapshot";
 import type { NewValuationInput } from "../../src/ports/valuation";
 
@@ -9,6 +9,12 @@ import type { NewValuationInput } from "../../src/ports/valuation";
  * sections written, every one `rzeczoznawca`/`confirmed` — i.e. what
  * `confirmProseSnapshot` leaves behind after the appraiser submits step 6.
  * Fictional text (F-9): no sentence here describes a real property.
+ *
+ * `factsHash` names the SAME fingerprint for all six sections (T2: the
+ * snapshot now carries one hash per section) — good enough for callers that
+ * only need "some fingerprint present", e.g. checking that a confirm mutates
+ * it. Callers that need a fixture that actually clears a PER-SECTION
+ * staleness check want {@link confirmedProseFor} instead.
  */
 export function confirmedProse(factsHash = "0".repeat(64)): ProseSnapshot {
   return {
@@ -22,22 +28,31 @@ export function confirmedProse(factsHash = "0".repeat(64)): ProseSnapshot {
       ]),
     ) as ProseSnapshot["sections"],
     rejected: {},
-    factsHash,
+    factsHashes: Object.fromEntries(PROSE_SECTIONS.map((section) => [section, factsHash])),
     model: "test-model",
     generatedAt: "2026-07-10T09:00:00.000Z",
   };
 }
 
 /**
- * The same snapshot, but carrying the fingerprint of the draft it is attached
- * to — i.e. prose that describes THESE facts. Anything else now reads as
- * stale to the F-4 gate (T6 review, I-2), which is the whole point: a fixture
- * that clears the gate has to be one the appraiser could actually have
- * produced. `inputs.prose` itself is not part of the fingerprint, so passing
- * the inputs without it is exactly right.
+ * The same snapshot, but carrying each section's OWN fingerprint of the
+ * draft it is attached to — i.e. prose that describes THESE facts. Anything
+ * else now reads as stale to the F-4 gate (T6 review, I-2), which is the
+ * whole point: a fixture that clears the gate has to be one the appraiser
+ * could actually have produced. `inputs.prose` itself is not part of any
+ * fingerprint, so passing the inputs without it is exactly right.
  */
 export function confirmedProseFor(address: string, inputs: KcsInput): ProseSnapshot {
-  return confirmedProse(currentProseFactsHash({ address, inputs }));
+  const base = confirmedProse();
+  return {
+    ...base,
+    factsHashes: Object.fromEntries(
+      PROSE_SECTIONS.map((section) => [
+        section,
+        currentSectionFactsHash(section, { address, inputs }),
+      ]),
+    ) as ProseSnapshot["factsHashes"],
+  };
 }
 
 /**

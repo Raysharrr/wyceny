@@ -15,9 +15,12 @@ import { createHash } from "node:crypto";
 import {
   buildProseFacts,
   buildProseTransactions,
+  PROSE_SECTION_FACTS,
+  SECTIONS_USING_TRANSACTIONS,
   type ProseFacts,
   type ProseFactsInput,
 } from "./prose";
+import type { ProseSection } from "./prose-snapshot";
 
 /**
  * JSON with keys sorted recursively. Plain `JSON.stringify` preserves
@@ -46,9 +49,9 @@ function sha256Canonical(value: unknown): string {
 /**
  * Canonical hash of the facts dictionary ALONE.
  *
- * NOT the draft's fingerprint — it does not see the transactions, and the
+ * NOT a draft's fingerprint — it does not see the transactions, and the
  * worker derives `proba.trend_cen` from those. Production code wants
- * {@link currentProseFactsHash}; this stays exported for the canonicalisation
+ * {@link currentSectionFactsHash}; this stays exported for the canonicalisation
  * tests that pin the hashing itself.
  */
 export function proseFactsHash(facts: ProseFacts): string {
@@ -56,34 +59,28 @@ export function proseFactsHash(facts: ProseFacts): string {
 }
 
 /**
- * The draft's CURRENT fingerprint, in one expression — over the facts AND the
- * transactions.
+ * Fingerprint of the facts ONE section was written from.
  *
- * Two reasons this is the only entry point production may use:
- *
- *  - **The transactions are an input to the prose.** They travel outside
- *    `fakty`, but the worker injects `proba.trend_cen = price_trend(transakcje)`
- *    into the facts every section sees (`apps/worker/app/main.py`). Swapping
- *    which comparable carries which month leaves every fact byte-identical
- *    while reversing the trend the operat asserts — a facts-only fingerprint
- *    would call those proposals current (review finding I-2).
- *  - **One expression, one answer.** Every caller asking "are these proposals
- *    still about this draft?" must build the inputs the same way the generation
- *    did. Two hand-rolled copies drifting apart would mark every draft stale,
- *    and the step auto-generates on stale — the drift would bill a generation
- *    on every single visit.
+ * Scoped on purpose: a global fingerprint marked all six sections stale when
+ * any input moved, so a corrected transaction price threw away four confirmed
+ * texts that could not have changed — and made the F-4 gate demand they be
+ * read again. The subset comes from `PROSE_SECTION_FACTS`, which the prompt
+ * files pin.
  */
-export function currentProseFactsHash(input: ProseFactsInput): string {
+export function currentSectionFactsHash(section: ProseSection, input: ProseFactsInput): string {
+  const facts = buildProseFacts(input);
+  const subset: Partial<ProseFacts> = {};
+  for (const key of PROSE_SECTION_FACTS[section]) {
+    if (facts[key] !== undefined) (subset as Record<string, unknown>)[key] = facts[key];
+  }
   return sha256Canonical({
-    facts: buildProseFacts(input),
-    // Sorted, because the worker sorts too (`prose.py` orders the sample
-    // chronologically before halving the period). Row order is invisible to
-    // the model, so hashing it made a mere reordering of the sample look like
-    // an input change — an approval blocker on a no-op edit, clearable only by
-    // a paid regeneration that changes nothing. A fingerprint that fires on
-    // what the model cannot see teaches the appraiser to click through it.
-    transactions: [...buildProseTransactions(input.inputs.comparables)].sort((a, b) =>
-      a.data === b.data ? a.cena_m2 - b.cena_m2 : a.data < b.data ? -1 : 1,
-    ),
+    facts: subset,
+    // Sorted: the worker orders the sample chronologically before halving the
+    // period, so row order is invisible to the model.
+    transactions: SECTIONS_USING_TRANSACTIONS.has(section)
+      ? [...buildProseTransactions(input.inputs.comparables)].sort((a, b) =>
+          a.data === b.data ? a.cena_m2 - b.cena_m2 : a.data < b.data ? -1 : 1,
+        )
+      : [],
   });
 }

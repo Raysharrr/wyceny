@@ -256,14 +256,14 @@ export function applyProseProposal(v: Valuation, prose: ProseSnapshot): Valuatio
  * removes the section. Draft-only, and `wr` survives for the same F-1 reason
  * as above.
  *
- * `factsHash` and `now` are parameters, not reads: the domain neither hashes
- * nor tells the time (F-2). They are only used when the draft has no snapshot
- * yet — prose written entirely by hand.
+ * `factsHashes` and `now` are parameters, not reads: the domain neither
+ * hashes nor tells the time (F-2). They are only used when the draft has no
+ * snapshot yet — prose written entirely by hand.
  */
 export function applyProseConfirmation(
   v: Valuation,
   texts: Partial<Record<ProseSection, string>>,
-  meta: { factsHash: string; now: Date },
+  meta: { factsHashes: Partial<Record<ProseSection, string>>; now: Date },
 ): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);

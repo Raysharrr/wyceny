@@ -6,7 +6,8 @@ import {
   selectProseSections,
   type ProseFacts,
 } from "@/domain/prose";
-import { currentProseFactsHash, proseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHash, proseFactsHash } from "@/domain/prose-hash";
+import { PROSE_SECTIONS } from "@/domain/prose-snapshot";
 import { buildDocumentModel, formatNumber, formatPln } from "@/domain/document-model";
 import { computeKcs, type KcsInput, type KcsResult } from "@/domain/kcs";
 
@@ -295,13 +296,92 @@ describe("a partial sample never describes itself as a whole one (review I-1)", 
   });
 });
 
-describe("currentProseFactsHash — the fingerprint covers the transactions too (review I-2)", () => {
+describe("currentSectionFactsHash — scoped to what the section sees", () => {
+  const base = { address: ADDRESS, inputs: INPUTS };
+
+  it("a changed inspection note does NOT move the market-analysis fingerprint", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        inspection: { note: "Zupełnie inna notatka.", photos: INPUTS.inspection!.photos },
+      },
+    };
+    expect(currentSectionFactsHash("analiza_rynku", edited)).toBe(
+      currentSectionFactsHash("analiza_rynku", base),
+    );
+    expect(currentSectionFactsHash("otoczenie", edited)).not.toBe(
+      currentSectionFactsHash("otoczenie", base),
+    );
+  });
+
+  it("a changed feature rating moves ONLY standard and uzasadnienie", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        features: INPUTS.features.map((f, i) =>
+          i === 0 ? { ...f, rating: "gorsza" as const } : f,
+        ),
+      },
+    };
+    const moved = PROSE_SECTIONS.filter(
+      (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+    );
+    expect(moved.sort()).toEqual(["standard", "uzasadnienie"]);
+  });
+
+  it("changed EGiB data moves ONLY zagospodarowanie and analiza_rynku", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: { ...INPUTS, subject: { ...INPUTS.subject!, obreb: "0099 Inny Obręb" } },
+    };
+    const moved = PROSE_SECTIONS.filter(
+      (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+    );
+    expect(moved.sort()).toEqual(["analiza_rynku", "zagospodarowanie"]);
+  });
+
+  it("a changed comparable price moves ONLY the two sample-dependent sections", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        comparables: [{ ...COMPARABLES[0]!, pricePerM2: 9999 }, ...COMPARABLES.slice(1)],
+      },
+    };
+    const moved = PROSE_SECTIONS.filter(
+      (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+    );
+    expect(moved.sort()).toEqual(["analiza_rynku", "uzasadnienie"]);
+  });
+
+  it("reassigning which comparable carries which month moves the trend sections", () => {
+    // Facts stay byte-identical; only the date-to-row mapping changes, which
+    // flips the worker's deterministic trend.
+    const swapped = [
+      { ...COMPARABLES[0]!, date: COMPARABLES[1]!.date },
+      { ...COMPARABLES[1]!, date: COMPARABLES[0]!.date },
+      ...COMPARABLES.slice(2),
+    ];
+    const edited = { address: ADDRESS, inputs: { ...INPUTS, comparables: swapped } };
+    expect(currentSectionFactsHash("analiza_rynku", edited)).not.toBe(
+      currentSectionFactsHash("analiza_rynku", base),
+    );
+    expect(currentSectionFactsHash("otoczenie", edited)).toBe(
+      currentSectionFactsHash("otoczenie", base),
+    );
+  });
+});
+
+describe("currentSectionFactsHash — the fingerprint covers the transactions too (review I-2)", () => {
   /**
    * The worker injects `proba.trend_cen = price_trend(transakcje)` into the
    * facts EVERY section sees (`apps/worker/app/main.py`), so the transactions
    * are an input to the prose even though they travel outside `fakty`. A
    * fingerprint over the facts alone would call the proposals current after an
-   * edit that reverses the trend the operat asserts.
+   * edit that reverses the trend the operat asserts. `analiza_rynku` is used
+   * below because it is one of the two sections in `SECTIONS_USING_TRANSACTIONS`.
    *
    * Same prices, same areas, same month SET — only which row carries which
    * month changes. Every fact is therefore byte-identical (the date range is
@@ -331,17 +411,20 @@ describe("currentProseFactsHash — the fingerprint covers the transactions too 
   });
 
   it("…but the transactions do, so the fingerprint must differ", () => {
-    expect(currentProseFactsHash({ address: ADDRESS, inputs: falling })).not.toBe(
-      currentProseFactsHash({ address: ADDRESS, inputs: rising }),
-    );
+    expect(
+      currentSectionFactsHash("analiza_rynku", { address: ADDRESS, inputs: falling }),
+    ).not.toBe(currentSectionFactsHash("analiza_rynku", { address: ADDRESS, inputs: rising }));
   });
 
   it("is a hex sha256 and still moves when a plain fact moves", () => {
-    const hash = currentProseFactsHash({ address: ADDRESS, inputs: INPUTS });
+    const hash = currentSectionFactsHash("analiza_rynku", { address: ADDRESS, inputs: INPUTS });
 
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     expect(
-      currentProseFactsHash({ address: "ul. Klonowa 14/4, Nowogród", inputs: INPUTS }),
+      currentSectionFactsHash("analiza_rynku", {
+        address: "ul. Klonowa 14/4, Nowogród",
+        inputs: INPUTS,
+      }),
     ).not.toBe(hash);
   });
 });
@@ -478,14 +561,18 @@ describe("controller fixes after the T7 review", () => {
     // A blocker that fires on an edit the model cannot see forces a paid
     // regeneration that changes nothing — and teaches the appraiser to click
     // through the gate. `prose.py` orders the sample chronologically before
-    // halving the period, so row order is invisible downstream.
+    // halving the period, so row order is invisible downstream. Checked on
+    // `analiza_rynku`, a transaction-using section — reordering is exactly
+    // what the sort inside `currentSectionFactsHash` is meant to hide.
     const base = { address: ADDRESS, inputs: INPUTS };
     const shuffled = {
       address: ADDRESS,
       inputs: { ...INPUTS, comparables: [...COMPARABLES].reverse() },
     };
 
-    expect(currentProseFactsHash(shuffled)).toBe(currentProseFactsHash(base));
+    expect(currentSectionFactsHash("analiza_rynku", shuffled)).toBe(
+      currentSectionFactsHash("analiza_rynku", base),
+    );
   });
 
   it("a changed price still changes the fingerprint", () => {
@@ -497,8 +584,8 @@ describe("controller fixes after the T7 review", () => {
       },
     };
 
-    expect(currentProseFactsHash(edited)).not.toBe(
-      currentProseFactsHash({ address: ADDRESS, inputs: INPUTS }),
+    expect(currentSectionFactsHash("analiza_rynku", edited)).not.toBe(
+      currentSectionFactsHash("analiza_rynku", { address: ADDRESS, inputs: INPUTS }),
     );
   });
 

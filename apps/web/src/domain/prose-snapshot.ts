@@ -53,8 +53,13 @@ export type ProseSnapshot = {
    * section is left for the appraiser to write by hand.
    */
   rejected: Partial<Record<ProseSection, string[]>>;
-  /** sha256 of the facts these proposals were written from — see `prose-hash.ts`. */
-  factsHash: string;
+  /**
+   * Per-section fingerprint of the facts subset that section was written from
+   * (or last accepted against) — see `prose-hash.ts`. A section missing here
+   * reads as stale — that is how snapshots written before this change
+   * migrate: one regeneration per existing draft on the next visit to step 6.
+   */
+  factsHashes: Partial<Record<ProseSection, string>>;
   model: string;
   /** ISO timestamp — passed in by the caller, never read from the clock here (F-2). */
   generatedAt: string;
@@ -73,13 +78,17 @@ function isAppraisers(entry: Sourced<string> | undefined): entry is Sourced<stri
  * (and absent ones) are replaced. Losing accepted text would be silent and
  * irreversible, and the operat is a document with legal effects.
  *
- * The fingerprint, model and timestamp come from the INCOMING proposal even
- * when every section was preserved: keeping the old `factsHash` would leave
- * the step permanently stale, so every visit would fire — and pay for — a
- * generation whose result it then discards.
+ * The comparison is now PER SECTION, not over the whole snapshot: a global
+ * fingerprint marked every section stale whenever any input moved, so
+ * correcting one transaction price threw away four confirmed texts that
+ * could not have changed and made the F-4 gate demand they be read again.
+ * Each section's fingerprint, model and timestamp come from the INCOMING
+ * proposal even when the text was preserved: keeping the old hash would
+ * leave the step permanently stale for that section, so every visit would
+ * fire — and pay for — a generation whose result it then discards.
  *
  * That adoption is exactly why a preserved section must LOSE its `confirmed`
- * status when the fingerprint changes (review finding I-A). Without it,
+ * status when ITS fingerprint changes (review finding I-A). Without it,
  * regenerating after an input edit produced a snapshot whose every character
  * predated the edit while its fingerprint claimed otherwise — one click, at
  * full generation cost, and the F-4 staleness blocker was gone without the
@@ -88,6 +97,15 @@ function isAppraisers(entry: Sourced<string> | undefined): entry is Sourced<stri
  * same hash and finds it consistent. The text is kept (it may still be
  * perfectly good, and losing it would be the other failure) — but it goes back
  * to "to_verify", so the appraiser has to look at it against the new data.
+ *
+ * An incoming section with no hash of its own (T3: only stale/requested
+ * sections are regenerated) is read as "not moved" here — the merge cannot
+ * tell, and erring toward preservation is right for a section this run never
+ * touched. This is the opposite default from `staleProseSections`, which
+ * reads an absent hash as stale (the pre-migration case): the two functions
+ * answer different questions — "did THIS regeneration invalidate the text"
+ * versus "does the STORED snapshot still match today's facts" — and default
+ * oppositely on purpose.
  */
 export function mergeProseProposal(
   previous: ProseSnapshot | null | undefined,
@@ -95,21 +113,34 @@ export function mergeProseProposal(
 ): ProseSnapshot {
   if (!previous) return incoming;
 
-  const factsChanged = previous.factsHash !== incoming.factsHash;
   const sections: ProseSnapshot["sections"] = {};
   const rejected: ProseSnapshot["rejected"] = {};
+  const factsHashes: ProseSnapshot["factsHashes"] = {};
   for (const section of PROSE_SECTIONS) {
     const kept = previous.sections[section];
+    const incomingHash = incoming.factsHashes[section];
     if (isAppraisers(kept)) {
-      sections[section] = factsChanged
+      // The appraiser's text survives regeneration — but if the facts BEHIND
+      // THIS SECTION moved, it goes back to "to_verify": every character of
+      // it predates the edit, and the fingerprint it would inherit says
+      // otherwise.
+      const factsMoved =
+        incomingHash !== undefined && incomingHash !== previous.factsHashes[section];
+      sections[section] = factsMoved
         ? sourced(kept.value, kept.provenance.source, "to_verify")
         : kept;
+      factsHashes[section] = incomingHash ?? previous.factsHashes[section];
       // No rejection reason next to a text the appraiser wrote — `sections`
       // and `rejected` stay disjoint.
       continue;
     }
     const fresh = incoming.sections[section];
-    if (fresh) sections[section] = fresh;
+    if (fresh) {
+      sections[section] = fresh;
+      factsHashes[section] = incomingHash;
+    } else if (previous.factsHashes[section] !== undefined) {
+      factsHashes[section] = previous.factsHashes[section];
+    }
     // A rejection from the PREVIOUS run is not carried over: it explains a
     // generation that no longer describes this snapshot.
     const reason = incoming.rejected[section];
@@ -119,7 +150,7 @@ export function mergeProseProposal(
   return {
     sections,
     rejected,
-    factsHash: incoming.factsHash,
+    factsHashes,
     model: incoming.model,
     generatedAt: incoming.generatedAt,
   };
@@ -138,26 +169,31 @@ export function mergeProseProposal(
  * section survives.
  *
  * `model`/`generatedAt` describe the GENERATION and a confirm leaves them
- * alone. `factsHash` does NOT: it records the facts this text was last
- * ACCEPTED AGAINST (T7 / T6 review I-2). The F-4 gate refuses prose whose
- * fingerprint no longer matches the draft — sections stay `confirmed` when
- * the sample is edited underneath them, and `uzasadnienie` would then
- * describe a sample that no longer exists. Re-reading the text on step 6 must
- * therefore be a real way out of that blocker; keeping the generation's old
- * fingerprint would leave a paid regeneration as the only remedy. The caller
- * supplies `meta.factsHash` from the row inside its own transaction.
+ * alone. `factsHashes` does NOT: each confirmed section records the facts
+ * ITS text was last ACCEPTED AGAINST (T7 / T6 review I-2, now per section —
+ * T2). The F-4 gate refuses prose whose fingerprint no longer matches the
+ * draft — sections stay `confirmed` when the sample is edited underneath
+ * them, and `uzasadnienie` would then describe a sample that no longer
+ * exists. Re-reading the text on step 6 must therefore be a real way out of
+ * that blocker; keeping the generation's old fingerprint would leave a paid
+ * regeneration as the only remedy. The caller supplies `meta.factsHashes`
+ * (one entry per section, computed from the row inside its own transaction —
+ * `currentSectionFactsHash` needs `node:crypto`, which this leaf module must
+ * not import, see the file header).
  */
 export function confirmProseSnapshot(
   previous: ProseSnapshot | null | undefined,
   texts: Partial<Record<ProseSection, string>>,
-  meta: { factsHash: string; now: Date },
+  meta: { factsHashes: Partial<Record<ProseSection, string>>; now: Date },
 ): ProseSnapshot {
   const sections: ProseSnapshot["sections"] = {};
   const rejected: ProseSnapshot["rejected"] = {};
+  const factsHashes: ProseSnapshot["factsHashes"] = {};
   for (const section of PROSE_SECTIONS) {
     const text = (texts[section] ?? "").trim();
     if (text) {
       sections[section] = sourced(text, "rzeczoznawca", "confirmed");
+      factsHashes[section] = meta.factsHashes[section];
       continue;
     }
     const reason = previous?.rejected[section];
@@ -167,7 +203,7 @@ export function confirmProseSnapshot(
   return {
     sections,
     rejected,
-    factsHash: meta.factsHash,
+    factsHashes,
     model: previous?.model ?? "",
     generatedAt: previous?.generatedAt ?? meta.now.toISOString(),
   };
