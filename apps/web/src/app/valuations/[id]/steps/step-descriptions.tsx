@@ -12,21 +12,12 @@ import { FootNav } from "@/components/wizard/foot-nav";
 import { SectionCard } from "@/components/wizard/section-card";
 import {
   PROSE_SECTIONS,
+  PROSE_SECTION_LABEL,
   mergeProseProposal,
   type ProseSection,
   type ProseSnapshot,
 } from "@/domain/prose-snapshot";
 import type { Provenance } from "@wyceny/shared";
-
-/** Field headings, in the operat's own order (worker `prose.SECTIONS`). */
-const SECTION_LABELS: Record<ProseSection, string> = {
-  analiza_rynku: "Analiza i charakterystyka rynku",
-  opis_lokalu: "Opis lokalu — układ funkcjonalny",
-  otoczenie: "Charakterystyka bezpośredniego otoczenia",
-  zagospodarowanie: "Opis zagospodarowania terenu",
-  standard: "Opis standardu wykończenia",
-  uzasadnienie: "Uzasadnienie wyniku — pozycja na tle próby",
-};
 
 /**
  * What a section would need before the automat is allowed to attempt it.
@@ -80,16 +71,23 @@ function generateOnce(valuationId: string): Promise<ProposeProseResult> {
   return started;
 }
 
+/**
+ * The badge states the F-4 gate's own two questions: whose text is this, and
+ * has it been accepted. Both matter — a new version inherits the appraiser's
+ * own text with its confirmation reset (`newVersionOf`, T7), and a badge
+ * reading "potwierdzone" there would contradict the blocker on step 7.
+ */
 function ProseProvenanceBadge({ provenance }: { provenance: Provenance | undefined }) {
   if (!provenance) return null;
-  if (provenance.source === "ai") {
+  const who = provenance.source === "ai" ? "AI" : "Rzeczoznawca";
+  if (provenance.status !== "confirmed") {
     return (
       <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-500">
-        AI — do weryfikacji
+        {who} — do weryfikacji
       </Badge>
     );
   }
-  return <Badge variant="secondary">Rzeczoznawca — potwierdzone</Badge>;
+  return <Badge variant="secondary">{who} — potwierdzone</Badge>;
 }
 
 export type StepDescriptionsProps = {
@@ -294,7 +292,7 @@ function ProseEditors({
               <div key={section} className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between gap-3">
                   <label htmlFor={`prose-${section}`} className="text-sm font-medium">
-                    {SECTION_LABELS[section]}
+                    {PROSE_SECTION_LABEL[section]}
                   </label>
                   <span data-testid={`prose-badge-${section}`}>
                     <ProseProvenanceBadge provenance={entry?.provenance} />

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
-import { approvableInput } from "./fixtures/valuation-inputs";
+import type { ProseSnapshot } from "../src/domain/prose-snapshot";
+import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
 
 /**
  * Focused unit test of `approveValuation`'s status guard (final review,
@@ -118,7 +119,10 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     address: "ul. Kościelna 33A, Poznań",
     area: 71.63,
     wr: 1_044_400,
-    inputs: approvableInput("test-user").inputs,
+    inputs: {
+      ...approvableInput("test-user").inputs!,
+      prose: confirmedProseFor("ul. Kościelna 33A, Poznań", approvableInput("test-user").inputs!),
+    },
     amountInWords: null,
     docUrl: null,
     docxUrl: null,
@@ -192,6 +196,9 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
       expect.anything(),
       { mapsSkipped: true },
       draft.inputs,
+      // FR-6: the app layer's kill-switch answer travels into the transaction
+      // so the in-tx gate (ADR-012) applies the same rule as the fail-fast one.
+      { requireProse: true },
     );
     const mapaCalls = storagePutMock.mock.calls.filter(([key]) => key.startsWith("mapa-"));
     expect(mapaCalls).toHaveLength(0);
@@ -236,6 +243,12 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
     wr: 900_000,
     inputs: {
       ...approvableInput("test-user").inputs!,
+      prose: confirmedProseFor(
+        "ul. Fotograficzna 5, Poznań",
+        // The manifest is not part of the prose facts, so the base inputs
+        // give the same fingerprint as the draft below.
+        approvableInput("test-user").inputs!,
+      ),
       inspection: {
         note: null,
         photos: {
@@ -326,13 +339,178 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
   });
 });
 
+/**
+ * Prose gate (FR-6, Task 7). The UI cannot produce any of these states — the
+ * step-6 submit stamps every non-blank field `rzeczoznawca`/`confirmed` — so
+ * each one is a payload that skipped the UI and called the Server Action
+ * directly. Same class as `assign-provenance.test.ts`'s "tampering is
+ * ignored": a client-claimed status buys nothing.
+ */
+describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
+  const draftBase: Valuation = {
+    id: "valuation-prose-1",
+    address: "ul. Opisowa 7, Poznań",
+    area: 55,
+    wr: 700_000,
+    inputs: {
+      ...approvableInput("test-user").inputs!,
+      prose: confirmedProseFor("ul. Opisowa 7, Poznań", approvableInput("test-user").inputs!),
+    },
+    amountInWords: null,
+    docUrl: null,
+    docxUrl: null,
+    purpose: "sprzedaz",
+    kwNumber: "KW-TEST-1",
+    client: "Jan Testowy",
+    inspectionDate: "2026-07-10",
+    ownerId: "test-user",
+    status: "in_progress",
+    approvedAt: null,
+    signedAt: null,
+    supersedesId: null,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+
+  const withProse = (prose: ProseSnapshot | null): Valuation => ({
+    ...draftBase,
+    inputs: { ...draftBase.inputs!, prose },
+  });
+
+  /** Prose that describes THIS draft — the only kind that clears the gate. */
+  const currentProse = () =>
+    confirmedProseFor(draftBase.address, approvableInput("test-user").inputs!);
+
+  beforeEach(() => {
+    getMock.mockReset();
+    approveMock.mockReset();
+    amountInWordsMock.mockReset();
+    convertToPdfMock.mockReset();
+    storagePutMock.mockReset();
+    storageDeleteMock.mockReset();
+    fetchMapsMock.mockReset();
+    amountInWordsMock.mockResolvedValue("siedemset tysięcy złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    approveMock.mockResolvedValue({ ...draftBase, status: "approved" });
+  });
+
+  it("approves a draft whose six sections the appraiser accepted", async () => {
+    getMock.mockResolvedValue(draftBase);
+
+    expect(await approveValuation(draftBase.id)).toBeUndefined();
+    expect(approveMock).toHaveBeenCalled();
+  });
+
+  it("refuses a draft that never reached step 6 — no document is generated", async () => {
+    getMock.mockResolvedValue(withProse(null));
+
+    const result = await approveValuation(draftBase.id);
+
+    expect(result).toEqual({
+      error: "Zatwierdzenie zablokowane — Opisy sekcji nie zostały wygenerowane.",
+    });
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(storagePutMock).not.toHaveBeenCalled();
+    expect(convertToPdfMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a payload that kept the automat's text and skipped the appraiser (tampering)", async () => {
+    const prose = currentProse();
+    prose.sections.analiza_rynku = {
+      value: "Propozycja automatu, nigdy nieprzeczytana — dane testowe.",
+      provenance: { source: "ai", status: "to_verify" },
+    };
+    getMock.mockResolvedValue(withProse(prose));
+
+    const result = await approveValuation(draftBase.id);
+
+    expect(result).toEqual({
+      error: "Zatwierdzenie zablokowane — Analiza i charakterystyka rynku — do weryfikacji.",
+    });
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(storagePutMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a payload that self-declares confirmed over an empty text (tampering)", async () => {
+    const prose = currentProse();
+    prose.sections.uzasadnienie = {
+      value: "",
+      provenance: { source: "rzeczoznawca", status: "confirmed" },
+    };
+    getMock.mockResolvedValue(withProse(prose));
+
+    const result = await approveValuation(draftBase.id);
+
+    expect(result).toEqual({
+      error:
+        "Zatwierdzenie zablokowane — Uzasadnienie wyniku — pozycja na tle próby — brak tekstu.",
+    });
+    expect(approveMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses prose that describes a superseded sample, even with every section confirmed (T6 review, I-2)", async () => {
+    // The appraiser confirmed six sections, then went back and edited the
+    // sample. Nothing about the snapshot's provenance changed — only the
+    // facts underneath it did, which is exactly what the stored fingerprint
+    // stops matching. `confirmedProse()` carries a fingerprint from some
+    // earlier state of the draft.
+    getMock.mockResolvedValue(withProse(confirmedProse()));
+
+    const result = await approveValuation(draftBase.id);
+
+    expect(result).toEqual({
+      error:
+        "Zatwierdzenie zablokowane — Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.",
+    });
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(storagePutMock).not.toHaveBeenCalled();
+  });
+
+  it("hands the SAME requirement to the repo, so the in-transaction gate sees it too", async () => {
+    getMock.mockResolvedValue(draftBase);
+
+    await approveValuation(draftBase.id);
+
+    expect(approveMock).toHaveBeenCalledWith(
+      draftBase.id,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      draftBase.inputs,
+      { requireProse: true },
+    );
+  });
+
+  it("NEXT_PUBLIC_PROSE=off: the kill switch removes the requirement entirely (CI smoke)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PROSE", "off");
+    getMock.mockResolvedValue(withProse(null));
+
+    expect(await approveValuation(draftBase.id)).toBeUndefined();
+    expect(approveMock).toHaveBeenCalledWith(
+      draftBase.id,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      expect.anything(),
+      { requireProse: false },
+    );
+    vi.unstubAllEnvs();
+  });
+});
+
 describe("approveValuation — InputsChangedError (approve-window drift guard, final review)", () => {
   const draftForDriftTest: Valuation = {
     id: "valuation-drift-1",
     address: "ul. Dryfująca 1, Poznań",
     area: 71.63,
     wr: 1_044_400,
-    inputs: approvableInput("test-user").inputs,
+    inputs: {
+      ...approvableInput("test-user").inputs!,
+      prose: confirmedProseFor("ul. Dryfująca 1, Poznań", approvableInput("test-user").inputs!),
+    },
     amountInWords: null,
     docUrl: null,
     docxUrl: null,

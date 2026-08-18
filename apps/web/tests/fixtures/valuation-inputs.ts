@@ -1,6 +1,44 @@
 import type { KcsInput } from "../../src/domain/kcs";
 import type { InputsProvenance } from "../../src/domain/provenance";
+import { currentProseFactsHash } from "../../src/domain/prose-hash";
+import { PROSE_SECTIONS, type ProseSnapshot } from "../../src/domain/prose-snapshot";
 import type { NewValuationInput } from "../../src/ports/valuation";
+
+/**
+ * A prose snapshot in the ONLY shape that clears the T7 gate: all six
+ * sections written, every one `rzeczoznawca`/`confirmed` — i.e. what
+ * `confirmProseSnapshot` leaves behind after the appraiser submits step 6.
+ * Fictional text (F-9): no sentence here describes a real property.
+ */
+export function confirmedProse(factsHash = "0".repeat(64)): ProseSnapshot {
+  return {
+    sections: Object.fromEntries(
+      PROSE_SECTIONS.map((section) => [
+        section,
+        {
+          value: `Tekst sekcji ${section} — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.`,
+          provenance: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+        },
+      ]),
+    ) as ProseSnapshot["sections"],
+    rejected: {},
+    factsHash,
+    model: "test-model",
+    generatedAt: "2026-07-10T09:00:00.000Z",
+  };
+}
+
+/**
+ * The same snapshot, but carrying the fingerprint of the draft it is attached
+ * to — i.e. prose that describes THESE facts. Anything else now reads as
+ * stale to the F-4 gate (T6 review, I-2), which is the whole point: a fixture
+ * that clears the gate has to be one the appraiser could actually have
+ * produced. `inputs.prose` itself is not part of the fingerprint, so passing
+ * the inputs without it is exactly right.
+ */
+export function confirmedProseFor(address: string, inputs: KcsInput): ProseSnapshot {
+  return confirmedProse(currentProseFactsHash({ address, inputs }));
+}
 
 /**
  * Shared `NewValuationInput` fixture (moved from `valuation-repo.test.ts`,

@@ -221,6 +221,27 @@ describe("auto-generation on entering the step", () => {
       "Rzeczoznawca — potwierdzone",
     );
   });
+
+  it("prose inherited by a new version reads 'do weryfikacji' — the gate blocks it (T7)", () => {
+    // The state `newVersionOf` now creates: the appraiser's own text, carried
+    // over, with its confirmation reset. A badge saying "potwierdzone" here
+    // would contradict the blocker waiting on the very next step.
+    const inherited = snapshot({
+      sections: {
+        opis_lokalu: {
+          value: HUMAN_TEXT,
+          provenance: { source: "rzeczoznawca", status: "to_verify" },
+        },
+      },
+    });
+
+    renderStep({ prose: inherited, upToDate: true });
+
+    expect(screen.getByTestId("prose-badge-opis_lokalu")).toHaveTextContent(
+      "Rzeczoznawca — do weryfikacji",
+    );
+    expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue(HUMAN_TEXT);
+  });
 });
 
 describe("sections the automat cannot fill — honest silence", () => {

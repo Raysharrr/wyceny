@@ -4,9 +4,11 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
-import { NotSignableError } from "../src/domain/valuation";
+import { ApprovalBlockedError, NotSignableError } from "../src/domain/valuation";
 import type { SessionUser } from "../src/ports/valuation";
-import { approvableInput } from "./fixtures/valuation-inputs";
+import { approvalGate } from "../src/domain/provenance";
+import { PROSE_SECTIONS } from "../src/domain/prose-snapshot";
+import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
 
 /**
  * F-7 (ADR-011, adversarial): editing a signed valuation is REFUSED on every
@@ -214,6 +216,177 @@ describe("F-7 adapter path — createNewVersion", () => {
     await expect(repo.createNewVersion(draft.id, ownerUser)).rejects.toThrow(/not signed/);
     const signedId = await signedFixture();
     expect(await repo.createNewVersion(signedId, strangerUser)).toBeNull();
+  });
+});
+
+/**
+ * FR-6 (Task 7): the operat's prose lives inside `inputs`, so it is covered by
+ * the write-once machinery already here — no new column, no new trigger, no
+ * DDL. This block proves that rather than assuming it, and marks where the
+ * protection actually starts.
+ */
+describe("F-7 + FR-6 — the confirmed prose is frozen with everything else", () => {
+  async function draftWithProse() {
+    const base = approvableInput(OWNER);
+    const prose = confirmedProseFor(base.address, base.inputs!);
+    return repo.create({ ...base, inputs: { ...base.inputs!, prose } });
+  }
+
+  it("the in-transaction gate itself refuses a draft without confirmed prose", async () => {
+    // ADR-012: the gate is re-run inside the write transaction, not only in
+    // the action — so a caller that skips the action gains nothing.
+    const bare = await repo.create(approvableInput(OWNER));
+    await expect(
+      repo.approve(bare.id, ownerUser, undefined, undefined, undefined, undefined, {
+        requireProse: true,
+      }),
+    ).rejects.toThrow(ApprovalBlockedError);
+
+    const withProse = await draftWithProse();
+    const approved = await repo.approve(
+      withProse.id,
+      ownerUser,
+      {
+        docUrl: `/api/docs/operat-${withProse.id}.pdf`,
+        docxUrl: `/api/docs/operat-${withProse.id}.docx`,
+      },
+      undefined,
+      undefined,
+      undefined,
+      { requireProse: true },
+    );
+    expect(approved!.status).toBe("approved");
+  });
+
+  it("the in-transaction gate derives the fingerprint ITSELF — a caller cannot walk stale prose past it", async () => {
+    // Prose confirmed against some earlier state of the draft. The action
+    // would refuse it; this goes straight to the repo, which recomputes the
+    // fingerprint from its own row (ADR-012) instead of taking anyone's word.
+    const base = approvableInput(OWNER);
+    const stale = await repo.create({
+      ...base,
+      inputs: { ...base.inputs!, prose: confirmedProse("9".repeat(64)) },
+    });
+
+    await expect(
+      repo.approve(stale.id, ownerUser, undefined, undefined, undefined, undefined, {
+        requireProse: true,
+      }),
+    ).rejects.toThrow(ApprovalBlockedError);
+
+    // …and one pass through step 6 — no regeneration, the same six texts —
+    // clears it, because the confirm re-stamps the fingerprint (T7).
+    const texts = Object.fromEntries(
+      PROSE_SECTIONS.map((section) => [section, confirmedProse().sections[section]!.value]),
+    );
+    await repo.confirmProse(stale.id, ownerUser, texts);
+
+    const approved = await repo.approve(
+      stale.id,
+      ownerUser,
+      {
+        docUrl: `/api/docs/operat-${stale.id}.pdf`,
+        docxUrl: `/api/docs/operat-${stale.id}.docx`,
+      },
+      undefined,
+      undefined,
+      undefined,
+      { requireProse: true },
+    );
+    expect(approved!.status).toBe("approved");
+  });
+
+  it("a new version inherits the text but NOT the confirmation (through the real jsonb round trip)", async () => {
+    // The domain rule has its own unit test; this one walks the only
+    // production caller — createNewVersion — so the reset is proven to
+    // survive the write and the read back, not just the pure function.
+    const v = await draftWithProse();
+    await repo.approve(v.id, ownerUser, {
+      docUrl: `/api/docs/operat-${v.id}.pdf`,
+      docxUrl: `/api/docs/operat-${v.id}.docx`,
+    });
+    await repo.sign(v.id, ownerUser, {
+      docUrl: `/api/docs/operat-${v.id}-signed.pdf`,
+      docxUrl: `/api/docs/operat-${v.id}-signed.docx`,
+      sha256Docx: "c".repeat(64),
+      sha256Pdf: "d".repeat(64),
+    });
+
+    const successor = await repo.createNewVersion(v.id, ownerUser);
+    const inherited = successor!.inputs!.prose!;
+    const original = confirmedProse(); // same six texts, fingerprint irrelevant here
+
+    for (const section of PROSE_SECTIONS) {
+      expect(inherited.sections[section]!.provenance).toEqual({
+        source: "rzeczoznawca",
+        status: "to_verify",
+      });
+      expect(inherited.sections[section]!.value).toBe(original.sections[section]!.value);
+    }
+    // …and the successor is refused until the appraiser walks step 6 again.
+    const gate = approvalGate(successor!.inputs!, { requireProse: true });
+    expect(gate.ok).toBe(false);
+    if (!gate.ok) {
+      expect(gate.blockers.map((b) => b.path)).toEqual(
+        expect.arrayContaining(PROSE_SECTIONS.map((s) => `prose.${s}`)),
+      );
+    }
+  });
+
+  it("survives approve and sign byte-for-byte, and no mutation can touch it afterwards", async () => {
+    const v = await draftWithProse();
+    const before = JSON.stringify(v.inputs!.prose);
+
+    await repo.approve(v.id, ownerUser, {
+      docUrl: `/api/docs/operat-${v.id}.pdf`,
+      docxUrl: `/api/docs/operat-${v.id}.docx`,
+    });
+    // An approved operat already refuses further prose writes — but that
+    // refusal comes from the DOMAIN (`assertDraft`), not from the trigger.
+    await expect(repo.confirmProse(v.id, ownerUser, { standard: "Podmiana." })).rejects.toThrow(
+      /not a draft/,
+    );
+
+    await repo.sign(v.id, ownerUser, {
+      docUrl: `/api/docs/operat-${v.id}-signed.pdf`,
+      docxUrl: `/api/docs/operat-${v.id}-signed.docx`,
+      sha256Docx: "a".repeat(64),
+      sha256Pdf: "b".repeat(64),
+    });
+
+    const rows = await db.execute(sql`SELECT inputs FROM "valuation" WHERE id = ${v.id}`);
+    const after = (rows.rows[0] as { inputs: { prose: unknown } }).inputs.prose;
+    expect(JSON.stringify(after)).toBe(before);
+
+    // Signed: the trigger takes over, so even raw SQL cannot rewrite the text.
+    await expectRejectionMatching(
+      db.execute(
+        sql`UPDATE "valuation" SET inputs = jsonb_set(inputs, '{prose,sections,standard,value}', '"Podmieniony tekst."') WHERE id = ${v.id}`,
+      ),
+      /write-once/,
+    );
+  });
+
+  it("KNOWN LIMIT: before signing, only application code protects an approved operat", async () => {
+    // The write-once trigger fires on status='signed'. An approved-but-unsigned
+    // row is guarded by `assertDraft` and the action's status check alone — raw
+    // SQL still goes through. Named here on purpose (Slice 13 limitation, not a
+    // regression) so nobody reads the block above as more than it is.
+    const v = await draftWithProse();
+    await repo.approve(v.id, ownerUser, {
+      docUrl: `/api/docs/operat-${v.id}.pdf`,
+      docxUrl: `/api/docs/operat-${v.id}.docx`,
+    });
+
+    await db.execute(
+      sql`UPDATE "valuation" SET inputs = jsonb_set(inputs, '{prose,sections,standard,value}', '"Podmieniony poza aplikacją."') WHERE id = ${v.id}`,
+    );
+
+    const rows = await db.execute(sql`SELECT inputs FROM "valuation" WHERE id = ${v.id}`);
+    const prose = (
+      rows.rows[0] as { inputs: { prose: { sections: Record<string, { value: string }> } } }
+    ).inputs.prose;
+    expect(prose.sections.standard.value).toBe("Podmieniony poza aplikacją.");
   });
 });
 

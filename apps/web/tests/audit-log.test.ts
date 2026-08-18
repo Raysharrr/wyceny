@@ -169,8 +169,12 @@ describe("audit_log per mutation", () => {
         provenance: { source: "rzeczoznawca", status: "confirmed" },
       },
     });
-    // The generation's own fingerprint survives the confirm.
-    expect(saved?.inputs?.prose?.factsHash).toBe("a".repeat(64));
+    // T7 (T6 review, I-2): the confirm re-stamps the fingerprint with the
+    // facts the appraiser accepted the text against — computed by the adapter
+    // from the row inside this transaction, so it is NOT the "a"*64 the
+    // generation carried.
+    expect(saved?.inputs?.prose?.factsHash).not.toBe("a".repeat(64));
+    expect(saved?.inputs?.prose?.factsHash).toMatch(/^[0-9a-f]{64}$/);
     const rows = await auditRows(v.id);
     expect(rows.map((r) => r.action)).toEqual(["created", "prose_generated", "prose_confirmed"]);
     // FR-12: the audit says WHICH sections the appraiser took responsibility

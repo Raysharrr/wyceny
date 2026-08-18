@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { httpProseProposal, PROSE_WORKER_RESPONDED_PREFIX } from "@/adapters/prose-http";
+import {
+  httpProseProposal,
+  PROSE_WORKER_RESPONDED_PREFIX,
+  ProseWorkerDetailError,
+} from "@/adapters/prose-http";
 
 /**
  * Wire contract for the worker's `POST /prose-proposal` (T3).
@@ -117,6 +121,66 @@ describe("PortProseProposal contract", () => {
     expect((error as Error).message).not.toContain("[object Object]");
     expect((error as Error).message).toContain(PROSE_WORKER_RESPONDED_PREFIX);
     expect((error as Error).message).toContain("422");
+  });
+
+  /**
+   * Which failures are the worker TALKING TO A HUMAN, and which are our own
+   * plumbing? The caller must not have to guess from the wording (T5 review):
+   * only a Polish `detail` gets the dedicated type, everything else — a status
+   * line, a parser blowing up on a proxy's HTML — stays an ordinary Error.
+   */
+  it("marks the worker's Polish detail with its own error type", async () => {
+    mockFetch({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: async () => ({ detail: "Nieprawidłowy lub wygasły token — odśwież stronę." }),
+    });
+
+    const port = httpProseProposal("http://worker.test");
+    const error = await port
+      .fetchProposal({ ...REQUEST, sections: [...REQUEST.sections] })
+      .catch((e: Error) => e);
+
+    expect(error).toBeInstanceOf(ProseWorkerDetailError);
+    expect((error as Error).message).toBe("Nieprawidłowy lub wygasły token — odśwież stronę.");
+  });
+
+  it("a 422 list detail is NOT the worker talking to a human", async () => {
+    mockFetch({
+      ok: false,
+      status: 422,
+      statusText: "Unprocessable Entity",
+      json: async () => ({ detail: [{ msg: "Input should be a valid number" }] }),
+    });
+
+    const port = httpProseProposal("http://worker.test");
+    const error = await port
+      .fetchProposal({ ...REQUEST, sections: [...REQUEST.sections] })
+      .catch((e: Error) => e);
+
+    expect(error).not.toBeInstanceOf(ProseWorkerDetailError);
+  });
+
+  it("a 200 carrying a proxy's HTML is NOT the worker talking to a human", async () => {
+    // The success path parses the body too; a gateway answering 200 with HTML
+    // makes it throw a message quoting that HTML — internal address included.
+    // Fictional host (F-9).
+    mockFetch({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError(
+          `Unexpected token '<', "<html><body>502 — worker-internal.invalid:8000</body></html>" is not valid JSON`,
+        );
+      },
+    });
+
+    const port = httpProseProposal("http://worker.test");
+    const error = await port
+      .fetchProposal({ ...REQUEST, sections: [...REQUEST.sections] })
+      .catch((e: Error) => e);
+
+    expect(error).not.toBeInstanceOf(ProseWorkerDetailError);
   });
 
   it("no JSON body at all: falls back to the status line", async () => {

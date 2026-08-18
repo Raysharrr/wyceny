@@ -25,6 +25,21 @@ export const PROSE_SECTIONS = [
 
 export type ProseSection = (typeof PROSE_SECTIONS)[number];
 
+/**
+ * The section's own heading, in the operat's Polish. One map, two readers:
+ * the step-6 field labels and the F-4 gate's blocker messages. Two copies
+ * would let the appraiser be blocked on "Otoczenie" while the screen calls
+ * the field something else.
+ */
+export const PROSE_SECTION_LABEL: Record<ProseSection, string> = {
+  analiza_rynku: "Analiza i charakterystyka rynku",
+  opis_lokalu: "Opis lokalu — układ funkcjonalny",
+  otoczenie: "Charakterystyka bezpośredniego otoczenia",
+  zagospodarowanie: "Opis zagospodarowania terenu",
+  standard: "Opis standardu wykończenia",
+  uzasadnienie: "Uzasadnienie wyniku — pozycja na tle próby",
+};
+
 export type ProseSnapshot = {
   /**
    * Text per section. A proposal always arrives as
@@ -108,10 +123,15 @@ export function mergeProseProposal(
  * editor state — a missing key reads as blank — so after a confirm no `ai`
  * section survives.
  *
- * `factsHash`/`model`/`generatedAt` describe the GENERATION, so a confirm
- * leaves them alone. Prose written by hand with no generation behind it gets
- * the current fingerprint instead, or the step would look stale forever and
- * keep triggering generations it does not need.
+ * `model`/`generatedAt` describe the GENERATION and a confirm leaves them
+ * alone. `factsHash` does NOT: it records the facts this text was last
+ * ACCEPTED AGAINST (T7 / T6 review I-2). The F-4 gate refuses prose whose
+ * fingerprint no longer matches the draft — sections stay `confirmed` when
+ * the sample is edited underneath them, and `uzasadnienie` would then
+ * describe a sample that no longer exists. Re-reading the text on step 6 must
+ * therefore be a real way out of that blocker; keeping the generation's old
+ * fingerprint would leave a paid regeneration as the only remedy. The caller
+ * supplies `meta.factsHash` from the row inside its own transaction.
  */
 export function confirmProseSnapshot(
   previous: ProseSnapshot | null | undefined,
@@ -133,7 +153,7 @@ export function confirmProseSnapshot(
   return {
     sections,
     rejected,
-    factsHash: previous?.factsHash ?? meta.factsHash,
+    factsHash: meta.factsHash,
     model: previous?.model ?? "",
     generatedAt: previous?.generatedAt ?? meta.now.toISOString(),
   };

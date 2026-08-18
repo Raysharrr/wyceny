@@ -1,4 +1,4 @@
-import { approvalGate, type Blocker } from "./provenance";
+import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
 import { computeKcs, type Comparable, type KcsInput } from "./kcs";
 import type { InputsProvenance } from "./provenance";
@@ -371,17 +371,22 @@ export function applyCalculationConfirm(v: Valuation): Valuation {
  * missing them is refused. When `docs` are supplied (the approve action has
  * generated + stored the operat), the returned Valuation carries the URLs —
  * this is the only place `docUrl`/`docxUrl` are set on approval.
+ *
+ * `gateOptions` carries what only the app layer can know — today whether the
+ * prose sections are part of the invariant (FR-6 kill switch). It is passed
+ * through, never derived here: this module reads no env (F-10).
  */
 export function approveValuation(
   v: Valuation,
   now: Date,
   docs?: { docUrl: string; docxUrl: string },
+  gateOptions?: GateOptions,
 ): Valuation {
   assertDraft(v);
   if (!v.inputs) {
     throw new ApprovalBlockedError([{ path: "inputs", label: "Brak danych wejściowych operatu." }]);
   }
-  const gate = approvalGate(v.inputs);
+  const gate = approvalGate(v.inputs, gateOptions);
   const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(v)];
   if (blockers.length > 0) {
     throw new ApprovalBlockedError(blockers);
@@ -461,6 +466,28 @@ function resetProvenanceEntry<T extends { source?: string; status?: string }>(en
 }
 
 /**
+ * Prose in a new version (FR-6): the TEXT survives, the confirmation does
+ * not. Unlike the provenance map above, "rzeczoznawca" earns no exemption
+ * here — after step 6 every section IS rzeczoznawca/confirmed, so keeping
+ * them would mean the successor inherits paragraphs marked as read and
+ * accepted that nobody read in THIS version, and the F-4 gate would wave
+ * them into a signed operat. Dropping the snapshot instead would destroy
+ * handwritten text and buy a fresh (paid) generation, so the appraiser
+ * keeps the text and owes it one more reading.
+ */
+function resetProse(prose: ProseSnapshot): ProseSnapshot {
+  const sections: ProseSnapshot["sections"] = {};
+  for (const [section, entry] of Object.entries(prose.sections) as Array<
+    [ProseSection, ProseSnapshot["sections"][ProseSection]]
+  >) {
+    if (entry) {
+      sections[section] = { ...entry, provenance: { ...entry.provenance, status: "to_verify" } };
+    }
+  }
+  return { ...prose, sections };
+}
+
+/**
  * Versioning (NFR-3): copies a SIGNED valuation into a fresh draft that
  * supersedes it. Full confirm → approve → sign cycle starts over.
  */
@@ -480,6 +507,7 @@ export function newVersionOf(v: Valuation): Omit<Valuation, "id" | "createdAt"> 
               ]),
             ) as InputsProvenance)
           : v.inputs.provenance,
+        ...(v.inputs.prose ? { prose: resetProse(v.inputs.prose) } : {}),
       }
     : v.inputs;
   return {

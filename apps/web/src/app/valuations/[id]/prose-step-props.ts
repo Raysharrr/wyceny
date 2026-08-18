@@ -1,5 +1,6 @@
 import { buildProseFacts, selectProseSections } from "@/domain/prose";
 import { currentProseFactsHash } from "@/domain/prose-hash";
+import { proseEnabled } from "@/lib/prose-enabled";
 import type { StepDescriptionsProps } from "./steps/step-descriptions";
 import type { Valuation } from "@/ports/valuation";
 
@@ -18,7 +19,7 @@ import type { Valuation } from "@/ports/valuation";
  */
 export function proseStepProps(v: Valuation): Omit<StepDescriptionsProps, "valuationId"> {
   const prose = v.inputs?.prose ?? null;
-  if (process.env.NEXT_PUBLIC_PROSE === "off" || !v.inputs) {
+  if (!proseEnabled() || !v.inputs) {
     return { prose, upToDate: true, generatableSections: [] };
   }
   const input = { address: v.address, inputs: v.inputs };

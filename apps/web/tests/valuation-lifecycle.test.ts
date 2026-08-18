@@ -13,7 +13,9 @@ import {
 } from "../src/domain/valuation";
 import type { Valuation } from "../src/ports/valuation";
 import type { KcsInput } from "../src/domain/kcs";
-import type { InputsProvenance } from "../src/domain/provenance";
+import { approvalGate, type InputsProvenance } from "../src/domain/provenance";
+import { confirmProseSnapshot, PROSE_SECTIONS } from "../src/domain/prose-snapshot";
+import { confirmedProse } from "./fixtures/valuation-inputs";
 
 const confirmedScalars: InputsProvenance = {
   address: { source: "rzeczoznawca", status: "confirmed" },
@@ -371,6 +373,108 @@ describe("newVersionOf (NFR-3)", () => {
 
   it("refuses a non-signed source", () => {
     expect(() => newVersionOf(approvedValuation)).toThrow(/signed/);
+  });
+
+  /**
+   * Prose (FR-6, Task 7). Every other snapshot loses its confirmations in a
+   * new version; prose must too. Without this the successor would inherit
+   * paragraphs stamped "confirmed by the appraiser" that the appraiser never
+   * saw in THIS version — and the F-4 gate would let them into a signed
+   * operat without a single click. The TEXT survives (deleting it would
+   * destroy handwritten work and buy a fresh generation); only the
+   * confirmation does not.
+   */
+  it("resets every prose section to to_verify, keeping the text and its source", () => {
+    const signed = signValuation(
+      {
+        ...approvedValuation,
+        inputs: { ...approvedValuation.inputs!, prose: confirmedProse() },
+      },
+      new Date(),
+    );
+    const draft = newVersionOf(signed);
+    const sections = draft.inputs!.prose!.sections;
+
+    for (const section of PROSE_SECTIONS) {
+      expect(sections[section]!.provenance).toEqual({
+        source: "rzeczoznawca",
+        status: "to_verify",
+      });
+      expect(sections[section]!.value).toBe(confirmedProse().sections[section]!.value);
+    }
+    // The generation metadata is not a confirmation — it describes which facts
+    // the text was written from and stays as it is.
+    expect(draft.inputs!.prose!.factsHash).toBe(confirmedProse().factsHash);
+  });
+
+  it("the reset actually blocks the successor's approval (this is the point of it)", () => {
+    const signed = signValuation(
+      {
+        ...approvedValuation,
+        inputs: {
+          ...confirmSampleProvenance(draftWith(rcnInputs())).inputs!,
+          prose: confirmedProse(),
+        },
+        status: "approved" as const,
+      },
+      new Date(),
+    );
+    const draft = newVersionOf(signed);
+
+    const gate = approvalGate(draft.inputs!, { requireProse: true });
+    expect(gate.ok).toBe(false);
+    if (!gate.ok) {
+      // The sample and the geocode are re-verified too (the pre-existing
+      // rule), so this asserts the prose blockers are all THERE, not that
+      // they are the only ones.
+      expect(gate.blockers.map((b) => b.path)).toEqual(
+        expect.arrayContaining(PROSE_SECTIONS.map((s) => `prose.${s}`)),
+      );
+    }
+  });
+
+  it("re-reading the inherited text is enough to clear the gate again — no regeneration needed", () => {
+    // The way out has to be one pass through step 6, not a paid round trip:
+    // the editors are seeded from `sections[…].value`, and the submit
+    // re-stamps whatever the appraiser left there.
+    const signed = signValuation(
+      {
+        ...approvedValuation,
+        inputs: {
+          ...confirmSampleProvenance(draftWith(rcnInputs())).inputs!,
+          prose: confirmedProse(),
+        },
+        status: "approved" as const,
+      },
+      new Date(),
+    );
+    const successor = newVersionOf(signed);
+    const inherited = successor.inputs!.prose!;
+
+    // Exactly what step 6 submits: the text already in the fields.
+    const texts = Object.fromEntries(
+      PROSE_SECTIONS.map((s) => [s, inherited.sections[s]!.value]),
+    ) as Record<(typeof PROSE_SECTIONS)[number], string>;
+    const reconfirmed = confirmProseSnapshot(inherited, texts, {
+      factsHash: "1".repeat(64),
+      now: new Date("2026-08-18T09:00:00.000Z"),
+    });
+
+    const gate = approvalGate({ ...successor.inputs!, prose: reconfirmed }, { requireProse: true });
+    // The whole prose group is gone — not just one section, and not merely
+    // "some other path shape appeared instead".
+    const proseBlockers = (gate.ok ? [] : gate.blockers.map((b) => b.path)).filter((p) =>
+      p.startsWith("prose"),
+    );
+    expect(proseBlockers).toEqual([]);
+    for (const section of PROSE_SECTIONS) {
+      expect(reconfirmed.sections[section]!.provenance.status).toBe("confirmed");
+    }
+  });
+
+  it("a valuation that never had prose survives the copy untouched", () => {
+    const signed = signValuation(approvedValuation, new Date());
+    expect(newVersionOf(signed).inputs!.prose).toBeUndefined();
   });
 });
 

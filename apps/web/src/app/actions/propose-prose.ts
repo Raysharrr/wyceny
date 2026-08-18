@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { proseProposal, valuationRepository } from "@/app/valuations/_deps";
-import { PROSE_WORKER_RESPONDED_PREFIX } from "@/adapters/prose-http";
+import { ProseWorkerDetailError } from "@/adapters/prose-http";
 import {
   buildProseFacts,
   buildProseTransactions,
@@ -12,6 +12,7 @@ import {
   selectProseSections,
 } from "@/domain/prose";
 import { currentProseFactsHash } from "@/domain/prose-hash";
+import { proseEnabled } from "@/lib/prose-enabled";
 import { mintWorkerToken } from "@/lib/worker-token";
 import type { ProseSnapshot } from "@/domain/prose-snapshot";
 
@@ -24,6 +25,7 @@ const NO_FACTS =
 const NOT_CONFIGURED =
   "Generowanie opisów nie jest skonfigurowane — skontaktuj się z administratorem.";
 const GENERIC = "Nie udało się wygenerować opisów — spróbuj ponownie.";
+const DISABLED = "Generowanie opisów jest wyłączone.";
 
 /**
  * Server Action behind the operat's prose sections (ADR-014, FR-6): builds
@@ -45,6 +47,13 @@ export async function proposeProse(id: string): Promise<ProposeProseResult> {
   if (!session) {
     redirect("/login");
   }
+
+  // The kill switch, on the layer that actually spends (T6 review, I-1). The
+  // step props and the component are gated too, but this is a Server Action:
+  // a POST endpoint any authenticated owner can call directly, with or
+  // without a browser. Checked FIRST — before the draft is even read — so a
+  // switched-off generator costs nothing at all, not even a query.
+  if (!proseEnabled()) return { error: DISABLED };
 
   const valuation = await valuationRepository.get(id, session.user);
   if (!valuation) return { error: NOT_FOUND };
@@ -70,12 +79,13 @@ export async function proposeProse(id: string): Promise<ProposeProseResult> {
     });
   } catch (error) {
     console.error("proposeProse failed", error);
-    // The worker's own `detail` is Polish and user-facing; the adapter's
-    // English status-line fallback is not — replace only that one.
-    const message = error instanceof Error ? error.message : undefined;
-    return {
-      error: message && !message.startsWith(PROSE_WORKER_RESPONDED_PREFIX) ? message : GENERIC,
-    };
+    // Default-deny on error text (T5 review): ONLY the worker's own Polish
+    // `detail` — which the adapter marks with its own type — is written for a
+    // human and may be shown. Everything else is our plumbing: a dropped
+    // connection ("fetch failed"), a proxy's HTML quoted by the JSON parser
+    // (internal hostname and all), a bug in our own code. Those get the
+    // generic sentence; the details go to the server log above.
+    return { error: error instanceof ProseWorkerDetailError ? error.message : GENERIC };
   }
 
   const snapshot = proseSnapshotOf({

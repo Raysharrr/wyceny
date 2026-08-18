@@ -25,7 +25,7 @@ vi.mock("next/navigation", () => ({
 
 import { proposeProse } from "../src/app/actions/propose-prose";
 import { proseProposal, valuationRepository } from "@/app/valuations/_deps";
-import { PROSE_WORKER_RESPONDED_PREFIX } from "@/adapters/prose-http";
+import { PROSE_WORKER_RESPONDED_PREFIX, ProseWorkerDetailError } from "@/adapters/prose-http";
 import { buildProseFacts } from "@/domain/prose";
 import { currentProseFactsHash } from "@/domain/prose-hash";
 import type { KcsInput } from "@/domain/kcs";
@@ -136,6 +136,24 @@ describe("proposeProse — gates before any token is spent", () => {
     expect(fetchProposalMock).not.toHaveBeenCalled();
   });
 
+  it("NEXT_PUBLIC_PROSE=off -> refuses BEFORE the draft is even read; nothing is spent", async () => {
+    // The kill switch has to gate the layer that SPENDS. The step props and
+    // the component were both gated; this Server Action is a POST endpoint
+    // any authenticated owner can call directly, flag or no flag (T6 review,
+    // I-1). On the server the flag is a runtime read, so this refuses on the
+    // very next request after it is flipped — no rebuild.
+    vi.stubEnv("NEXT_PUBLIC_PROSE", "off");
+    getMock.mockResolvedValue(draft);
+
+    expect(await proposeProse(VALUATION_ID)).toEqual({
+      error: "Generowanie opisów jest wyłączone.",
+    });
+    expect(getMock).not.toHaveBeenCalled();
+    expect(fetchProposalMock).not.toHaveBeenCalled();
+    expect(saveProseMock).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+
   it("no shared secret -> configuration error, worker untouched", async () => {
     delete process.env.WORKER_SHARED_SECRET;
     getMock.mockResolvedValue(draft);
@@ -199,10 +217,14 @@ describe("proposeProse — happy path", () => {
 });
 
 describe("proposeProse — failures after the call", () => {
+  const GENERIC = "Nie udało się wygenerować opisów — spróbuj ponownie.";
+
   it("the worker's Polish detail reaches the appraiser, nothing is persisted", async () => {
     getMock.mockResolvedValue(draft);
     fetchProposalMock.mockRejectedValue(
-      new Error("Nieprawidłowy lub wygasły token — odśwież stronę i spróbuj ponownie."),
+      new ProseWorkerDetailError(
+        "Nieprawidłowy lub wygasły token — odśwież stronę i spróbuj ponownie.",
+      ),
     );
 
     expect(await proposeProse(VALUATION_ID)).toEqual({
@@ -217,10 +239,37 @@ describe("proposeProse — failures after the call", () => {
       new Error(`${PROSE_WORKER_RESPONDED_PREFIX} 422 Unprocessable Entity`),
     );
 
-    expect(await proposeProse(VALUATION_ID)).toEqual({
-      error: "Nie udało się wygenerować opisów — spróbuj ponownie.",
-    });
+    expect(await proposeProse(VALUATION_ID)).toEqual({ error: GENERIC });
     expect(saveProseMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Two leaks the T5 review found. Only a sentence the WORKER wrote for a
+   * human may be shown; everything else is our own plumbing talking, and the
+   * appraiser is neither its audience nor allowed to see where it runs.
+   */
+  it("a dead connection shows the Polish message, not 'fetch failed'", async () => {
+    getMock.mockResolvedValue(draft);
+    // What undici throws when the host cannot be reached at all.
+    fetchProposalMock.mockRejectedValue(new TypeError("fetch failed"));
+
+    expect(await proposeProse(VALUATION_ID)).toEqual({ error: GENERIC });
+  });
+
+  it("a proxy's HTML error page never reaches the appraiser — no internal address leaks", async () => {
+    getMock.mockResolvedValue(draft);
+    // A gateway answering with HTML: the JSON parser blows up and quotes the
+    // body — internal hostname and all. Fictional host (F-9).
+    fetchProposalMock.mockRejectedValue(
+      new SyntaxError(
+        `Unexpected token '<', "<html><head><title>502 Bad Gateway</title></head><body>worker-internal.invalid:8000</body></html>" is not valid JSON`,
+      ),
+    );
+
+    const result = await proposeProse(VALUATION_ID);
+
+    expect(result).toEqual({ error: GENERIC });
+    expect(JSON.stringify(result)).not.toContain("worker-internal");
   });
 
   it("repo returns null (CAS lost / status flipped mid-flight) -> error", async () => {

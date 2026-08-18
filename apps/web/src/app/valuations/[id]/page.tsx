@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { WizardShell } from "@/components/wizard/wizard-shell";
 import { getSession } from "@/auth/session";
 import { approvalGate } from "@/domain/provenance";
+import { currentProseFactsHash } from "@/domain/prose-hash";
+import { proseEnabled } from "@/lib/prose-enabled";
 import { documentFieldBlockers } from "@/domain/document-model";
 import { maxReachedStep, resolveStep } from "@/domain/wizard";
 import { step1DefaultsFromInputs } from "@/lib/subject-form";
@@ -138,7 +140,17 @@ export default async function ValuationViewPage({
   // — offering the button here would let the owner spawn a second, duplicate
   // draft.
   const canCreateNewVersion = valuation.status === "signed" && isOwner && !successor;
-  const gate = isDraft && valuation.inputs ? approvalGate(valuation.inputs) : null;
+  // Mirrors step-operat.tsx: this list has to name the same blockers the
+  // approve action refuses on, kill switch (FR-6) included.
+  const gate =
+    isDraft && valuation.inputs
+      ? approvalGate(valuation.inputs, {
+          requireProse: proseEnabled(),
+          currentFactsHash: proseEnabled()
+            ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+            : undefined,
+        })
+      : null;
   const fieldBlockers = isDraft ? documentFieldBlockers(valuation) : [];
   // Approval requires BOTH the F-4 provenance gate and the document-field
   // check (spec §4) — the button is enabled only when neither has a blocker.

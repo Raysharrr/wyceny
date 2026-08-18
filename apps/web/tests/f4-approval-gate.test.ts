@@ -4,6 +4,7 @@ import {
   REQUIRED_SAMPLE_SIZE,
   type InputsProvenance,
 } from "../src/domain/provenance";
+import { confirmedProse } from "./fixtures/valuation-inputs";
 
 const confirmedScalars: InputsProvenance = {
   address: { source: "rzeczoznawca", status: "confirmed" },
@@ -239,6 +240,186 @@ describe("kw group (Slice 6)", () => {
 
   it("no kw snapshot -> no kw blockers (manual path regression)", () => {
     expect(approvalGate(passingInput()).ok).toBe(true);
+  });
+});
+
+/**
+ * Prose group (FR-6 / ADR-014, Task 7). The whole point of the group: an
+ * operat cannot leave without descriptions the appraiser has read and
+ * accepted. `requireProse` comes from the app layer (the NEXT_PUBLIC_PROSE
+ * kill switch) — the domain never reads env (F-10).
+ */
+describe("prose group (FR-6, Task 7)", () => {
+  const passing = () => ({
+    comparables: manualRows(12),
+    sampleMeta: null,
+    provenance: confirmedScalars,
+  });
+
+  it("adds ZERO blockers when requireProse is false — the kill switch is off (CI smoke)", () => {
+    // No snapshot at all, and a half-written one: neither may block.
+    expect(approvalGate({ ...passing() }, { requireProse: false })).toEqual({ ok: true });
+    expect(
+      approvalGate(
+        {
+          ...passing(),
+          prose: { sections: { analiza_rynku: confirmedProse().sections.analiza_rynku! } },
+        },
+        { requireProse: false },
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("adds ZERO blockers when no options are passed at all (every legacy call site)", () => {
+    expect(approvalGate(passing())).toEqual({ ok: true });
+  });
+
+  it("blocks a draft with no prose snapshot at all — ONE blocker, not six", () => {
+    const result = approvalGate(passing(), { requireProse: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers).toEqual([
+        { path: "prose", label: "Opisy sekcji nie zostały wygenerowane." },
+      ]);
+    }
+  });
+
+  it("passes with all six sections confirmed by the appraiser", () => {
+    expect(approvalGate({ ...passing(), prose: confirmedProse() }, { requireProse: true })).toEqual(
+      {
+        ok: true,
+      },
+    );
+  });
+
+  it("blocks a section the appraiser never accepted (ai/to_verify), naming the section", () => {
+    const prose = confirmedProse();
+    prose.sections.analiza_rynku = {
+      value: "Propozycja automatu — dane testowe.",
+      provenance: { source: "ai", status: "to_verify" },
+    };
+    const result = approvalGate({ ...passing(), prose }, { requireProse: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers).toEqual([
+        {
+          path: "prose.analiza_rynku",
+          label: "Analiza i charakterystyka rynku — do weryfikacji.",
+        },
+      ]);
+    }
+  });
+
+  it("blocks a MISSING section with 'brak tekstu' — an absent section is not an accepted one", () => {
+    const prose = confirmedProse();
+    delete prose.sections.otoczenie;
+    const result = approvalGate({ ...passing(), prose }, { requireProse: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers).toEqual([
+        {
+          path: "prose.otoczenie",
+          label: "Charakterystyka bezpośredniego otoczenia — brak tekstu.",
+        },
+      ]);
+    }
+  });
+
+  it("blocks whitespace-only text even when its provenance claims confirmed (tampering)", () => {
+    const prose = confirmedProse();
+    prose.sections.standard = {
+      value: "   \n\t ",
+      provenance: { source: "rzeczoznawca", status: "confirmed" },
+    };
+    const result = approvalGate({ ...passing(), prose }, { requireProse: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers.map((b) => b.path)).toEqual(["prose.standard"]);
+      expect(result.blockers[0].label).toContain("brak tekstu");
+    }
+  });
+
+  it("blocks a section whose provenance key is missing entirely (default-deny)", () => {
+    const prose = confirmedProse();
+    prose.sections.uzasadnienie = { value: "Tekst bez prowenancji." } as never;
+    const result = approvalGate({ ...passing(), prose }, { requireProse: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers[0].path).toBe("prose.uzasadnienie");
+      expect(result.blockers[0].label).toContain("brak prowenancji");
+    }
+  });
+
+  /**
+   * Staleness (T6 review, I-2). `confirmed` says the appraiser accepted the
+   * text; it says nothing about WHICH data the text describes. Editing the
+   * sample after step 6 leaves every section confirmed and every sentence
+   * about a sample that no longer exists — `uzasadnienie` is literally "the
+   * result's standing against the sample". An operat whose prose contradicts
+   * its own tables is the failure this slice exists to prevent, so a
+   * fingerprint that no longer matches the draft BLOCKS.
+   */
+  it("blocks when the stored fingerprint no longer matches the draft's facts", () => {
+    const prose = confirmedProse(); // factsHash: "0".repeat(64)
+    const result = approvalGate(
+      { ...passing(), prose },
+      { requireProse: true, currentFactsHash: "f".repeat(64) },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers).toEqual([
+        {
+          path: "prose.factsHash",
+          label:
+            "Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.",
+        },
+      ]);
+    }
+  });
+
+  it("passes when the fingerprint still matches", () => {
+    const prose = confirmedProse();
+    expect(
+      approvalGate(
+        { ...passing(), prose },
+        { requireProse: true, currentFactsHash: prose.factsHash },
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("does not check staleness when the caller cannot compute the hash", () => {
+    // Every production caller passes it (action, both server components, and
+    // the adapter computes its own inside the transaction). Omitting it means
+    // "I cannot tell" — and inventing a blocker from that would put a false
+    // sentence in front of the appraiser.
+    expect(approvalGate({ ...passing(), prose: confirmedProse() }, { requireProse: true })).toEqual(
+      { ok: true },
+    );
+  });
+
+  it("says nothing about staleness when the kill switch is off", () => {
+    expect(
+      approvalGate(
+        { ...passing(), prose: confirmedProse() },
+        { requireProse: false, currentFactsHash: "f".repeat(64) },
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("still collects every OTHER group's blockers alongside the prose ones", () => {
+    const prose = confirmedProse();
+    delete prose.sections.standard;
+    delete prose.sections.otoczenie;
+    const result = approvalGate({ comparables: manualRows(3), prose }, { requireProse: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      // 1 count blocker + 4 scalar blockers + 2 prose blockers, prose LAST.
+      expect(result.blockers).toHaveLength(7);
+      expect(result.blockers.map((b) => b.path).slice(-2)).toEqual([
+        "prose.otoczenie",
+        "prose.standard",
+      ]);
+    }
   });
 });
 

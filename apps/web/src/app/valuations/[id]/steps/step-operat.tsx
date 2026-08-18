@@ -2,6 +2,8 @@ import { ClipboardCheck, FileStack } from "lucide-react";
 import { SectionCard } from "@/components/wizard/section-card";
 import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers } from "@/domain/document-model";
+import { currentProseFactsHash } from "@/domain/prose-hash";
+import { proseEnabled } from "@/lib/prose-enabled";
 import type { Valuation } from "@/ports/valuation";
 import { currencyFormatter } from "../cards";
 import { ValuationActions } from "../valuation-actions";
@@ -16,7 +18,18 @@ import { ValuationActions } from "../valuation-actions";
  * wizard for the flat view, which renders the operat.
  */
 export function StepOperat({ valuation }: { valuation: Valuation }) {
-  const gate = valuation.inputs ? approvalGate(valuation.inputs) : null;
+  // Same kill-switch answer the approve action computes (FR-6): the list
+  // below must name every blocker that action would refuse on, or the
+  // refusal arrives out of nowhere on a button that looked enabled.
+  const requireProse = proseEnabled();
+  const gate = valuation.inputs
+    ? approvalGate(valuation.inputs, {
+        requireProse,
+        currentFactsHash: requireProse
+          ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+          : undefined,
+      })
+    : null;
   const fieldBlockers = documentFieldBlockers(valuation);
   // Approval requires BOTH the F-4 provenance gate and the document-field
   // check (spec §4) — the button is enabled only when neither has a blocker.

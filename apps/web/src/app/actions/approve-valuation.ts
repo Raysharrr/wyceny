@@ -6,12 +6,14 @@ import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import { ApprovalBlockedError, InputsChangedError } from "@/domain/valuation";
 import { approvalGate } from "@/domain/provenance";
+import { proseEnabled } from "@/lib/prose-enabled";
 import {
   buildDocumentModel,
   documentFieldBlockers,
   type OperatPurpose,
 } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
+import { currentProseFactsHash } from "@/domain/prose-hash";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 
@@ -51,9 +53,24 @@ export async function approveValuation(
     return { error: "Wycena jest już zatwierdzona." };
   }
 
+  // FR-6: whether the operat's descriptive sections are part of the F-4
+  // invariant is a deployment decision (the NEXT_PUBLIC_PROSE kill switch),
+  // so the APP layer resolves it and hands the answer to the gate — both
+  // here and, through the repo, inside the write transaction (ADR-012).
+  // `domain/` reads no env (F-10). Unset means enabled, like every other
+  // NEXT_PUBLIC_* switch in this app.
+  const requireProse = proseEnabled();
+
   // Fail fast with the first blocker before any expensive generation work.
   if (valuation.inputs) {
-    const gate = approvalGate(valuation.inputs);
+    const gate = approvalGate(valuation.inputs, {
+      requireProse,
+      // Lets the gate see prose that describes a draft which has since moved
+      // on (T6 review, I-2). Derived here, never taken from the client.
+      currentFactsHash: requireProse
+        ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+        : undefined,
+    });
     const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(valuation)];
     if (blockers.length > 0) {
       return { error: `Zatwierdzenie zablokowane — ${blockers[0].label}` };
@@ -135,6 +152,7 @@ export async function approveValuation(
       now,
       opts?.skipMaps ? { mapsSkipped: true } : undefined,
       valuation.inputs,
+      { requireProse },
     );
     if (!updated) {
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };

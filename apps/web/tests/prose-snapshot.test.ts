@@ -177,10 +177,17 @@ describe("confirmProseSnapshot — the appraiser takes responsibility", () => {
     });
   });
 
-  it("keeps the generation's own fingerprint, model and timestamp", () => {
+  it("stamps the CURRENT fingerprint — the appraiser accepted the text against today's facts", () => {
+    // T7 redefinition (T6 review, I-2): `factsHash` records the facts the
+    // text was last ACCEPTED AGAINST, not only the ones it was generated
+    // from. The F-4 gate blocks prose whose fingerprint no longer matches the
+    // draft, and re-reading the text on step 6 has to be a way out of that —
+    // otherwise the only remedy would be a paid regeneration. `model` and
+    // `generatedAt` still describe the generation and are untouched.
     const confirmed = confirmProseSnapshot(previous, { opis_lokalu: HUMAN_TEXT }, meta);
 
-    expect(confirmed.factsHash).toBe(previous.factsHash);
+    expect(confirmed.factsHash).toBe(meta.factsHash);
+    expect(confirmed.factsHash).not.toBe(previous.factsHash);
     expect(confirmed.model).toBe(previous.model);
     expect(confirmed.generatedAt).toBe(previous.generatedAt);
   });

@@ -24,6 +24,7 @@ import {
   type SubjectUpdate,
 } from "../domain/valuation";
 import { totalInspectionPhotos } from "../domain/inspection";
+import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
 import { currentProseFactsHash } from "../domain/prose-hash";
 import * as schema from "../db/schema";
@@ -420,8 +421,9 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         if (valuation.ownerId !== user.id) return null;
         const updated = applyProseConfirmation(valuation, texts, {
           // Computed from the ROW READ IN THIS TRANSACTION, not from the
-          // caller's earlier read — only used when the draft has no prose
-          // snapshot yet (prose written entirely by hand).
+          // caller's earlier read. Since T7 this is stamped on EVERY confirm
+          // (it records the facts the appraiser accepted the text against),
+          // not only on prose written entirely by hand.
           factsHash: valuation.inputs
             ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
             : "",
@@ -481,6 +483,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       now: Date = new Date(),
       audit?: { mapsSkipped?: boolean },
       expectedInputs?: KcsInput | null,
+      gate?: GateOptions,
     ): Promise<Valuation | null> {
       return db.transaction(async (tx) => {
         const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
@@ -502,7 +505,16 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         // Re-runs the full gate (F-4 + document fields) in the domain — this is
         // the atomic status flip; a caller that stored files first but fails
         // here leaves harmless orphan files (same keys, overwritten on retry).
-        const updated = approveValuation(valuation, now, docs);
+        // The staleness fingerprint is derived HERE, from the row this
+        // transaction read — a caller could otherwise hand in a matching hash
+        // and walk stale prose straight past the invariant (ADR-012).
+        const updated = approveValuation(valuation, now, docs, {
+          ...gate,
+          currentFactsHash:
+            gate?.requireProse && valuation.inputs
+              ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+              : undefined,
+        });
         const [saved] = await tx
           .update(schema.valuation)
           .set({

@@ -3,12 +3,13 @@
  *
  * Pure interface — no imports, no I/O. Application code depends on this
  * abstraction, never on a concrete adapter (F-10). The one exception is
- * these type-only imports of `KcsInput`/`InspectionOp` — they stay pure
- * because type imports are erased at compile time (no runtime dependency,
- * no I/O).
+ * these type-only imports of `KcsInput`/`InspectionOp`/`GateOptions` — they
+ * stay pure because type imports are erased at compile time (no runtime
+ * dependency, no I/O).
  */
 
 import type { KcsInput } from "../domain/kcs";
+import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
 import type {
   FeaturesUpdate,
@@ -172,6 +173,9 @@ export interface PortValuation {
    * row's inputs no longer serialize identically, closing the multi-second
    * get→approve window in which the owner could still mutate draft inputs
    * (final review).
+   * `gate` carries the app layer's answer to questions the domain cannot ask
+   * itself — today `requireProse` (the FR-6 kill switch). Omitted means the
+   * pre-FR-6 gate, so every caller that predates prose stays unchanged.
    */
   approve(
     id: string,
@@ -180,6 +184,7 @@ export interface PortValuation {
     now?: Date,
     audit?: { mapsSkipped?: boolean },
     expectedInputs?: KcsInput | null,
+    gate?: GateOptions,
   ): Promise<Valuation | null>;
   /**
    * Signs an approved valuation — the final, write-once transition (F-7).

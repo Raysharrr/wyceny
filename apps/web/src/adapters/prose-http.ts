@@ -3,11 +3,29 @@ import type { ProseSection } from "../domain/prose-snapshot";
 
 /**
  * Prefix of the fallback error thrown below when the worker's error response
- * carries no usable Polish `detail`. Exported so the Server Action can tell
- * "this is the worker's own message, show it" from "this is our English
- * status line, replace it" — same contract as `sample-http.ts`.
+ * carries no usable Polish `detail`. Kept for the tests that pin the fallback
+ * wording — it is NO LONGER how the caller classifies a failure, see
+ * {@link ProseWorkerDetailError}.
  */
 export const PROSE_WORKER_RESPONDED_PREFIX = "worker /prose-proposal responded";
+
+/**
+ * The worker's own Polish `detail` — the only failure whose text may be put
+ * in front of the appraiser verbatim.
+ *
+ * It used to be told apart by what the message did NOT start with, which made
+ * "show it" the default: a dropped connection showed "fetch failed", and a
+ * proxy answering with HTML showed the parser quoting that HTML, internal
+ * hostname included (T5 review). Naming it with a TYPE inverts that default —
+ * anything not thrown here is our own plumbing talking, and the caller
+ * replaces it with a Polish message of its own.
+ */
+export class ProseWorkerDetailError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "ProseWorkerDetailError";
+  }
+}
 
 type ProseResponseBody = {
   sekcje: Partial<Record<ProseSection, string>>;
@@ -45,11 +63,12 @@ export function httpProseProposal(baseUrl: string): PortProseProposal {
         // but a 422 (pydantic schema violation) makes it a LIST of objects —
         // `String(detail)` would put "[object Object]" in front of the
         // appraiser. Only a non-empty string is the worker talking to a human.
-        const message =
-          typeof detail === "string" && detail.trim().length > 0
-            ? detail
-            : `${PROSE_WORKER_RESPONDED_PREFIX} ${response.status} ${response.statusText}`;
-        throw new Error(message);
+        if (typeof detail === "string" && detail.trim().length > 0) {
+          throw new ProseWorkerDetailError(detail);
+        }
+        throw new Error(
+          `${PROSE_WORKER_RESPONDED_PREFIX} ${response.status} ${response.statusText}`,
+        );
       }
       const body = (await response.json()) as ProseResponseBody;
       return {
