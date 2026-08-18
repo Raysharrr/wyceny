@@ -35,9 +35,12 @@ vi.mock("@/domain/document-model", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/domain/document-model")>();
   return {
     ...actual,
-    buildDocumentModel: (input: Parameters<typeof actual.buildDocumentModel>[0]) => {
-      documentInputs.push(input as { inputs: { prose?: ProseSnapshot | null } });
-      return actual.buildDocumentModel(input);
+    // ...args, not just the first one: the function took a second parameter
+    // in T11 (`{ preview: true }`), and a wrapper pinned to `[0]` would drop
+    // it silently — this file would then be testing a render nobody performs.
+    buildDocumentModel: (...args: Parameters<typeof actual.buildDocumentModel>) => {
+      documentInputs.push(args[0] as { inputs: { prose?: ProseSnapshot | null } });
+      return actual.buildDocumentModel(...args);
     },
   };
 });

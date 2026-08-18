@@ -664,6 +664,32 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     );
     vi.unstubAllEnvs();
   });
+
+  /**
+   * Task 11: the step-7 preview marks a section the appraiser has not
+   * written; the ISSUED operat must stay silent about it. The kill switch is
+   * the one way a prose-less draft reaches the render at all, which makes
+   * this the only place the issued path can be tested against the worst case
+   * — all six sections empty. The template contains no "brak treści" of its
+   * own, so the assertion cannot pass on static text.
+   */
+  it("the issued operat carries no preview marker, not even with the prose requirement off (Task 11)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_PROSE", "off");
+    getMock.mockResolvedValue(withProse(null));
+
+    expect(await approveValuation(draftBase.id)).toBeUndefined();
+
+    const docxCall = storagePutMock.mock.calls.find(
+      ([key]) => key === `operat-${draftBase.id}.docx`,
+    );
+    const text = new PizZip(docxCall![1] as Buffer)
+      .file("word/document.xml")!
+      .asText()
+      .replace(/<[^>]+>/g, "");
+    expect(text).not.toContain("brak treści");
+    expect(text).not.toContain("Sekcja nie została uzupełniona");
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("approveValuation — InputsChangedError (approve-window drift guard, final review)", () => {

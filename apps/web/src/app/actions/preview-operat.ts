@@ -216,21 +216,28 @@ export async function previewOperat(
 
     const kcs = computeKcs(valuation.inputs);
     const amountInWords = await worker.amountInWords(kcs.wr);
-    const model = buildDocumentModel({
-      address: valuation.address,
-      area: valuation.area,
-      purpose: valuation.purpose as OperatPurpose,
-      kwNumber: valuation.kwNumber ?? "",
-      client: valuation.client ?? "",
-      inspectionDate: valuation.inspectionDate ?? "",
-      // The preview's "data sporządzenia" is TODAY; the issued operat gets
-      // the date it was issued. That difference is why issuing re-renders
-      // rather than promoting this file (spec §C).
-      approvedAt: new Date(),
-      inputs: valuation.inputs,
-      kcs,
-      amountInWords,
-    });
+    const model = buildDocumentModel(
+      {
+        address: valuation.address,
+        area: valuation.area,
+        purpose: valuation.purpose as OperatPurpose,
+        kwNumber: valuation.kwNumber ?? "",
+        client: valuation.client ?? "",
+        inspectionDate: valuation.inspectionDate ?? "",
+        // The preview's "data sporządzenia" is TODAY; the issued operat gets
+        // the date it was issued. That difference is why issuing re-renders
+        // rather than promoting this file (spec §C).
+        approvedAt: new Date(),
+        inputs: valuation.inputs,
+        kcs,
+        amountInWords,
+      },
+      // ...and the second half of that same §C difference: a section the
+      // appraiser has not written yet is MARKED here and passed over in
+      // silence when the operat is issued. This is the only call site that
+      // may pass the flag — approve and sign must not.
+      { preview: true },
+    );
     const docx = renderOperatDocx(model, { maps, photos });
     const pdf = await worker.convertToPdf(docx);
     await storage.put(previewDocKey(id), pdf);

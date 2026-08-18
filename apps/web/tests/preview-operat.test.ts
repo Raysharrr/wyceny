@@ -3,6 +3,7 @@ import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import type { Step1Input } from "../src/app/actions/wizard-schemas";
 import { approvableInput, confirmedProseFor } from "./fixtures/valuation-inputs";
+import { PROSE_SECTIONS, PROSE_SECTION_LABEL } from "../src/domain/prose-snapshot";
 
 /**
  * TDD for `previewOperat` (Slice 14, Task 9): step 7 stops asking the
@@ -155,6 +156,13 @@ let blobs: Map<string, Buffer | string>;
 const generatedMedia = (buf: Buffer) =>
   Object.keys(new PizZip(buf).files).filter((f) => /^word\/media\/image_generated_/.test(f));
 
+const docText = (buf: Buffer) =>
+  new PizZip(buf)
+    .file("word/document.xml")!
+    .asText()
+    .replace(/<[^>]+>/g, "")
+    .replace(/\u00A0/g, " ");
+
 beforeEach(() => {
   current = draft();
   blobs = new Map();
@@ -253,6 +261,29 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     expect(first).toHaveProperty("url");
     expect(second).toHaveProperty("url");
     expect((second as { url: string }).url).not.toBe((first as { url: string }).url);
+  });
+
+  // Task 11: the second — and last — difference between the preview and the
+  // issued operat (spec §C). A section the appraiser has not written yet is
+  // passed over in silence when the document is issued; here it has to be
+  // visible, or step 7 asks them to take responsibility for a document whose
+  // gaps it hid from them. Read from the docx handed to the PDF converter,
+  // i.e. the bytes the preview is actually made of.
+  it("marks every section the appraiser has not written yet (Task 11)", async () => {
+    current = { ...current, inputs: { ...current.inputs!, prose: null } };
+
+    await previewOperat(ID);
+
+    const text = docText(convertToPdfMock.mock.calls[0][0]);
+    for (const section of PROSE_SECTIONS) {
+      expect(text, section).toContain(`${PROSE_SECTION_LABEL[section]} — brak treści`);
+    }
+  });
+
+  it("marks nothing in a draft whose six sections are written", async () => {
+    await previewOperat(ID);
+
+    expect(docText(convertToPdfMock.mock.calls[0][0])).not.toContain("brak treści");
   });
 
   it("approves nothing and writes no issued-document key (F-4)", async () => {

@@ -163,6 +163,37 @@ describe("signValuationAction", () => {
     expect(signArgs.docUrl).toBe("/api/docs/operat-v1-signed.pdf");
   });
 
+  /**
+   * Task 11: the preview marks a section the appraiser has not written; the
+   * SIGNED operat must stay silent about it. `approvedValuation.inputs` is
+   * `approvableInput`, which carries no prose at all — the worst case there
+   * is (the F-4 gate would never let it through today, but a legacy approved
+   * row or a kill-switched one reaches sign in exactly this shape), so all
+   * six sections are candidates for a marker here.
+   *
+   * The template itself contains no "brak treści", so the assertion cannot
+   * pass by accident on static text.
+   */
+  it("the signed operat carries no preview marker — not even with no prose at all (Task 11)", async () => {
+    getMock.mockResolvedValue(approvedValuation);
+    getSignatureMock.mockResolvedValue({
+      bytes: fs.readFileSync(path.join(__dirname, "fixtures", "signature-synthetic.png")),
+      mime: "image/png",
+    });
+    amountInWordsMock.mockResolvedValue("czterysta tysięcy złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    storageGetMock.mockRejectedValue(new StorageNotFoundError("not found"));
+    signMock.mockResolvedValue({ ...approvedValuation, status: "signed" });
+
+    expect(await signValuationAction("v1")).toBeUndefined();
+
+    const docxCall = storagePutMock.mock.calls.findLast(([key]) => key === "operat-v1-signed.docx");
+    const text = textOf(docxCall?.[1] as Buffer);
+    expect(text).not.toContain("brak treści");
+    expect(text).not.toContain("Sekcja nie została uzupełniona");
+  });
+
   it("re-renders from frozen map bytes at sign (Task 7) — byte-identical maps, no wms contact", async () => {
     getMock.mockResolvedValue(approvedValuation);
     getSignatureMock.mockResolvedValue({
