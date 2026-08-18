@@ -1,30 +1,89 @@
-Krok 6 jest dziś przelotowy — nie ma w nim ani jednego pola. Karta „Opisy” informuje wprost, że generator prozy sekcji opisowych jest w przygotowaniu; do tego czasu opisy operatu powstają z szablonu w momencie zatwierdzenia.
+import { PROSE_SECTIONS, PROSE_SECTION_LABEL } from "@/domain/prose-snapshot";
+import { plural } from "@/components/wizard/plural";
 
-<img
-  src="/api/pomoc/krok-6-opisy.png"
-  alt="Krok 6 kreatora: pojedyncza karta „Opisy” z informacją, że generator prozy sekcji opisowych jest w przygotowaniu, a opisy operatu powstają z szablonu przy zatwierdzeniu."
-  style={{
-    width: "100%",
-    height: "auto",
-    borderRadius: "8px",
-    border: "1px solid rgba(0,0,0,0.08)",
-  }}
-/>
+W kroku 6 powstają opisowe fragmenty operatu — te, których nie da się złożyć z tabel. Propozycje pisze aplikacja z danych **tej** wyceny: nie z szablonu, nie z cudzego operatu i nie z ogólnej wiedzy o rynku. Twoja rola to je przeczytać, poprawić i zatwierdzić — zapis jest przejęciem odpowiedzialności za treść.
 
 ## Co wypełnia się samo
 
-Sekcje opisowe składają się z tekstu szablonu i fragmentów wziętych wprost z tego, co wprowadziłeś wcześniej:
+Ekran ma {PROSE_SECTIONS.length} {plural(PROSE_SECTIONS.length, "sekcję opisową", "sekcje opisowe", "sekcji opisowych")}, każdą we własnym polu tekstowym:
 
-- **notatka z oględzin** (krok 2) trafia do opisu stanu nieruchomości jako osobny blok uwag — tylko wtedy, gdy notatkę zapisałeś; bez niej blok w ogóle się nie pojawia,
-- **definicje skali ocen** (krok 4) tworzą opis skali dla każdej cechy — drukowane są wyłącznie poziomy z wypełnionym tekstem,
-- **nazwy cech o wadze większej od zera** trafiają do wyliczenia cech i do uzasadnienia wyniku.
+<ul>
+  {PROSE_SECTIONS.map((section) => (
+    <li key={section}>{PROSE_SECTION_LABEL[section]}</li>
+  ))}
+</ul>
 
-Cała reszta opisu — dane przedmiotu, stan prawny, przeznaczenie planistyczne, tabele — pochodzi z kroków 1–5 i powstaje przy zatwierdzeniu, nie tutaj. Z czego dokładnie składa się gotowy dokument, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
+Nad polami stoi adnotacja, której nie da się wyłączyć: „Propozycja wygenerowana automatycznie — za treść operatu odpowiada rzeczoznawca.”
+
+Fakty, z których powstaje tekst, pochodzą wyłącznie z tej wyceny:
+
+- **dane ewidencyjne działki i budynku (EGiB)** z [kroku 1](/pomoc/krok-1-przedmiot) — obręb, numer i powierzchnia działki, rodzaj użytku, rodzaj budynku, liczba kondygnacji nadziemnych, rok budowy,
+- **notatka z [oględzin](/pomoc/krok-2-ogledziny)** — jeden i ten sam tekst notatki widzą wszystkie cztery sekcje opisujące nieruchomość; każda wycina z niego swój wątek,
+- **[próba porównawcza](/pomoc/krok-3-proba)** — liczba transakcji, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna oraz przedział cen całkowitych,
+- **oceny cech** z [kroku 4](/pomoc/krok-4-cechy) — nazwy cech o niezerowej wadze wraz z ich ocenami słownymi,
+- **pozycja wyniku na tle próby** — wyłącznie jako określenie słowne, np. „w przedziale cen próby, powyżej średniej”. Sama kwota wartości rynkowej ani wartość jednostkowa nigdy nie opuszczają aplikacji.
+
+Czego w tych faktach nie ma, tego w tekście nie będzie: brakująca dana jest **pomijana, nigdy zgadywana**. Sekcja analizy rynku powstaje dla każdej użytecznej próby, ale wątek, dla którego brakuje faktu — na przykład zakres dat przy próbie, w której choć jedna transakcja nie ma daty — po prostu się w niej nie pojawia. Jak sprawdzana jest każda liczba w wygenerowanym tekście i czego ta kontrola nie łapie, opisuje [Opisy sekcji generowane z danych wyceny](/pomoc/opisy-generowane).
+
+Generowanie rusza samo przy wejściu w krok: gdy propozycji jeszcze nie ma albo gdy dane wyceny zmieniły się od czasu ich napisania. Trwa kilkanaście sekund i widać wtedy komunikat „Generuję opisy — to potrwa kilkanaście sekund…”. **Nie** rusza wtedy, gdy wszystkie sekcje możliwe do napisania z dzisiejszych danych należą już do Ciebie — powrót do kroku 6 nic wtedy nie kosztuje.
+
+## Trzy stany sekcji
+
+Etykieta przy polu mówi, czyj jest tekst i czy został przyjęty:
+
+- **„AI — do weryfikacji”** — świeża propozycja, jeszcze nieprzeczytana,
+- **„Rzeczoznawca — potwierdzone”** — tekst, który zatwierdziłeś,
+- **„Rzeczoznawca — do weryfikacji”** — tekst Twój, ale opisujący dane, które zmieniły się pod nim; trzeba go przeczytać jeszcze raz. Ten sam stan mają opisy odziedziczone przez nową wersję wyceny — [nowa wersja](/pomoc/po-zatwierdzeniu) przenosi teksty, ale nie przenosi potwierdzeń.
+
+Pole bez etykiety jest puste; dlaczego — niżej.
 
 ## Co musisz uzupełnić ręcznie
 
-Nic. Ten krok niczego nie zapisuje, więc wejście w niego nie rusza zatwierdzonej kalkulacji ani nie zmienia treści operatu.
+Przeczytać każdą sekcję i poprawić, co wymaga poprawki. Tekst edytujesz wprost w polu, a przycisk **„Zatwierdź opisy i dalej”** zapisuje wszystkie pola naraz i przechodzi do kroku 7. Licznik na dole ekranu („Wypełnione sekcje”) pokazuje, ile pól ma treść.
+
+Trzy rzeczy warto wiedzieć o tym zapisie:
+
+- **Zapisuje się cały krok.** Nie ma zapisu pojedynczej sekcji, a niezapisane zmiany przepadają przy opuszczeniu kroku.
+- **Wyczyszczenie pola jest decyzją, nie przeoczeniem.** Sekcja bez tekstu znika z wyceny, a w operacie nie zostaje po niej ani nagłówek, ani zdanie-zaślepka. Zatwierdzenie operatu będzie wtedy zablokowane pozycją „— brak tekstu.”.
+- **Zatwierdzenie jest przejęciem odpowiedzialności.** Zapisany tekst przestaje być propozycją automatu i staje się Twoim — dokładnie tak jak każda inna wartość, którą potwierdzasz w tej aplikacji.
+
+Przycisk **„Wygeneruj ponownie”** zamawia nowe propozycje. Nie ma limitu takich prób, ale każda **kosztuje** — to realne wywołanie modelu językowego — i każda zostawia ślad w dzienniku wyceny: nazwa modelu, wygenerowane sekcje, odrzucenia i zużycie tokenów. Sam tekst do dziennika nie trafia. Zatwierdzenie opisów zostawia własny wpis, z nazwami sekcji.
+
+Regeneracja nadpisuje wyłącznie sekcje należące do automatu; tekst, który przeszedł przez Twój zapis, zostaje nietknięty. Jeżeli jednak dane wyceny zmieniły się od czasu jego zatwierdzenia, taka zachowana sekcja wraca do stanu „do weryfikacji” — treść zostaje, potwierdzenie nie, żeby akapit nie wszedł do operatu bez ponownego przeczytania.
+
+## Dlaczego pole bywa puste
+
+Pod pustym polem zawsze stoi wyjaśnienie. Powody są cztery:
+
+- **automat użył liczby spoza danych wyceny** — komunikat wymienia te liczby wprost. Tekst został odrzucony i sekcję trzeba napisać ręcznie. Jest to zamierzone: lepszy pusty akapit niż liczba, której w operacie nie da się obronić;
+- **brak danych wejściowych** — bez notatki z oględzin nie powstanie opis lokalu ani opis otoczenia, a bez próby porównawczej nie powstanie analiza rynku. Komunikat mówi, czego brakuje;
+- **generowanie się nie udało** — awaria połączenia albo usługi; „Wygeneruj ponownie” jest wtedy sensowną próbą;
+- **sekcja wróciła bez tekstu i bez podanego powodu** — przypadek rzadki, ale i wtedy pole mówi, że się nie udało, zamiast milczeć.
+
+Aplikacja nigdy nie wypełnia takiego pola tekstem zastępczym ani zdaniem z szablonu. Puste pole znaczy dokładnie tyle, że nikt jeszcze tej sekcji nie napisał.
+
+## Gdzie ten tekst trafia
+
+Zatwierdzone opisy drukują się w operacie w sześciu miejscach:
+
+- **analiza i charakterystyka rynku** — sekcja 11 operatu,
+- **charakterystyka bezpośredniego otoczenia** — sekcja 8.1, po zdaniu z adresem,
+- **opis zagospodarowania terenu** — sekcja 8.4, po zdaniu z adresem,
+- **opis standardu wykończenia** — sekcja 8.3,
+- **opis lokalu** — sekcja 8.3 **oraz wyciąg z operatu** (sekcja 1), czyli ten sam tekst w dwóch miejscach; wiersz „Opis nieruchomości” w wyciągu bierze się właśnie stąd,
+- **uzasadnienie wyniku** — sekcja 13.
+
+Sekcja pusta nie zostawia po sobie w dokumencie niczego — ani nagłówka, ani pustego akapitu. Z czego składa się cały operat, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
 
 ## Co blokuje przejście dalej
 
-Nic. Przycisk „Dalej” prowadzi do kroku 7 zawsze.
+Do kroku 6 wchodzi się dopiero po zatwierdzeniu [kalkulacji](/pomoc/krok-5-kalkulacja). Sam krok 6 nie blokuje przejścia do kroku 7 — blokuje **zatwierdzenie operatu**. Każda sekcja musi mieć niepusty tekst przyjęty przez rzeczoznawcę, inaczej na liście blokad w kroku 7 pojawią się pozycje:
+
+- **„Opisy sekcji nie zostały wygenerowane.”** — gdy przy wycenie nie ma jeszcze żadnych opisów, bo nikt nie przeszedł przez krok 6,
+- **„_nazwa sekcji_ — brak tekstu.”** — gdy pole zostało puste,
+- **„_nazwa sekcji_ — do weryfikacji.”** — gdy tekst jest, ale nie został zatwierdzony (albo wrócił do weryfikacji po zmianie danych),
+- **„Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.”** — gdy dane wyceny zmieniły się po zatwierdzeniu opisów.
+
+Ostatnia pozycja ma wyjście tańsze, niż się wydaje: wystarczy wrócić do kroku 6, przeczytać teksty jeszcze raz i zatwierdzić je ponownie. Nowa generacja nie jest do tego potrzebna. Samo przestawienie kolejności wierszy w próbie tej blokady nie wywoła — liczy się to, co widzi model, a kolejności wierszy nie widzi.
+
+Komplet warunków zatwierdzenia opisują [Zasady zatwierdzania i prowenancja danych](/pomoc/zasady-zatwierdzania), a przebieg samego zatwierdzania — [Krok 7 — Operat](/pomoc/krok-7-operat).

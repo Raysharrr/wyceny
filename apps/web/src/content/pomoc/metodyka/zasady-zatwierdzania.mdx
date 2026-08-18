@@ -1,4 +1,5 @@
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { PROSE_SECTIONS } from "@/domain/prose-snapshot";
 
 Zatwierdzenie operatu jest jedyną bramą między szkicem wyceny a dokumentem: przed nim wszystko da się poprawić, po nim aplikacja nie ma akcji cofającej. Brama nie ocenia treści wyceny — sprawdza, czy każda wartość wchodząca do dokumentu ma znane pochodzenie i czy rzeczoznawca wziął za nią odpowiedzialność. Reguła mieszka w warstwie domeny (`apps/web/src/domain/provenance.ts` oraz `apps/web/src/domain/document-model.ts`), jest czystym rachunkiem bez odwołań do sieci i bazy, i wykonuje się po stronie serwera — nie w przeglądarce.
 
@@ -6,7 +7,7 @@ Zatwierdzenie operatu jest jedyną bramą między szkicem wyceny a dokumentem: p
 
 Każda wartość, która trafia do operatu, niesie ze sobą parę: **źródło** i **status**.
 
-Źródła są zamkniętą listą (`packages/shared/src/sourced.ts`): geokoder, ewidencja gruntów i budynków, plan miejscowy, odpis księgi wieczystej, akt notarialny, rejestr cen nieruchomości, oględziny, rzeczoznawca oraz zestaw proponowany przez aplikację. Statusy są trzy: **potwierdzona**, **do weryfikacji** i **brak prowenancji**.
+Źródła są zamkniętą listą (`packages/shared/src/sourced.ts`): geokoder, ewidencja gruntów i budynków, plan miejscowy, odpis księgi wieczystej, akt notarialny, rejestr cen nieruchomości, oględziny, rzeczoznawca, zestaw proponowany przez aplikację oraz tekst napisany automatycznie przez model językowy ([opisy sekcji](/pomoc/opisy-generowane)). Statusy są trzy: **potwierdzona**, **do weryfikacji** i **brak prowenancji**.
 
 Reguła bramy mieści się w jednym zdaniu: blokuje **każdy status inny niż „potwierdzona"**. Nie ma tu stopniowania ani ulgi dla źródeł uznanych za wiarygodne — dane z rejestru państwowego blokują zatwierdzenie dokładnie tak samo jak dane nieznanego pochodzenia, dopóki rzeczoznawca ich nie potwierdzi. Wiarygodność źródła jest argumentem przy potwierdzaniu, a nie zwolnieniem z niego.
 
@@ -36,6 +37,8 @@ Blokady zbierane są **wszystkie naraz** — brama zwraca listę, a nie pierwsz�
 - **Każda transakcja z osobna** — pozycja o statusie innym niż potwierdzona daje własną blokadę z numerem wiersza. Dopisek „(RCN)" pojawia się tylko przy transakcjach z rejestru; transakcje wpisane ręcznie są w tym miejscu opisane bez dopisku.
 - **Cztery wartości skalarne** — adres, powierzchnia, wagi cech, oceny cech.
 - **Cztery pola nagłówkowe dokumentu i kwota** — cel wyceny, numer księgi wieczystej, klient, data oględzin oraz wartość rynkowa. Ta ostatnia blokuje, dopóki kalkulacja nie zostanie zatwierdzona [w kroku kalkulacji](/pomoc/krok-5-kalkulacja).
+- **Opisy sekcji** — każda z {PROSE_SECTIONS.length} sekcji opisowych [kroku 6](/pomoc/krok-6-opisy) musi mieć niepusty tekst przyjęty przez rzeczoznawcę. Wycena, przy której nie ma jeszcze żadnych opisów, dostaje jedną blokadę („Opisy sekcji nie zostały wygenerowane."); dalej blokuje osobno każda sekcja pusta („— brak tekstu.") oraz każda z tekstem, którego rzeczoznawca jeszcze nie przyjął („— do weryfikacji."). Propozycja modelu językowego nie przechodzi tej bramy nigdy: status „potwierdzona" nadaje wyłącznie zapis kroku 6.
+- **Aktualność opisów** — przy opisach zapisany jest odcisk danych, wobec których zostały przyjęte. Gdy dane wyceny zmienią się później, blokuje pozycja „Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.". Jest to prozatorski odpowiednik kasowania zatwierdzonej kwoty przy zmianie wejść silnika: tekst zatwierdzony wcześniej nie może opisywać próby, której już nie ma. Wyjściem jest ponowne przeczytanie i zatwierdzenie tekstów — bez nowej generacji.
 
 ### Sprawdzane warunkowo
 
@@ -72,7 +75,7 @@ Czego to broni: **żądania wysłanego z pominięciem interfejsu**. Ten przypade
 
 ## Potwierdzenia a późniejsze zmiany
 
-Potwierdzenie nie jest wieczne. Każda edycja danych wejściowych silnika — przedmiotu, próby albo cech — kasuje zatwierdzoną wartość rynkową, więc blokada „Wartość rynkowa — kalkulacja niezatwierdzona" wraca i kalkulację trzeba zatwierdzić ponownie. Zmiana danych przedmiotu idzie o krok dalej: grupy prowenancji należące do tego kroku (dane ewidencyjne, plan, stan prawny) są **zastępowane**, a nie scalane — odłączenie przedmiotu nie zostawia po sobie potwierdzeń dla danych, których w wycenie już nie ma.
+Potwierdzenie nie jest wieczne. Każda edycja danych wejściowych silnika — przedmiotu, próby albo cech — kasuje zatwierdzoną wartość rynkową, więc blokada „Wartość rynkowa — kalkulacja niezatwierdzona" wraca i kalkulację trzeba zatwierdzić ponownie. Ta sama edycja unieważnia opisy sekcji: zatwierdzone teksty zostają na wycenie, ale przestają być aktualne wobec danych, więc brama wymaga przeczytania ich jeszcze raz. Zmiana danych przedmiotu idzie o krok dalej: grupy prowenancji należące do tego kroku (dane ewidencyjne, plan, stan prawny) są **zastępowane**, a nie scalane — odłączenie przedmiotu nie zostawia po sobie potwierdzeń dla danych, których w wycenie już nie ma.
 
 ## Czego ta brama nie robi
 
@@ -80,6 +83,7 @@ Potwierdzenie nie jest wieczne. Każda edycja danych wejściowych silnika — pr
 - **Nie sprawdza, czy potwierdzenie było świadome.** Potwierdzenie jest zbiorcze — jedno kliknięcie przestawia całą grupę. Aplikacja nie ma jak odróżnić przejrzenia danych od kliknięcia w przycisk; bierze na siebie tylko to, że kliknięcie jest jawną decyzją rzeczoznawcy.
 - **Nie odpytuje źródła ponownie.** Potwierdzenie niczego nie weryfikuje u wystawcy danych ani nie sprawdza ich aktualności. Znaczy wyłącznie tyle, że rzeczoznawca je przyjął.
 - **Nie pilnuje sumy wag.** Wagi sumujące się do jedności są założeniem metody, nie warunkiem bramy — silnik policzy wynik z dowolnym zestawem, a pilnuje tego [krok cech](/pomoc/krok-4-cechy).
-- **Nie obejmuje oględzin poza datą.** Zdjęcia i notatka z oględzin nie mają wpisu prowenancji i nie blokują zatwierdzenia; wymagana jest wyłącznie data oględzin.
+- **Nie obejmuje oględzin poza datą.** Zdjęcia i notatka z oględzin nie mają wpisu prowenancji i nie blokują zatwierdzenia; wymagana jest wyłącznie data oględzin. Pośrednio notatka i tak waży: bez niej automat nie napisze czterech z sekcji opisowych, a te muszą mieć treść — trzeba je wtedy napisać ręcznie.
+- **Nie ocenia treści opisów.** Sprawdza, czy każda sekcja ma tekst przyjęty przez rzeczoznawcę i czy opisuje aktualne dane — nie czyta go. Co sprawdza się w samym tekście, opisują [Opisy sekcji generowane z danych wyceny](/pomoc/opisy-generowane).
 - **Nie działa wstecz.** Migawki sprzed wprowadzenia danej grupy przechodzą mniej warunków — celowo, żeby nowa reguła nie unieruchomiła szkiców istniejących już w bazie.
 - **Nie zna górnej granicy próby.** Sprawdzany jest wyłącznie próg dolny; próba liczniejsza niż {REQUIRED_SAMPLE_SIZE} pozycji przechodzi bez uwag.

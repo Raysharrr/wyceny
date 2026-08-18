@@ -113,8 +113,19 @@ export const HELP_PAGES: HelpPage[] = [
     title: "Krok 6 — Sekcje opisowe",
     tree: "jak-korzystac",
     order: 7,
-    tags: ["opisy", "sekcje opisowe", "szablon", "uwagi z oględzin", "proza"],
-    summary: "Krok przelotowy — opisy powstają z szablonu przy zatwierdzeniu.",
+    tags: [
+      "opisy",
+      "sekcje opisowe",
+      "proza",
+      "AI",
+      "generowanie opisów",
+      "do weryfikacji",
+      "zatwierdzenie opisów",
+      "uwagi z oględzin",
+      "wygeneruj ponownie",
+    ],
+    summary:
+      "Propozycje opisów powstają automatycznie z danych tej wyceny — przeczytaj, popraw i zatwierdź.",
     load: () => import("./jak-korzystac/krok-6-opisy.mdx"),
   },
   {
@@ -322,13 +333,18 @@ export const HELP_PAGES: HelpPage[] = [
   },
   /**
    * Uwaga dla utrzymujących treść: `zasady-zatwierdzania.mdx` importuje próg
-   * `REQUIRED_SAMPLE_SIZE` wprost (jedyna liczba na tej stronie). Wszystko
-   * pozostałe to reguły bez liczb — opisane z odczytu kodu, więc przy każdej
-   * zmianie bramy trzeba przejść listę poniżej. Komentarz stoi w manifeście, a
-   * nie w MDX, z powodu opisanego przy `dobor-proby-rcn` powyżej.
+   * `REQUIRED_SAMPLE_SIZE` oraz `PROSE_SECTIONS` (liczba sekcji opisowych) —
+   * to jedyne dwie liczby na tej stronie. Wszystko pozostałe to reguły bez
+   * liczb — opisane z odczytu kodu, więc przy każdej zmianie bramy trzeba
+   * przejść listę poniżej. Komentarz stoi w manifeście, a nie w MDX, z powodu
+   * opisanego przy `dobor-proby-rcn` powyżej.
    *
    * Źródła do sprawdzenia przy każdej zmianie zasad zatwierdzania:
    *   apps/web/src/domain/provenance.ts:8      REQUIRED_SAMPLE_SIZE (IMPORTOWANE do MDX)
+   *   apps/web/src/domain/prose-snapshot.ts:17 PROSE_SECTIONS (IMPORTOWANE do MDX)
+   *   apps/web/src/domain/provenance.ts:214    blokady prozy — brak migawki, odcisk, per sekcja
+   *   apps/web/src/domain/provenance.ts:69     requireProse — wyłącznik zdejmuje CAŁĄ grupę prozy
+   *   packages/shared/src/sourced.ts:20        źródło "ai" — pozycja zamkniętej listy
    *   apps/web/src/domain/provenance.ts:57     statusLabel — DWIE etykiety, w tym "brak prowenancji"
    *   apps/web/src/domain/provenance.ts:61     approvalGate — komplet blokad, zbierane wszystkie naraz
    *   apps/web/src/domain/provenance.ts:96     featureDefs gated TYLKO gdy migawka niesie klucz
@@ -443,6 +459,62 @@ export const HELP_PAGES: HelpPage[] = [
     summary:
       "Z czego powstaje operat, co dzieje się przy zatwierdzeniu, co dokładnie zamraża podpis i co zapisuje dziennik audytu.",
     load: () => import("./metodyka/operat-i-niezmiennosc.mdx"),
+  },
+  /**
+   * Uwaga dla utrzymujących treść (ograniczenie R1 ze specu):
+   * `opisy-generowane.mdx` importuje `PROSE_SECTIONS` i `PROSE_SECTION_LABEL`
+   * (`@/domain/prose-snapshot`) — jedyne web-autorytatywne stałe tej strony.
+   * Cała mechanika generowania mieszka w workerze (Python), więc nazwa modelu,
+   * limit długości odpowiedzi, próg trendu i liczba prób są opisane SŁOWEM, bez
+   * cyfr udających kontrakt. Nie wpisywać ich liczbowo — strona przestałaby być
+   * prawdziwa przy pierwszej zmianie w workerze, a nic by tego nie wykryło.
+   * Komentarz stoi w manifeście, a nie w MDX, z powodu opisanego przy
+   * `dobor-proby-rcn` powyżej.
+   *
+   * Źródła do sprawdzenia przy każdej zmianie generowania opisów:
+   *   apps/worker/app/main.py:417        PROSE_MODEL — nazwa modelu (NIE cytować)
+   *   apps/worker/app/main.py:425        PROSE_MAX_TOKENS — limit długości (NIE cytować)
+   *   apps/worker/app/main.py:514        PROSE_RETRY_INSTRUCTION — dopisek do drugiej próby
+   *   apps/worker/app/main.py:529        _prose_section — DOKŁADNIE jedna dodatkowa próba
+   *   apps/worker/app/main.py:608        wstrzyknięcie proba.trend_cen do faktów
+   *   apps/worker/app/main.py:640        sekcje liczone równolegle, awaria jednej nie psuje reszty
+   *   apps/worker/app/main.py:657        502, gdy nie przeżyła ani jedna sekcja
+   *   apps/worker/app/prose.py:82        price_trend — połowy próby, próg (NIE cytować)
+   *   apps/worker/app/prose.py:120       _allowed_numbers — zbiór dozwolony, część całkowita
+   *   apps/worker/app/prose.py:156       validate_numbers — jednostka i idiom „za 1 m2"
+   *   apps/worker/app/prompts/prose/_style.md   styl i zakaz domyślania wątków
+   *   apps/web/src/domain/prose-snapshot.ts:17  PROSE_SECTIONS (IMPORTOWANE do MDX)
+   *   apps/web/src/domain/prose-snapshot.ts:34  PROSE_SECTION_LABEL (IMPORTOWANE do MDX)
+   *   apps/web/src/domain/prose.ts:135          buildProseFacts — agregaty wszystko-albo-nic
+   *   apps/web/src/domain/prose.ts:118          resultPosition — F-11, wyłącznie określenie słowne
+   *   apps/web/src/domain/prose.ts:253          selectProseSections — które sekcje w ogóle zamawiamy
+   *   apps/web/src/domain/prose-hash.ts:76      currentProseFactsHash — odcisk, próba sortowana
+   *   apps/web/src/domain/provenance.ts:214     blokady prozy w bramie F-4
+   */
+  {
+    slug: "opisy-generowane",
+    title: "Opisy sekcji generowane z danych wyceny",
+    tree: "metodyka",
+    order: 7,
+    tags: [
+      "opisy",
+      "proza",
+      "AI",
+      "model językowy",
+      "generowanie",
+      "kontrola liczb",
+      "zmyślone liczby",
+      "odrzucona sekcja",
+      "trend cen",
+      "fakty wyceny",
+      "odcisk faktów",
+      "ADR-014",
+      "FR-6",
+      "F-11",
+    ],
+    summary:
+      "Co widzi model piszący opisy, jak sprawdzana jest każda liczba w jego tekście i czego ta kontrola nie łapie.",
+    load: () => import("./metodyka/opisy-generowane.mdx"),
   },
 ];
 
