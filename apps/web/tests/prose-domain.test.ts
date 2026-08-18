@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  attemptedProseSections,
   buildProseFacts,
   buildProseTransactions,
   resultPosition,
@@ -658,5 +659,42 @@ describe("staleProseSections", () => {
         currentSectionFactsHash,
       ),
     ).toEqual([]);
+  });
+});
+
+/**
+ * `attemptedProseSections` — which sections a generation has already been
+ * REQUESTED for at today's facts (T5 fix round 1).
+ *
+ * The counterpart of `staleProseSections`, and deliberately a separate map:
+ * an attempt is recorded whatever came back, whereas `factsHashes` moves only
+ * when text does. That is what lets the step stop re-buying a refusal while
+ * the F-4 gate goes on blocking the very same section.
+ */
+describe("attemptedProseSections", () => {
+  const input = { address: ADDRESS, inputs: INPUTS };
+  const attemptedNow = (sections: ProseSection[]): Partial<Record<ProseSection, string>> =>
+    Object.fromEntries(sections.map((s) => [s, currentSectionFactsHash(s, input)]));
+
+  it("names the sections attempted at TODAY's facts", () => {
+    const snapshot = { attempts: attemptedNow(["otoczenie", "standard"]) };
+
+    expect(attemptedProseSections(snapshot, input, currentSectionFactsHash)).toEqual([
+      "otoczenie",
+      "standard",
+    ]);
+  });
+
+  it("an attempt made against OLDER facts does not count — a retry is warranted again", () => {
+    const snapshot = { attempts: { otoczenie: "f".repeat(64) } };
+
+    expect(attemptedProseSections(snapshot, input, currentSectionFactsHash)).toEqual([]);
+  });
+
+  it("a snapshot persisted before attempts existed has attempted nothing", () => {
+    const legacy = { sections: {}, factsHashes: {} } as unknown as ProseSnapshot;
+
+    expect(attemptedProseSections(legacy, input, currentSectionFactsHash)).toEqual([]);
+    expect(attemptedProseSections(null, input, currentSectionFactsHash)).toEqual([]);
   });
 });

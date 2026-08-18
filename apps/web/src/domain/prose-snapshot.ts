@@ -60,6 +60,29 @@ export type ProseSnapshot = {
    * migrate: one regeneration per existing draft on the next visit to step 6.
    */
   factsHashes: Partial<Record<ProseSection, string>>;
+  /**
+   * Per section: the fingerprint the automat was last ASKED at — recorded
+   * whatever came back (fresh text, a rejection, or silence). The companion
+   * to `factsHashes`, and deliberately a SECOND map (T5 fix round 1).
+   *
+   * `factsHashes` may only move when TEXT does: let a refused section adopt
+   * the fingerprint it was attempted at and it reads fresh, the F-4 staleness
+   * blocker goes quiet, and prose describing an earlier version of the data
+   * can reach a signed operat — the one outcome this slice exists to prevent.
+   * But something has to record that the automat was already asked at these
+   * exact facts, or entering step 6 buys the same refusal again on every
+   * visit, silently, with no click behind it. One map follows the outcome,
+   * one follows the request.
+   *
+   * Keyed by fingerprint rather than by a flag, so it self-clears: move the
+   * facts and the recorded attempt stops matching, which is exactly when a
+   * fresh attempt is worth paying for again.
+   *
+   * OPTIONAL: rows persisted before this field carry none, and absent reads
+   * as "never attempted" — one automatic generation per existing draft on the
+   * next visit to step 6, the same migration `factsHashes` had.
+   */
+  attempts?: Partial<Record<ProseSection, string>>;
   model: string;
   /** ISO timestamp — passed in by the caller, never read from the clock here (F-2). */
   generatedAt: string;
@@ -236,6 +259,12 @@ export function mergeProseProposal(
     sections,
     rejected,
     factsHashes,
+    // Attempts are folded WHOLESALE, outside the per-section logic above:
+    // this run's entry wins for every section it asked about — whatever came
+    // back — and the previous entry survives for every section it did not.
+    // None of the outcome branches may touch this map; that independence is
+    // the field's entire purpose.
+    attempts: { ...previous.attempts, ...incoming.attempts },
     model: incoming.model,
     generatedAt: incoming.generatedAt,
   };
@@ -289,6 +318,13 @@ export function confirmProseSnapshot(
     sections,
     rejected,
     factsHashes,
+    // A confirm asks the automat for nothing, so it records no attempt and
+    // erases none. The consequence is deliberate: a section the appraiser
+    // BLANKED keeps the attempt made for it, so returning to step 6 does not
+    // quietly buy back the text they just deleted — until the facts move,
+    // when the recorded fingerprint stops matching and a fresh proposal is
+    // worth paying for again.
+    attempts: previous?.attempts,
     model: previous?.model ?? "",
     generatedAt: previous?.generatedAt ?? meta.now.toISOString(),
   };

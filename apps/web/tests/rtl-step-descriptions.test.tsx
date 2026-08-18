@@ -44,7 +44,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { StepDescriptions } from "@/app/valuations/[id]/steps/step-descriptions";
-import { PROSE_SECTIONS, type ProseSnapshot } from "@/domain/prose-snapshot";
+import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "@/domain/prose-snapshot";
 
 // A FRESH id per test: the step keeps a module-scoped map of in-flight
 // generations (that is what stops a back-and-forth between steps from paying
@@ -87,6 +87,7 @@ function renderStep(props: Partial<Parameters<typeof StepDescriptions>[0]> = {})
         prose={null}
         upToDate={false}
         staleSections={[]}
+        attemptedSections={[]}
         generatableSections={[...PROSE_SECTIONS]}
         usage={{ generations: 0, tokens: 0, grosze: 0 }}
         {...props}
@@ -383,25 +384,27 @@ describe("the appraiser's responsibility", () => {
 
 describe("what went stale, and what regenerating it costs (T5)", () => {
   /**
-   * All six written, then the sample edited underneath a section the
-   * appraiser had already CONFIRMED: stale, but no longer open to the automat,
-   * so entering the step marks it without buying anything. That is what keeps
-   * these assertions free of a generation in flight — and it is the realistic
-   * shape of the case the F-4 staleness blocker exists for.
+   * All six written by the automat, then the sample edited underneath one of
+   * them. The section is stale AND still the automat's — which is the state
+   * an earlier version of this block could not reach, because every stale
+   * section it built was `rzeczoznawca`/`confirmed` and therefore dropped by
+   * `isStillTheAutomats` before any generation could fire (fix round 1).
+   *
+   * What keeps these assertions free of a generation in flight is
+   * `attemptedSections`, not the provenance: the automat was already asked at
+   * these exact facts. The pairs in "entering the step must not re-buy a
+   * refusal" prove the same fixture DOES fire without that.
    */
-  const oneStale = (): ProseSnapshot =>
-    allSixFresh({
-      sections: {
-        ...allSixFresh().sections,
-        analiza_rynku: {
-          value: HUMAN_TEXT,
-          provenance: { source: "rzeczoznawca", status: "confirmed" },
-        },
-      },
-    });
+  const oneStale = (): ProseSnapshot => allSixFresh();
+  const ATTEMPTED_ANALIZA = { attemptedSections: ["analiza_rynku"] as ProseSection[] };
 
   it("marks only the stale sections and offers to regenerate just those", () => {
-    renderStep({ prose: oneStale(), upToDate: false, staleSections: ["analiza_rynku"] });
+    renderStep({
+      prose: oneStale(),
+      upToDate: false,
+      staleSections: ["analiza_rynku"],
+      ...ATTEMPTED_ANALIZA,
+    });
 
     expect(screen.getByTestId("prose-stale-analiza_rynku")).toHaveTextContent("dane się zmieniły");
     expect(screen.queryByTestId("prose-stale-otoczenie")).toBeNull();
@@ -413,24 +416,11 @@ describe("what went stale, and what regenerating it costs (T5)", () => {
   });
 
   it("counts in Polish — two stale sections read 'nieaktualne sekcje'", () => {
-    const twoStale = allSixFresh({
-      sections: {
-        ...allSixFresh().sections,
-        analiza_rynku: {
-          value: HUMAN_TEXT,
-          provenance: { source: "rzeczoznawca", status: "confirmed" },
-        },
-        uzasadnienie: {
-          value: HUMAN_TEXT,
-          provenance: { source: "rzeczoznawca", status: "confirmed" },
-        },
-      },
-    });
-
     renderStep({
-      prose: twoStale,
+      prose: allSixFresh(),
       upToDate: false,
       staleSections: ["analiza_rynku", "uzasadnienie"],
+      attemptedSections: ["analiza_rynku", "uzasadnienie"],
     });
 
     expect(
@@ -446,6 +436,7 @@ describe("what went stale, and what regenerating it costs (T5)", () => {
       prose: oneStale(),
       upToDate: false,
       staleSections: ["analiza_rynku"],
+      ...ATTEMPTED_ANALIZA,
       generatableSections: PROSE_SECTIONS.filter((s) => s !== "analiza_rynku"),
     });
 
@@ -461,7 +452,12 @@ describe("what went stale, and what regenerating it costs (T5)", () => {
   });
 
   it("the counted button asks for the missing-or-stale set, not for all six", async () => {
-    renderStep({ prose: oneStale(), upToDate: false, staleSections: ["analiza_rynku"] });
+    renderStep({
+      prose: oneStale(),
+      upToDate: false,
+      staleSections: ["analiza_rynku"],
+      ...ATTEMPTED_ANALIZA,
+    });
 
     fireEvent.click(
       screen.getByRole("button", { name: /Wygeneruj ponownie 1 nieaktualną sekcję/ }),
@@ -561,34 +557,152 @@ describe("a refused refresh is visible, not silent (T5)", () => {
   });
 });
 
-describe("entering the step must not re-buy a refusal (T5)", () => {
-  it("a missing section nothing has attempted yet: one generation", async () => {
-    const pending = deferred<{ prose: ProseSnapshot }>();
-    proposeProseMock.mockReturnValue(pending.promise);
-    const fiveOfSix = allSixFresh();
-    delete fiveOfSix.sections.uzasadnienie;
+/**
+ * Entering the step must not re-buy an answer the automat has already given
+ * (T5 fix round 1).
+ *
+ * THREE ways a section can be stuck needing work that no further call will
+ * produce, and each is a separate probe below, in PAIRS: the same fixture
+ * with `attemptedSections` empty must fire exactly once, so a probe that
+ * passes for the wrong reason (nothing could fire at all) is visible.
+ *
+ *  1. **stale + rejected** — AI text that went stale, whose refresh the
+ *     worker's number guard refused. The merge keeps the OLD fingerprint, so
+ *     it stays stale forever and the no-opts filter re-requests it forever.
+ *  2. **requested but silent** — no text, no reason. Nothing in the snapshot
+ *     recorded that it was ever asked for.
+ *  3. **missing + rejected** — the one case the first round closed.
+ *
+ * `attempts` closes all three, and the F-4 gate still blocks every one of
+ * them: only the automatic RETRY is suppressed, never the blocker.
+ */
+describe("entering the step must not re-buy an answer already given (T5)", () => {
+  const stale = (over: Partial<ProseSnapshot> = {}) => allSixFresh(over);
 
-    renderStep({ prose: fiveOfSix, upToDate: false });
+  const missing = (over: Partial<ProseSnapshot> = {}) => {
+    const snapshot = allSixFresh(over);
+    delete snapshot.sections.uzasadnienie;
+    return snapshot;
+  };
 
-    await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
-  });
-
-  it("...but a missing section the worker already refused: NOTHING, until asked", async () => {
-    // The bill this task exists to prevent: the guard refuses a section, the
-    // appraiser steps 6 -> 7 -> 6, and every visit buys the same refusal
-    // again. A recorded rejection means it was attempted and paid for — from
-    // here on it takes a click.
-    const refused = allSixFresh({ rejected: { uzasadnienie: ["9 871,00"] } });
-    delete refused.sections.uzasadnienie;
-
-    renderStep({ prose: refused, upToDate: false });
+  it("PATH 1 stale + rejected, already attempted: NOTHING is bought", async () => {
+    renderStep({
+      prose: stale({ rejected: { otoczenie: ["9 871,00"] } }),
+      upToDate: false,
+      staleSections: ["otoczenie"],
+      attemptedSections: ["otoczenie"],
+    });
 
     await waitFor(() =>
       expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue("Tekst sekcji opis_lokalu."),
     );
     expect(proposeProseMock).not.toHaveBeenCalled();
-    // …and the button is still there to ask with.
+    // …and the appraiser can still ask, and is still told the section is stale.
+    expect(screen.getByTestId("prose-stale-otoczenie")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Wygeneruj ponownie 1 nieaktualną sekcję/ }),
+    ).toBeEnabled();
+  });
+
+  it("PATH 1 control — the same stale section NOT yet attempted fires exactly once", async () => {
+    const pending = deferred<{ prose: ProseSnapshot }>();
+    proposeProseMock.mockReturnValue(pending.promise);
+
+    renderStep({
+      prose: stale({ rejected: { otoczenie: ["9 871,00"] } }),
+      upToDate: false,
+      staleSections: ["otoczenie"],
+    });
+
+    await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("PATH 2 requested but silent (no text, no reason), already attempted: NOTHING", async () => {
+    renderStep({
+      prose: missing(),
+      upToDate: false,
+      attemptedSections: ["uzasadnienie"],
+    });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue("Tekst sekcji opis_lokalu."),
+    );
+    expect(proposeProseMock).not.toHaveBeenCalled();
+  });
+
+  it("PATH 2 control — silent and NOT yet attempted fires exactly once", async () => {
+    const pending = deferred<{ prose: ProseSnapshot }>();
+    proposeProseMock.mockReturnValue(pending.promise);
+
+    renderStep({ prose: missing(), upToDate: false });
+
+    await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("PATH 3 missing + rejected, already attempted: NOTHING, until asked", async () => {
+    renderStep({
+      prose: missing({ rejected: { uzasadnienie: ["9 871,00"] } }),
+      upToDate: false,
+      attemptedSections: ["uzasadnienie"],
+    });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue("Tekst sekcji opis_lokalu."),
+    );
+    expect(proposeProseMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Wygeneruj ponownie" })).toBeEnabled();
+  });
+
+  it("PATH 3 control — missing + rejected but NOT yet attempted fires exactly once", async () => {
+    const pending = deferred<{ prose: ProseSnapshot }>();
+    proposeProseMock.mockReturnValue(pending.promise);
+
+    renderStep({
+      prose: missing({ rejected: { uzasadnienie: ["9 871,00"] } }),
+      upToDate: false,
+    });
+
+    await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("an attempt recorded against OLDER facts is no bound at all — the server drops it", async () => {
+    // `attemptedSections` is computed against TODAY's fingerprint server-side
+    // (`attemptedProseSections`), so a stale attempt simply never arrives here.
+    // This pins the contract the component relies on: what it receives is
+    // already "attempted at the CURRENT facts", never "attempted, once".
+    const pending = deferred<{ prose: ProseSnapshot }>();
+    proposeProseMock.mockReturnValue(pending.promise);
+
+    renderStep({
+      prose: missing({ rejected: { uzasadnienie: ["9 871,00"] } }),
+      upToDate: false,
+      attemptedSections: [],
+    });
+
+    await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("a remount during 'wszystkie od nowa' joins it — it does not buy a second (fix round 1)", async () => {
+    // Keying the in-flight map by BATCH made the two buttons invisible to each
+    // other: the appraiser clicks "wszystkie od nowa", steps 6 -> 5 -> 6 during
+    // the ~10 s call, and the returning mount — which still sees the server's
+    // pre-run props and so wants to auto-fire — looked under the DEFAULT key,
+    // found nothing, and bought a second generation.
+    const pending = deferred<{ prose: ProseSnapshot }>();
+    proposeProseMock.mockReturnValue(pending.promise);
+
+    // Nothing to auto-fire on this mount: the click is the only call.
+    const first = renderStep({ prose: allSixFresh(), upToDate: true });
+    fireEvent.click(screen.getByRole("button", { name: "Wygeneruj wszystkie od nowa" }));
+    await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
+    expect(proposeProseMock).toHaveBeenCalledWith(VID, { sections: [...PROSE_SECTIONS] });
+
+    first.unmount();
+    // The returning mount WOULD auto-fire — and must join instead.
+    renderStep({ prose: missing(), upToDate: false, attemptedSections: [] });
+
+    await screen.findByTestId("prose-generating");
+    expect(proposeProseMock).toHaveBeenCalledTimes(1);
   });
 });
 

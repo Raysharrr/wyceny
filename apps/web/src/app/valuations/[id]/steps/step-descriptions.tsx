@@ -74,7 +74,8 @@ function isStillTheAutomats(snapshot: ProseSnapshot | null, section: ProseSectio
 }
 
 /**
- * Generations in flight, keyed by valuation AND batch — MODULE scope on purpose.
+ * Generations in flight, keyed by VALUATION — one per draft, whoever asked and
+ * for whatever batch. MODULE scope on purpose.
  *
  * The mount guard is a `useRef`, so it dies with the component: stepping 6 → 5
  * → 6 during the ~10 s call remounts the step, finds nothing persisted yet, and
@@ -83,22 +84,23 @@ function isStillTheAutomats(snapshot: ProseSnapshot | null, section: ProseSectio
  * call instead of buying another one — it still shows the loading state and
  * still receives the result.
  *
- * The batch is part of the key because the two buttons no longer ask for the
- * same thing (T5): joining a missing-or-stale run when the appraiser asked for
- * all six would hand back a result that answers a different question.
+ * Adding the batch to the key (T5, reverted in fix round 1) made the two
+ * buttons invisible to each other: a remount during an all-six run auto-fired
+ * under the DEFAULT key and bought a second generation. A joiner getting a
+ * different batch than it asked for is a wrong-sized answer it can ask again
+ * for; a duplicate is money, so the coarser key wins.
  */
 const inFlight = new Map<string, Promise<ProposeProseResult>>();
 
 function generateOnce(valuationId: string, sections?: ProseSection[]): Promise<ProposeProseResult> {
-  const key = sections ? `${valuationId}|${sections.join(",")}` : valuationId;
-  const running = inFlight.get(key);
+  const running = inFlight.get(valuationId);
   if (running) return running;
   // No options at all — not `{ sections: undefined }` — for the default batch:
   // the action reads "whatever is missing or stale" from the ABSENCE of opts.
   const started = (
     sections ? proposeProse(valuationId, { sections }) : proposeProse(valuationId)
-  ).finally(() => inFlight.delete(key));
-  inFlight.set(key, started);
+  ).finally(() => inFlight.delete(valuationId));
+  inFlight.set(valuationId, started);
   return started;
 }
 
@@ -107,11 +109,19 @@ function generateOnce(valuationId: string, sections?: ProseSection[]): Promise<P
  * the draft's prose is out of date, which is `upToDate`'s question and the
  * gate's (T5).
  *
- * The two must not be the same answer. A section the worker's number guard
- * already refused stays missing and keeps blocking approval, so `upToDate`
- * says no forever — but re-asking on every visit would buy the same refusal
- * again, silently, with no click behind it. A recorded rejection means "this
- * has been attempted and paid for": from then on it takes the button.
+ * The two must not be the same answer. A section can need work that no further
+ * call will produce: the worker's number guard refused it, or it came back
+ * silent. It goes on blocking approval, so "out of date" answers yes forever,
+ * while "would another call change anything" has to answer no — otherwise
+ * every visit to step 6 buys the same refusal again, with no click behind it.
+ *
+ * `attemptedSections` is what tells them apart, and it is deliberately NOT
+ * derived from `rejected`: an earlier version of this guard read a recorded
+ * rejection as "already attempted", which missed both a STALE section that was
+ * refused (staleness short-circuited the check) and a section that came back
+ * with no reason at all to record (fix round 1). The server answers the
+ * question directly instead — "asked at exactly these facts" — and its answer
+ * self-clears when the facts move.
  *
  * Sections the appraiser owns are excluded throughout (`isStillTheAutomats`),
  * as before: the merge would preserve them and the tokens would be spent for
@@ -121,12 +131,14 @@ function generateOnce(valuationId: string, sections?: ProseSection[]): Promise<P
 function worthGenerating(
   prose: ProseSnapshot | null,
   staleSections: ProseSection[],
+  attemptedSections: ProseSection[],
   generatableSections: ProseSection[],
 ): boolean {
   const open = generatableSections.filter((s) => isStillTheAutomats(prose, s));
   if (!prose) return open.length > 0;
   const stale = new Set(staleSections);
-  return open.some((s) => stale.has(s) || (!prose.sections[s] && !prose.rejected[s]));
+  const attempted = new Set(attemptedSections);
+  return open.some((s) => (stale.has(s) || !prose.sections[s]) && !attempted.has(s));
 }
 
 /**
@@ -166,6 +178,13 @@ export type StepDescriptionsProps = {
    * different states and the step says different things about them.
    */
   staleSections: ProseSection[];
+  /**
+   * Sections the automat was already asked for at TODAY's facts, whatever came
+   * back (`ProseSnapshot.attempts`). The bound on re-buying a refusal — never
+   * a claim that the section is fine: a listed section is still marked stale,
+   * still shown with its reason, and still blocked by the F-4 gate.
+   */
+  attemptedSections: ProseSection[];
   /** Sections today's facts can back — computed server-side by `selectProseSections`. */
   generatableSections: ProseSection[];
   /**
@@ -223,6 +242,7 @@ function ProseEditors({
   prose,
   upToDate,
   staleSections,
+  attemptedSections,
   generatableSections,
   usage,
 }: StepDescriptionsProps) {
@@ -286,7 +306,7 @@ function ProseEditors({
     if (
       !autoStarted.current &&
       !upToDate &&
-      worthGenerating(prose, staleSections, generatableSections)
+      worthGenerating(prose, staleSections, attemptedSections, generatableSections)
     ) {
       autoStarted.current = true;
       void generate();

@@ -250,6 +250,17 @@ describe("proposeProse — happy path", () => {
           currentSectionFactsHash(section, { address: ADDRESS, inputs: INPUTS }),
         ]),
       ),
+      // T5 fix round 1: the same six fingerprints, under a name that means
+      // "asked" rather than "answered". Five of these sections came back with
+      // NO text (`PROPOSAL` delivers only opis_lokalu) and every one is still
+      // recorded here — that is the whole point. The two maps hold the same
+      // thing only at this instant; the first merge separates them.
+      attempts: Object.fromEntries(
+        ALL_SECTIONS.map((section) => [
+          section,
+          currentSectionFactsHash(section, { address: ADDRESS, inputs: INPUTS }),
+        ]),
+      ),
       model: "claude-sonnet-5",
       generatedAt: "2026-08-18T07:30:00.000Z",
     };

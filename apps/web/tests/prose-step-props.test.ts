@@ -175,6 +175,21 @@ describe("proseStepProps", () => {
     );
   });
 
+  it("names the sections already attempted at today's facts", async () => {
+    // The bound on re-buying a refusal — recorded whatever came back, and
+    // compared against TODAY's fingerprint, so it stops counting the moment
+    // the facts move under it.
+    const snapshot = freshProse(await generatableOf(INPUTS));
+    snapshot.attempts = {
+      otoczenie: currentSectionFactsHash("otoczenie", { address: ADDRESS, inputs: INPUTS }),
+      standard: "f".repeat(64),
+    };
+
+    const props = await proseStepProps(draft({ ...INPUTS, prose: snapshot }), USER, repo());
+
+    expect(props.attemptedSections).toEqual(["otoczenie"]);
+  });
+
   it("converts the audit trail's tokens into groszy and passes the counts through", async () => {
     const r = repo({ generations: 2, inputTokens: 3120, outputTokens: 480 });
 
@@ -191,6 +206,7 @@ describe("proseStepProps", () => {
       prose: null,
       upToDate: true,
       staleSections: [],
+      attemptedSections: [],
       generatableSections: [],
       usage: { generations: 0, tokens: 0, grosze: 0 },
     });
@@ -212,6 +228,7 @@ describe("proseStepProps", () => {
       prose: snapshot,
       upToDate: true,
       staleSections: [],
+      attemptedSections: [],
       generatableSections: [],
       usage: { generations: 0, tokens: 0, grosze: 0 },
     });

@@ -368,6 +368,37 @@ export function staleProseSections(
   });
 }
 
+/**
+ * Sections the automat has ALREADY been asked for at today's facts — the
+ * counterpart of {@link staleProseSections}, and the bound on re-buying a
+ * refusal (T5 fix round 1).
+ *
+ * A section can be stale or missing for a reason no further generation will
+ * change: the worker's number guard refused it, or it came back silent. Both
+ * leave the section blocking approval, so "is it out of date" answers yes
+ * forever — while "would another call change anything" must answer no until
+ * the facts themselves move. `ProseSnapshot.attempts` records the fingerprint
+ * each request was made at, so the comparison here IS that self-clearing:
+ * different facts, different hash, a retry warranted again.
+ *
+ * Deliberately says nothing about text, `factsHashes` or the F-4 gate. A
+ * section listed here is still stale, still blocking, and still shown as
+ * such — only the automatic retry is suppressed.
+ *
+ * `currentHash` is INJECTED for the same reason as in `staleProseSections`:
+ * this module must stay importable from a Client Component, and the sha256
+ * lives in `prose-hash.ts`.
+ */
+export function attemptedProseSections(
+  snapshot: Pick<ProseSnapshot, "attempts"> | null | undefined,
+  input: ProseFactsInput,
+  currentHash: (section: ProseSection, input: ProseFactsInput) => string,
+): ProseSection[] {
+  if (!snapshot?.attempts) return [];
+  const attempts = snapshot.attempts;
+  return PROSE_SECTIONS.filter((section) => attempts[section] === currentHash(section, input));
+}
+
 export type ProseProposalOutcome = {
   sections: Partial<Record<ProseSection, string>>;
   rejected: Partial<Record<ProseSection, string[]>>;
@@ -392,6 +423,15 @@ export function proseSnapshotOf(outcome: ProseProposalOutcome): ProseSnapshot {
     sections,
     rejected: outcome.rejected,
     factsHashes: outcome.factsHashes,
+    // Every section this run REQUESTED, at the fingerprint it was requested
+    // at — which is exactly what `factsHashes` holds on a freshly built
+    // proposal, since the caller stamps one per requested section before it
+    // knows any outcome. Derived here rather than passed in so no caller can
+    // record a request it did not make, or forget one it did. A COPY, not the
+    // same object: the two maps diverge from the very next merge, where
+    // `factsHashes` stays behind for a section whose text was refused and
+    // `attempts` does not.
+    attempts: { ...outcome.factsHashes },
     model: outcome.model,
     generatedAt: outcome.generatedAt.toISOString(),
   };

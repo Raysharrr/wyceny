@@ -1,4 +1,9 @@
-import { buildProseFacts, selectProseSections, staleProseSections } from "@/domain/prose";
+import {
+  attemptedProseSections,
+  buildProseFacts,
+  selectProseSections,
+  staleProseSections,
+} from "@/domain/prose";
 import { currentSectionFactsHash } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import { proseCostGrosze } from "@/lib/prose-pricing";
@@ -37,7 +42,14 @@ export async function proseStepProps(
 ): Promise<StepProps> {
   const prose = v.inputs?.prose ?? null;
   if (!proseEnabled() || !v.inputs) {
-    return { prose, upToDate: true, staleSections: [], generatableSections: [], usage: NO_USAGE };
+    return {
+      prose,
+      upToDate: true,
+      staleSections: [],
+      attemptedSections: [],
+      generatableSections: [],
+      usage: NO_USAGE,
+    };
   }
   const input = { address: v.address, inputs: v.inputs };
   const generatableSections = selectProseSections(buildProseFacts(input));
@@ -46,6 +58,12 @@ export async function proseStepProps(
   // matches the facts behind it. A mismatch is a non-blocking signal asking
   // for a (T3: per-section) regeneration, not a refusal.
   const staleSections = staleProseSections(prose, input, currentSectionFactsHash);
+  // Which sections the automat was ALREADY asked for at exactly these facts
+  // (T5 fix round 1). Computed here rather than in the browser for the same
+  // reason as staleness — the fingerprint needs `node:crypto` — and compared
+  // against TODAY's facts, so the step is handed "already attempted at the
+  // current facts", never the weaker "attempted at some point".
+  const attemptedSections = attemptedProseSections(prose, input, currentSectionFactsHash);
   const usage = await repo.proseUsage(v.id, user);
 
   return {
@@ -64,6 +82,7 @@ export async function proseStepProps(
       staleSections.length === 0 &&
       generatableSections.every((s) => prose.sections[s]),
     staleSections,
+    attemptedSections,
     generatableSections,
     usage: {
       generations: usage.generations,

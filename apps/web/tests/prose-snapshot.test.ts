@@ -198,6 +198,59 @@ describe("mergeProseProposal — regeneration keeps the appraiser's text", () =>
     expect(mergeProseProposal(null, incoming)).toEqual(incoming);
   });
 
+  /**
+   * `attempts` — what this run ASKED for, as opposed to what came back
+   * (T5 fix round 1).
+   *
+   * The two must be separate maps. `factsHashes` may only move when TEXT
+   * does, or a refused section would read fresh and the F-4 gate would wave
+   * stale prose into a signed operat. But something has to record that the
+   * automat was already asked at these exact facts, or step 6 buys the same
+   * refusal on every entry. Hence one map that follows the outcome and one
+   * that follows the request.
+   */
+  describe("attempts", () => {
+    const AT = "c".repeat(64);
+    const refusedRerequest = {
+      ...incoming,
+      sections: { standard: incoming.sections.standard! },
+      rejected: { otoczenie: ["1 234,00"] },
+      factsHashes: { standard: incoming.factsHashes.standard, otoczenie: AT },
+      attempts: { standard: incoming.factsHashes.standard, otoczenie: AT },
+    };
+
+    it("records the attempt for a section this run REQUESTED and the worker refused", () => {
+      const merged = mergeProseProposal(previous, refusedRerequest);
+
+      expect(merged.attempts?.otoczenie).toBe(AT);
+    });
+
+    it("...while that same section stays STALE — the gate is not silenced", () => {
+      // The whole reason attempts is a second map: `factsHashes` keeps the
+      // OLD value, so `staleProseSections` and the F-4 blocker both go on
+      // naming this section. Only the automatic RETRY is suppressed.
+      const merged = mergeProseProposal(previous, refusedRerequest);
+
+      expect(merged.factsHashes.otoczenie).toBe(previous.factsHashes.otoczenie);
+      expect(merged.factsHashes.otoczenie).not.toBe(AT);
+    });
+
+    it("a section outside the batch keeps the attempt recorded before it", () => {
+      const withAttempt: ProseSnapshot = {
+        ...previous,
+        attempts: { analiza_rynku: "d".repeat(64) },
+      };
+
+      expect(mergeProseProposal(withAttempt, incoming).attempts?.analiza_rynku).toBe(
+        "d".repeat(64),
+      );
+    });
+
+    it("neither side has attempts (rows persisted before the field): an empty map, no throw", () => {
+      expect(mergeProseProposal(previous, incoming).attempts).toEqual({});
+    });
+  });
+
   it("fix round 1, finding 1: a legacy previous (no factsHashes map) does not throw", () => {
     // A row persisted before eb09bcf carries `factsHash: string` and no
     // per-section map at all — the type promises `factsHashes` is always
@@ -358,6 +411,18 @@ describe("confirmProseSnapshot — the appraiser takes responsibility", () => {
     expect(confirmed.rejected).toEqual({});
     expect(confirmProseSnapshot(previous, {}, meta).rejected).toEqual({
       analiza_rynku: ["9 871,00"],
+    });
+  });
+
+  it("carries the attempts forward — a confirm asks the automat for nothing", () => {
+    // The pleasant consequence: a section the appraiser deliberately BLANKED
+    // keeps its attempt, so entering step 6 again does not quietly buy back
+    // the text they just deleted. Move the facts and the attempt stops
+    // matching, which is exactly when a fresh proposal is worth paying for.
+    const attempted: ProseSnapshot = { ...previous, attempts: { otoczenie: "d".repeat(64) } };
+
+    expect(confirmProseSnapshot(attempted, { opis_lokalu: HUMAN_TEXT }, meta).attempts).toEqual({
+      otoczenie: "d".repeat(64),
     });
   });
 
