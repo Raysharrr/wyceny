@@ -252,11 +252,16 @@ export function buildProseTransactions(comparables: Comparable[]): ProseTransact
  */
 export function selectProseSections(facts: ProseFacts): ProseSection[] {
   const has: Record<ProseSection, boolean> = {
-    // The task asks for the sample's area band, its date range and its total
-    // price range — all three must be backed by real comparables.
-    analiza_rynku: Boolean(
-      facts.proba?.zakres_dat && facts.proba.pow_min_m2 && facts.proba.cena_calkowita_min_zl,
-    ),
+    // A sample is enough. The derived aggregates (date range, area band, total
+    // price range) are all-or-nothing by construction, so a missing one is
+    // ABSENT rather than partial, and the style guide tells the model to drop
+    // a thread it has no fact for. Demanding all three used to withhold the
+    // whole section — and §11 no longer carries any static scaffolding, so the
+    // appraiser was left writing the market analysis from nothing. One
+    // comparable without a date is a normal flow here, so that was the common
+    // case, not the edge. Worst case now is a section the guard rejects, which
+    // lands in exactly the same empty editor as before.
+    analiza_rynku: Boolean(facts.proba),
     opis_lokalu: Boolean(facts.notatka_uklad),
     otoczenie: Boolean(facts.notatka_otoczenie),
     zagospodarowanie: Boolean(

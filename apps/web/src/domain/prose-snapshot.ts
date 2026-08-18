@@ -77,6 +77,17 @@ function isAppraisers(entry: Sourced<string> | undefined): entry is Sourced<stri
  * when every section was preserved: keeping the old `factsHash` would leave
  * the step permanently stale, so every visit would fire — and pay for — a
  * generation whose result it then discards.
+ *
+ * That adoption is exactly why a preserved section must LOSE its `confirmed`
+ * status when the fingerprint changes (review finding I-A). Without it,
+ * regenerating after an input edit produced a snapshot whose every character
+ * predated the edit while its fingerprint claimed otherwise — one click, at
+ * full generation cost, and the F-4 staleness blocker was gone without the
+ * appraiser reading a single sentence. The in-transaction gate cannot catch
+ * that: the staleness lives INSIDE the snapshot, so the adapter recomputes the
+ * same hash and finds it consistent. The text is kept (it may still be
+ * perfectly good, and losing it would be the other failure) — but it goes back
+ * to "to_verify", so the appraiser has to look at it against the new data.
  */
 export function mergeProseProposal(
   previous: ProseSnapshot | null | undefined,
@@ -84,12 +95,15 @@ export function mergeProseProposal(
 ): ProseSnapshot {
   if (!previous) return incoming;
 
+  const factsChanged = previous.factsHash !== incoming.factsHash;
   const sections: ProseSnapshot["sections"] = {};
   const rejected: ProseSnapshot["rejected"] = {};
   for (const section of PROSE_SECTIONS) {
     const kept = previous.sections[section];
     if (isAppraisers(kept)) {
-      sections[section] = kept;
+      sections[section] = factsChanged
+        ? sourced(kept.value, kept.provenance.source, "to_verify")
+        : kept;
       // No rejection reason next to a text the appraiser wrote — `sections`
       // and `rejected` stay disjoint.
       continue;

@@ -61,8 +61,28 @@ const incoming: ProseSnapshot = {
 };
 
 describe("mergeProseProposal — regeneration keeps the appraiser's text", () => {
-  it("a confirmed section keeps its own text AND provenance", () => {
+  it("a confirmed section keeps its own text and author", () => {
     const merged = mergeProseProposal(previous, incoming);
+
+    expect(merged.sections.opis_lokalu?.value).toBe(HUMAN_TEXT);
+    expect(merged.sections.opis_lokalu?.provenance.source).toBe("rzeczoznawca");
+  });
+
+  // Review finding I-A. The merge adopts the INCOMING fingerprint (see the test
+  // below for why it must), so a preserved text would inherit a claim of being
+  // current that it has not earned: every character of it predates the edit
+  // that changed the facts. That was a one-click, full-price bypass of the F-4
+  // staleness blocker — and the in-transaction gate cannot see it, because the
+  // adapter recomputes the same hash and finds the snapshot self-consistent.
+  it("a confirmed section goes back to to_verify when the facts changed under it", () => {
+    const merged = mergeProseProposal(previous, incoming);
+
+    expect(previous.factsHash).not.toBe(incoming.factsHash);
+    expect(merged.sections.opis_lokalu?.provenance.status).toBe("to_verify");
+  });
+
+  it("...and keeps its confirmed status when the facts did NOT change", () => {
+    const merged = mergeProseProposal(previous, { ...incoming, factsHash: previous.factsHash });
 
     expect(merged.sections.opis_lokalu).toEqual({
       value: HUMAN_TEXT,

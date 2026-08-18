@@ -76,6 +76,14 @@ export function proseFactsHash(facts: ProseFacts): string {
 export function currentProseFactsHash(input: ProseFactsInput): string {
   return sha256Canonical({
     facts: buildProseFacts(input),
-    transactions: buildProseTransactions(input.inputs.comparables),
+    // Sorted, because the worker sorts too (`prose.py` orders the sample
+    // chronologically before halving the period). Row order is invisible to
+    // the model, so hashing it made a mere reordering of the sample look like
+    // an input change — an approval blocker on a no-op edit, clearable only by
+    // a paid regeneration that changes nothing. A fingerprint that fires on
+    // what the model cannot see teaches the appraiser to click through it.
+    transactions: [...buildProseTransactions(input.inputs.comparables)].sort((a, b) =>
+      a.data === b.data ? a.cena_m2 - b.cena_m2 : a.data < b.data ? -1 : 1,
+    ),
   });
 }

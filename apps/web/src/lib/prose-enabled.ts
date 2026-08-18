@@ -12,9 +12,13 @@
  *
  *  - **Server** (this helper: the generator, the step's facts, the F-4
  *    requirement) — Next leaves `process.env.NEXT_PUBLIC_PROSE` as a runtime
- *    read in the server bundles, so flipping the variable on the host takes
- *    effect on the very next request. This is the brake that stops the
- *    spending, and it does NOT need a rebuild.
+ *    read in the server bundles. VERIFIED, by grepping a real `next build`
+ *    output: the server bundle reads the variable at request time instead of
+ *    inlining it. NOT VERIFIED, and not to be relied on until someone tests it
+ *    against the host: whether a RUNNING deployment is handed a CHANGED value
+ *    without a redeploy. That is a platform property, not a Next one — Vercel
+ *    applies environment changes to new deployments. Until that test exists,
+ *    document the brake as "set it and redeploy", never as instant.
  *  - **Client** (`step-descriptions.tsx`, which keeps its own inline read on
  *    purpose) — inlined at build time, which is what lets the editors be
  *    dropped from the browser bundle entirely. Changing that half needs a

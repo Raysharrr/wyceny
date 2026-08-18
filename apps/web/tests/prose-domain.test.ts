@@ -256,7 +256,13 @@ describe("a partial sample never describes itself as a whole one (review I-1)", 
     expect(proba?.cena_calkowita_max_zl).toBeUndefined();
   });
 
-  it("either gap drops analiza_rynku through the EXISTING gate — no new rule needed", () => {
+  it("either gap leaves the aggregate ABSENT, and the section is still offered", () => {
+    // What must never happen is a PARTIAL aggregate — "3 transakcje z okresu
+    // 11-2024 – 11-2024" is a falsifiable untruth the number guard cannot
+    // catch, because every number in it really is in the facts. Absence is
+    // honest: the style guide drops a thread with no fact behind it. And since
+    // §11 lost its static scaffolding, withholding the whole section on a gap
+    // left the appraiser writing the market analysis from nothing.
     const undated = [COMPARABLES[0], { area: 64, pricePerM2: 10725, source: "manual" as const }];
     const arealess = [
       COMPARABLES[0],
@@ -264,12 +270,18 @@ describe("a partial sample never describes itself as a whole one (review I-1)", 
     ];
 
     for (const comparables of [undated, arealess]) {
-      expect(
-        selectProseSections(
-          buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, comparables } }),
-        ),
-      ).not.toContain("analiza_rynku");
+      const facts = buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, comparables } });
+
+      expect(selectProseSections(facts)).toContain("analiza_rynku");
     }
+    expect(
+      buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, comparables: undated } }).proba
+        ?.zakres_dat,
+    ).toBeUndefined();
+    expect(
+      buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, comparables: arealess } }).proba
+        ?.pow_min_m2,
+    ).toBeUndefined();
   });
 
   it("a complete sample still reports both", () => {
@@ -408,10 +420,12 @@ describe("selectProseSections", () => {
     expect(sectionsFor({ ...INPUTS, features: zeroWeights })).not.toContain("uzasadnienie");
   });
 
-  it("dateless comparables: analiza_rynku drops (its date range would be unfillable)", () => {
+  it("dateless comparables: analiza_rynku stays, minus the date-range thread", () => {
     const undated = INPUTS.comparables.map(({ date: _d, ...rest }) => rest);
 
-    expect(sectionsFor({ ...INPUTS, comparables: undated })).not.toContain("analiza_rynku");
+    expect(sectionsFor({ ...INPUTS, comparables: undated })).toContain("analiza_rynku");
+    // ...and the transactions stay home, so no trend is claimed either.
+    expect(buildProseTransactions(undated)).toEqual([]);
   });
 
   it("an empty draft asks for nothing at all", () => {
@@ -454,5 +468,52 @@ describe("F-11 — the market value never leaves the web", () => {
       expect(payload).not.toContain(formatPln(value));
       expect(payload).not.toContain(formatNumber(value, 0));
     }
+  });
+});
+
+describe("controller fixes after the T7 review", () => {
+  it("reordering the sample does not change the fingerprint (the worker sorts anyway)", () => {
+    // A blocker that fires on an edit the model cannot see forces a paid
+    // regeneration that changes nothing — and teaches the appraiser to click
+    // through the gate. `prose.py` orders the sample chronologically before
+    // halving the period, so row order is invisible downstream.
+    const base = { address: ADDRESS, inputs: INPUTS };
+    const shuffled = {
+      address: ADDRESS,
+      inputs: { ...INPUTS, comparables: [...COMPARABLES].reverse() },
+    };
+
+    expect(currentProseFactsHash(shuffled)).toBe(currentProseFactsHash(base));
+  });
+
+  it("a changed price still changes the fingerprint", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        comparables: [{ ...COMPARABLES[0]!, pricePerM2: 9241 }, ...COMPARABLES.slice(1)],
+      },
+    };
+
+    expect(currentProseFactsHash(edited)).not.toBe(
+      currentProseFactsHash({ address: ADDRESS, inputs: INPUTS }),
+    );
+  });
+
+  it("analiza_rynku is offered on any sample — §11 has no static scaffolding left", () => {
+    // The aggregates are all-or-nothing, so a missing one is ABSENT, not
+    // partial, and the style guide drops a thread with no fact behind it.
+    // Withholding the section left the appraiser writing §11 from nothing.
+    const facts = buildProseFacts({
+      address: ADDRESS,
+      inputs: {
+        comparables: [{ pricePerM2: 9240 }, { pricePerM2: 12480 }],
+        area: 68.4,
+        features: FEATURES,
+      },
+    });
+
+    expect(facts.proba).not.toHaveProperty("zakres_dat");
+    expect(selectProseSections(facts)).toContain("analiza_rynku");
   });
 });
