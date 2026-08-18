@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { WizardShell } from "@/components/wizard/wizard-shell";
 import { getSession } from "@/auth/session";
 import { approvalGate } from "@/domain/provenance";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import { documentFieldBlockers } from "@/domain/document-model";
 import { maxReachedStep, resolveStep } from "@/domain/wizard";
@@ -146,8 +146,8 @@ export default async function ValuationViewPage({
     isDraft && valuation.inputs
       ? approvalGate(valuation.inputs, {
           requireProse: proseEnabled(),
-          currentFactsHash: proseEnabled()
-            ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+          currentSectionHashes: proseEnabled()
+            ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
             : undefined,
         })
       : null;

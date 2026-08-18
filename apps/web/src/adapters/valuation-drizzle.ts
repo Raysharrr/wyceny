@@ -26,7 +26,7 @@ import {
 import { totalInspectionPhotos } from "../domain/inspection";
 import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
-import { currentProseFactsHash } from "../domain/prose-hash";
+import { currentSectionFactsHashes } from "../domain/prose-hash";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -453,10 +453,13 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           // Computed from the ROW READ IN THIS TRANSACTION, not from the
           // caller's earlier read. Since T7 this is stamped on EVERY confirm
           // (it records the facts the appraiser accepted the text against),
-          // not only on prose written entirely by hand.
-          factsHash: valuation.inputs
-            ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
-            : "",
+          // not only on prose written entirely by hand. All six sections, not
+          // only the ones `texts` fills: a missing entry would leave the
+          // just-confirmed section stamped `undefined`, i.e. stale the moment
+          // the appraiser submitted it.
+          factsHashes: valuation.inputs
+            ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
+            : {},
           now: new Date(),
         });
         const [saved] = await tx
@@ -535,14 +538,16 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         // Re-runs the full gate (F-4 + document fields) in the domain — this is
         // the atomic status flip; a caller that stored files first but fails
         // here leaves harmless orphan files (same keys, overwritten on retry).
-        // The staleness fingerprint is derived HERE, from the row this
-        // transaction read — a caller could otherwise hand in a matching hash
-        // and walk stale prose straight past the invariant (ADR-012).
+        // The staleness fingerprints are derived HERE, from the row this
+        // transaction read, and REPLACE whatever the caller passed — a caller
+        // could otherwise hand in matching hashes (or an empty map, which
+        // disables the check section by section) and walk stale prose straight
+        // past the invariant (ADR-012).
         const updated = approveValuation(valuation, now, docs, {
           ...gate,
-          currentFactsHash:
+          currentSectionHashes:
             gate?.requireProse && valuation.inputs
-              ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+              ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
               : undefined,
         });
         const [saved] = await tx

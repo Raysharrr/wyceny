@@ -2,7 +2,7 @@ import { ClipboardCheck, FileStack } from "lucide-react";
 import { SectionCard } from "@/components/wizard/section-card";
 import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers } from "@/domain/document-model";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import type { Valuation } from "@/ports/valuation";
 import { currencyFormatter } from "../cards";
@@ -25,8 +25,8 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
   const gate = valuation.inputs
     ? approvalGate(valuation.inputs, {
         requireProse,
-        currentFactsHash: requireProse
-          ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+        currentSectionHashes: requireProse
+          ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
           : undefined,
       })
     : null;

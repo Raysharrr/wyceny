@@ -13,7 +13,7 @@ import {
   type OperatPurpose,
 } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 
@@ -65,10 +65,11 @@ export async function approveValuation(
   if (valuation.inputs) {
     const gate = approvalGate(valuation.inputs, {
       requireProse,
-      // Lets the gate see prose that describes a draft which has since moved
-      // on (T6 review, I-2). Derived here, never taken from the client.
-      currentFactsHash: requireProse
-        ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+      // Lets the gate see the sections whose facts have since moved on (T6
+      // review, I-2; per section since T4). Derived here, never taken from
+      // the client.
+      currentSectionHashes: requireProse
+        ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
         : undefined,
     });
     const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(valuation)];

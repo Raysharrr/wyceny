@@ -404,7 +404,7 @@ describe("newVersionOf (NFR-3)", () => {
     }
     // The generation metadata is not a confirmation — it describes which facts
     // the text was written from and stays as it is.
-    expect(draft.inputs!.prose!.factsHash).toBe(confirmedProse().factsHash);
+    expect(draft.inputs!.prose!.factsHashes).toEqual(confirmedProse().factsHashes);
   });
 
   it("the reset actually blocks the successor's approval (this is the point of it)", () => {
@@ -456,7 +456,7 @@ describe("newVersionOf (NFR-3)", () => {
       PROSE_SECTIONS.map((s) => [s, inherited.sections[s]!.value]),
     ) as Record<(typeof PROSE_SECTIONS)[number], string>;
     const reconfirmed = confirmProseSnapshot(inherited, texts, {
-      factsHash: "1".repeat(64),
+      factsHashes: Object.fromEntries(PROSE_SECTIONS.map((s) => [s, "1".repeat(64)])),
       now: new Date("2026-08-18T09:00:00.000Z"),
     });
 

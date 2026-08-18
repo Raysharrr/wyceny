@@ -20,7 +20,7 @@ import {
   type ProseFacts,
   type ProseFactsInput,
 } from "./prose";
-import type { ProseSection } from "./prose-snapshot";
+import { PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 
 /**
  * JSON with keys sorted recursively. Plain `JSON.stringify` preserves
@@ -83,4 +83,24 @@ export function currentSectionFactsHash(section: ProseSection, input: ProseFacts
         )
       : [],
   });
+}
+
+/**
+ * Today's fingerprint for ALL SIX sections — what the F-4 gate compares the
+ * stored snapshot against (`GateOptions.currentSectionHashes`), and what a
+ * step-6 confirm stamps onto the sections the appraiser accepted.
+ *
+ * Always the complete map, never only the sections that happen to carry text:
+ * the gate reads a missing entry as "the caller cannot tell" and skips the
+ * staleness check for that section, and `confirmProseSnapshot` would stamp
+ * `undefined` — leaving a just-confirmed section permanently stale. Callers
+ * that want a subset (a partial regeneration asks for one hash per REQUESTED
+ * section) build it from `currentSectionFactsHash` directly.
+ */
+export function currentSectionFactsHashes(
+  input: ProseFactsInput,
+): Partial<Record<ProseSection, string>> {
+  const hashes: Partial<Record<ProseSection, string>> = {};
+  for (const section of PROSE_SECTIONS) hashes[section] = currentSectionFactsHash(section, input);
+  return hashes;
 }

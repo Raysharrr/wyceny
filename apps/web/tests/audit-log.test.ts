@@ -154,7 +154,7 @@ describe("audit_log per mutation", () => {
           },
         },
         rejected: { analiza_rynku: ["9 871,00"] },
-        factsHash: "a".repeat(64),
+        factsHashes: { opis_lokalu: "a".repeat(64), otoczenie: "a".repeat(64) },
         model: "claude-sonnet-5",
         generatedAt: "2026-08-18T07:30:00.000Z",
       },
@@ -177,9 +177,11 @@ describe("audit_log per mutation", () => {
     // T7 (T6 review, I-2): the confirm re-stamps the fingerprint with the
     // facts the appraiser accepted the text against — computed by the adapter
     // from the row inside this transaction, so it is NOT the "a"*64 the
-    // generation carried.
-    expect(saved?.inputs?.prose?.factsHash).not.toBe("a".repeat(64));
-    expect(saved?.inputs?.prose?.factsHash).toMatch(/^[0-9a-f]{64}$/);
+    // generation carried. Per section since T2, and only for the section that
+    // survived the confirm: the blank one carries no text to fingerprint.
+    expect(saved?.inputs?.prose?.factsHashes?.opis_lokalu).not.toBe("a".repeat(64));
+    expect(saved?.inputs?.prose?.factsHashes?.opis_lokalu).toMatch(/^[0-9a-f]{64}$/);
+    expect(saved?.inputs?.prose?.factsHashes?.otoczenie).toBeUndefined();
     const rows = await auditRows(v.id);
     expect(rows.map((r) => r.action)).toEqual(["created", "prose_generated", "prose_confirmed"]);
     // FR-12: the audit says WHICH sections the appraiser took responsibility

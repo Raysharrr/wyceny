@@ -449,19 +449,41 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     expect(approveMock).not.toHaveBeenCalled();
   });
 
-  it("refuses prose that describes a superseded sample, even with every section confirmed (T6 review, I-2)", async () => {
+  it("refuses the SECTION that describes a superseded sample, naming only it (T4)", async () => {
     // The appraiser confirmed six sections, then went back and edited the
     // sample. Nothing about the snapshot's provenance changed — only the
     // facts underneath it did, which is exactly what the stored fingerprint
-    // stops matching. `confirmedProse()` carries a fingerprint from some
-    // earlier state of the draft.
+    // stops matching. The refusal has to name the section whose facts moved,
+    // not the whole block: five of these six still describe the draft in
+    // front of the appraiser, and sending them back to re-read all six turns
+    // the check into a ritual.
+    const prose = currentProse();
+    prose.factsHashes.uzasadnienie = "f".repeat(64);
+    getMock.mockResolvedValue(withProse(prose));
+
+    const result = await approveValuation(draftBase.id);
+
+    expect(result).toEqual({
+      error:
+        "Zatwierdzenie zablokowane — Uzasadnienie wyniku — pozycja na tle próby — dane się zmieniły, przejrzyj ponownie.",
+    });
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(storagePutMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses EVERY populated section of a pre-fingerprint snapshot (the migration path)", async () => {
+    // A draft persisted before per-section fingerprints existed: the adapter
+    // normalizes it to an empty map on read, so all six read stale and the
+    // appraiser makes one pass through step 6. `confirmedProse()` carries a
+    // fingerprint from some earlier state of the draft, which is the same
+    // thing from the gate's point of view.
     getMock.mockResolvedValue(withProse(confirmedProse()));
 
     const result = await approveValuation(draftBase.id);
 
     expect(result).toEqual({
       error:
-        "Zatwierdzenie zablokowane — Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.",
+        "Zatwierdzenie zablokowane — Analiza i charakterystyka rynku — dane się zmieniły, przejrzyj ponownie.",
     });
     expect(approveMock).not.toHaveBeenCalled();
     expect(storagePutMock).not.toHaveBeenCalled();

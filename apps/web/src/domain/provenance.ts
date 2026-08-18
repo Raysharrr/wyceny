@@ -53,8 +53,14 @@ export type GateInput = {
   /** Prose snapshot (FR-6) — gated only when the caller asks for it, see `GateOptions`. */
   prose?: {
     sections: Partial<Record<ProseSection, Sourced<string>>>;
-    /** Facts the text was last generated from or accepted against. */
-    factsHash?: string;
+    /**
+     * Per section: the facts THAT section's text was last generated from or
+     * accepted against. Optional at the type level only because a row
+     * persisted before this field existed carries no map at all — the adapter
+     * normalizes that to `{}` on read, which makes every populated section
+     * read stale (the promised migration behaviour).
+     */
+    factsHashes?: Partial<Record<ProseSection, string>>;
   } | null;
 };
 
@@ -68,18 +74,26 @@ export type GateOptions = {
    */
   requireProse?: boolean;
   /**
-   * Fingerprint of the draft's CURRENT facts, for comparison against the one
-   * the stored prose carries. Computed by the caller, never here: the hash
-   * needs `node:crypto` (`domain/prose-hash.ts`) and this module is imported
-   * from Client Components — same reason `now` is passed into `approve`.
+   * Fingerprint of the draft's CURRENT facts PER SECTION, for comparison
+   * against the ones the stored prose carries. Computed by the caller, never
+   * here: the hash needs `node:crypto` (`domain/prose-hash.ts`) and this
+   * module is imported from Client Components — same reason `now` is passed
+   * into `approve`.
    *
-   * Absent means "the caller cannot tell", and staleness is then NOT checked:
-   * every production caller supplies it (the approve action, both server
-   * components, and the adapter computes its own inside the write
-   * transaction), so inventing a blocker out of its absence would only ever
-   * put a false sentence in front of the appraiser.
+   * Per section rather than one hash for the whole snapshot (T4): a single
+   * fingerprint moved whenever ANY input moved, so correcting one transaction
+   * price told the appraiser that all six descriptions — including the three
+   * that only ever described the flat itself — now describe an earlier version
+   * of the data. The blocker has to name the sections that actually changed,
+   * or re-reading it becomes a ritual instead of a check.
+   *
+   * An absent entry means "the caller cannot tell", and staleness is then NOT
+   * checked for that section: every production caller supplies all six (the
+   * approve action, both server components, and the adapter computes its own
+   * inside the write transaction), so inventing a blocker out of an absence
+   * would only ever put a false sentence in front of the appraiser.
    */
-  currentFactsHash?: string;
+  currentSectionHashes?: Partial<Record<ProseSection, string>>;
 };
 
 const SCALAR_KEYS = ["address", "area", "weights", "ratings"] as const;
@@ -214,20 +228,6 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
     if (!input.prose) {
       blockers.push({ path: "prose", label: "Opisy sekcji nie zostały wygenerowane." });
     } else {
-      // Staleness (T6 review, I-2). `confirmed` records that the appraiser
-      // accepted the text — not WHICH data the text describes. Edit the
-      // sample after step 6 and every section stays confirmed while every
-      // sentence describes a sample that no longer exists; `uzasadnienie` is
-      // literally the result's standing against that sample. The engine's own
-      // answer to the same problem is `wr: null` after such an edit (step 5
-      // must be redone); this is the prose half of it.
-      if (options.currentFactsHash && input.prose.factsHash !== options.currentFactsHash) {
-        blockers.push({
-          path: "prose.factsHash",
-          label:
-            "Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.",
-        });
-      }
       for (const section of PROSE_SECTIONS) {
         const entry = input.prose.sections[section];
         const label = PROSE_SECTION_LABEL[section];
@@ -240,6 +240,34 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
         const status: ProvenanceStatus = entry.provenance?.status ?? "none";
         if (isBlocking(sourced(entry.value, entry.provenance?.source ?? "ai", status))) {
           blockers.push({ path: `prose.${section}`, label: `${label} — ${statusLabel(status)}.` });
+          continue;
+        }
+        // Staleness (T6 review, I-2; per section since T4). `confirmed`
+        // records that the appraiser accepted the text — not WHICH data the
+        // text describes. Edit the sample after step 6 and the affected
+        // sections stay confirmed while their sentences describe a sample
+        // that no longer exists; `uzasadnienie` is literally the result's
+        // standing against that sample. The engine's own answer to the same
+        // problem is `wr: null` after such an edit (step 5 must be redone);
+        // this is the prose half of it.
+        //
+        // Reached only for a section that already cleared the status check,
+        // so each section contributes at most ONE blocker: an unaccepted
+        // section is `do weryfikacji` and nothing more, since re-reading it
+        // is the same remedy either way.
+        //
+        // This is the SECOND of two independent defences. The first is the
+        // merge (`mergeProseProposal`), which demotes an appraiser's section
+        // back to `to_verify` when its facts move — but that only happens on
+        // a regeneration, and nothing forces one before approval. The gate
+        // must not depend on it having run: stale prose under a signature is
+        // the failure this whole slice exists to prevent.
+        const current = options.currentSectionHashes?.[section];
+        if (current && input.prose.factsHashes?.[section] !== current) {
+          blockers.push({
+            path: `prose.${section}`,
+            label: `${label} — dane się zmieniły, przejrzyj ponownie.`,
+          });
         }
       }
     }

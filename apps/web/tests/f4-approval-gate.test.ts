@@ -351,57 +351,134 @@ describe("prose group (FR-6, Task 7)", () => {
   });
 
   /**
-   * Staleness (T6 review, I-2). `confirmed` says the appraiser accepted the
-   * text; it says nothing about WHICH data the text describes. Editing the
-   * sample after step 6 leaves every section confirmed and every sentence
-   * about a sample that no longer exists — `uzasadnienie` is literally "the
-   * result's standing against the sample". An operat whose prose contradicts
-   * its own tables is the failure this slice exists to prevent, so a
-   * fingerprint that no longer matches the draft BLOCKS.
+   * Staleness (T6 review, I-2; per section since T4). `confirmed` says the
+   * appraiser accepted the text; it says nothing about WHICH data the text
+   * describes. Editing the sample after step 6 leaves every section confirmed
+   * and every sentence about a sample that no longer exists — `uzasadnienie`
+   * is literally "the result's standing against the sample". An operat whose
+   * prose contradicts its own tables is the failure this slice exists to
+   * prevent, so a fingerprint that no longer matches the draft BLOCKS — but
+   * only for the sections whose OWN facts moved. One global blocker sent the
+   * appraiser back to step 6 to re-read six sections when a single corrected
+   * transaction price could have touched two of them.
    */
-  it("blocks when the stored fingerprint no longer matches the draft's facts", () => {
-    const prose = confirmedProse(); // factsHash: "0".repeat(64)
+  it("blocks only the sections whose facts moved, and names them", () => {
+    const prose = confirmedProse();
+    const gate = approvalGate(
+      { ...passing(), prose },
+      {
+        requireProse: true,
+        currentSectionHashes: { ...prose.factsHashes, analiza_rynku: "inny".repeat(16) },
+      },
+    );
+    expect(gate.ok).toBe(false);
+    if (!gate.ok) {
+      expect(gate.blockers.map((b) => b.path)).toEqual(["prose.analiza_rynku"]);
+      expect(gate.blockers[0]!.label).toContain("Analiza i charakterystyka rynku");
+      expect(gate.blockers[0]!.label).toContain("dane się zmieniły");
+    }
+  });
+
+  it("names every stale section, in the operat's own order", () => {
+    const prose = confirmedProse();
     const result = approvalGate(
       { ...passing(), prose },
-      { requireProse: true, currentFactsHash: "f".repeat(64) },
+      {
+        requireProse: true,
+        currentSectionHashes: {
+          ...prose.factsHashes,
+          uzasadnienie: "f".repeat(64),
+          analiza_rynku: "f".repeat(64),
+        },
+      },
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.blockers).toEqual([
-        {
-          path: "prose.factsHash",
-          label:
-            "Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.",
-        },
+      expect(result.blockers.map((b) => b.path)).toEqual([
+        "prose.analiza_rynku",
+        "prose.uzasadnienie",
       ]);
     }
   });
 
-  it("passes when the fingerprint still matches", () => {
+  it("passes when every fingerprint still matches", () => {
     const prose = confirmedProse();
     expect(
       approvalGate(
         { ...passing(), prose },
-        { requireProse: true, currentFactsHash: prose.factsHash },
+        { requireProse: true, currentSectionHashes: prose.factsHashes },
       ),
     ).toEqual({ ok: true });
   });
 
-  it("does not check staleness when the caller cannot compute the hash", () => {
-    // Every production caller passes it (action, both server components, and
-    // the adapter computes its own inside the transaction). Omitting it means
-    // "I cannot tell" — and inventing a blocker from that would put a false
-    // sentence in front of the appraiser.
+  /**
+   * The migration path (T2): a snapshot persisted before `factsHashes`
+   * existed is normalized to `{}` at the adapter, so every section it holds
+   * reads stale — one pass through step 6 per legacy draft, not a silent
+   * approval of prose nobody can vouch for.
+   */
+  it("blocks every populated section of a snapshot that carries no fingerprints at all", () => {
+    const prose = { ...confirmedProse(), factsHashes: {} };
+    const result = approvalGate(
+      { ...passing(), prose },
+      { requireProse: true, currentSectionHashes: confirmedProse().factsHashes },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers).toHaveLength(6);
+      expect(result.blockers.every((b) => b.label.includes("dane się zmieniły"))).toBe(true);
+    }
+  });
+
+  /**
+   * One blocker per section, never two: a section the appraiser has not
+   * accepted is already blocked as `do weryfikacji`, and repeating the same
+   * path with a second sentence would only make the list harder to act on.
+   */
+  it("says 'do weryfikacji' — not 'dane się zmieniły' — for an unaccepted section", () => {
+    const prose = confirmedProse();
+    prose.sections.standard = {
+      value: "Propozycja automatu — dane testowe.",
+      provenance: { source: "ai", status: "to_verify" },
+    };
+    const result = approvalGate(
+      { ...passing(), prose },
+      {
+        requireProse: true,
+        currentSectionHashes: { ...prose.factsHashes, standard: "f".repeat(64) },
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.blockers).toEqual([
+        { path: "prose.standard", label: "Opis standardu wykończenia — do weryfikacji." },
+      ]);
+    }
+  });
+
+  it("does not check staleness when the caller cannot compute the hashes", () => {
+    // Every production caller passes them (action, both server components,
+    // and the adapter computes its own inside the transaction). Omitting them
+    // means "I cannot tell" — and inventing a blocker from that would put a
+    // false sentence in front of the appraiser.
     expect(approvalGate({ ...passing(), prose: confirmedProse() }, { requireProse: true })).toEqual(
       { ok: true },
     );
+    // Same, per section: a map that simply has no entry for a section says
+    // nothing about it either.
+    expect(
+      approvalGate(
+        { ...passing(), prose: confirmedProse() },
+        { requireProse: true, currentSectionHashes: {} },
+      ),
+    ).toEqual({ ok: true });
   });
 
   it("says nothing about staleness when the kill switch is off", () => {
     expect(
       approvalGate(
         { ...passing(), prose: confirmedProse() },
-        { requireProse: false, currentFactsHash: "f".repeat(64) },
+        { requireProse: false, currentSectionHashes: { analiza_rynku: "f".repeat(64) } },
       ),
     ).toEqual({ ok: true });
   });

@@ -77,13 +77,30 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
     );
   });
 
-  it("names prose that describes a superseded sample (T6 review, I-2)", () => {
-    // Six confirmed sections — and still refused, because the fingerprint
-    // `confirmedProse()` carries is not this draft's.
+  it("names the ONE section that describes a superseded sample (T4)", () => {
+    // Six confirmed sections, one of them written against facts that have
+    // since moved. The screen has to say which one — the other five still
+    // describe this draft, and re-reading them buys nothing.
+    const prose = currentProse();
+    prose.factsHashes.uzasadnienie = "f".repeat(64);
+    render(<StepOperat valuation={draft(prose)} />);
+
+    const blockers = screen.getByTestId("gate-blockers");
+    expect(blockers).toHaveTextContent(
+      "Uzasadnienie wyniku — pozycja na tle próby — dane się zmieniły, przejrzyj ponownie.",
+    );
+    expect(blockers).not.toHaveTextContent("Analiza i charakterystyka rynku");
+    expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeDisabled();
+  });
+
+  it("names all six when the snapshot predates per-section fingerprints", () => {
+    // The migration path: `confirmedProse()` carries a fingerprint from some
+    // earlier state of the draft, so every section reads stale — one pass
+    // through step 6 and the draft is current again.
     render(<StepOperat valuation={draft(confirmedProse())} />);
 
     expect(screen.getByTestId("gate-blockers")).toHaveTextContent(
-      "Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.",
+      "Analiza i charakterystyka rynku — dane się zmieniły, przejrzyj ponownie.",
     );
     expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeDisabled();
   });
