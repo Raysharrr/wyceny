@@ -45,11 +45,19 @@ export function assignSubjectProvenance(
 export function assignSampleProvenance(
   values: Pick<ValuationFormValues, "comparables" | "sampleMeta">,
 ): { comparables: Comparable[]; geocode?: InputsProvenance["geocode"] } {
-  const comparables: Comparable[] = values.comparables.map((c) => ({
-    ...c,
-    source: c.source ?? "manual",
-    status: c.source === "rcn" ? "to_verify" : "confirmed",
-  }));
+  const comparables: Comparable[] = values.comparables.map((c) => {
+    // The source is DERIVED, not taken on the client's word — the same rule
+    // the prose fingerprints and the FR-6 gate flag already follow: a check
+    // the caller can talk its way out of is not a check. Only the RCN fetch
+    // hands out a transactionId (the form has no input for one), so an id is
+    // evidence the server can verify and the label is not.
+    //
+    // Trust moves one way only. An id PROMOTES a row to rcn (re-verification
+    // required); its absence never DEMOTES an rcn label to manual, or a row
+    // saved before ids existed would confirm itself on the next save.
+    const source = c.transactionId ? "rcn" : (c.source ?? "manual");
+    return { ...c, source, status: source === "rcn" ? "to_verify" : "confirmed" };
+  });
   return {
     comparables,
     ...(values.sampleMeta ? { geocode: { source: "geokoder", status: "to_verify" } as const } : {}),

@@ -46,6 +46,36 @@ describe("assignProvenance (the ADR-010 ACL — statuses are born here, server-s
     expect(comparables[0].status).toBe("to_verify");
   });
 
+  it("overrides a client-claimed source too — a fetched id outranks the label", () => {
+    // Only the RCN fetch hands out a transactionId, and the step-3 form has no
+    // input for one. A row carrying an id while calling itself "manual" is a
+    // relabelled fetch, and must still be re-verified rather than entering
+    // `confirmed` as though the appraiser had typed it.
+    const { comparables } = assignSampleProvenance({
+      comparables: [
+        { pricePerM2: 10_000, source: "manual", transactionId: "tx-1" },
+        { pricePerM2: 11_000, source: "manual" },
+      ],
+      sampleMeta,
+    });
+    expect(comparables[0].source).toBe("rcn");
+    expect(comparables[0].status).toBe("to_verify");
+    expect(comparables[1].source).toBe("manual");
+    expect(comparables[1].status).toBe("confirmed");
+  });
+
+  it("never downgrades: an rcn label with no id stays rcn/to_verify", () => {
+    // The trust only ever moves one way. An id can PROMOTE a row to rcn;
+    // its absence must not DEMOTE a machine row to manual/confirmed, or a
+    // legacy row saved before ids existed would silently confirm itself.
+    const { comparables } = assignSampleProvenance({
+      comparables: [{ pricePerM2: 10_000, source: "rcn" }],
+      sampleMeta,
+    });
+    expect(comparables[0].source).toBe("rcn");
+    expect(comparables[0].status).toBe("to_verify");
+  });
+
   it("scalars are rzeczoznawca/confirmed; geocode present+to_verify only with sampleMeta", () => {
     // Edited weight (not the untouched preset) so `weights` stays
     // rzeczoznawca/confirmed — this test is about the OTHER scalars/geocode,
