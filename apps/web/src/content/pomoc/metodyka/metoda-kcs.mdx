@@ -19,7 +19,7 @@ Rozpiętość próby przeliczana jest na dwa mnożniki:
 - **Vmin** = Cmin ÷ Cśr — jak nisko schodzi rynek względem swojej średniej,
 - **Vmax** = Cmax ÷ Cśr — jak wysoko nad tę średnią wychodzi.
 
-Vmin jest zawsze mniejszy lub równy jedności, Vmax większy lub równy. To one, a nie żaden zewnętrzny cennik, ograniczają korektę: wynik wyceny nie może wyjść poza przedział wyznaczony przez najtańszą i najdroższą transakcję w próbie. Próba jest więc jednocześnie źródłem poziomu cen i źródłem dopuszczalnej amplitudy korekty.
+Vmin jest zawsze mniejszy lub równy jedności, Vmax większy lub równy. To one, a nie żaden zewnętrzny cennik, wyznaczają amplitudę korekty: **przy wagach sumujących się do jedności** wynik wyceny nie wyjdzie poza przedział między najtańszą a najdroższą transakcją w próbie. Zastrzeżenie o wagach jest tu istotne, bo to ono niesie całą gwarancję — silnik wyniku do tego przedziału nie przycina i sumy wag nie sprawdza, a brama zatwierdzenia operatu też nie; pilnuje jej wyłącznie walidacja [kroku cech](/pomoc/krok-4-cechy). Próba jest więc jednocześnie źródłem poziomu cen i źródłem dopuszczalnej amplitudy korekty.
 
 ## Współczynniki cech i ich suma
 
@@ -63,10 +63,10 @@ To najważniejsza konsekwencja powyższej konwencji i jedyna rzecz z tej strony,
 - **rachunek zgodny z konwencją operatu**: 1 044 388,32 zł, po zaokrągleniu **1 044 400 zł**,
 - **rachunek w pełnej precyzji**, bez zaokrągleń pośrednich: 1 043 921,58 zł, po zaokrągleniu **1 043 900 zł**.
 
-Różnica na wyniku końcowym to 500 zł, czyli około 0,05%. Składają się na nią głównie dwa kroki, oba działające tutaj w górę:
+Różnica na wyniku końcowym to 500 zł, czyli około 0,05%. Składają się na nią głównie dwa kroki konwencji:
 
-- Vmax rośnie z 1,131769… do 1,132 — to +184,70 zł,
-- ΣUi rośnie z 1,1107 do 1,111 — to +282,01 zł.
+- **zaokrąglenie współczynników V** — łącznie +184,70 zł, ale z dwóch składowych idących w przeciwne strony: Vmax rośnie z 1,131769… do 1,132, co dodaje 194,38 zł, a Vmin spada z 0,919102… do 0,919, co odbiera 9,68 zł. Wypadkowa jest dodatnia, bo Vmax pracuje tu na cechach o łącznej wadze 0,7, a Vmin na jednej cesze o wadze 0,1,
+- **zaokrąglenie ΣUi** — z 1,1107 do 1,111, to +282,01 zł.
 
 Zaokrąglenie Cśr (13 123,6033… do 13 123,60) i wartości jednostkowej (14 580,3196 do 14 580,32) zmieniają wynik o mniej niż złotówkę. Kierunek różnicy nie jest z góry przesądzony — przy innych danych zaokrąglenia mogą się znosić albo działać w dół; przesądzone jest tylko to, że pełna precyzja i konwencja operatu prawie nigdy nie dadzą tej samej liczby.
 

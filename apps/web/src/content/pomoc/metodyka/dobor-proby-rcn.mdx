@@ -47,7 +47,7 @@ Gdy po wszystkich filtrach zostaje mniej niż 12 transakcji, worker w ogóle nie
 
 ## Próg {REQUIRED_SAMPLE_SIZE} transakcji przy zatwierdzeniu
 
-Ten sam próg obowiązuje niezależnie od źródła transakcji. Brama zatwierdzenia operatu wymaga próby liczącej co najmniej {REQUIRED_SAMPLE_SIZE} transakcji (stała `REQUIRED_SAMPLE_SIZE` w `apps/web/src/domain/provenance.ts`, importowana wprost do tej strony). Szkic wyceny z mniejszą próbą da się zapisać i policzyć (dolną granicą zapisu są trzy transakcje), natomiast operat z niej nie powstanie.
+Próg zatwierdzenia obowiązuje niezależnie od źródła transakcji. Brama zatwierdzenia operatu wymaga próby liczącej co najmniej {REQUIRED_SAMPLE_SIZE} transakcji (stała `REQUIRED_SAMPLE_SIZE` w `apps/web/src/domain/provenance.ts`, importowana wprost do tej strony). Zgadza się on co do wartości z progiem, poniżej którego worker nie zwraca propozycji — ale są to, dokładnie jak para 19/12 wyżej, dwie niezależne liczby zapisane w dwóch runtime'ach: zmiana `REQUIRED_SAMPLE_SIZE` nie rusza progu po stronie workera. Szkic wyceny z mniejszą próbą da się zapisać i policzyć (dolną granicą zapisu są trzy transakcje), natomiast operat z niej nie powstanie.
 
 Próba poniżej progu domyka się ręcznie — transakcjami z innych źródeł niż RCN, wpisanymi przez rzeczoznawcę. Różnica nie jest tylko techniczna: za transakcję pobraną z rejestru odpowiada rejestr i wymaga ona potwierdzenia, za transakcję wpisaną ręcznie odpowiada rzeczoznawca i jest potwierdzona z definicji.
 

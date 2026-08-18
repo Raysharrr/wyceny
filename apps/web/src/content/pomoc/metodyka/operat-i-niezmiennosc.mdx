@@ -13,7 +13,7 @@ Kilka reguł modelu wpływa na to, co w dokumencie widać:
 
 - **Maskowanie danych transakcji.** Wiersze próby porównawczej pokazują wyłącznie miesiąc transakcji (RRRR-MM), miasto wzięte z adresu przedmiotu, powierzchnię i cenę jednostkową. Pełna data, identyfikator transakcji z rejestru i cokolwiek z zapisu prowenancji nie trafiają do dokumentu. Kolumna ulicy jest kreską, bo dzisiejsze źródło transakcji ulicy nie podaje.
 - **Cechy o wadze zero nie istnieją w dokumencie.** Nie ma ich w tabeli cech, w opisach ani w skali ocen — wiersz z zerową wagą tylko zapraszałby do pytania, po co go drukować.
-- **Milczenie zamiast twierdzenia.** Blok skali ocen drukuje się tylko wtedy, gdy jakakolwiek definicja została wypełniona; sekcja uwag z oględzin — tylko gdy notatka jest niepusta; blok planu miejscowego ma dwa warianty (plan albo jego potwierdzony brak), nigdy oba i nigdy żaden, gdy do wyceny dołączono migawkę przedmiotu.
+- **Milczenie zamiast twierdzenia.** Blok skali ocen drukuje się tylko wtedy, gdy jakakolwiek definicja została wypełniona; sekcja uwag z oględzin — tylko gdy notatka jest niepusta. Blok planu miejscowego ma dwa warianty (plan albo jego potwierdzony brak) i nigdy nie drukuje obu naraz — może natomiast nie wydrukować żadnego, bo dokument stawia tu własny, ostrzejszy warunek: samo pobranie z pustym symbolem i pustą metryką nie wystarcza, by operat twierdził cokolwiek o planie. Warunkowe są też cztery z sześciu sekcji opisowych — dokładnie te, które mają w dokumencie własny nagłówek, żeby pusta sekcja nie zostawiła po sobie nagłówka nad niczym. Pozostałe dwie, charakterystyka otoczenia i opis zagospodarowania terenu, flagi nie potrzebują: są końcowymi członami zdania z adresem, prawdziwego z opisem i bez niego.
 
 Obrazy dokładane są do dokumentu w chwili składania: dwie mapy z sekcji stanu otoczenia, zdjęcia z oględzin w trzech blokach (otoczenie, budynek z zewnątrz, wnętrza) oraz — wyłącznie w wersji podpisanej — skan podpisu rzeczoznawcy. Dokument powstaje jako DOCX, a PDF jest jego konwersją wykonaną przez worker. Oba pliki zapisują się przy wycenie i są dostępne tylko po zalogowaniu, dla właściciela wyceny i administratora.
 
@@ -53,9 +53,9 @@ Trzeba przy tym powiedzieć wprost, czym ta suma **nie** jest. Nic w aplikacji j
 
 ## Dziennik audytu
 
-Każda zmiana stanu wyceny zostawia wiersz w dzienniku (`audit_log`). Lista możliwych akcji jest zamknięta w kodzie — nie ma wpisów o dowolnej treści. Obejmuje utworzenie wyceny, zapis danych przedmiotu, próby i cech, zatwierdzenie kalkulacji, cztery rodzaje potwierdzeń (próby, danych przedmiotu, danych z księgi wieczystej oraz cech i wag), zmianę w oględzinach, zatwierdzenie operatu, podpisanie i utworzenie nowej wersji. Jest to katalog akcji możliwych, nie obowiązkowych: pojedyncza wycena zostawia wyłącznie te wiersze, które odpowiadają temu, co się w niej wydarzyło — wycena bez wgranego dokumentu nigdy nie ma wiersza o potwierdzeniu danych z księgi wieczystej.
+Każda zmiana stanu wyceny zostawia wiersz w dzienniku (`audit_log`). Lista możliwych akcji jest zamknięta w kodzie — nie ma wpisów o dowolnej treści. Obejmuje utworzenie wyceny, zapis danych przedmiotu, próby i cech, zatwierdzenie kalkulacji, cztery rodzaje potwierdzeń (próby, danych przedmiotu, danych z księgi wieczystej oraz cech i wag), zmianę w oględzinach, wygenerowanie sekcji opisowych oraz ich zatwierdzenie, zatwierdzenie operatu, podpisanie i utworzenie nowej wersji. Jest to katalog akcji możliwych, nie obowiązkowych: pojedyncza wycena zostawia wyłącznie te wiersze, które odpowiadają temu, co się w niej wydarzyło — wycena bez wgranego dokumentu nigdy nie ma wiersza o potwierdzeniu danych z księgi wieczystej.
 
-Wiersz zapisuje: której wyceny dotyczy, kto go wywołał, jaka to akcja, kiedy nastąpiła oraz metadane zależne od akcji. Metadane są oszczędne i celowo różne dla każdej akcji — adresy zapisanych plików przy zatwierdzeniu (i znacznik zatwierdzenia bez map, gdy taki wybór zapadł), sumy kontrolne przy podpisie, identyfikator poprzednika przy nowej wersji, rodzaj operacji i liczba zdjęć przy oględzinach, informacja o dołączeniu dokumentu przy zapisie przedmiotu.
+Wiersz zapisuje: której wyceny dotyczy, kto go wywołał, jaka to akcja, kiedy nastąpiła oraz metadane zależne od akcji. Metadane są oszczędne i celowo różne dla każdej akcji — adresy zapisanych plików przy zatwierdzeniu (i znacznik zatwierdzenia bez map, gdy taki wybór zapadł), sumy kontrolne przy podpisie, identyfikator poprzednika przy nowej wersji, rodzaj operacji i liczba zdjęć przy oględzinach, informacja o dołączeniu dokumentu przy zapisie przedmiotu, a przy generowaniu opisów — nazwa modelu, wygenerowane sekcje, liczby, przez które sekcja została odrzucona, i zużycie tokenów (nigdy sam tekst); przy zatwierdzeniu opisów same nazwy sekcji.
 
 Dwie własności dziennika warto znać:
 
@@ -88,7 +88,8 @@ Powstaje wtedy nowy szkic wskazujący na poprzednika. Przenoszą się **wartośc
 Najważniejsza jest reguła, według której statusy wracają do weryfikacji, bo jest węższa, niż brzmi potoczne „wszystko, czego nie wpisałeś ręcznie":
 
 - **transakcja** wraca do weryfikacji tylko wtedy, gdy pochodzi z rejestru cen; transakcja wpisana ręcznie zostaje potwierdzona,
-- **wpis prowenancji** zostaje potwierdzony wyłącznie wtedy, gdy jego źródłem jest rzeczoznawca; **każde inne źródło** — geokoder, ewidencja, plan miejscowy, akt, odpis księgi, zestaw proponowany — wraca do weryfikacji.
+- **wpis prowenancji** zostaje potwierdzony wyłącznie wtedy, gdy jego źródłem jest rzeczoznawca; **każde inne źródło** — geokoder, ewidencja, plan miejscowy, akt, odpis księgi, zestaw proponowany — wraca do weryfikacji,
+- **sekcje opisowe** rządzą się regułą własną i szerszą: do weryfikacji wraca **każda** z nich, także ta, której źródłem jest rzeczoznawca. Po zapisie kroku 6 wszystkie mają właśnie to źródło, więc wyjątek z punktu wyżej oddałby następcy akapity oznaczone jako przeczytane i przyjęte, których w tej wersji nikt nie czytał. Treść zostaje, potwierdzenie nie.
 
 Podpisany oryginał zostaje nietknięty, a cykl potwierdzeń, zatwierdzenia i podpisu przechodzi się od nowa.
 

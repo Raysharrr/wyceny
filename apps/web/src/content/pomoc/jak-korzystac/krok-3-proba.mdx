@@ -17,7 +17,6 @@ Przycisk „Pobierz próbę z RCN” pobiera transakcje dla adresu i powierzchni
 
 - Do tabeli trafia najwyżej dwanaście transakcji: data, powierzchnia i cena zł/m².
 - **Pobranie zastępuje całą dotychczasową zawartość tabeli**, również wiersze wpisane ręcznie.
-- Nad tabelą pojawia się informacja, ile transakcji pobrano i z którego dnia pochodzi pobranie.
 - Gdy pobranie się nie uda, zobaczysz komunikat z powodem, a próbę wpisujesz ręcznie.
 
 Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty. [Metodę doboru próby](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
@@ -35,5 +34,7 @@ Wiersze pobrane z RCN możesz poprawiać jak każde inne: zmienić wartość, do
 - Zapis („Zatwierdź próbę i dalej”) wymaga co najmniej **trzech transakcji** z ceną większą od zera. Przy mniejszej liczbie zobaczysz komunikat „Podaj co najmniej 3 transakcje porównawcze”.
 - Dopóki próba ma mniej niż **dwanaście transakcji**, pod tabelą wisi ostrzeżenie: szkic zapiszesz i przejdziesz dalej, ale zatwierdzenie operatu będzie zablokowane.
 - Transakcje pobrane z RCN wchodzą ze [statusem „do weryfikacji”](/pomoc/zasady-zatwierdzania). Potwierdzasz je zbiorczo w kroku 7 przyciskiem „Potwierdź próbę z RCN” — bez tego zatwierdzenie operatu jest zablokowane. Transakcje wpisane ręcznie są potwierdzone z definicji.
+
+Zapis kroku **kasuje zatwierdzoną wartość rynkową**. Po każdej zmianie próby kwotę trzeba potwierdzić w kroku 5 jeszcze raz, a do tego czasu kroki 6 i 7 są z powrotem niedostępne.
 
 Zapis próby odblokowuje krok 4 w pasku kroków.

@@ -4,7 +4,7 @@ Opisowe sekcje operatu — te, których nie da się złożyć z tabel — pisze 
 
 ## Co model widzi
 
-Do modelu jedzie jeden słownik faktów, ten sam dla wszystkich {PROSE_SECTIONS.length} sekcji naraz: adres i powierzchnia użytkowa, dane ewidencyjne działki i budynku, notatka z oględzin, oceny cech o niezerowej wadze oraz zbiorcze dane próby porównawczej — liczba transakcji, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna, przedział cen całkowitych. Liczby są w nim gotowymi polskimi napisami — sformatowanymi tą samą funkcją, którą formatuje je operat, bo inaczej ten sam fakt wyglądałby w dwóch miejscach dokumentu inaczej. Jedynym wyjątkiem jest liczba transakcji w próbie, która jedzie jako zwykła liczba całkowita.
+Do modelu jedzie jeden słownik faktów, ten sam dla wszystkich {PROSE_SECTIONS.length} sekcji naraz: adres i powierzchnia użytkowa, określenie rynku (rynek wtórny, lokale mieszkalne, miasto wzięte z adresu), dane ewidencyjne działki i budynku, notatka z oględzin, oceny cech o niezerowej wadze oraz zbiorcze dane próby porównawczej — liczba transakcji, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna, przedział cen całkowitych. Liczby są w nim gotowymi polskimi napisami — sformatowanymi tą samą funkcją, którą formatuje je operat, bo inaczej ten sam fakt wyglądałby w dwóch miejscach dokumentu inaczej. Jedynym wyjątkiem jest liczba transakcji w próbie, która jedzie jako zwykła liczba całkowita.
 
 Równie istotne jest to, czego w tym słowniku nie ma:
 
@@ -18,13 +18,13 @@ Model nie ma też dostępu do sieci, do innych wycen ani do wcześniejszych oper
 
 Zdanie o kierunku zmian cen na rynku jest w operacie twierdzeniem sprawdzalnym, więc nie może zależeć od tego, jak model „widzi” liczby. Liczy je kod: próba jest porządkowana chronologicznie, dzielona na połowy, a względna zmiana między średnimi obu połówek daje jedno z trzech słów — stabilne, wzrostowe albo spadkowe. Poniżej ustalonego progu tej zmiany werdykt brzmi „stabilne”; przy mniej niż dwóch transakcjach nie ma podstaw do żadnego twierdzenia o zmianie i wynik również brzmi „stabilne”. Model dostaje **gotowe słowo**, nie ceny do interpretacji.
 
-Sam próg oraz kod, który go stosuje, żyją w usłudze obliczeniowej (`apps/worker/app/prose.py`), a nie w aplikacji webowej — dlatego ta strona nie podaje jego wartości liczbowo. Tam też mieszkają nazwa użytego modelu i górny limit długości odpowiedzi.
+Sam próg oraz kod, który go stosuje, żyją w usłudze obliczeniowej (`apps/worker/app/prose.py`), a nie w aplikacji webowej — dlatego ta strona nie podaje jego wartości liczbowo. Nazwa użytego modelu i górny limit długości odpowiedzi są w tej samej usłudze, ale w innym module (`apps/worker/app/main.py`): moduł liczący trend celowo nie zna modelu językowego i nie wywołuje go, więc obu tych ustawień u siebie nie ma.
 
 ## Kontrola liczb
 
-Reguła jest jednozdaniowa: **każda liczba w wygenerowanym tekście musi występować w faktach tej wyceny.**
+Reguła jest jednozdaniowa: **każda liczba w wygenerowanym tekście musi występować w faktach tej wyceny — dosłownie, w tej samej postaci.**
 
-Zbiór dozwolony powstaje z przeszukania całego słownika faktów — także zagnieżdżonych obiektów i list — i zebrania z niego wszystkich liczb. Do zbioru trafia każda taka liczba, jej zapis z przecinkiem dziesiętnym oraz sama jej część całkowita. Przy porównaniu odstępy wewnątrz liczby są nieistotne, więc „10 815” i „10815” to ta sama liczba. Dwa wyjątki są zamierzone: cyfra w oznaczeniu jednostki („m²”, „m2”) nie jest faktem, a zwrot „za 1 m²” jest jedynym idiomem, który wolno napisać z własną liczbą.
+Zbiór dozwolony powstaje z przeszukania całego słownika faktów — także zagnieżdżonych obiektów i list — i zebrania z niego wszystkich liczb. Do zbioru trafia każda taka liczba oraz jej zapis z przecinkiem dziesiętnym. Przy porównaniu odstępy wewnątrz liczby są nieistotne, więc „10 815” i „10815” to ta sama liczba — i to jedyna swoboda, jaką kontrola daje. Inna postać faktu faktem nie jest: przy powierzchni „71,63 m²” tekst z „71 m²” zostaje odrzucony tak samo jak liczba wzięta znikąd, bo zaokrąglona powierzchnia to nie jest ta powierzchnia. Dwa wyjątki są zamierzone: cyfra w oznaczeniu jednostki („m²”, „m2”) nie jest faktem, a napis „1 m²” — idiom ceny jednostkowej — wolno postawić z własną jedynką, gdziekolwiek w zdaniu wystąpi.
 
 Gdy sprawdzenie znajdzie liczbę spoza faktów, sekcja dostaje **dokładnie jedną dodatkową próbę**: model widzi to samo zadanie i dopisek wymieniający liczby, których użyć nie wolno. Jeżeli druga wersja znów zawiera liczbę spoza faktów, tekst zostaje odrzucony w całości, a sekcja wraca **pusta**, z wypisanymi liczbami, które ją zdyskwalifikowały. Rzeczoznawca pisze wtedy to jedno pole ręcznie — [krok 6](/pomoc/krok-6-opisy) pokazuje ten powód wprost pod pustym polem.
 
@@ -32,10 +32,9 @@ Wyborem świadomym jest tu kierunek domyślny. Odrzucony tekst nie jest zastępo
 
 ## Czego ta kontrola nie łapie
 
-Sprawdzenie jest **testem przynależności do zbioru, nie testem sensu**. Wynikają z tego cztery ograniczenia, o których trzeba wiedzieć, żeby nie brać go za więcej, niż jest.
+Sprawdzenie jest **testem przynależności do zbioru, nie testem sensu**. Wynikają z tego trzy ograniczenia, o których trzeba wiedzieć, żeby nie brać go za więcej, niż jest.
 
 - **Liczba przestawiona.** Liczba obecna w faktach, ale użyta w niewłaściwym miejscu — powierzchnia działki wpisana jako powierzchnia lokalu, cena minimalna podana jako średnia — przechodzi bez zastrzeżeń. W zbiorze dozwolonym jest, więc kontrola milczy. To jest najpoważniejsza luka tego mechanizmu i jedyną obroną przed nią jest przeczytanie tekstu.
-- **Zaokrąglona forma faktu.** Do zbioru trafia też część całkowita każdej liczby, więc gdy fakt mówi „71,63 m²”, tekst z „71 m²” przejdzie. Bywa to poprawne stylistycznie, ale nie jest sprawdzeniem zgodności.
 - **Twierdzenia bez liczb.** Zdanie „budynek jest w dobrym stanie technicznym” nie zawiera żadnej liczby, więc nie ma czego porównywać. Kontrola dotyczy wyłącznie liczb; wszystko pozostałe pilnuje styl zadania i oko rzeczoznawcy.
 - **Agregat policzony z części próby.** Twierdzenie „trzy transakcje z okresu 11-2024 – 11-2024”, gdzie zakres pochodzi z dwóch transakcji mających datę, a liczba — z całej próby, składa się wyłącznie z liczb obecnych w faktach. Kontrola nie ma szans go zauważyć, bo błąd powstał **przed** modelem. Dlatego agregaty próby buduje się w aplikacji na zasadzie wszystko albo nic: zakres dat powstaje tylko wtedy, gdy każda transakcja ma datę, a pasmo powierzchni i przedział cen całkowitych — tylko wtedy, gdy każda ma powierzchnię. Brakujący agregat jest uczciwy; częściowy byłby fałszem możliwym do wykazania.
 
@@ -43,7 +42,7 @@ Sprawdzenie jest **testem przynależności do zbioru, nie testem sensu**. Wynika
 
 Wygenerowany tekst zapisuje się przy wycenie ze źródłem „AI” i statusem „do weryfikacji” — tak samo jak każda inna dana przyniesiona z zewnątrz. Statusu „potwierdzona” model nie może sobie nadać; przyznaje go wyłącznie rzeczoznawca, zapisując krok 6 ([Zasady zatwierdzania i prowenancja danych](/pomoc/zasady-zatwierdzania) opisują tę granicę dla wszystkich danych wyceny). Do czasu tego zapisu żaden akapit nie wchodzi do operatu.
 
-Przy propozycjach zapisywany jest **odcisk faktów**, z których powstały — skrót policzony z tego samego słownika, który zobaczył model, wraz z próbą. Odcisk odpowiada na jedno pytanie: czy te teksty wciąż opisują tę wycenę. Gdy dane zmienią się po zatwierdzeniu opisów, odcisk się rozjedzie i zatwierdzenie operatu zostaje zablokowane — sekcja zatwierdzona wcześniej nie może opisywać próby, której już nie ma. Kolejność wierszy w próbie odcisku nie zmienia: model jej nie widzi, więc blokada z tego powodu byłaby blokadą na pusto.
+Przy propozycjach zapisywany jest **odcisk faktów**, wobec których zostały przyjęte — skrót policzony z tego samego słownika, który zobaczył model, wraz z próbą. Odcisk odpowiada na jedno pytanie: czy te teksty wciąż opisują tę wycenę. Gdy dane zmienią się po zatwierdzeniu opisów, odcisk się rozjedzie i zatwierdzenie operatu zostaje zablokowane — sekcja zatwierdzona wcześniej nie może opisywać próby, której już nie ma. Kolejność wierszy w próbie odcisku nie zmienia: model jej nie widzi, więc blokada z tego powodu byłaby blokadą na pusto.
 
 ## Gdzie kończy się automat
 

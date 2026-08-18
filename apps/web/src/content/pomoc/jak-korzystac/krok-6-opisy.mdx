@@ -28,6 +28,7 @@ Nad polami stoi adnotacja, której nie da się wyłączyć: „Propozycja wygene
 
 Fakty, z których powstaje tekst, pochodzą wyłącznie z tej wyceny:
 
+- **adres i powierzchnia użytkowa** przedmiotu z [kroku 1](/pomoc/krok-1-przedmiot), wraz z określeniem rynku — rynek wtórny, lokale mieszkalne i miasto wzięte z adresu,
 - **dane ewidencyjne działki i budynku (EGiB)** z [kroku 1](/pomoc/krok-1-przedmiot) — obręb, numer i powierzchnia działki, rodzaj użytku, rodzaj budynku, liczba kondygnacji nadziemnych, rok budowy,
 - **notatka z [oględzin](/pomoc/krok-2-ogledziny)** — jeden i ten sam tekst notatki widzą wszystkie cztery sekcje opisujące nieruchomość; każda wycina z niego swój wątek,
 - **[próba porównawcza](/pomoc/krok-3-proba)** — liczba transakcji, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna oraz przedział cen całkowitych,
@@ -55,21 +56,25 @@ Przeczytać każdą sekcję i poprawić, co wymaga poprawki. Tekst edytujesz wpr
 Trzy rzeczy warto wiedzieć o tym zapisie:
 
 - **Zapisuje się cały krok.** Nie ma zapisu pojedynczej sekcji, a niezapisane zmiany przepadają przy opuszczeniu kroku.
-- **Wyczyszczenie pola jest decyzją, nie przeoczeniem.** Sekcja bez tekstu znika z wyceny, a w operacie nie zostaje po niej ani nagłówek, ani zdanie-zaślepka. Zatwierdzenie operatu będzie wtedy zablokowane pozycją „— brak tekstu.”.
+- **Wyczyszczenie pola jest decyzją, nie przeoczeniem.** Sekcja bez tekstu znika z wyceny, a w operacie nie zostaje po niej nagłówek nad pustym miejscem. Zatwierdzenie operatu będzie wtedy zablokowane pozycją „— brak tekstu.”.
 - **Zatwierdzenie jest przejęciem odpowiedzialności.** Zapisany tekst przestaje być propozycją automatu i staje się Twoim — dokładnie tak jak każda inna wartość, którą potwierdzasz w tej aplikacji.
 
-Przycisk **„Wygeneruj ponownie”** zamawia nowe propozycje. Nie ma limitu takich prób, ale każda **kosztuje** — to realne wywołanie modelu językowego — i każda zostawia ślad w dzienniku wyceny: nazwa modelu, wygenerowane sekcje, odrzucenia i zużycie tokenów. Sam tekst do dziennika nie trafia. Zatwierdzenie opisów zostawia własny wpis, z nazwami sekcji.
+Przycisk **„Wygeneruj ponownie”** zamawia nowe propozycje. Nie ma limitu takich prób, ale każda **kosztuje** — to realne wywołanie modelu językowego. Ślad w dzienniku wyceny zostawia jednak wyłącznie próba zakończona odpowiedzią: nazwa modelu, wygenerowane sekcje, odrzucenia i zużycie tokenów. Sam tekst do dziennika nie trafia. Próba, która padła w całości, kosztuje tyle samo i nie zostawia w dzienniku niczego. Zatwierdzenie opisów zostawia własny wpis, z nazwami sekcji.
 
 Regeneracja nadpisuje wyłącznie sekcje należące do automatu; tekst, który przeszedł przez Twój zapis, zostaje nietknięty. Jeżeli jednak dane wyceny zmieniły się od czasu jego zatwierdzenia, taka zachowana sekcja wraca do stanu „do weryfikacji” — treść zostaje, potwierdzenie nie, żeby akapit nie wszedł do operatu bez ponownego przeczytania.
 
+Regeneracja potrafi też **zabrać**, i warto o tym wiedzieć przed kliknięciem. Niezapisane zmiany przepadają we **wszystkich** polach, także w sekcjach potwierdzonych — ekran ostrzega o tym pod samym przyciskiem. Propozycja automatu, której jeszcze nie zapisałeś, nie ma zaś zagwarantowanego następcy: gdy nowa wersja tej sekcji zostanie odrzucona przez kontrolę liczb, pole zostaje puste, a poprzedni tekst nie wraca.
+
 ## Dlaczego pole bywa puste
 
-Pod pustym polem zawsze stoi wyjaśnienie. Powody są cztery:
+Pod pustym polem stoi wyjaśnienie. Powody są cztery:
 
 - **automat użył liczby spoza danych wyceny** — komunikat wymienia te liczby wprost. Tekst został odrzucony i sekcję trzeba napisać ręcznie. Jest to zamierzone: lepszy pusty akapit niż liczba, której w operacie nie da się obronić;
 - **brak danych wejściowych** — bez notatki z oględzin nie powstanie opis lokalu ani opis otoczenia, a bez próby porównawczej nie powstanie analiza rynku. Komunikat mówi, czego brakuje;
 - **generowanie się nie udało** — awaria połączenia albo usługi; „Wygeneruj ponownie” jest wtedy sensowną próbą;
 - **sekcja wróciła bez tekstu i bez podanego powodu** — przypadek rzadki, ale i wtedy pole mówi, że się nie udało, zamiast milczeć.
+
+Jeden układ jest wyjątkiem od tej reguły: gdy przy wycenie nie ma jeszcze **żadnych** opisów, a generowanie padło w całości, wszystkie pola zostają puste i bez podpisu, a jedyny komunikat — czerwony — stoi pod całą kartą, nie pod polami. To on mówi wtedy, co się stało.
 
 Aplikacja nigdy nie wypełnia takiego pola tekstem zastępczym ani zdaniem z szablonu. Puste pole znaczy dokładnie tyle, że nikt jeszcze tej sekcji nie napisał.
 
@@ -84,7 +89,7 @@ Zatwierdzone opisy drukują się w operacie w sześciu miejscach:
 - **opis lokalu** — sekcja 8.3 **oraz wyciąg z operatu** (sekcja 1), czyli ten sam tekst w dwóch miejscach; wiersz „Opis nieruchomości” w wyciągu bierze się właśnie stąd,
 - **uzasadnienie wyniku** — sekcja 13.
 
-Sekcja pusta nie zostawia po sobie w dokumencie niczego — ani nagłówka, ani pustego akapitu. Z czego składa się cały operat, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
+Sekcja pusta nie zostawia po sobie w dokumencie ani nagłówka, ani pustego akapitu. Jeden wiersz jest wyjątkiem: w wyciągu z operatu pozycja „Opis nieruchomości” nigdy nie bywa pusta — bez opisu lokalu szablon drukuje w niej zdanie o powierzchni użytkowej. Przy pustej sekcji zatwierdzenie operatu i tak jest zablokowane, więc do wydanego dokumentu ten wariant nie dochodzi. Z czego składa się cały operat, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
 
 ## Co blokuje przejście dalej
 

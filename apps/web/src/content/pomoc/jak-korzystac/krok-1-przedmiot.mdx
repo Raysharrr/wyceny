@@ -26,9 +26,17 @@ Każde pobrane pole zostaje edytowalne — to propozycja do potwierdzenia, nie z
 
 Kolejne pobranie (inny adres albo „Spróbuj ponownie”) czyści całą sekcję danych przedmiotu, **razem z polami wpisanymi ręcznie**. Dzięki temu dane z poprzedniego adresu nie mieszają się z nowymi, ale własne uzupełnienia trzeba po takim pobraniu wprowadzić jeszcze raz.
 
-Gdy adres jest poza obsługiwanym obszarem, dostajesz komunikat informacyjny bez przycisku ponowienia — sekcję wypełniasz wtedy ręcznie. Błąd pobrania (np. chwilowa niedostępność źródła) daje przycisk „Spróbuj ponownie”.
+Nieudane pobranie kończy się na jeden z trzech sposobów, a każdy prosi o co innego:
+
+- **adres nierozpoznany** — komunikat informacyjny bez przycisku ponowienia: „Nie rozpoznano adresu nieruchomości — sprawdź jego pisownię (…) i popraw go w kroku 1.”. Ponawianie niczego tu nie zmieni, bo geokoder odpowiedział stanowczo. Popraw treść pola adresu i wyjdź z niego — pobranie ruszy jeszcze raz, samo, tak jak za pierwszym razem;
+- **adres poza obsługiwanym obszarem** — również komunikat informacyjny bez ponowienia: „Dane przedmiotu dostępne na razie dla Poznania — wpisz dane ręcznie.”. Tu sekcję rzeczywiście wypełnia się z ręki;
+- **błąd pobrania** (np. chwilowa niedostępność źródła) — ostrzeżenie z przyciskiem „Spróbuj ponownie”.
+
+Dwa pierwsze wyglądają na ekranie tak samo — neutralne ℹ bez żadnego przycisku — więc warto przeczytać sam komunikat: to on mówi, czy poprawić adres, czy wpisywać dane ręcznie.
 
 Rok budowy nie występuje w publicznej ewidencji — to pole zostaje puste i uzupełniasz je z dokumentacji albo z oględzin.
+
+Gdy dla działki nie ma żadnego planu miejscowego, pobranie samo zaznacza **„Brak obowiązującego MPZP”**, a pięć pól planu ustępuje wtedy miejsca jednemu polu „Przeznaczenie wg studium/decyzji WZ”. Nie jest to więc pole wyłącznie ręczne — zaznaczasz je sam tylko wtedy, gdy pobranie tego nie zrobiło.
 
 ### Podgląd map
 
@@ -38,13 +46,15 @@ Po udanym pobraniu w panelu obok formularza pojawia się mapa ewidencyjna dział
 
 Wybierasz jedno z trzech źródeł: „Wgraj akt notarialny”, „Wgraj odpis KW” albo „Wpisz ręcznie”.
 
-Z wgranego pliku PDF aplikacja odczytuje numer KW lokalu i gruntu, udział w nieruchomości wspólnej, sąd i wydział ksiąg wieczystych, treść działu III i IV oraz powierzchnię użytkową. Odczyt trwa do około pół minuty, a wynik pojawia się jako „Odczytano: … — do potwierdzenia” w edytowalnych polach. Jeśli dokument okaże się innego typu niż wybrany, zobaczysz ostrzeżenie — dane zostaną wypełnione według typu wykrytego. Co dokładnie czytamy z takiego dokumentu, a czego świadomie nie czytamy, opisuje [Ekstrakcja z odpisu KW i aktu notarialnego](/pomoc/ekstrakcja-kw-akt).
+Z wgranego pliku PDF aplikacja odczytuje numer KW lokalu i gruntu, pozostałe numery ksiąg wymienione w dokumencie, udział w nieruchomości wspólnej, sąd i wydział ksiąg wieczystych, datę dokumentu, treść działu III i IV oraz powierzchnię użytkową. Odczyt trwa do około pół minuty, a wynik pojawia się jako „Odczytano: … — do potwierdzenia” w edytowalnych polach. Nie wszystko dostaje jednak własne pole: pozostałych numerów ksiąg i daty dokumentu formularz nie pokazuje, a data dokumentu wchodzi do operatu — nie ma jej więc gdzie sprawdzić ani poprawić. Co dokładnie czytamy z takiego dokumentu, a czego świadomie nie czytamy, opisuje [Ekstrakcja z odpisu KW i aktu notarialnego](/pomoc/ekstrakcja-kw-akt).
+
+Jeśli dokument okaże się innego typu niż wybrany, zobaczysz ostrzeżenie — dane zostaną wypełnione według typu wykrytego. Jeśli natomiast plik nie jest ani aktem notarialnym, ani odpisem księgi, dostajesz komunikat informacyjny („To nie wygląda na akt notarialny ani odpis księgi wieczystej.”), bez przycisku ponowienia i bez żadnego wypełnionego pola — wgraj właściwy dokument albo przełącz się na wpis ręczny.
 
 Powierzchnię z dokumentu aplikacja wpisze tylko wtedy, gdy pole powierzchni jest puste. Gdy wpisałeś własną wartość i różni się ona od dokumentu, pojawi się ostrzeżenie z przyciskiem „Użyj wartości z dokumentu” — decyzja należy do Ciebie, nic nie jest tu blokowane.
 
 Zmiana źródła KW czyści całą sekcję: wgrany dokument, odczytane pola i ręcznie wpisany numer księgi. Powierzchnia wzięta z dokumentu też znika, o ile jej nie zmieniłeś.
 
-Zaznaczenie „Lokal bez własnej KW (zakup deweloperski)” wyłącza pole numeru KW lokalu — dane pochodzą wtedy z księgi macierzystej gruntu.
+Pole „Lokal bez własnej KW (zakup deweloperski)” pojawia się wyłącznie w trybie wgrywania dokumentu i dopiero po udanym odczycie — w trybie „Wpisz ręcznie” nie ma go w ogóle. Jego zaznaczenie wyłącza pole numeru KW lokalu: dane pochodzą wtedy z księgi macierzystej gruntu.
 
 ## Co musisz uzupełnić ręcznie
 
@@ -54,11 +64,13 @@ Zaznaczenie „Lokal bez własnej KW (zakup deweloperski)” wyłącza pole nume
 - **Zamawiający wycenę.**
 - **Numer księgi wieczystej** — gdy wybrałeś „Wpisz ręcznie”.
 - Pola, których źródła nie zwróciły — najczęściej rok budowy.
-- **Brak obowiązującego MPZP** — zaznacz, gdy planu nie ma; pola planu ustąpią wtedy miejsca polu „Przeznaczenie wg studium/decyzji WZ”.
+- **Brak obowiązującego MPZP** — do zaznaczenia, gdy planu nie ma, a pobranie samo go nie zaznaczyło; pola planu ustąpią wtedy miejsca polu „Przeznaczenie wg studium/decyzji WZ”.
 
 ## Co blokuje przejście dalej
 
 Przycisk „Dane się zgadzają — dalej” zapisuje krok. Zapis nie przejdzie bez adresu, powierzchni większej od zera, celu wyceny i zamawiającego — brakujące pole dostaje komunikat przy sobie.
+
+Zapis kroku **kasuje zatwierdzoną wartość rynkową**. Po każdym powrocie tutaj kwotę trzeba potwierdzić w kroku 5 jeszcze raz, a do tego czasu kroki 6 i 7 są z powrotem niedostępne — dzieje się tak również wtedy, gdy poprawiłeś tylko zamawiającego albo cel wyceny.
 
 Numer księgi wieczystej jest wymagany tylko wtedy, gdy nie wgrałeś dokumentu. W trybie wgrywania pusty formularz kończy się komunikatem „Wgraj dokument albo przełącz na wpis ręczny”.
 

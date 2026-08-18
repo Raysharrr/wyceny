@@ -230,6 +230,7 @@ export const HELP_PAGES: HelpPage[] = [
    *   apps/worker/app/subject.py:100  pick_mpzp_function — symbol przez MAX przecięcia
    *   apps/worker/app/subject.py:116  pick_plan — metryka planu przez punkt w wielokącie
    *   apps/worker/app/subject.py:132  is_poznan — zasięg MVP, prefiks TERYT 3064
+   *   apps/worker/app/subject.py:156  AddressNotFound — adres nierozpoznany, NIEPONAWIALNY (422)
    *   apps/worker/app/subject.py:139  GEOKODER_URL (UUG GUGiK)
    *   apps/worker/app/subject.py:140  ULDK_URL (identyfikator + geometria działki)
    *   apps/worker/app/subject.py:141  GEOPOZ_WMS_URL (EGiB: dzialki, budynki)
@@ -241,7 +242,10 @@ export const HELP_PAGES: HelpPage[] = [
    *   apps/worker/app/subject.py:227  count = 50 (limit obiektów WFS funkcji)
    *   apps/worker/app/subject.py:75   parcel_from_xml — lista pól EGiB działki
    *   apps/worker/app/subject.py:89   building_from_xml — lista pól EGiB budynku
+   *   apps/worker/app/main.py:212     ADDRESS_NOT_FOUND_DETAIL — komunikat cytowany na stronach
+   *   apps/worker/app/main.py:216     OUT_OF_COVERAGE_DETAIL — drugi z dwóch nieponawialnych 422
    *   apps/worker/app/main.py:239     mpzp niepuste, gdy zadziała funkcja LUB plan
+   *   apps/worker/app/main.py:297     MAPS_OUT_OF_COVERAGE_DETAIL — ten sam kontrakt dla map
    *   apps/worker/app/maps.py:19-24   ORTO/KIEG, 1800x1350, 125 m, skala 2x
    *   apps/worker/app/maps.py:53      attempts = 4 (ORTO losowo 404)
    *   apps/web/src/domain/document-model.ts:277  hasMpzp — WŁASNY, ostrzejszy warunek dokumentu
@@ -472,16 +476,16 @@ export const HELP_PAGES: HelpPage[] = [
    * `dobor-proby-rcn` powyżej.
    *
    * Źródła do sprawdzenia przy każdej zmianie generowania opisów:
-   *   apps/worker/app/main.py:417        PROSE_MODEL — nazwa modelu (NIE cytować)
-   *   apps/worker/app/main.py:425        PROSE_MAX_TOKENS — limit długości (NIE cytować)
+   *   apps/worker/app/main.py:427        PROSE_MODEL — nazwa modelu (NIE cytować)
+   *   apps/worker/app/main.py:435        PROSE_MAX_TOKENS — limit długości (NIE cytować)
    *   apps/worker/app/main.py:514        PROSE_RETRY_INSTRUCTION — dopisek do drugiej próby
    *   apps/worker/app/main.py:529        _prose_section — DOKŁADNIE jedna dodatkowa próba
    *   apps/worker/app/main.py:608        wstrzyknięcie proba.trend_cen do faktów
    *   apps/worker/app/main.py:640        sekcje liczone równolegle, awaria jednej nie psuje reszty
    *   apps/worker/app/main.py:657        502, gdy nie przeżyła ani jedna sekcja
    *   apps/worker/app/prose.py:82        price_trend — połowy próby, próg (NIE cytować)
-   *   apps/worker/app/prose.py:120       _allowed_numbers — zbiór dozwolony, część całkowita
-   *   apps/worker/app/prose.py:156       validate_numbers — jednostka i idiom „za 1 m2"
+   *   apps/worker/app/prose.py:121       _allowed_numbers — zbiór dozwolony: liczba + zapis z przecinkiem, BEZ części całkowitej
+   *   apps/worker/app/prose.py:155       validate_numbers — DOSŁOWNE dopasowanie; wyjątki: jednostka i idiom „1 m2"
    *   apps/worker/app/prompts/prose/_style.md   styl i zakaz domyślania wątków
    *   apps/web/src/domain/prose-snapshot.ts:17  PROSE_SECTIONS (IMPORTOWANE do MDX)
    *   apps/web/src/domain/prose-snapshot.ts:34  PROSE_SECTION_LABEL (IMPORTOWANE do MDX)
