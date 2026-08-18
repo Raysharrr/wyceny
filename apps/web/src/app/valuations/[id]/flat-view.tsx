@@ -46,10 +46,6 @@ export function FlatView({
   successor,
   allBlockers,
   gateOk,
-  hasToVerify,
-  hasSubjectToVerify,
-  hasKwToVerify,
-  hasFeaturesToVerify,
   hasAnyAction,
   canCreateNewVersion,
 }: {
@@ -60,10 +56,6 @@ export function FlatView({
   successor: Valuation | undefined;
   allBlockers: Blocker[];
   gateOk: boolean;
-  hasToVerify: boolean;
-  hasSubjectToVerify: boolean;
-  hasKwToVerify: boolean;
-  hasFeaturesToVerify: boolean;
   hasAnyAction: boolean;
   canCreateNewVersion: boolean;
 }) {
@@ -234,6 +226,10 @@ export function FlatView({
             </>
           ) : null}
 
+          {/* Plain labels, NOT the step-linked `BlockerList` step 7 renders:
+           * this list is only ever seen on a draft by a non-owner admin, and
+           * page.tsx routes them to this view for every `?step=` — a link back
+           * into the wizard would be a link they cannot follow. */}
           {allBlockers.length > 0 ? (
             <SectionCard icon={AlertTriangle} title="Status">
               <div data-testid="gate-blockers" className="flex flex-col gap-1">
@@ -253,10 +249,6 @@ export function FlatView({
             <SectionCard icon={ClipboardCheck} title="Akcje">
               <ValuationActions
                 id={valuation.id}
-                hasToVerify={hasToVerify}
-                hasSubjectToVerify={hasSubjectToVerify}
-                hasKwToVerify={hasKwToVerify}
-                hasFeaturesToVerify={hasFeaturesToVerify}
                 gateOk={gateOk}
                 canApprove={valuation.status === "in_progress"}
                 canSign={canSign}

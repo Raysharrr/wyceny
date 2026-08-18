@@ -6,15 +6,17 @@ import { getSession } from "@/auth/session";
 import { proseProposal, valuationRepository } from "@/app/valuations/_deps";
 import { ProseWorkerDetailError } from "@/adapters/prose-http";
 import {
+  attemptedProseSections,
   buildProseFacts,
   buildProseTransactions,
   proseSnapshotOf,
   selectProseSections,
+  staleProseSections,
 } from "@/domain/prose";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHash } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import { mintWorkerToken } from "@/lib/worker-token";
-import type { ProseSnapshot } from "@/domain/prose-snapshot";
+import type { ProseSection, ProseSnapshot } from "@/domain/prose-snapshot";
 
 export type ProposeProseResult = { prose: ProseSnapshot } | { error: string };
 
@@ -29,9 +31,9 @@ const DISABLED = "Generowanie opisów jest wyłączone.";
 
 /**
  * Server Action behind the operat's prose sections (ADR-014, FR-6): builds
- * the facts from the draft itself, asks the worker for the sections those
- * facts can actually back, and persists the result as an `ai`/`to_verify`
- * proposal — the appraiser still has to read, edit and accept it (F-4).
+ * the facts from the draft itself, asks the worker ONLY for the sections
+ * that need it, and persists the result as an `ai`/`to_verify` proposal —
+ * the appraiser still has to read, edit and accept it (F-4).
  *
  * Every gate that can be checked locally runs BEFORE the call: an LLM
  * generation costs real money, so a non-draft, a foreign valuation or a draft
@@ -39,10 +41,45 @@ const DISABLED = "Generowanie opisów jest wyłączone.";
  * honest — no section is invented, and a section the worker could not deliver
  * comes back in `rejected` for the appraiser to write by hand.
  *
+ * `opts.sections`, omitted, means "whatever is missing or stale, MINUS what
+ * was already asked for at these exact facts" (T3, bounded in T5): a section
+ * already present with a matching fingerprint is left alone — regenerating it
+ * would pay for tokens only to have the merge (`mergeProseProposal`) throw the
+ * result away — and so is one that has already been attempted and could not be
+ * delivered. Passed explicitly, `opts.sections` is an escape hatch — "redo
+ * this one" — that bypasses both filters and still never asks for a section
+ * today's facts cannot back at all.
+ *
+ * Three callers, three intents, and the DEFAULT is the bounded one on purpose:
+ * a caller that forgets to say what it is doing gets the cheap behaviour, and
+ * the failure mode of forgetting is a click that does nothing rather than a
+ * bill nobody asked for.
+ *
+ *  - no opts — the step entering itself. Automatic, so it must never re-buy an
+ *    answer it already has.
+ *  - `opts.includeAttempted` — the appraiser pressing "Wygeneruj ponownie".
+ *    The server still decides the batch (the browser never re-derives the
+ *    missing-or-stale rule), but the bound is lifted, because a click IS the
+ *    ask. Without it the button would silently do nothing on exactly the
+ *    drafts the bound exists for — and the only retry left for one refused
+ *    section would be paying for all six.
+ *  - `opts.sections` — "redo these", named.
+ *
+ * Sections the appraiser already confirmed are NOT excluded from that batch.
+ * `mergeProseProposal` demotes a confirmed section back to `to_verify` when
+ * ITS facts moved, but only when the section is IN the batch — skipping it
+ * here would leave stale text sitting at `confirmed`, with T4's approval gate
+ * as the only thing standing between it and a signed operat. The appraiser's
+ * own text is never overwritten by this (the merge keeps it regardless); the
+ * cost is one discarded generation, a few groszy.
+ *
  * F-11: neither the market value nor the unit value is sent; the result's
  * standing in the sample travels as a categorical phrase (see `domain/prose`).
  */
-export async function proposeProse(id: string): Promise<ProposeProseResult> {
+export async function proposeProse(
+  id: string,
+  opts?: { sections?: ProseSection[]; includeAttempted?: boolean },
+): Promise<ProposeProseResult> {
   const session = await getSession();
   if (!session) {
     redirect("/login");
@@ -62,9 +99,48 @@ export async function proposeProse(id: string): Promise<ProposeProseResult> {
   if (valuation.status !== "in_progress") return { error: NOT_DRAFT };
   if (!valuation.inputs) return { error: NO_FACTS };
 
-  const facts = buildProseFacts({ address: valuation.address, inputs: valuation.inputs });
-  const sections = selectProseSections(facts);
-  if (sections.length === 0) return { error: NO_FACTS };
+  const factsInput = { address: valuation.address, inputs: valuation.inputs };
+  const facts = buildProseFacts(factsInput);
+  const generatable = selectProseSections(facts);
+  if (generatable.length === 0) return { error: NO_FACTS };
+
+  const stale = new Set(
+    staleProseSections(valuation.inputs.prose, factsInput, currentSectionFactsHash),
+  );
+  // Sections already asked for at exactly these facts (T5 fix round 2). Left
+  // out of the AUTOMATIC batch: a section the worker refused stays stale
+  // forever — the merge keeps its old fingerprint on purpose, so the F-4 gate
+  // goes on blocking it — and would therefore ride along in every batch some
+  // OTHER section legitimately earns. Not once: every time anything at all
+  // goes stale, for as long as its own facts stay put. The step's
+  // `worthGenerating` decides WHETHER to call; this decides WHAT the call
+  // contains, and it is the same money.
+  const attempted = new Set(
+    opts?.includeAttempted
+      ? []
+      : attemptedProseSections(valuation.inputs.prose, factsInput, currentSectionFactsHash),
+  );
+  const sections = opts?.sections
+    ? opts.sections.filter((s) => generatable.includes(s))
+    : generatable.filter(
+        (s) => (!valuation.inputs?.prose?.sections[s] || stale.has(s)) && !attempted.has(s),
+      );
+  if (sections.length === 0) {
+    // Nothing left to buy. In the no-opts path that now means one of two
+    // things — every generatable section is present and fresh, OR everything
+    // that still needs work was already attempted at these exact facts —
+    // and `prose` is guaranteed to exist under both: a draft with no prose at
+    // all has recorded no attempts either, so its missing sections cannot be
+    // filtered out. But `opts.sections` can ALSO filter down to
+    // nothing (e.g. naming only a section today's facts cannot back), on a
+    // draft with no prior generation at all. Asserting non-null there would
+    // ship `{ prose: undefined }` typed as a real snapshot to a caller that
+    // only checks `"error" in result`. Returning the current snapshot (rather
+    // than calling the worker for nothing) is what makes it safe to always
+    // call this action unconditionally on mount: a no-op costs neither tokens
+    // nor a write.
+    return valuation.inputs.prose ? { prose: valuation.inputs.prose } : { error: NO_FACTS };
+  }
 
   const token = mintWorkerToken();
   if (!token) return { error: NOT_CONFIGURED };
@@ -88,16 +164,19 @@ export async function proposeProse(id: string): Promise<ProposeProseResult> {
     return { error: error instanceof ProseWorkerDetailError ? error.message : GENERIC };
   }
 
+  // One fingerprint per REQUESTED section — never the whole six, since only
+  // `sections` was actually sent. A section this run never asked about must
+  // stay ABSENT from `factsHashes`: `mergeProseProposal` reads that as "not
+  // touched by this run" and carries the previous entry forward untouched.
+  const factsHashes: Partial<Record<ProseSection, string>> = {};
+  for (const section of sections)
+    factsHashes[section] = currentSectionFactsHash(section, factsInput);
+
   const snapshot = proseSnapshotOf({
     sections: proposal.sections,
     rejected: proposal.rejected,
     model: proposal.model,
-    // Pins the proposals to the facts they were written from: once the draft
-    // moves on, the UI can tell a stale proposal from a current one. Via the
-    // SAME helper the step-6 page compares against — two hand-rolled copies of
-    // this expression drifting apart would mark every draft stale, and the
-    // step auto-generates on stale.
-    factsHash: currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs }),
+    factsHashes,
     generatedAt: new Date(),
   });
 

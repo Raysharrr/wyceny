@@ -81,9 +81,19 @@ function formatAreaDisplay(value: unknown): string | null {
 export function SubjectForm({
   valuationId,
   defaults,
+  calculationConfirmed = false,
 }: {
   valuationId?: string;
   defaults?: Partial<FormInput>;
+  /**
+   * Whether this draft already carries a confirmed calculation (`wr != null`).
+   * Drives the warning above the form: `applySubjectUpdate` nulls `wr` on
+   * every step-1 save, so submitting costs the appraiser step 5 — and step 7
+   * disappears from the stepper until they redo it (`maxReachedStep` falls
+   * from 7 to 5). Since T8 the step-7 blockers link people here on purpose,
+   * so that cost has to be stated on the screen they land on.
+   */
+  calculationConfirmed?: boolean;
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -335,6 +345,36 @@ export function SubjectForm({
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      {/* First thing on the page, not a toast after the fact: the save is
+       * irreversible for the calculation, and the appraiser has to be able to
+       * decide BEFORE pressing the button.
+       *
+       * The SCOPE is measured field by field across this whole step — see
+       * `prose-section-facts.test.ts`, which walks every input the form
+       * renders. Round 1 of this warning was measured on the address and the
+       * area alone and promised too little: seven more inputs here (obręb, nr
+       * działki, użytek, rodzaj budynku, pow. działki, kondygnacje nadziemne,
+       * rok budowy) stale `zagospodarowanie`, so someone correcting the year of
+       * construction was told step 6 was safe and then blocked on it. Hence
+       * "dane przedmiotu" as one group.
+       *
+       * The second clause is the part worth keeping, and it is equally
+       * measured: `purpose`, `client` and `kwNumber` are not in `KcsInput` at
+       * all and reach no prompt, so correcting a client name really does cost
+       * the calculation and nothing else. Widen this sentence and it stops
+       * being read. */}
+      {calculationConfirmed ? (
+        <p
+          data-testid="step1-recalc-warning"
+          role="status"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-500"
+        >
+          Zapis tego kroku kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie
+          wyliczyć w kroku 5. Jeśli poprawisz przy tym adres, powierzchnię albo dane przedmiotu,
+          trzeba będzie też ponownie zatwierdzić opisy w kroku 6 — sama zmiana zamawiającego, celu
+          wyceny albo numeru księgi opisów nie rusza.
+        </p>
+      ) : null}
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
         <div className="flex flex-col gap-4">
           <SectionCard icon={MapPin} title="Adres i lokalizacja" sub="1 pole">

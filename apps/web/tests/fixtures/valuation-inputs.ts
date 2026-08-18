@@ -1,14 +1,27 @@
 import type { KcsInput } from "../../src/domain/kcs";
 import type { InputsProvenance } from "../../src/domain/provenance";
-import { currentProseFactsHash } from "../../src/domain/prose-hash";
+import { currentSectionFactsHash } from "../../src/domain/prose-hash";
 import { PROSE_SECTIONS, type ProseSnapshot } from "../../src/domain/prose-snapshot";
 import type { NewValuationInput } from "../../src/ports/valuation";
 
 /**
- * A prose snapshot in the ONLY shape that clears the T7 gate: all six
- * sections written, every one `rzeczoznawca`/`confirmed` — i.e. what
- * `confirmProseSnapshot` leaves behind after the appraiser submits step 6.
+ * A prose snapshot in the shape the appraiser leaves behind: all six sections
+ * written, every one `rzeczoznawca`/`confirmed` — i.e. what
+ * `confirmProseSnapshot` produces after they submit step 6. Since T4 that
+ * shape alone no longer clears the gate; read the warning below before
+ * reaching for this.
  * Fictional text (F-9): no sentence here describes a real property.
+ *
+ * ⚠️ `factsHash` names the SAME made-up fingerprint for all six sections (T2:
+ * the snapshot carries one hash per section), and it is not any real draft's —
+ * so to the F-4 gate EVERY section of this snapshot reads STALE, and a gate
+ * test built on it blocks on all six no matter what the code under test does.
+ * That makes it the right fixture for exactly two things: callers that only
+ * need "some fingerprint present" (e.g. checking that a confirm mutates it),
+ * and the migration path (a snapshot whose hashes predate today's facts).
+ * Anything that has to CLEAR a per-section staleness check — or prove that one
+ * section blocks while the others do not — wants {@link confirmedProseFor},
+ * which fingerprints against the draft it is attached to.
  */
 export function confirmedProse(factsHash = "0".repeat(64)): ProseSnapshot {
   return {
@@ -22,22 +35,52 @@ export function confirmedProse(factsHash = "0".repeat(64)): ProseSnapshot {
       ]),
     ) as ProseSnapshot["sections"],
     rejected: {},
-    factsHash,
+    factsHashes: Object.fromEntries(PROSE_SECTIONS.map((section) => [section, factsHash])),
     model: "test-model",
     generatedAt: "2026-07-10T09:00:00.000Z",
   };
 }
 
 /**
- * The same snapshot, but carrying the fingerprint of the draft it is attached
- * to — i.e. prose that describes THESE facts. Anything else now reads as
- * stale to the F-4 gate (T6 review, I-2), which is the whole point: a fixture
- * that clears the gate has to be one the appraiser could actually have
- * produced. `inputs.prose` itself is not part of the fingerprint, so passing
- * the inputs without it is exactly right.
+ * The same snapshot, but carrying each section's OWN fingerprint of the
+ * draft it is attached to — i.e. prose that describes THESE facts. Anything
+ * else now reads as stale to the F-4 gate (T6 review, I-2), which is the
+ * whole point: a fixture that clears the gate has to be one the appraiser
+ * could actually have produced. `inputs.prose` itself is not part of any
+ * fingerprint, so passing the inputs without it is exactly right.
  */
 export function confirmedProseFor(address: string, inputs: KcsInput): ProseSnapshot {
-  return confirmedProse(currentProseFactsHash({ address, inputs }));
+  const base = confirmedProse();
+  return {
+    ...base,
+    factsHashes: Object.fromEntries(
+      PROSE_SECTIONS.map((section) => [
+        section,
+        currentSectionFactsHash(section, { address, inputs }),
+      ]),
+    ) as ProseSnapshot["factsHashes"],
+  };
+}
+
+/**
+ * Attaches to `inputs` the prose the appraiser would have confirmed on THIS
+ * draft — six sections, `rzeczoznawca`/`confirmed`, fingerprinted against
+ * these facts and this address.
+ *
+ * Needed by every repo-level approve test since T4 fix round 1: the repo now
+ * derives `requireProse` from the FR-6 kill switch inside its own transaction
+ * instead of taking it from the caller, so a draft with no prose is refused
+ * there exactly as it is in the action. `approvableInput`/`approvableInputs`
+ * deliberately stay prose-less — the tests that prove the gate REFUSES a bare
+ * draft need that shape.
+ *
+ * Survives `confirmSample`: flipping provenance statuses moves none of the
+ * six fingerprints (measured, not assumed), so this can be attached at
+ * creation time and the draft still clears the gate after the sample is
+ * confirmed.
+ */
+export function withConfirmedProse(address: string, inputs: KcsInput): KcsInput {
+  return { ...inputs, prose: confirmedProseFor(address, inputs) };
 }
 
 /**
@@ -65,8 +108,11 @@ export function valuationInput(ownerId: string, address: string): NewValuationIn
 /**
  * `KcsInput` fixture with 12 rcn comparables + geocode, both `to_verify`
  * (moved from `valuation-repo.test.ts`, F-7 Task 4). Does NOT pass the F-4
- * gate on its own — `confirmSample` must flip the sample to `confirmed`
- * first; this is what makes it useful for testing that mutation.
+ * gate on its own: `confirmSample` must flip the sample to `confirmed`, and
+ * since T4 the repo derives `requireProse` itself, so confirmed prose is
+ * required too — attach {@link withConfirmedProse} when approving through the
+ * repo. Carrying neither is what makes this fixture useful for testing that
+ * the gate refuses a bare draft.
  */
 export function approvableInputs(): KcsInput {
   return {
@@ -96,10 +142,17 @@ export function approvableInputs(): KcsInput {
 }
 
 /**
- * `NewValuationInput` wrapper that passes the F-4 gate AND the
- * document-field blockers already at creation time (sample + geocode
+ * `NewValuationInput` wrapper that clears the F-4 gate's PRE-PROSE groups AND
+ * the document-field blockers already at creation time (sample + geocode
  * pre-confirmed) — lets a test call `repo.approve` directly with no
  * `confirmSample` round-trip (F-7 Task 4 audit-log coverage).
+ *
+ * ⚠️ It carries NO prose, so on its own it does NOT clear the whole gate any
+ * more: since T4 fix round 1 the repo derives `requireProse` from the FR-6
+ * kill switch inside its own transaction, so `repo.approve` refuses this
+ * shape exactly as the action does. That is deliberate — the tests proving
+ * the gate REFUSES a bare draft need it. A test that wants an approval to
+ * SUCCEED wraps the inputs in {@link withConfirmedProse}.
  */
 export function approvableInput(ownerId: string): NewValuationInput {
   const base = approvableInputs();

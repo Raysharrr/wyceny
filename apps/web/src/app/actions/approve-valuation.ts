@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import { ApprovalBlockedError, InputsChangedError } from "@/domain/valuation";
-import { approvalGate } from "@/domain/provenance";
+import { approvalGate, type Blocker } from "@/domain/provenance";
 import { proseEnabled } from "@/lib/prose-enabled";
 import {
   buildDocumentModel,
@@ -13,11 +13,28 @@ import {
   type OperatPurpose,
 } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 
-export type ApproveValuationResult = { error: string; mapsUnavailable?: boolean } | undefined;
+export type ApproveValuationResult =
+  | {
+      error: string;
+      mapsUnavailable?: boolean;
+      /**
+       * EVERY blocker the refusal rests on, not only the one `error` names
+       * (T8, carried from the Task 4 review). The caller renders them as a
+       * list with a link per step: once each blocker points at a different
+       * screen, surfacing one at a time would make the appraiser discover the
+       * second problem only after fixing the first and coming back.
+       *
+       * Absent on refusals that are not gate refusals (a draft with no inputs
+       * snapshot, a maps failure, a drift retry) — the renderer must treat it
+       * as optional.
+       */
+      blockers?: Blocker[];
+    }
+  | undefined;
 
 /**
  * Approve = F-4 gate + document generation, synchronously (spec §3).
@@ -65,15 +82,18 @@ export async function approveValuation(
   if (valuation.inputs) {
     const gate = approvalGate(valuation.inputs, {
       requireProse,
-      // Lets the gate see prose that describes a draft which has since moved
-      // on (T6 review, I-2). Derived here, never taken from the client.
-      currentFactsHash: requireProse
-        ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+      // Lets the gate see the sections whose facts have since moved on (T6
+      // review, I-2; per section since T4). Derived here, never taken from
+      // the client.
+      currentSectionHashes: requireProse
+        ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
         : undefined,
     });
     const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(valuation)];
     if (blockers.length > 0) {
-      return { error: `Zatwierdzenie zablokowane — ${blockers[0].label}` };
+      // `error` stays the one-line summary it has always been; `blockers`
+      // carries the rest, so the action bar can show them all with their steps.
+      return { error: `Zatwierdzenie zablokowane — ${blockers[0].label}`, blockers };
     }
   }
 
@@ -167,6 +187,7 @@ export async function approveValuation(
     if (error instanceof ApprovalBlockedError) {
       return {
         error: `Zatwierdzenie zablokowane — ${error.blockers[0]?.label ?? "operat zawiera niezweryfikowane wartości."}`,
+        blockers: error.blockers,
       };
     }
     console.error("approveValuation failed", error);

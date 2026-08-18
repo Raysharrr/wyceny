@@ -17,10 +17,6 @@ globalThis.ResizeObserver ??= class {
 vi.mock("@/app/actions/approve-valuation", () => ({ approveValuation: vi.fn() }));
 vi.mock("@/app/actions/sign-valuation", () => ({ signValuationAction: vi.fn() }));
 vi.mock("@/app/actions/create-new-version", () => ({ createNewVersionAction: vi.fn() }));
-vi.mock("@/app/actions/confirm-sample", () => ({ confirmSample: vi.fn() }));
-vi.mock("@/app/actions/confirm-subject", () => ({ confirmSubject: vi.fn() }));
-vi.mock("@/app/actions/confirm-kw", () => ({ confirmKw: vi.fn() }));
-vi.mock("@/app/actions/confirm-features", () => ({ confirmFeatures: vi.fn() }));
 
 import { FlatView } from "@/app/valuations/[id]/flat-view";
 import type { Valuation } from "@/ports/valuation";
@@ -55,10 +51,6 @@ const baseProps = {
   successor: undefined,
   allBlockers: [],
   gateOk: true,
-  hasToVerify: false,
-  hasSubjectToVerify: false,
-  hasKwToVerify: false,
-  hasFeaturesToVerify: false,
   hasAnyAction: true,
   canCreateNewVersion: false,
 };

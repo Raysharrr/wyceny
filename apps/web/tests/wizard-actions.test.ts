@@ -110,31 +110,90 @@ describe("createDraft", () => {
       "REDIRECT:/valuations/draft-1?step=2",
     );
 
-    expect(createMock).toHaveBeenCalledWith({
-      address: "ul. Testowa 1, Poznań",
-      area: 50,
-      wr: null,
-      inputs: {
+    expect(createMock).toHaveBeenCalledWith(
+      {
+        address: "ul. Testowa 1, Poznań",
         area: 50,
-        comparables: [],
-        features: [],
-        sampleMeta: null,
-        subject: null,
-        subjectMeta: null,
-        kw: null,
-        kwMeta: null,
-        provenance: {
-          address: { source: "rzeczoznawca", status: "confirmed" },
-          area: { source: "rzeczoznawca", status: "confirmed" },
+        wr: null,
+        inputs: {
+          area: 50,
+          comparables: [],
+          features: [],
+          sampleMeta: null,
+          subject: null,
+          subjectMeta: null,
+          kw: null,
+          kwMeta: null,
+          provenance: {
+            address: { source: "rzeczoznawca", status: "confirmed" },
+            area: { source: "rzeczoznawca", status: "confirmed" },
+          },
         },
+        amountInWords: null,
+        docUrl: null,
+        purpose: "sprzedaz",
+        kwNumber: "PO1P/1/1",
+        client: "Jan Kowalski",
+        inspectionDate: null,
+        ownerId: SESSION_USER.id,
       },
-      amountInWords: null,
-      docUrl: null,
-      purpose: "sprzedaz",
-      kwNumber: "PO1P/1/1",
-      client: "Jan Kowalski",
-      inspectionDate: null,
-      ownerId: SESSION_USER.id,
+      // No `kw_confirmed`: this payload attaches no extract, so the trail
+      // must not claim the appraiser confirmed one.
+      { confirmed: ["subject_confirmed"] },
+    );
+  });
+
+  /**
+   * T7 (spec §B): a new valuation is created by the SAME step-1 button, so it
+   * carries the same confirmation. Without this, every fresh draft reached
+   * step 7 with an EGiB/MPZP blocker the appraiser could only clear by
+   * submitting step 1 a second time — after they had already read that data
+   * and clicked "Dane się zgadzają — dalej".
+   */
+  it("creating from step 1 confirms the fetched subject, KW and geocoding", async () => {
+    createMock.mockResolvedValueOnce({ ...draftValuation, id: "draft-2" });
+
+    await expect(
+      createDraft({
+        ...validStep1Input,
+        kwNumber: undefined,
+        area: 69.56,
+        subject: { obreb: "Nowogród", nrDzialki: "12" },
+        subjectMeta: {
+          x: 1,
+          y: 2,
+          teryt: "000000",
+          fetchedAt: "2026-07-14T09:00:00.000Z",
+          source: "geopoz-gugik",
+          mpzpAbsent: false,
+        },
+        kw: {
+          source: "odpis_kw",
+          kwLokalu: "KW-TEST-1",
+          kwGruntu: "KW-TEST-1",
+          kwInne: [],
+          deweloperski: false,
+          powUzytkowaKw: 69.56,
+          udzial: null,
+          sad: null,
+          wydzial: null,
+          dataDokumentu: null,
+          dzial3: null,
+          dzial4: null,
+        },
+      }),
+    ).rejects.toThrow("REDIRECT:/valuations/draft-2?step=2");
+
+    const { inputs } = createMock.mock.calls.at(-1)![0];
+    expect(inputs!.provenance).toEqual({
+      address: { source: "rzeczoznawca", status: "confirmed" },
+      // Doc-sourced area rides with the KW confirmation, exactly as it does
+      // through `confirmKw` on an existing draft.
+      area: { source: "odpis_kw", status: "confirmed" },
+      ewidencja: { source: "ewidencja", status: "confirmed" },
+      mpzp: { source: "mpzp", status: "confirmed" },
+      kw: { source: "odpis_kw", status: "confirmed" },
+      geocode: { source: "geokoder", status: "confirmed" },
     });
   });
 

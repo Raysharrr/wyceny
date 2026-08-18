@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { WizardShell } from "@/components/wizard/wizard-shell";
 import { getSession } from "@/auth/session";
 import { approvalGate } from "@/domain/provenance";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import { documentFieldBlockers } from "@/domain/document-model";
 import { maxReachedStep, resolveStep } from "@/domain/wizard";
@@ -91,7 +91,13 @@ export default async function ValuationViewPage({
     return (
       <WizardShell currentStep={step} maxReachedStep={max} valuationId={valuation.id}>
         {step === 1 ? (
-          <SubjectForm valuationId={valuation.id} defaults={step1DefaultsFromInputs(valuation)} />
+          <SubjectForm
+            valuationId={valuation.id}
+            defaults={step1DefaultsFromInputs(valuation)}
+            // The step-1 save nulls `wr` (`applySubjectUpdate`), which is worth
+            // a warning only when there is a confirmed calculation to lose.
+            calculationConfirmed={valuation.wr != null}
+          />
         ) : step === 2 ? (
           <StepInspection
             valuationId={valuation.id}
@@ -116,7 +122,13 @@ export default async function ValuationViewPage({
         ) : step === 5 ? (
           <StepCalculation valuation={valuation} />
         ) : step === 6 ? (
-          <StepDescriptions valuationId={valuation.id} {...proseStepProps(valuation)} />
+          // Awaited inside the ternary on purpose: the props now include an
+          // audit aggregate, and only step 6 has any use for it — evaluating
+          // it above would put a query on every other step of the wizard.
+          <StepDescriptions
+            valuationId={valuation.id}
+            {...await proseStepProps(valuation, session.user, valuationRepository)}
+          />
         ) : (
           <StepOperat valuation={valuation} />
         )}
@@ -146,8 +158,8 @@ export default async function ValuationViewPage({
     isDraft && valuation.inputs
       ? approvalGate(valuation.inputs, {
           requireProse: proseEnabled(),
-          currentFactsHash: proseEnabled()
-            ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+          currentSectionHashes: proseEnabled()
+            ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
             : undefined,
         })
       : null;
@@ -156,33 +168,15 @@ export default async function ValuationViewPage({
   // check (spec §4) — the button is enabled only when neither has a blocker.
   const allBlockers = [...(gate && !gate.ok ? gate.blockers : []), ...fieldBlockers];
   const gateOk = gate?.ok === true && fieldBlockers.length === 0;
-  const hasToVerify =
-    isDraft && valuation.inputs
-      ? valuation.inputs.comparables.some((c) => c.status === "to_verify") ||
-        valuation.inputs.provenance?.geocode?.status === "to_verify"
-      : false;
-  const hasSubjectToVerify =
-    isDraft && valuation.inputs
-      ? valuation.inputs.provenance?.ewidencja?.status === "to_verify" ||
-        valuation.inputs.provenance?.mpzp?.status === "to_verify"
-      : false;
-  const hasKwToVerify =
-    isDraft && valuation.inputs
-      ? valuation.inputs.kw != null && valuation.inputs.provenance?.kw?.status === "to_verify"
-      : false;
-  const hasFeaturesToVerify =
-    isDraft && valuation.inputs
-      ? valuation.inputs.provenance?.weights?.status === "to_verify" ||
-        valuation.inputs.provenance?.featureDefs?.status === "to_verify"
-      : false;
   // A legacy `approved` row (no inputs) or a superseded `signed` row leaves
-  // every can*/has* flag false — without this check the action-bar Card
-  // would render empty for the owner.
+  // every can* flag false — without this check the action-bar Card would
+  // render empty for the owner.
+  //
+  // The four `has*ToVerify` flags that used to feed this are gone with the
+  // step-7 confirm buttons (T8). They never carried weight here anyway: each
+  // was `isDraft && …`, and an OWNER's draft never reaches the flat view —
+  // the wizard branch above returns first.
   const hasAnyAction =
-    hasToVerify ||
-    hasSubjectToVerify ||
-    hasKwToVerify ||
-    hasFeaturesToVerify ||
     valuation.status === "in_progress" || // canApprove
     canSign ||
     canCreateNewVersion;
@@ -196,10 +190,6 @@ export default async function ValuationViewPage({
       successor={successor}
       allBlockers={allBlockers}
       gateOk={gateOk}
-      hasToVerify={hasToVerify}
-      hasSubjectToVerify={hasSubjectToVerify}
-      hasKwToVerify={hasKwToVerify}
-      hasFeaturesToVerify={hasFeaturesToVerify}
       hasAnyAction={hasAnyAction}
       canCreateNewVersion={canCreateNewVersion}
     />

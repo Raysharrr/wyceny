@@ -209,6 +209,55 @@ describe("StepSample — submit", () => {
   });
 });
 
+/**
+ * The premise the ACL's `transactionId ? "rcn" : …` rule rests on: the form
+ * has no input for an id, so a row the appraiser adds by hand cannot carry
+ * one. If this ever stops holding, that rule would relabel hand-typed rows as
+ * fetched — and the bulk confirm would stamp them as verified machine data.
+ */
+describe("StepSample — a hand-typed row carries no transactionId", () => {
+  it("submits an appended row with no id, so the ACL still reads it as manual", async () => {
+    const user = userEvent.setup();
+    saveSampleAction.mockClear();
+    saveSampleAction.mockResolvedValue({ ok: true });
+
+    const fetched = twelveComparables().map((c, i) => ({
+      ...c,
+      source: "rcn" as const,
+      transactionId: `tx-${i}`,
+    }));
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={fetched}
+        sampleMeta={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /dodaj transakcję/i }));
+    const prices = await screen.findAllByPlaceholderText("zł/m²");
+    expect(prices).toHaveLength(13);
+    await user.type(prices[12], "12345");
+
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+
+    await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
+    const [, payload] = saveSampleAction.mock.calls.at(-1) as [
+      string,
+      { comparables: Array<{ source?: string; transactionId?: string }> },
+    ];
+    expect(payload.comparables).toHaveLength(13);
+    expect(payload.comparables[12].transactionId).toBeUndefined();
+    expect(payload.comparables[12].source).toBeUndefined();
+    // …while the fetched rows still round-trip theirs, which is what the
+    // matcher in `applySampleUpdate` keys confirmations on.
+    expect(payload.comparables[0].transactionId).toBe("tx-0");
+  });
+});
+
 describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity)", () => {
   it("shows Statystyki próby with Cmin/Cmax/Cśr and the V-ratio range for ≥2 comparable prices", () => {
     render(

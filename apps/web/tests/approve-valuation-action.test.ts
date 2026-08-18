@@ -43,7 +43,7 @@ vi.mock("next/navigation", () => ({
 import { approveValuation } from "../src/app/actions/approve-valuation";
 import { storage, valuationRepository, worker, mapImages } from "@/app/valuations/_deps";
 import { StorageNotFoundError } from "@/ports/storage";
-import { InputsChangedError } from "@/domain/valuation";
+import { ApprovalBlockedError, InputsChangedError } from "@/domain/valuation";
 
 const getMock = vi.mocked(valuationRepository.get);
 const approveMock = vi.mocked(valuationRepository.approve);
@@ -407,9 +407,10 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
 
     const result = await approveValuation(draftBase.id);
 
-    expect(result).toEqual({
-      error: "Zatwierdzenie zablokowane — Opisy sekcji nie zostały wygenerowane.",
-    });
+    expect(result!.error).toBe(
+      "Zatwierdzenie zablokowane — Opisy sekcji nie zostały wygenerowane.",
+    );
+    expect(result!.blockers!.map((b) => b.path)).toEqual(["prose"]);
     expect(approveMock).not.toHaveBeenCalled();
     expect(storagePutMock).not.toHaveBeenCalled();
     expect(convertToPdfMock).not.toHaveBeenCalled();
@@ -425,9 +426,10 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
 
     const result = await approveValuation(draftBase.id);
 
-    expect(result).toEqual({
-      error: "Zatwierdzenie zablokowane — Analiza i charakterystyka rynku — do weryfikacji.",
-    });
+    expect(result!.error).toBe(
+      "Zatwierdzenie zablokowane — Analiza i charakterystyka rynku — do weryfikacji.",
+    );
+    expect(result!.blockers!.map((b) => b.path)).toEqual(["prose.analiza_rynku"]);
     expect(approveMock).not.toHaveBeenCalled();
     expect(storagePutMock).not.toHaveBeenCalled();
   });
@@ -442,29 +444,102 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
 
     const result = await approveValuation(draftBase.id);
 
-    expect(result).toEqual({
-      error:
-        "Zatwierdzenie zablokowane — Uzasadnienie wyniku — pozycja na tle próby — brak tekstu.",
-    });
+    expect(result!.error).toBe(
+      "Zatwierdzenie zablokowane — Uzasadnienie wyniku — pozycja na tle próby — brak tekstu.",
+    );
+    expect(result!.blockers!.map((b) => b.path)).toEqual(["prose.uzasadnienie"]);
     expect(approveMock).not.toHaveBeenCalled();
   });
 
-  it("refuses prose that describes a superseded sample, even with every section confirmed (T6 review, I-2)", async () => {
+  it("refuses the SECTION that describes a superseded sample, naming only it (T4)", async () => {
     // The appraiser confirmed six sections, then went back and edited the
     // sample. Nothing about the snapshot's provenance changed — only the
     // facts underneath it did, which is exactly what the stored fingerprint
-    // stops matching. `confirmedProse()` carries a fingerprint from some
-    // earlier state of the draft.
+    // stops matching. The refusal has to name the section whose facts moved,
+    // not the whole block: five of these six still describe the draft in
+    // front of the appraiser, and sending them back to re-read all six turns
+    // the check into a ritual.
+    const prose = currentProse();
+    prose.factsHashes.uzasadnienie = "f".repeat(64);
+    getMock.mockResolvedValue(withProse(prose));
+
+    const result = await approveValuation(draftBase.id);
+
+    expect(result!.error).toBe(
+      "Zatwierdzenie zablokowane — Uzasadnienie wyniku — pozycja na tle próby — dane się zmieniły, przejrzyj ponownie.",
+    );
+    expect(result!.blockers!.map((b) => b.path)).toEqual(["prose.uzasadnienie"]);
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(storagePutMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a pre-fingerprint snapshot, naming ALL six stale sections (the migration path)", async () => {
+    // A draft persisted before per-section fingerprints existed: the adapter
+    // normalizes it to an empty map on read, so all six read stale and the
+    // appraiser makes one pass through step 6. `confirmedProse()` carries a
+    // fingerprint from some earlier state of the draft, which is the same
+    // thing from the gate's point of view.
+    //
+    // The summary line still names the first (unchanged since T4), but the
+    // result now carries every blocker — see the T8 block below for why.
     getMock.mockResolvedValue(withProse(confirmedProse()));
 
     const result = await approveValuation(draftBase.id);
 
-    expect(result).toEqual({
-      error:
-        "Zatwierdzenie zablokowane — Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.",
-    });
+    expect(result!.error).toBe(
+      "Zatwierdzenie zablokowane — Analiza i charakterystyka rynku — dane się zmieniły, przejrzyj ponownie.",
+    );
+    expect(result!.blockers!.map((b) => b.path)).toEqual([
+      "prose.analiza_rynku",
+      "prose.opis_lokalu",
+      "prose.otoczenie",
+      "prose.zagospodarowanie",
+      "prose.standard",
+      "prose.uzasadnienie",
+    ]);
     expect(approveMock).not.toHaveBeenCalled();
     expect(storagePutMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * T8 (carried from the Task 4 review): the refusal used to surface
+   * `blockers[0].label` and nothing else. That was tolerable while the message
+   * was one global sentence; now that step 7 renders a link per blocker, a
+   * draft with problems on three different steps would otherwise be fixed one
+   * round trip at a time — clear one, retry, discover the next.
+   *
+   * The `error` string is deliberately unchanged: it is the one-line summary,
+   * and six assertions in this file and one in the action bar's tests pin it.
+   */
+  it("carries EVERY blocker, across groups, not just the one the summary names", async () => {
+    const prose = currentProse();
+    prose.sections.standard = {
+      value: "Propozycja automatu — dane testowe.",
+      provenance: { source: "ai", status: "to_verify" },
+    };
+    getMock.mockResolvedValue({
+      ...withProse(prose),
+      // Two more problems, on two other steps: an unconfirmed geocoding
+      // (step 1) and a missing inspection date (step 2).
+      inspectionDate: null,
+      inputs: {
+        ...withProse(prose).inputs!,
+        provenance: {
+          ...withProse(prose).inputs!.provenance!,
+          geocode: { source: "geokoder", status: "to_verify" },
+        },
+      },
+    });
+
+    const result = await approveValuation(draftBase.id);
+
+    expect(result!.blockers!.map((b) => b.path)).toEqual([
+      "provenance.geocode",
+      "prose.standard",
+      "inspectionDate",
+    ]);
+    expect(result!.error).toBe("Zatwierdzenie zablokowane — Geokodowanie adresu — do weryfikacji.");
+    expect(approveMock).not.toHaveBeenCalled();
   });
 
   it("hands the SAME requirement to the repo, so the in-transaction gate sees it too", async () => {
@@ -550,5 +625,66 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
       error:
         "Dane wyceny zmieniły się w trakcie zatwierdzania — odśwież stronę i spróbuj ponownie.",
     });
+  });
+
+  /**
+   * The SECOND refusal site (T8 fix round 1). The gate runs twice: once here
+   * before generation, and again inside `repo.approve`'s write transaction
+   * (ADR-012) — where it can refuse a draft this action read as clean, because
+   * the owner edited it in the seconds the operat took to render.
+   *
+   * That path was the one the T8 review found unpinned: deleting
+   * `blockers: error.blockers` from the catch left the whole suite green,
+   * because every other prose/gate test refuses at the FIRST site. Then the
+   * appraiser hitting the race would get a plain sentence and no links, from a
+   * screen whose whole job since T8 is to link back — the one moment the draft
+   * really did change under them.
+   *
+   * `getMock` returns a clean draft on purpose, so the first gate passes and
+   * only the throw can produce the result.
+   */
+  it("carries the blockers from the in-transaction gate too, not just the pre-generation one", async () => {
+    getMock.mockResolvedValue(draftForDriftTest);
+    amountInWordsMock.mockResolvedValue("milion czterdzieści cztery tysiące czterysta złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    const blockers = [
+      { path: "provenance.geocode", label: "Geokodowanie adresu — do weryfikacji." },
+      { path: "prose.standard", label: "Opis standardu wykończenia — do weryfikacji." },
+    ];
+    approveMock.mockRejectedValue(new ApprovalBlockedError(blockers));
+
+    const result = await approveValuation(draftForDriftTest.id);
+
+    expect(result!.error).toBe("Zatwierdzenie zablokowane — Geokodowanie adresu — do weryfikacji.");
+    expect(result!.blockers).toEqual(blockers);
+  });
+
+  /**
+   * The same catch's other arm: `blockers[0]?.label` tolerates an empty list,
+   * so the generic sentence has to survive one.
+   *
+   * The empty array is NOT behaviourally distinct from an absent field — the
+   * renderer keys on `blockers?.length`, falsy either way, so both fall back to
+   * the plain paragraph. This is a second pin on the same line as the case
+   * above, covering the other branch of the `??`, and nothing more. Spelled out
+   * because an earlier version of this comment claimed a distinction that does
+   * not exist.
+   */
+  it("degrades to the generic sentence when the throw carries no blockers", async () => {
+    getMock.mockResolvedValue(draftForDriftTest);
+    amountInWordsMock.mockResolvedValue("milion czterdzieści cztery tysiące czterysta złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    approveMock.mockRejectedValue(new ApprovalBlockedError([]));
+
+    const result = await approveValuation(draftForDriftTest.id);
+
+    expect(result!.error).toBe(
+      "Zatwierdzenie zablokowane — operat zawiera niezweryfikowane wartości.",
+    );
+    expect(result!.blockers).toEqual([]);
   });
 });

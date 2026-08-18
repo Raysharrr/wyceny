@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 // Registers `toBeInTheDocument` etc. on vitest's `expect` — see
 // rtl-signature-form.test.tsx for why this is a per-file import.
@@ -21,19 +21,11 @@ const approveValuation = vi.hoisted(() => vi.fn());
 vi.mock("@/app/actions/approve-valuation", () => ({ approveValuation }));
 vi.mock("@/app/actions/sign-valuation", () => ({ signValuationAction: vi.fn() }));
 vi.mock("@/app/actions/create-new-version", () => ({ createNewVersionAction: vi.fn() }));
-vi.mock("@/app/actions/confirm-sample", () => ({ confirmSample: vi.fn() }));
-vi.mock("@/app/actions/confirm-subject", () => ({ confirmSubject: vi.fn() }));
-vi.mock("@/app/actions/confirm-kw", () => ({ confirmKw: vi.fn() }));
-vi.mock("@/app/actions/confirm-features", () => ({ confirmFeatures: vi.fn() }));
 
 import { ValuationActions } from "@/app/valuations/[id]/valuation-actions";
 
 const baseProps = {
   id: "v1",
-  hasToVerify: false,
-  hasSubjectToVerify: false,
-  hasKwToVerify: false,
-  hasFeaturesToVerify: false,
   gateOk: true,
   canApprove: true,
   canSign: false,
@@ -87,5 +79,55 @@ describe("ValuationActions — maps fallback", () => {
     await screen.findByTestId("maps-fallback");
     await userEvent.click(screen.getByRole("button", { name: /spróbuj ponownie/i }));
     expect(approveValuation).toHaveBeenLastCalledWith("v1", undefined);
+  });
+});
+
+/**
+ * T8 (carried from the Task 4 review): the approve refusal names every
+ * blocker, each linked to the step that owns it. The button is disabled while
+ * the server-rendered gate says no, so this path is the race — the draft
+ * changed under the appraiser, or the request skipped the UI — and it is
+ * exactly the moment when "one problem at a time" costs the most.
+ */
+describe("ValuationActions — an approve refusal lists every blocker with its step", () => {
+  it("renders one item per blocker, each linking to the step that owns it", async () => {
+    approveValuation.mockResolvedValueOnce({
+      error: "Zatwierdzenie zablokowane — Geokodowanie adresu — do weryfikacji.",
+      blockers: [
+        { path: "provenance.geocode", label: "Geokodowanie adresu — do weryfikacji." },
+        { path: "comparables[0]", label: "Transakcja 1 (RCN) — do weryfikacji." },
+        { path: "inspectionDate", label: "Data oględzin — brak." },
+      ],
+    });
+    render(<ValuationActions {...baseProps} />);
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+
+    const list = await screen.findByTestId("approve-blockers");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(3);
+    expect(
+      within(list).getByRole("link", { name: /przejdź do kroku 1\. przedmiot/i }),
+    ).toHaveAttribute("href", expect.stringContaining("step=1"));
+    expect(within(list).getByRole("link", { name: /przejdź do kroku 3\. próba/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("step=3"),
+    );
+    expect(
+      within(list).getByRole("link", { name: /przejdź do kroku 2\. oględziny/i }),
+    ).toHaveAttribute("href", expect.stringContaining("step=2"));
+  });
+
+  it("falls back to the plain message when the refusal carries no blockers", async () => {
+    // `approve-valuation.ts` refuses a draft with no inputs snapshot before it
+    // ever builds a blocker list — the renderer must not assume the field.
+    approveValuation.mockResolvedValueOnce({
+      error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu.",
+    });
+    render(<ValuationActions {...baseProps} />);
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Zatwierdzenie zablokowane — brak danych wejściowych operatu.",
+    );
+    expect(screen.queryByTestId("approve-blockers")).not.toBeInTheDocument();
   });
 });

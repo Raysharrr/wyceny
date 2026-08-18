@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
@@ -7,8 +7,13 @@ import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { ApprovalBlockedError, NotSignableError } from "../src/domain/valuation";
 import type { SessionUser } from "../src/ports/valuation";
 import { approvalGate } from "../src/domain/provenance";
-import { PROSE_SECTIONS } from "../src/domain/prose-snapshot";
-import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
+import { PROSE_SECTIONS, type ProseSection } from "../src/domain/prose-snapshot";
+import {
+  approvableInput,
+  confirmedProse,
+  confirmedProseFor,
+  withConfirmedProse,
+} from "./fixtures/valuation-inputs";
 
 /**
  * F-7 (ADR-011, adversarial): editing a signed valuation is REFUSED on every
@@ -127,10 +132,16 @@ describe("F-7 DB-level write-once (triggers)", () => {
 /**
  * Builds a signed valuation via the real create → approve → sign path, using
  * the gate-passing `approvableInput` fixture (Task 4) so approval needs no
- * prior `confirmSample` round-trip.
+ * prior `confirmSample` round-trip. Prose attached because the repo derives
+ * `requireProse` from the kill switch itself (T4 fix round 1) — a bare draft
+ * no longer reaches `approved`, here or anywhere else.
  */
 async function signedFixture(): Promise<string> {
-  const v = await repo.create(approvableInput(OWNER));
+  const base = approvableInput(OWNER);
+  const v = await repo.create({
+    ...base,
+    inputs: withConfirmedProse(base.address, base.inputs!),
+  });
   await repo.approve(v.id, ownerUser, {
     docUrl: `/api/docs/operat-${v.id}.pdf`,
     docxUrl: `/api/docs/operat-${v.id}.docx`,
@@ -294,6 +305,100 @@ describe("F-7 + FR-6 — the confirmed prose is frozen with everything else", ()
       { requireProse: true },
     );
     expect(approved!.status).toBe("approved");
+  });
+
+  /**
+   * The gate takes its per-section hashes as an OPTION (T4), and
+   * `approveValuation` in the domain takes the whole options object as a
+   * parameter — so a caller can hand in whatever it likes and the domain has
+   * no way to know. ADR-012's answer is that the repo OVERWRITES that field
+   * with hashes computed from the row it just read. The two payloads below
+   * are the two ways a caller could otherwise buy an approval, and they are
+   * separate tests on purpose: in one `it` the first failure would abort
+   * before the second was ever exercised.
+   */
+  async function staleDraft() {
+    const base = approvableInput(OWNER);
+    return repo.create({
+      ...base,
+      inputs: { ...base.inputs!, prose: confirmedProse("9".repeat(64)) },
+    });
+  }
+
+  it("REPLACES fingerprints the caller claims match the snapshot", async () => {
+    // Hashes copied straight off the stale snapshot: `stored === claimed` for
+    // all six, so a repo that merged instead of replacing would find nothing
+    // stale and approve prose written against facts that have moved.
+    const stale = await staleDraft();
+    const claimed: Partial<Record<ProseSection, string>> = confirmedProse(
+      "9".repeat(64),
+    ).factsHashes;
+
+    await expect(
+      repo.approve(stale.id, ownerUser, undefined, undefined, undefined, undefined, {
+        requireProse: true,
+        currentSectionHashes: claimed,
+      }),
+    ).rejects.toThrow(ApprovalBlockedError);
+  });
+
+  it("REPLACES an EMPTY map, which would switch the check off section by section", async () => {
+    // The quieter of the two: an absent entry means "the caller cannot tell"
+    // and the gate skips that section — so `{}` disables staleness for all
+    // six while every section is still `confirmed` with text.
+    const stale = await staleDraft();
+
+    await expect(
+      repo.approve(stale.id, ownerUser, undefined, undefined, undefined, undefined, {
+        requireProse: true,
+        currentSectionHashes: {},
+      }),
+    ).rejects.toThrow(ApprovalBlockedError);
+  });
+
+  /**
+   * `requireProse` was the larger door next to the one above. The hashes were
+   * derived in the transaction, but the flag that decides whether the prose
+   * group is checked AT ALL was still taken from the caller verbatim — so
+   * `requireProse: false`, or simply no options, removed the whole group:
+   * staleness, missing text and unconfirmed status together. FR-6 is a
+   * DEPLOYMENT decision, not a per-call one, so the repo now reads it from
+   * the same kill switch the action reads and overwrites whatever came in.
+   */
+  it("DERIVES requireProse itself — a caller passing false gains nothing", async () => {
+    const stale = await staleDraft();
+
+    await expect(
+      repo.approve(stale.id, ownerUser, undefined, undefined, undefined, undefined, {
+        requireProse: false,
+        currentSectionHashes: {},
+      }),
+    ).rejects.toThrow(ApprovalBlockedError);
+  });
+
+  it("DERIVES requireProse itself — no options at all is not an opt-out either", async () => {
+    // The quietest payload of all: `repo.approve(id, user)` used to approve a
+    // draft whose six sections describe facts that have moved.
+    const stale = await staleDraft();
+
+    await expect(repo.approve(stale.id, ownerUser)).rejects.toThrow(ApprovalBlockedError);
+  });
+
+  it("and the kill switch still turns the whole group off (NEXT_PUBLIC_PROSE=off)", async () => {
+    // The other half of the trade: deriving the flag must not make FR-6
+    // unswitchable. With the brake on, the same stale draft approves — and so
+    // would one with no prose at all, which is the pre-FR-6 world.
+    vi.stubEnv("NEXT_PUBLIC_PROSE", "off");
+    try {
+      const stale = await staleDraft();
+      const approved = await repo.approve(stale.id, ownerUser, {
+        docUrl: `/api/docs/operat-${stale.id}.pdf`,
+        docxUrl: `/api/docs/operat-${stale.id}.docx`,
+      });
+      expect(approved!.status).toBe("approved");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("a new version inherits the text but NOT the confirmation (through the real jsonb round trip)", async () => {

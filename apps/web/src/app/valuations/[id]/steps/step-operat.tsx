@@ -1,8 +1,9 @@
 import { ClipboardCheck, FileStack } from "lucide-react";
+import { BlockerList } from "@/components/wizard/blocker-list";
 import { SectionCard } from "@/components/wizard/section-card";
 import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers } from "@/domain/document-model";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import type { Valuation } from "@/ports/valuation";
 import { currencyFormatter } from "../cards";
@@ -21,12 +22,17 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
   // Same kill-switch answer the approve action computes (FR-6): the list
   // below must name every blocker that action would refuse on, or the
   // refusal arrives out of nowhere on a button that looked enabled.
+  //
+  // T8: this step no longer confirms anything. The four bulk buttons that used
+  // to sit under this card asked the appraiser to vouch for data the card
+  // never displayed; confirming moved to steps 1/3/4 in T7, where it IS
+  // displayed, and what is left here is a report with a link per blocker.
   const requireProse = proseEnabled();
   const gate = valuation.inputs
     ? approvalGate(valuation.inputs, {
         requireProse,
-        currentFactsHash: requireProse
-          ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+        currentSectionHashes: requireProse
+          ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
           : undefined,
       })
     : null;
@@ -35,21 +41,6 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
   // check (spec §4) — the button is enabled only when neither has a blocker.
   const allBlockers = [...(gate && !gate.ok ? gate.blockers : []), ...fieldBlockers];
   const gateOk = gate?.ok === true && fieldBlockers.length === 0;
-  const hasToVerify = valuation.inputs
-    ? valuation.inputs.comparables.some((c) => c.status === "to_verify") ||
-      valuation.inputs.provenance?.geocode?.status === "to_verify"
-    : false;
-  const hasSubjectToVerify = valuation.inputs
-    ? valuation.inputs.provenance?.ewidencja?.status === "to_verify" ||
-      valuation.inputs.provenance?.mpzp?.status === "to_verify"
-    : false;
-  const hasKwToVerify = valuation.inputs
-    ? valuation.inputs.kw != null && valuation.inputs.provenance?.kw?.status === "to_verify"
-    : false;
-  const hasFeaturesToVerify = valuation.inputs
-    ? valuation.inputs.provenance?.weights?.status === "to_verify" ||
-      valuation.inputs.provenance?.featureDefs?.status === "to_verify"
-    : false;
 
   return (
     <>
@@ -78,23 +69,10 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
         <SectionCard icon={ClipboardCheck} title="Zatwierdzenie">
           <div className="flex flex-col gap-3">
             {allBlockers.length > 0 ? (
-              <div data-testid="gate-blockers" className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground">
-                  Zatwierdzenie zablokowane — do wyjaśnienia:
-                </p>
-                <ul className="list-disc pl-5 text-sm text-amber-600 dark:text-amber-500">
-                  {allBlockers.map((b) => (
-                    <li key={b.path}>{b.label}</li>
-                  ))}
-                </ul>
-              </div>
+              <BlockerList blockers={allBlockers} testId="gate-blockers" />
             ) : null}
             <ValuationActions
               id={valuation.id}
-              hasToVerify={hasToVerify}
-              hasSubjectToVerify={hasSubjectToVerify}
-              hasKwToVerify={hasKwToVerify}
-              hasFeaturesToVerify={hasFeaturesToVerify}
               gateOk={gateOk}
               canApprove={valuation.status === "in_progress"}
               canSign={false}

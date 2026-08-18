@@ -7,8 +7,14 @@ import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { ApprovalBlockedError, InputsChangedError, assertNotSigned } from "../src/domain/valuation";
 import { buildPhotoKey } from "../src/domain/inspection";
 import type { KcsInput } from "../src/domain/kcs";
+import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
-import { approvableInputs, valuationInput } from "./fixtures/valuation-inputs";
+import {
+  approvableInputs,
+  partialDraftInputs,
+  valuationInput,
+  withConfirmedProse,
+} from "./fixtures/valuation-inputs";
 
 const appraiserA: SessionUser = { id: "user-test-1", role: "appraiser" };
 const appraiserB: SessionUser = { id: "user-test-2", role: "appraiser" };
@@ -124,7 +130,7 @@ describe("valuationRepo (integration, real Postgres)", () => {
 });
 
 describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
-  it("confirmSample flips rcn rows + geocode to confirmed and persists", async () => {
+  it("confirmSample flips rcn rows to confirmed and persists, leaving geocode to step 1", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 1"),
       inputs: approvableInputs(),
@@ -133,7 +139,10 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(confirmed).not.toBeNull();
     const reread = await repo.get(created.id, appraiserA);
     expect(reread!.inputs!.comparables.every((c) => c.status === "confirmed")).toBe(true);
-    expect(reread!.inputs!.provenance!.geocode!.status).toBe("confirmed");
+    // T7: geocoding belongs to the address — `confirmSubject` flips it.
+    expect(reread!.inputs!.provenance!.geocode!.status).toBe("to_verify");
+    const withSubject = await repo.confirmSubject(created.id, appraiserA);
+    expect(withSubject!.inputs!.provenance!.geocode!.status).toBe("confirmed");
   });
 
   it("confirmSample is owner-only: another appraiser AND a non-owner admin get null", async () => {
@@ -159,9 +168,10 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve succeeds after confirmSample: status approved + approvedAt persisted", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 4"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 4", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const approved = await repo.approve(created.id, appraiserA);
     expect(approved!.status).toBe("approved");
     expect(approved!.approvedAt).toBeInstanceOf(Date);
@@ -173,9 +183,10 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("an approved valuation refuses further mutations (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 5"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 5", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     await repo.approve(created.id, appraiserA);
     await expect(repo.confirmSample(created.id, appraiserA)).rejects.toThrow(/not a draft/i);
     await expect(repo.approve(created.id, appraiserA)).rejects.toThrow(/not a draft/i);
@@ -210,6 +221,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inspectionDate: null,
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     try {
       await repo.approve(created.id, appraiserA);
       expect.unreachable("should have thrown");
@@ -225,9 +237,10 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve persists docUrl + docxUrl when passed", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 8"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 8", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const updated = await repo.approve(created.id, appraiserA, {
       docUrl: "/api/docs/operat-x.pdf",
       docxUrl: "/api/docs/operat-x.docx",
@@ -244,9 +257,10 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve with audit.mapsSkipped writes an 'approved' audit row whose meta contains mapsSkipped: true (Slice 9)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 9"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 9", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     await repo.approve(
       created.id,
       appraiserA,
@@ -270,6 +284,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       inputs: approvableInputs(),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const current = (await repo.get(created.id, appraiserA))!.inputs!;
     // Simulates a photo added mid-render via updateInspection — the caller
     // rendered from `current`, but the row has since drifted.
@@ -298,9 +313,10 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve succeeds when expectedInputs matches the row exactly (no drift)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 11"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 11", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const current = (await repo.get(created.id, appraiserA))!.inputs!;
 
     const approved = await repo.approve(
@@ -417,9 +433,10 @@ describe("F-5: confirmKw mutation (KW-extract provenance, Task 8)", () => {
   it("confirmKw on an approved valuation throws (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 13"),
-      inputs: kwApprovableInputs(),
+      inputs: withConfirmedProse("ul. Gating 13", kwApprovableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     await repo.confirmKw(created.id, appraiserA);
     const approved = await repo.approve(created.id, appraiserA);
     expect(approved!.status).toBe("approved");
@@ -466,9 +483,10 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("updateInspection on an approved valuation throws (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 3"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Ogledziny 3", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
     const approved = await repo.approve(created.id, appraiserA);
     expect(approved!.status).toBe("approved");
     await expect(
@@ -509,5 +527,196 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
       .orderBy(schema.auditLog.id);
     expect(rows.at(-1)!.action).toBe("inspection_updated");
     expect(rows.at(-1)!.meta).toMatchObject({ op: "date_updated" });
+  });
+});
+
+describe("toValuation — normalizeProse (T2 fix round 2: legacy jsonb, read through the real adapter)", () => {
+  // `normalizeProse` (adapters/valuation-drizzle.ts) is the single narrowing
+  // point protecting every draft already persisted on staging. Its only
+  // previous coverage was accidental — an audit-log.test.ts fixture that
+  // happened to use the legacy shape — and that fixture was converted to
+  // the modern shape in fix round 1, silently deleting the coverage. This
+  // exercises it directly, through the real repo/Postgres round trip rather
+  // than calling the (unexported) helper in isolation.
+  it("a legacy prose jsonb (old factsHash, no factsHashes) reads back with factsHashes: {} — nothing synthesized, the rest untouched", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "Legacy Prose Read"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+
+    // Simulate a row persisted before eb09bcf: write the OLD single-hash
+    // shape straight into the untyped jsonb column, bypassing every domain
+    // function (none of which can build this shape today — this is exactly
+    // why the write has to go around the domain, direct to the DB).
+    const legacyProse = {
+      sections: {
+        opis_lokalu: {
+          value: "Lokal obejmuje dwa pokoje.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+      },
+      rejected: { analiza_rynku: ["9 871,00"] },
+      factsHash: "a".repeat(64),
+      model: "claude-sonnet-5",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    await db
+      .update(schema.valuation)
+      .set({ inputs: { ...partialDraftInputs(), prose: legacyProse } })
+      .where(eq(schema.valuation.id, created.id));
+
+    const read = await repo.get(created.id, appraiserA);
+
+    expect(read?.inputs?.prose?.factsHashes).toEqual({});
+    // NOT synthesized from the old hash — an empty object, never e.g. every
+    // section stamped with "a".repeat(64), which would mark stale prose as
+    // fresh: the exact failure this normalization exists to prevent.
+    expect(read?.inputs?.prose?.factsHashes).not.toHaveProperty("opis_lokalu");
+    expect(read?.inputs?.prose?.sections).toEqual(legacyProse.sections);
+    expect(read?.inputs?.prose?.rejected).toEqual(legacyProse.rejected);
+    expect(read?.inputs?.prose?.model).toBe(legacyProse.model);
+    expect(read?.inputs?.prose?.generatedAt).toBe(legacyProse.generatedAt);
+  });
+
+  it("a modern prose jsonb (factsHashes already present) round-trips byte-for-byte — normalization is a no-op", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "Modern Prose Read"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+    const modernProse = {
+      sections: {
+        opis_lokalu: {
+          value: "Lokal obejmuje dwa pokoje.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+      },
+      rejected: {},
+      factsHashes: { opis_lokalu: "b".repeat(64) },
+      model: "claude-sonnet-5",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    await db
+      .update(schema.valuation)
+      .set({ inputs: { ...partialDraftInputs(), prose: modernProse } })
+      .where(eq(schema.valuation.id, created.id));
+
+    const read = await repo.get(created.id, appraiserA);
+
+    expect(read?.inputs?.prose).toEqual(modernProse);
+  });
+
+  it("no prose at all reads back as no prose — normalization does not invent one", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "No Prose Read"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+
+    const read = await repo.get(created.id, appraiserA);
+
+    expect(read?.inputs?.prose).toBeFalsy();
+  });
+});
+
+/**
+ * `proseUsage` — the read side of the `prose_generated` audit rows (T5).
+ *
+ * Step 6 shows the appraiser what the generations have already cost before
+ * offering another one, and the only record of that cost is the audit trail.
+ * Rows written for a run whose every section was rejected count too: those
+ * tokens were spent.
+ */
+describe("proseUsage (integration, real Postgres)", () => {
+  const generated = (over: Partial<ProseSnapshot> = {}): ProseSnapshot => ({
+    sections: {
+      opis_lokalu: {
+        value: "Lokal obejmuje dwa pokoje z kuchnią.",
+        provenance: { source: "ai", status: "to_verify" },
+      },
+    },
+    rejected: {},
+    factsHashes: { opis_lokalu: "a".repeat(64) },
+    model: "claude-sonnet-5",
+    generatedAt: "2026-08-18T07:30:00.000Z",
+    ...over,
+  });
+
+  async function draftWithGenerations(address: string) {
+    const v = await repo.create({
+      ...valuationInput(appraiserA.id, address),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+    await repo.saveProse(v.id, appraiserA, generated(), { inputTokens: 3120, outputTokens: 480 });
+    // A second run whose every section the worker's guard refused — no text,
+    // full bill.
+    await repo.saveProse(
+      v.id,
+      appraiserA,
+      generated({ sections: {}, rejected: { opis_lokalu: ["9 871,00"] } }),
+      { inputTokens: 2900, outputTokens: 0 },
+    );
+    return v;
+  }
+
+  it("sums the tokens over every generation, the wholly rejected one included", async () => {
+    const v = await draftWithGenerations("Prose Usage Sum");
+
+    expect(await repo.proseUsage(v.id, appraiserA)).toEqual({
+      generations: 2,
+      inputTokens: 6020,
+      outputTokens: 480,
+    });
+  });
+
+  it("a draft nobody has generated for costs nothing", async () => {
+    const v = await repo.create({
+      ...valuationInput(appraiserA.id, "Prose Usage Zero"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+
+    expect(await repo.proseUsage(v.id, appraiserA)).toEqual({
+      generations: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+  });
+
+  it("another appraiser reads zeros — the same non-answer `get` gives (F-8)", async () => {
+    const v = await draftWithGenerations("Prose Usage Foreign");
+
+    expect(await repo.proseUsage(v.id, appraiserB)).toEqual({
+      generations: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+  });
+
+  it("an admin sees the owner's cost, exactly as they can see the draft", async () => {
+    const v = await draftWithGenerations("Prose Usage Admin");
+
+    expect((await repo.proseUsage(v.id, admin)).generations).toBe(2);
+  });
+
+  it("a prose_generated row predating the token fields counts as a generation, not as NaN", async () => {
+    // The audit trail is append-only (F-7): rows written before `saveProse`
+    // recorded usage cannot be backfilled, and one of them must not turn the
+    // whole sum into null.
+    const v = await draftWithGenerations("Prose Usage Legacy");
+    await db.insert(schema.auditLog).values({
+      valuationId: v.id,
+      actorId: appraiserA.id,
+      action: "prose_generated",
+      meta: { model: "claude-sonnet-5", sections: ["opis_lokalu"] },
+    });
+
+    expect(await repo.proseUsage(v.id, appraiserA)).toEqual({
+      generations: 3,
+      inputTokens: 6020,
+      outputTokens: 480,
+    });
   });
 });

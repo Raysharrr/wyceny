@@ -90,9 +90,14 @@ function assertDraft(v: Valuation): void {
 }
 
 /**
- * The bulk-confirm mutation (spec §5): flips rcn comparables and the geocode
- * entry from to_verify to confirmed. The ONLY content mutation a draft
- * allows besides approval. Pure — the adapter persists the result.
+ * The step-3 confirmation: flips rcn comparables from to_verify to
+ * confirmed. Pure — the adapter persists the result, in the same transaction
+ * as the step-3 save (T7: confirming happens where the data is on screen).
+ *
+ * `geocode` is NOT flipped here any more (T7, spec §B). Geocoding is a
+ * property of the ADDRESS, which is read on step 1, so
+ * `confirmSubjectProvenance` owns it — a sample screen that never shows the
+ * resolved point cannot be where the appraiser vouches for it.
  */
 export function confirmSampleProvenance(v: Valuation): Valuation {
   assertDraft(v);
@@ -102,21 +107,32 @@ export function confirmSampleProvenance(v: Valuation): Valuation {
   const comparables = v.inputs.comparables.map((c) =>
     c.source === "rcn" && c.status === "to_verify" ? { ...c, status: "confirmed" as const } : c,
   );
-  const provenance = v.inputs.provenance?.geocode
-    ? {
-        ...v.inputs.provenance,
-        geocode: { ...v.inputs.provenance.geocode, status: "confirmed" as const },
-      }
-    : v.inputs.provenance;
-  return { ...v, inputs: { ...v.inputs, comparables, provenance } };
+  return { ...v, inputs: { ...v.inputs, comparables } };
 }
 
 /**
- * Mirrors `confirmSampleProvenance` for the subject snapshot's provenance
- * groups (EGiB/MPZP): flips `ewidencja`/`mpzp` from to_verify to confirmed.
- * Draft-only (F-7) and throw-on-missing-inputs, byte-for-byte like its
- * sibling — a provenance map lacking `ewidencja`/`mpzp` keys (no subject
- * fetched) still passes through unchanged, same as `geocode` above.
+ * Step 1's confirmation, on the provenance map alone: `ewidencja`/`mpzp`
+ * (the EGiB/MPZP fetch) and `geocode` (the address's resolved point) go from
+ * to_verify to confirmed. Split out of {@link confirmSubjectProvenance} so
+ * the create path — the SAME "Dane się zgadzają — dalej" button, on a draft
+ * that does not exist yet — can apply it without a Valuation to wrap.
+ *
+ * A map lacking any of those keys passes through unchanged: they are present
+ * only when something was actually fetched.
+ */
+export function confirmSubjectEntries(p: InputsProvenance): InputsProvenance {
+  return {
+    ...p,
+    ...(p.ewidencja ? { ewidencja: { ...p.ewidencja, status: "confirmed" as const } } : {}),
+    ...(p.mpzp ? { mpzp: { ...p.mpzp, status: "confirmed" as const } } : {}),
+    ...(p.geocode ? { geocode: { ...p.geocode, status: "confirmed" as const } } : {}),
+  };
+}
+
+/**
+ * Mirrors `confirmSampleProvenance` for the step-1 groups (EGiB/MPZP and,
+ * since T7, the address's geocoding). Draft-only (F-7) and
+ * throw-on-missing-inputs, byte-for-byte like its sibling.
  */
 export function confirmSubjectProvenance(valuation: Valuation): Valuation {
   assertDraft(valuation);
@@ -124,14 +140,22 @@ export function confirmSubjectProvenance(valuation: Valuation): Valuation {
     throw new Error(`Valuation ${valuation.id} has no inputs snapshot — nothing to confirm`);
   }
   const { provenance: p } = valuation.inputs;
-  const provenance = p
-    ? {
-        ...p,
-        ...(p.ewidencja ? { ewidencja: { ...p.ewidencja, status: "confirmed" as const } } : {}),
-        ...(p.mpzp ? { mpzp: { ...p.mpzp, status: "confirmed" as const } } : {}),
-      }
-    : p;
+  const provenance = p ? confirmSubjectEntries(p) : p;
   return { ...valuation, inputs: { ...valuation.inputs, provenance } };
+}
+
+/**
+ * The KW half of step 1's confirmation, on the provenance map alone: `kw`
+ * and — when the area was seeded from the document (source akt / odpis_kw) —
+ * `area`. Split out for the same reason as {@link confirmSubjectEntries}.
+ */
+export function confirmKwEntries(p: InputsProvenance): InputsProvenance {
+  const areaFromDoc = p.area && (p.area.source === "akt" || p.area.source === "odpis_kw");
+  return {
+    ...p,
+    ...(p.kw ? { kw: { ...p.kw, status: "confirmed" as const } } : {}),
+    ...(areaFromDoc ? { area: { ...p.area, status: "confirmed" as const } } : {}),
+  };
 }
 
 /**
@@ -146,14 +170,7 @@ export function confirmKwProvenance(valuation: Valuation): Valuation {
     throw new Error(`Valuation ${valuation.id} has no inputs snapshot — nothing to confirm`);
   }
   const { provenance: p } = valuation.inputs;
-  const areaFromDoc = p?.area && (p.area.source === "akt" || p.area.source === "odpis_kw");
-  const provenance = p
-    ? {
-        ...p,
-        ...(p.kw ? { kw: { ...p.kw, status: "confirmed" as const } } : {}),
-        ...(areaFromDoc ? { area: { ...p.area, status: "confirmed" as const } } : {}),
-      }
-    : p;
+  const provenance = p ? confirmKwEntries(p) : p;
   return { ...valuation, inputs: { ...valuation.inputs, provenance } };
 }
 
@@ -256,14 +273,14 @@ export function applyProseProposal(v: Valuation, prose: ProseSnapshot): Valuatio
  * removes the section. Draft-only, and `wr` survives for the same F-1 reason
  * as above.
  *
- * `factsHash` and `now` are parameters, not reads: the domain neither hashes
- * nor tells the time (F-2). They are only used when the draft has no snapshot
- * yet — prose written entirely by hand.
+ * `factsHashes` and `now` are parameters, not reads: the domain neither
+ * hashes nor tells the time (F-2). They are only used when the draft has no
+ * snapshot yet — prose written entirely by hand.
  */
 export function applyProseConfirmation(
   v: Valuation,
   texts: Partial<Record<ProseSection, string>>,
-  meta: { factsHash: string; now: Date },
+  meta: { factsHashes: Partial<Record<ProseSection, string>>; now: Date },
 ): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
@@ -271,6 +288,201 @@ export function applyProseConfirmation(
     ...v,
     inputs: { ...v.inputs, prose: confirmProseSnapshot(v.inputs.prose, texts, meta) },
   };
+}
+
+/**
+ * Bucket key for a comparable — it NARROWS the candidates, it never selects
+ * one. What decides whether a confirmation carries over is
+ * {@link sameComparable} plus the one-for-one consumption in
+ * {@link carryComparableConfirmations}; the key exists so that lookup is not
+ * a scan of the whole snapshot. Keep it that way: the moment the key is
+ * trusted to identify a row on its own, a stamp can move to a neighbour.
+ *
+ * Never the array index, for the same reason: deleting row 3 shifts every
+ * later row, and a position-matched confirmation would then stay attached to
+ * a DIFFERENT transaction than the one the appraiser verified — in a
+ * document with legal effects, the worst failure this file could produce.
+ *
+ * `||`, not `??`: the worker emits an EMPTY id when RCN has none
+ * (`rcn.py`: `get("tran_lokalny_id_iip") or ""`) and the HTTP adapter casts
+ * the response without validating it, so `""` reaches real snapshots. It must
+ * fall through to the content key like any other missing id, or every id-less
+ * fetched row files under one bucket.
+ */
+function comparableKey(c: Comparable): string {
+  return c.transactionId || comparableContentKey(c);
+}
+
+/**
+ * The same key built from the three fields the appraiser reads off the row,
+ * ignoring the fetched id entirely — what {@link promoteStoredRcnRows}
+ * matches on. The id cannot be part of that comparison, because dropping it
+ * is the move being caught. One definition of "the same row by content".
+ */
+function comparableContentKey(c: Comparable): string {
+  return `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
+}
+
+/**
+ * Every field of {@link Comparable} the appraiser reads off the row, `status`
+ * excluded — that is the thing being recomputed, not part of what was
+ * verified. ADD ANY NEW FIELD HERE: one left out means a row that changed on
+ * screen still counts as unchanged and silently keeps its `confirmed` stamp.
+ */
+function sameComparable(a: Comparable, b: Comparable): boolean {
+  return (
+    a.pricePerM2 === b.pricePerM2 &&
+    a.date === b.date &&
+    a.area === b.area &&
+    a.source === b.source &&
+    a.transactionId === b.transactionId
+  );
+}
+
+/**
+ * Gives a row back the `rcn` source the SNAPSHOT records for it, however the
+ * request labelled it. The step-3 ACL derives the source from the fetched id,
+ * which a crafted request can simply omit — and `sameComparable` cannot cover
+ * the gap, because it compares `transactionId`. The draft can: it is the
+ * server's own record of what the RCN fetch returned.
+ *
+ * This lives in the domain rather than in the ACL because it needs the
+ * snapshot the WRITE transaction holds locked. Deriving it from a draft read
+ * moments earlier would fail toward `manual`/`confirmed` under a concurrent
+ * save — machine data printed as the appraiser's own measurement (F-5), the
+ * unsafe direction.
+ *
+ * Promotion only, never demotion: a snapshot MANUAL row leaves an incoming
+ * rcn row alone, or a row saved before ids existed would confirm itself. A
+ * hand-typed row that happens to match a fetched one is over-promoted to
+ * `to_verify` — harmless, since the step-3 save confirms it in the same
+ * transaction, whereas under-promotion would mislabel the operat.
+ */
+function promoteStoredRcnRows(snapshot: Comparable[], incoming: Comparable[]): Comparable[] {
+  const fetched = new Set(snapshot.filter((c) => c.source === "rcn").map(comparableContentKey));
+  if (fetched.size === 0) return incoming;
+  return incoming.map((c) =>
+    c.source !== "rcn" && fetched.has(comparableContentKey(c))
+      ? { ...c, source: "rcn" as const, status: "to_verify" as const }
+      : c,
+  );
+}
+
+/**
+ * Carries each confirmation from the snapshot onto the row it actually
+ * belongs to. A row keeps its status only when the snapshot holds an entry
+ * with the same key AND the same fields; anything else (edited, inserted,
+ * merely shifted by a deletion) is data the appraiser has not seen in this
+ * shape, so an rcn row goes back to `to_verify`.
+ *
+ * Rows the appraiser typed themselves are left as the ACL stamped them:
+ * `confirmSampleProvenance` flips only rcn rows, so a manual row parked at
+ * `to_verify` could never be confirmed again and would block approval (F-4)
+ * forever. Same reason a legacy snapshot row (no `status` at all) hands the
+ * verdict back to the ACL instead of stamping `undefined` over it.
+ *
+ * Duplicate keys are consumed one-for-one: two identical rows carry two
+ * confirmations, and neither lends its stamp to a third.
+ */
+function carryComparableConfirmations(
+  snapshot: Comparable[],
+  incoming: Comparable[],
+): Comparable[] {
+  const unclaimed = new Map<string, Comparable[]>();
+  for (const c of snapshot) {
+    const key = comparableKey(c);
+    const bucket = unclaimed.get(key);
+    if (bucket) bucket.push(c);
+    else unclaimed.set(key, [c]);
+  }
+  return incoming.map((c) => {
+    const bucket = unclaimed.get(comparableKey(c));
+    const at = bucket ? bucket.findIndex((previous) => sameComparable(previous, c)) : -1;
+    if (bucket && at >= 0) {
+      const [matched] = bucket.splice(at, 1);
+      return matched.status ? { ...c, status: matched.status } : c;
+    }
+    return c.source === "rcn" ? { ...c, status: "to_verify" as const } : c;
+  });
+}
+
+/**
+ * Structural equality for the snapshot fragments a wizard step owns — plain
+ * JSON only (objects, arrays, primitives; no Dates, no class instances).
+ * Compared field by field rather than as JSON text because the two sides
+ * arrive by different routes (a jsonb read vs a freshly validated form), and
+ * key order must not be what decides whether the appraiser keeps a
+ * confirmation. A key that is absent on one side and `undefined` on the other
+ * counts as equal: jsonb drops undefined on the way in, so the difference is
+ * an artefact of storage, not an edit.
+ */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((item, i) => sameJson(item, b[i]));
+  }
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+    if (!sameJson(left[key], right[key])) return false;
+  }
+  return true;
+}
+
+/** Provenance entries the step-1 form owns and re-derives on every save. */
+const SUBJECT_GROUP_KEYS = ["area", "ewidencja", "mpzp", "kw", "geocode"] as const;
+/** Provenance entries the step-4 form owns and re-derives on every save. */
+const FEATURES_GROUP_KEYS = ["weights", "ratings", "featureDefs"] as const;
+
+/**
+ * Gives `next` back the statuses the appraiser had already granted. The ACL
+ * re-derives provenance from the SOURCE alone, so an auto-fetched group comes
+ * back `to_verify` on every save — taking that verdict wholesale is what used
+ * to wipe confirmations an edit never touched. Call ONLY once the group's
+ * content is known to be unchanged; a differing `source` means the data moved
+ * anyway, so that entry keeps the fresh verdict.
+ */
+function carryGroupStatuses(
+  previous: InputsProvenance | null | undefined,
+  next: InputsProvenance,
+  keys: readonly ((typeof SUBJECT_GROUP_KEYS)[number] | (typeof FEATURES_GROUP_KEYS)[number])[],
+): InputsProvenance {
+  const carried: InputsProvenance = { ...next };
+  for (const key of keys) {
+    const before = previous?.[key];
+    const after = carried[key];
+    if (before && after && before.source === after.source) {
+      carried[key] = { ...after, status: before.status };
+    }
+  }
+  return carried;
+}
+
+/**
+ * Step 1 owns the subject as ONE snapshot: the address, the EGiB/MPZP fetch,
+ * the KW extract and the area they came with are read together on one screen,
+ * so a confirmation survives only when the whole group came back identical.
+ * The coarse grain is deliberate — it errs toward `to_verify`, the only safe
+ * direction for F-4.
+ *
+ * The address is compared here even though the UI re-fetches EGiB/MPZP
+ * whenever it changes (which moves `subjectMeta.fetchedAt` and would lapse
+ * the group anyway): that is a UI invariant this module cannot see, and
+ * leaning on it would mean a later change to the re-fetch — or any path that
+ * sets `subject` without a fresh `fetchedAt` — silently starts keeping
+ * confirmations for a parcel nobody re-read.
+ */
+function sameSubjectGroup(previousAddress: string, previous: KcsInput, u: SubjectUpdate): boolean {
+  return (
+    previousAddress === u.address &&
+    previous.area === u.area &&
+    sameJson(previous.subject ?? null, u.subject ?? null) &&
+    sameJson(previous.subjectMeta ?? null, u.subjectMeta ?? null) &&
+    sameJson(previous.kw ?? null, u.kw ?? null) &&
+    sameJson(previous.kwMeta ?? null, u.kwMeta ?? null)
+  );
 }
 
 export type SubjectUpdate = {
@@ -286,15 +498,40 @@ export type SubjectUpdate = {
   provenance: Partial<InputsProvenance> & Pick<InputsProvenance, "address" | "area">;
 };
 
+/**
+ * The geocode entry's ACL shape: a machine-resolved point enters
+ * re-verification, like every other fetched value.
+ */
+const GEOCODE_TO_VERIFY = { source: "geokoder", status: "to_verify" } as const;
+
 /** Step-1 edit (Slice 11a): replaces the subject/kw slice of the draft and
  * NULLs wr — changed engine inputs must never keep a stale confirmed amount. */
 export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
   // Group keys owned by this step are REPLACED, not merged — a detached
-  // subject must not leave stale ewidencja/mpzp/kw provenance behind.
-  const { ewidencja: _e, mpzp: _m, kw: _k, ...rest } = v.inputs.provenance ?? {};
-  const provenance = { ...rest, ...u.provenance } as InputsProvenance;
+  // subject must not leave stale ewidencja/mpzp/kw/geocode provenance behind.
+  const { ewidencja: _e, mpzp: _m, kw: _k, geocode: _g, ...rest } = v.inputs.provenance ?? {};
+  // `geocode` is a step-1 key since T7 (spec §B): geocoding is a property of
+  // the ADDRESS, so it is stamped here and confirmed by
+  // `confirmSubjectProvenance` — step 3 no longer touches it.
+  //
+  // The entry exists once something has actually geocoded this draft's
+  // address: the step-1 EGiB/MPZP fetch (`subjectMeta` carries the resolved
+  // x/y) or the step-3 RCN fetch (`sampleMeta` — the worker resolves the same
+  // address to a point before querying). The second disjunct is what keeps
+  // the F-4 gate REACHABLE: the gate demands this entry whenever `sampleMeta`
+  // is set, so a draft that skipped the step-1 fetch would otherwise be
+  // blocked on a confirmation no step could ever give.
+  const geocoded = (u.subjectMeta ?? null) != null || (v.inputs.sampleMeta ?? null) != null;
+  const reassigned = {
+    ...rest,
+    ...u.provenance,
+    ...(geocoded ? { geocode: GEOCODE_TO_VERIFY } : {}),
+  } as InputsProvenance;
+  const provenance = sameSubjectGroup(v.address, v.inputs, u)
+    ? carryGroupStatuses(v.inputs.provenance, reassigned, SUBJECT_GROUP_KEYS)
+    : reassigned;
   return {
     ...v,
     address: u.address,
@@ -318,18 +555,27 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
 export type SampleUpdate = {
   comparables: Comparable[];
   sampleMeta: KcsInput["sampleMeta"];
-  geocode?: InputsProvenance["geocode"];
 };
 
+/**
+ * Step-3 edit: the transactions and their metadata, and nothing else. The
+ * provenance map is left ENTIRELY alone — until T7 this step re-stamped
+ * `geocode` back to `to_verify` on every save, so correcting one transaction
+ * price cost the appraiser a geocoding confirmation they had given on
+ * step 1. That key moved to {@link applySubjectUpdate}, where the address it
+ * describes lives.
+ */
 export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
-  const { geocode: _g, ...rest } = v.inputs.provenance ?? {};
-  const provenance = { ...rest, ...(u.geocode ? { geocode: u.geocode } : {}) } as InputsProvenance;
+  const comparables = carryComparableConfirmations(
+    v.inputs.comparables,
+    promoteStoredRcnRows(v.inputs.comparables, u.comparables),
+  );
   return {
     ...v,
     wr: null,
-    inputs: { ...v.inputs, comparables: u.comparables, sampleMeta: u.sampleMeta, provenance },
+    inputs: { ...v.inputs, comparables, sampleMeta: u.sampleMeta },
   };
 }
 
@@ -341,7 +587,12 @@ export type FeaturesUpdate = {
 export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
-  const provenance = { ...v.inputs.provenance, ...u.provenance } as InputsProvenance;
+  const reassigned = { ...v.inputs.provenance, ...u.provenance } as InputsProvenance;
+  // The feature group is one screen too: weights, ratings and the rating-scale
+  // definitions are confirmed together, so they lapse together.
+  const provenance = sameJson(v.inputs.features, u.features)
+    ? carryGroupStatuses(v.inputs.provenance, reassigned, FEATURES_GROUP_KEYS)
+    : reassigned;
   return { ...v, wr: null, inputs: { ...v.inputs, features: u.features, provenance } };
 }
 

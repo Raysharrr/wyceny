@@ -492,7 +492,7 @@ export const HELP_PAGES: HelpPage[] = [
    *   apps/web/src/domain/prose.ts:135          buildProseFacts — agregaty wszystko-albo-nic
    *   apps/web/src/domain/prose.ts:118          resultPosition — F-11, wyłącznie określenie słowne
    *   apps/web/src/domain/prose.ts:253          selectProseSections — które sekcje w ogóle zamawiamy
-   *   apps/web/src/domain/prose-hash.ts:76      currentProseFactsHash — odcisk, próba sortowana
+   *   apps/web/src/domain/prose-hash.ts:70      currentSectionFactsHash — odcisk per sekcja, próba sortowana
    *   apps/web/src/domain/provenance.ts:214     blokady prozy w bramie F-4
    */
   {

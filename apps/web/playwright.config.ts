@@ -31,6 +31,12 @@ export default defineConfig({
       NEXT_PUBLIC_KW_UPLOAD: "off",
       NEXT_PUBLIC_PHOTO_UPLOAD: "off",
       NEXT_PUBLIC_PROSE: "off",
+      // Runtime (not NEXT_PUBLIC_), read by the approve action via `_deps.ts`.
+      // CI sets it job-wide; without it a LOCAL run takes the live-Geoportal
+      // path CI never exercises, and approve fails with a 502 that looks like
+      // a regression and is not one. Applies only when Playwright starts the
+      // server — a reused one carries whatever env it was launched with.
+      MAPS_FETCH: "off",
     },
   },
 });

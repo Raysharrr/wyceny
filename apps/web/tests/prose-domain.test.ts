@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  attemptedProseSections,
   buildProseFacts,
   buildProseTransactions,
   resultPosition,
   selectProseSections,
+  staleProseSections,
   type ProseFacts,
 } from "@/domain/prose";
-import { currentProseFactsHash, proseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHash, proseFactsHash } from "@/domain/prose-hash";
+import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "@/domain/prose-snapshot";
 import { buildDocumentModel, formatNumber, formatPln } from "@/domain/document-model";
 import { computeKcs, type KcsInput, type KcsResult } from "@/domain/kcs";
 
@@ -295,13 +298,92 @@ describe("a partial sample never describes itself as a whole one (review I-1)", 
   });
 });
 
-describe("currentProseFactsHash — the fingerprint covers the transactions too (review I-2)", () => {
+describe("currentSectionFactsHash — scoped to what the section sees", () => {
+  const base = { address: ADDRESS, inputs: INPUTS };
+
+  it("a changed inspection note does NOT move the market-analysis fingerprint", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        inspection: { note: "Zupełnie inna notatka.", photos: INPUTS.inspection!.photos },
+      },
+    };
+    expect(currentSectionFactsHash("analiza_rynku", edited)).toBe(
+      currentSectionFactsHash("analiza_rynku", base),
+    );
+    expect(currentSectionFactsHash("otoczenie", edited)).not.toBe(
+      currentSectionFactsHash("otoczenie", base),
+    );
+  });
+
+  it("a changed feature rating moves ONLY standard and uzasadnienie", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        features: INPUTS.features.map((f, i) =>
+          i === 0 ? { ...f, rating: "gorsza" as const } : f,
+        ),
+      },
+    };
+    const moved = PROSE_SECTIONS.filter(
+      (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+    );
+    expect(moved.sort()).toEqual(["standard", "uzasadnienie"]);
+  });
+
+  it("changed EGiB data moves ONLY zagospodarowanie and analiza_rynku", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: { ...INPUTS, subject: { ...INPUTS.subject!, obreb: "0099 Inny Obręb" } },
+    };
+    const moved = PROSE_SECTIONS.filter(
+      (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+    );
+    expect(moved.sort()).toEqual(["analiza_rynku", "zagospodarowanie"]);
+  });
+
+  it("a changed comparable price moves ONLY the two sample-dependent sections", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        comparables: [{ ...COMPARABLES[0]!, pricePerM2: 9999 }, ...COMPARABLES.slice(1)],
+      },
+    };
+    const moved = PROSE_SECTIONS.filter(
+      (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+    );
+    expect(moved.sort()).toEqual(["analiza_rynku", "uzasadnienie"]);
+  });
+
+  it("reassigning which comparable carries which month moves the trend sections", () => {
+    // Facts stay byte-identical; only the date-to-row mapping changes, which
+    // flips the worker's deterministic trend.
+    const swapped = [
+      { ...COMPARABLES[0]!, date: COMPARABLES[1]!.date },
+      { ...COMPARABLES[1]!, date: COMPARABLES[0]!.date },
+      ...COMPARABLES.slice(2),
+    ];
+    const edited = { address: ADDRESS, inputs: { ...INPUTS, comparables: swapped } };
+    expect(currentSectionFactsHash("analiza_rynku", edited)).not.toBe(
+      currentSectionFactsHash("analiza_rynku", base),
+    );
+    expect(currentSectionFactsHash("otoczenie", edited)).toBe(
+      currentSectionFactsHash("otoczenie", base),
+    );
+  });
+});
+
+describe("currentSectionFactsHash — the fingerprint covers the transactions too (review I-2)", () => {
   /**
    * The worker injects `proba.trend_cen = price_trend(transakcje)` into the
    * facts EVERY section sees (`apps/worker/app/main.py`), so the transactions
    * are an input to the prose even though they travel outside `fakty`. A
    * fingerprint over the facts alone would call the proposals current after an
-   * edit that reverses the trend the operat asserts.
+   * edit that reverses the trend the operat asserts. `analiza_rynku` is used
+   * below because it is one of the two sections in `SECTIONS_USING_TRANSACTIONS`.
    *
    * Same prices, same areas, same month SET — only which row carries which
    * month changes. Every fact is therefore byte-identical (the date range is
@@ -331,17 +413,20 @@ describe("currentProseFactsHash — the fingerprint covers the transactions too 
   });
 
   it("…but the transactions do, so the fingerprint must differ", () => {
-    expect(currentProseFactsHash({ address: ADDRESS, inputs: falling })).not.toBe(
-      currentProseFactsHash({ address: ADDRESS, inputs: rising }),
-    );
+    expect(
+      currentSectionFactsHash("analiza_rynku", { address: ADDRESS, inputs: falling }),
+    ).not.toBe(currentSectionFactsHash("analiza_rynku", { address: ADDRESS, inputs: rising }));
   });
 
   it("is a hex sha256 and still moves when a plain fact moves", () => {
-    const hash = currentProseFactsHash({ address: ADDRESS, inputs: INPUTS });
+    const hash = currentSectionFactsHash("analiza_rynku", { address: ADDRESS, inputs: INPUTS });
 
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     expect(
-      currentProseFactsHash({ address: "ul. Klonowa 14/4, Nowogród", inputs: INPUTS }),
+      currentSectionFactsHash("analiza_rynku", {
+        address: "ul. Klonowa 14/4, Nowogród",
+        inputs: INPUTS,
+      }),
     ).not.toBe(hash);
   });
 });
@@ -478,14 +563,18 @@ describe("controller fixes after the T7 review", () => {
     // A blocker that fires on an edit the model cannot see forces a paid
     // regeneration that changes nothing — and teaches the appraiser to click
     // through the gate. `prose.py` orders the sample chronologically before
-    // halving the period, so row order is invisible downstream.
+    // halving the period, so row order is invisible downstream. Checked on
+    // `analiza_rynku`, a transaction-using section — reordering is exactly
+    // what the sort inside `currentSectionFactsHash` is meant to hide.
     const base = { address: ADDRESS, inputs: INPUTS };
     const shuffled = {
       address: ADDRESS,
       inputs: { ...INPUTS, comparables: [...COMPARABLES].reverse() },
     };
 
-    expect(currentProseFactsHash(shuffled)).toBe(currentProseFactsHash(base));
+    expect(currentSectionFactsHash("analiza_rynku", shuffled)).toBe(
+      currentSectionFactsHash("analiza_rynku", base),
+    );
   });
 
   it("a changed price still changes the fingerprint", () => {
@@ -497,8 +586,8 @@ describe("controller fixes after the T7 review", () => {
       },
     };
 
-    expect(currentProseFactsHash(edited)).not.toBe(
-      currentProseFactsHash({ address: ADDRESS, inputs: INPUTS }),
+    expect(currentSectionFactsHash("analiza_rynku", edited)).not.toBe(
+      currentSectionFactsHash("analiza_rynku", { address: ADDRESS, inputs: INPUTS }),
     );
   });
 
@@ -517,5 +606,95 @@ describe("controller fixes after the T7 review", () => {
 
     expect(facts.proba).not.toHaveProperty("zakres_dat");
     expect(selectProseSections(facts)).toContain("analiza_rynku");
+  });
+});
+
+describe("staleProseSections", () => {
+  const sectionsWithText = (): ProseSnapshot["sections"] =>
+    Object.fromEntries(
+      PROSE_SECTIONS.map((s) => [
+        s,
+        {
+          value: `Tekst sekcji ${s}.`,
+          provenance: { source: "ai" as const, status: "to_verify" as const },
+        },
+      ]),
+    ) as ProseSnapshot["sections"];
+
+  it("fix round 1, finding 1: a legacy snapshot (no factsHashes map) reads every populated section as stale, without throwing", () => {
+    // Any row persisted before eb09bcf carries `factsHash: string` and no
+    // `factsHashes` object — the domain must stay total against that shape,
+    // not just the one this task's own adapter code writes.
+    const legacy = {
+      sections: sectionsWithText(),
+      rejected: {},
+      factsHash: "a".repeat(64),
+      model: "claude-sonnet-5",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+    } as unknown as ProseSnapshot;
+
+    let stale: ProseSection[] = [];
+    expect(() => {
+      stale = staleProseSections(
+        legacy,
+        { address: ADDRESS, inputs: INPUTS },
+        currentSectionFactsHash,
+      );
+    }).not.toThrow();
+    expect([...stale].sort()).toEqual([...PROSE_SECTIONS].sort());
+  });
+
+  it("a snapshot whose per-section hashes match today's facts has nothing stale", () => {
+    const factsHashes = Object.fromEntries(
+      PROSE_SECTIONS.map((s) => [
+        s,
+        currentSectionFactsHash(s, { address: ADDRESS, inputs: INPUTS }),
+      ]),
+    ) as Partial<Record<ProseSection, string>>;
+
+    expect(
+      staleProseSections(
+        { sections: sectionsWithText(), factsHashes },
+        { address: ADDRESS, inputs: INPUTS },
+        currentSectionFactsHash,
+      ),
+    ).toEqual([]);
+  });
+});
+
+/**
+ * `attemptedProseSections` — which sections a generation has already been
+ * REQUESTED for at today's facts (T5 fix round 1).
+ *
+ * The counterpart of `staleProseSections`, and deliberately a separate map:
+ * an attempt is recorded whatever came back, whereas `factsHashes` moves only
+ * when text does. That is what lets the step stop re-buying a refusal while
+ * the F-4 gate goes on blocking the very same section.
+ */
+describe("attemptedProseSections", () => {
+  const input = { address: ADDRESS, inputs: INPUTS };
+  const attemptedNow = (sections: ProseSection[]): Partial<Record<ProseSection, string>> =>
+    Object.fromEntries(sections.map((s) => [s, currentSectionFactsHash(s, input)]));
+
+  it("names the sections attempted at TODAY's facts", () => {
+    const snapshot = { attempts: attemptedNow(["otoczenie", "standard"]) };
+
+    expect(attemptedProseSections(snapshot, input, currentSectionFactsHash)).toEqual([
+      "otoczenie",
+      "standard",
+    ]);
+  });
+
+  it("an attempt made against OLDER facts does not count — a retry is warranted again", () => {
+    const snapshot = { attempts: { otoczenie: "f".repeat(64) } };
+
+    expect(attemptedProseSections(snapshot, input, currentSectionFactsHash)).toEqual([]);
+  });
+
+  it("a snapshot persisted before attempts existed has attempted nothing", () => {
+    const legacy = { sections: {}, factsHashes: {} } as unknown as ProseSnapshot;
+
+    expect(attemptedProseSections(legacy, input, currentSectionFactsHash)).toEqual([]);
+    expect(attemptedProseSections(null, input, currentSectionFactsHash)).toEqual([]);
   });
 });

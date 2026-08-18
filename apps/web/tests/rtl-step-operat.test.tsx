@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 afterEach(cleanup);
@@ -13,10 +13,6 @@ globalThis.ResizeObserver ??= class {
 vi.mock("@/app/actions/approve-valuation", () => ({ approveValuation: vi.fn() }));
 vi.mock("@/app/actions/sign-valuation", () => ({ signValuationAction: vi.fn() }));
 vi.mock("@/app/actions/create-new-version", () => ({ createNewVersionAction: vi.fn() }));
-vi.mock("@/app/actions/confirm-sample", () => ({ confirmSample: vi.fn() }));
-vi.mock("@/app/actions/confirm-subject", () => ({ confirmSubject: vi.fn() }));
-vi.mock("@/app/actions/confirm-kw", () => ({ confirmKw: vi.fn() }));
-vi.mock("@/app/actions/confirm-features", () => ({ confirmFeatures: vi.fn() }));
 
 import { StepOperat } from "@/app/valuations/[id]/steps/step-operat";
 import type { ProseSnapshot } from "@/domain/prose-snapshot";
@@ -77,13 +73,32 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
     );
   });
 
-  it("names prose that describes a superseded sample (T6 review, I-2)", () => {
-    // Six confirmed sections — and still refused, because the fingerprint
-    // `confirmedProse()` carries is not this draft's.
+  it("names the ONE section that describes a superseded sample (T4)", () => {
+    // Six confirmed sections, one of them written against facts that have
+    // since moved. The screen has to say which one — the other five still
+    // describe this draft, and re-reading them buys nothing.
+    const prose = currentProse();
+    prose.factsHashes.uzasadnienie = "f".repeat(64);
+    render(<StepOperat valuation={draft(prose)} />);
+
+    const blockers = screen.getByTestId("gate-blockers");
+    expect(blockers).toHaveTextContent(
+      "Uzasadnienie wyniku — pozycja na tle próby — dane się zmieniły, przejrzyj ponownie.",
+    );
+    expect(blockers).not.toHaveTextContent("Analiza i charakterystyka rynku");
+    expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeDisabled();
+  });
+
+  it("names the first section as stale when the snapshot predates per-section fingerprints", () => {
+    // The migration path: `confirmedProse()` carries a fingerprint from some
+    // earlier state of the draft, so every section reads stale — one pass
+    // through step 6 and the draft is current again. Asserted on the first
+    // section only; that all six are listed is the gate's own business and
+    // `f4-approval-gate.test.ts` counts them there.
     render(<StepOperat valuation={draft(confirmedProse())} />);
 
     expect(screen.getByTestId("gate-blockers")).toHaveTextContent(
-      "Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.",
+      "Analiza i charakterystyka rynku — dane się zmieniły, przejrzyj ponownie.",
     );
     expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeDisabled();
   });
@@ -102,5 +117,100 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
     expect(screen.queryByTestId("gate-blockers")).toBeNull();
     expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeEnabled();
     vi.unstubAllEnvs();
+  });
+});
+
+/**
+ * T8: step 7 stops confirming. The four bulk buttons asked the appraiser to
+ * vouch for transactions, parcels, land-register entries and rating scales
+ * that this screen never showed — the complaint the whole slice answers.
+ * What replaces them is a report: every blocker names the step that owns it,
+ * as a link. Confirming itself moved to steps 1/3/4 in T7.
+ */
+describe("StepOperat — no bulk confirmation, only links back (Task 8)", () => {
+  /** A draft parked in every state a deleted button used to cover. */
+  const stuck = (): Valuation => {
+    const base = draft(currentProse());
+    const inputs = base.inputs!;
+    return {
+      ...base,
+      inputs: {
+        ...inputs,
+        comparables: inputs.comparables.map((c) => ({ ...c, status: "to_verify" as const })),
+        subject: { obreb: "Nowogród", nrDzialki: "12" },
+        kw: {
+          source: "odpis_kw",
+          kwLokalu: "KW-TEST-1",
+          kwGruntu: "KW-TEST-1",
+          kwInne: [],
+          deweloperski: false,
+          powUzytkowaKw: 50,
+          udzial: null,
+          sad: null,
+          wydzial: null,
+          dataDokumentu: null,
+          dzial3: null,
+          dzial4: null,
+        },
+        provenance: {
+          ...inputs.provenance!,
+          geocode: { source: "geokoder", status: "to_verify" },
+          ewidencja: { source: "ewidencja", status: "to_verify" },
+          mpzp: { source: "mpzp", status: "to_verify" },
+          kw: { source: "odpis_kw", status: "to_verify" },
+          weights: { source: "preset", status: "to_verify" },
+          featureDefs: { source: "preset", status: "to_verify" },
+        },
+      },
+    };
+  };
+
+  it("offers no bulk confirmation, only a link to the step that holds the data", () => {
+    render(<StepOperat valuation={stuck()} />);
+
+    for (const testId of [
+      "confirm-sample-button",
+      "confirm-subject-button",
+      "confirm-kw-button",
+      "confirm-features-button",
+    ]) {
+      expect(screen.queryByTestId(testId)).toBeNull();
+    }
+    expect(screen.getAllByRole("link", { name: /przejdź do kroku 3/i })[0]).toHaveAttribute(
+      "href",
+      expect.stringContaining("step=3"),
+    );
+  });
+
+  it("sends each blocker to its own step, not all of them to one", () => {
+    render(<StepOperat valuation={stuck()} />);
+    const blockers = screen.getByTestId("gate-blockers");
+
+    // The subject group is read on step 1, the sample on step 3, the rating
+    // scale on step 4 — the appraiser fixing them one at a time must be able
+    // to see all three destinations at once.
+    expect(
+      within(blockers).getAllByRole("link", { name: /przejdź do kroku 1\. przedmiot/i }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(blockers).getAllByRole("link", { name: /przejdź do kroku 3\. próba/i }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(blockers).getAllByRole("link", { name: /przejdź do kroku 4\. cechy/i }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("points a stale description at step 6, next to the section it names", () => {
+    const prose = currentProse();
+    prose.factsHashes.uzasadnienie = "f".repeat(64);
+    render(<StepOperat valuation={draft(prose)} />);
+
+    const item = within(screen.getByTestId("gate-blockers"))
+      .getByText(/Uzasadnienie wyniku/)
+      .closest("li")!;
+    expect(within(item).getByRole("link", { name: /przejdź do kroku 6\. opisy/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("step=6"),
+    );
   });
 });

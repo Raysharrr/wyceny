@@ -26,7 +26,8 @@ import {
 import { totalInspectionPhotos } from "../domain/inspection";
 import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
-import { currentProseFactsHash } from "../domain/prose-hash";
+import { currentSectionFactsHashes } from "../domain/prose-hash";
+import { proseEnabled } from "../lib/prose-enabled";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -36,13 +37,43 @@ function canSee(row: Valuation, user: SessionUser): boolean {
 }
 
 /**
+ * A row's `prose`, normalized on read (fix round 1, finding 1): a snapshot
+ * persisted before `factsHashes` existed carries `factsHash: string` and no
+ * per-section map at all, even though the type says `factsHashes` is always
+ * an object — the jsonb column is untyped, so nothing enforced that at
+ * write time. Coerced to `{}` here, NOT translated from the old single
+ * `factsHash`: that value carries no per-section information, so
+ * synthesizing per-section entries from it would mark genuinely stale prose
+ * as fresh — the exact failure this feature exists to prevent. An empty
+ * object reads every confirmed section as stale instead, which is the
+ * promised migration behaviour (`ProseSnapshot.factsHashes` docstring): one
+ * regeneration per legacy draft on the next visit to step 6.
+ *
+ * This covers every read through {@link toValuation} — every method on this
+ * repo narrows a raw row through it, `approve`'s in-transaction read
+ * included, so a Task 4 F-4 gate built on `repo.get`/`repo.approve` is
+ * already covered here too (an earlier draft of this comment claimed
+ * otherwise — it was wrong). The `?.` defenses added to the domain
+ * functions (`staleProseSections`, `mergeProseProposal`) are not plugging a
+ * hole THIS path leaves open; they protect against a caller that reads the
+ * jsonb some other way, or builds a `ProseSnapshot` by hand without going
+ * through this adapter at all (fix round 2: an `incoming` built by a
+ * not-yet-migrated UI action did exactly that).
+ */
+function normalizeProse(prose: ProseSnapshot | null | undefined): ProseSnapshot | null | undefined {
+  if (!prose) return prose;
+  return prose.factsHashes ? prose : { ...prose, factsHashes: {} };
+}
+
+/**
  * Narrows a raw Drizzle row to {@link Valuation}. `inputs` is an untyped
  * `jsonb` column at the schema level (the schema stays free of domain
  * types, F-10) — this is the one place its shape is asserted back to
  * `KcsInput | null`, since only the caller who wrote the row knows it.
  */
 function toValuation(row: typeof schema.valuation.$inferSelect): Valuation {
-  return { ...row, inputs: row.inputs as KcsInput | null };
+  const inputs = row.inputs as KcsInput | null;
+  return { ...row, inputs: inputs ? { ...inputs, prose: normalizeProse(inputs.prose) } : inputs };
 }
 
 type Tx = Parameters<Parameters<NodePgDatabase<typeof schema>["transaction"]>[0]>[0];
@@ -92,11 +123,20 @@ async function insertAudit(
  */
 export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation {
   return {
-    async create(input: NewValuationInput): Promise<Valuation> {
+    async create(
+      input: NewValuationInput,
+      audit?: { confirmed?: readonly AuditAction[] },
+    ): Promise<Valuation> {
       return db.transaction(async (tx) => {
         const toInsert = newValuation(input);
         const [row] = await tx.insert(schema.valuation).values(toInsert).returning();
         await insertAudit(tx, { valuationId: row.id, actorId: input.ownerId, action: "created" });
+        // Same act, same transaction: a draft created from step 1 was also
+        // confirmed there, and the trail says so in the same vocabulary the
+        // step saves use.
+        for (const action of audit?.confirmed ?? []) {
+          await insertAudit(tx, { valuationId: row.id, actorId: input.ownerId, action });
+        }
         return toValuation(row);
       });
     },
@@ -276,7 +316,13 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         if (!row) return null;
         const valuation = toValuation(row);
         if (valuation.ownerId !== user.id) return null;
-        const updated = applySubjectUpdate(valuation, u);
+        // T7 (spec §B): the step-1 button is one act — "Dane się zgadzają —
+        // dalej" saves AND confirms, in this transaction, while the data is
+        // still on the appraiser's screen. `confirmKwProvenance` is called
+        // unconditionally: with no KW extract on the draft it is a no-op.
+        const updated = confirmKwProvenance(
+          confirmSubjectProvenance(applySubjectUpdate(valuation, u)),
+        );
         const [saved] = await tx
           .update(schema.valuation)
           .set({
@@ -297,6 +343,21 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           action: "subject_updated",
           meta: { kwAttached: u.kw != null },
         });
+        // The confirmation is recorded as its own act, under the same
+        // vocabulary the step-7 buttons used: after T8 this save is the ONLY
+        // confirm path, and a trail that stopped naming the confirmation
+        // would stop showing who vouched for the data under the signature.
+        //
+        // `subject_confirmed` unconditionally, `kw_confirmed` only with an
+        // extract attached — not an inconsistency: the subject confirmation
+        // also covers the address's geocoding, which a draft can carry with
+        // no subject at all (the RCN fetch geocoded it), so gating this row
+        // on `u.subject` would drop it in a case where the save really did
+        // flip something. A KW confirmation with no KW extract flips nothing.
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "subject_confirmed" });
+        if (u.kw != null) {
+          await insertAudit(tx, { valuationId: id, actorId: user.id, action: "kw_confirmed" });
+        }
         return toValuation(saved);
       });
     },
@@ -311,7 +372,9 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         if (!row) return null;
         const valuation = toValuation(row);
         if (valuation.ownerId !== user.id) return null;
-        const updated = applySampleUpdate(valuation, u);
+        // T7: "Zatwierdź próbę i dalej" really does confirm the sample — see
+        // saveSubject above for why the two halves share one transaction.
+        const updated = confirmSampleProvenance(applySampleUpdate(valuation, u));
         const [saved] = await tx
           .update(schema.valuation)
           .set({ inputs: updated.inputs, wr: null })
@@ -324,6 +387,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           action: "sample_updated",
           meta: { count: u.comparables.length },
         });
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "sample_confirmed" });
         return toValuation(saved);
       });
     },
@@ -342,7 +406,8 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         if (!row) return null;
         const valuation = toValuation(row);
         if (valuation.ownerId !== user.id) return null;
-        const updated = applyFeaturesUpdate(valuation, u);
+        // T7: "Zatwierdź cechy i dalej" — same one-act shape as the two above.
+        const updated = confirmFeaturesProvenance(applyFeaturesUpdate(valuation, u));
         const [saved] = await tx
           .update(schema.valuation)
           .set({ inputs: updated.inputs, wr: null })
@@ -355,6 +420,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           action: "features_updated",
           meta: { count: u.features.length },
         });
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "features_confirmed" });
         return toValuation(saved);
       });
     },
@@ -402,6 +468,44 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       });
     },
 
+    async proseUsage(
+      id: string,
+      user: SessionUser,
+    ): Promise<{ generations: number; inputTokens: number; outputTokens: number }> {
+      return db.transaction(async (tx) => {
+        // No `setAppRole` here, unlike `get`: the RLS defence-in-depth layer
+        // covers `valuation` alone — `audit_log` carries no grant to
+        // `app_role` (drizzle/0003, 0009), so switching role would turn this
+        // read into a permission error rather than an isolation win.
+        // Ownership is therefore enforced the way every mutation on this repo
+        // enforces it: in the app layer, before the audit rows are touched.
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        // Zeros, not null: an invisible valuation must read exactly like one
+        // nobody has generated for (no existence leak, see the port docs).
+        if (!row || !canSee(toValuation(row), user)) {
+          return { generations: 0, inputTokens: 0, outputTokens: 0 };
+        }
+
+        // `jsonb_typeof` guard: a `prose_generated` row written before the
+        // token fields existed has no such keys, and the trail is append-only
+        // (F-7) so it cannot be backfilled. It still counts as a generation —
+        // it happened — but contributes nothing to the sums, and a bare cast
+        // would raise on anything non-numeric that ever reached the column.
+        const meta = schema.auditLog.meta;
+        const [usage] = await tx
+          .select({
+            generations: sql<number>`count(*)::int`,
+            inputTokens: sql<number>`coalesce(sum(case when jsonb_typeof(${meta} -> 'inputTokens') = 'number' then (${meta} ->> 'inputTokens')::bigint end), 0)::int`,
+            outputTokens: sql<number>`coalesce(sum(case when jsonb_typeof(${meta} -> 'outputTokens') = 'number' then (${meta} ->> 'outputTokens')::bigint end), 0)::int`,
+          })
+          .from(schema.auditLog)
+          .where(
+            and(eq(schema.auditLog.valuationId, id), eq(schema.auditLog.action, "prose_generated")),
+          );
+        return usage ?? { generations: 0, inputTokens: 0, outputTokens: 0 };
+      });
+    },
+
     async confirmProse(
       id: string,
       user: SessionUser,
@@ -423,10 +527,13 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           // Computed from the ROW READ IN THIS TRANSACTION, not from the
           // caller's earlier read. Since T7 this is stamped on EVERY confirm
           // (it records the facts the appraiser accepted the text against),
-          // not only on prose written entirely by hand.
-          factsHash: valuation.inputs
-            ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
-            : "",
+          // not only on prose written entirely by hand. All six sections, not
+          // only the ones `texts` fills: a missing entry would leave the
+          // just-confirmed section stamped `undefined`, i.e. stale the moment
+          // the appraiser submitted it.
+          factsHashes: valuation.inputs
+            ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
+            : {},
           now: new Date(),
         });
         const [saved] = await tx
@@ -505,14 +612,31 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         // Re-runs the full gate (F-4 + document fields) in the domain — this is
         // the atomic status flip; a caller that stored files first but fails
         // here leaves harmless orphan files (same keys, overwritten on retry).
-        // The staleness fingerprint is derived HERE, from the row this
-        // transaction read — a caller could otherwise hand in a matching hash
-        // and walk stale prose straight past the invariant (ADR-012).
+        //
+        // BOTH prose options are derived HERE and REPLACE whatever the caller
+        // passed (ADR-012). `gate` is still accepted so the call sites read
+        // the same on both sides of the transaction, but nothing in it about
+        // prose is trusted:
+        //
+        //  - the fingerprints, from the row THIS transaction read — matching
+        //    hashes handed in from outside (or an empty map, which disables
+        //    the check section by section) would otherwise walk stale prose
+        //    straight past the invariant;
+        //  - `requireProse`, from the kill switch — the larger door next to
+        //    it. Taken verbatim, `requireProse: false` (or simply no options
+        //    at all) removed the ENTIRE prose group: staleness, missing text
+        //    and unconfirmed status together. FR-6 is a deployment decision,
+        //    not a per-call one, so the authoritative read belongs inside the
+        //    transaction, exactly like the hashes. `proseEnabled()` is the one
+        //    place that comparison lives; the action calls it too, for its
+        //    fail-fast check before it spends anything on generation.
+        const requireProse = proseEnabled();
         const updated = approveValuation(valuation, now, docs, {
           ...gate,
-          currentFactsHash:
-            gate?.requireProse && valuation.inputs
-              ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+          requireProse,
+          currentSectionHashes:
+            requireProse && valuation.inputs
+              ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
               : undefined,
         });
         const [saved] = await tx

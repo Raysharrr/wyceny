@@ -46,6 +46,34 @@ describe("assignProvenance (the ADR-010 ACL — statuses are born here, server-s
     expect(comparables[0].status).toBe("to_verify");
   });
 
+  it("overrides a client-claimed source too — a fetched id outranks the label", () => {
+    // Only the RCN fetch hands out a transactionId, and the step-3 form has no
+    // input for one. A row carrying an id while calling itself "manual" is a
+    // relabelled fetch, and must still be re-verified rather than entering
+    // `confirmed` as though the appraiser had typed it.
+    const comparables = assignSampleProvenance({
+      comparables: [
+        { pricePerM2: 10_000, source: "manual", transactionId: "tx-1" },
+        { pricePerM2: 11_000, source: "manual" },
+      ],
+    });
+    expect(comparables[0].source).toBe("rcn");
+    expect(comparables[0].status).toBe("to_verify");
+    expect(comparables[1].source).toBe("manual");
+    expect(comparables[1].status).toBe("confirmed");
+  });
+
+  it("never downgrades: an rcn label with no id stays rcn/to_verify", () => {
+    // The trust only ever moves one way. An id can PROMOTE a row to rcn;
+    // its absence must not DEMOTE a machine row to manual/confirmed, or a
+    // legacy row saved before ids existed would silently confirm itself.
+    const comparables = assignSampleProvenance({
+      comparables: [{ pricePerM2: 10_000, source: "rcn" }],
+    });
+    expect(comparables[0].source).toBe("rcn");
+    expect(comparables[0].status).toBe("to_verify");
+  });
+
   it("scalars are rzeczoznawca/confirmed; geocode present+to_verify only with sampleMeta", () => {
     // Edited weight (not the untouched preset) so `weights` stays
     // rzeczoznawca/confirmed — this test is about the OTHER scalars/geocode,
@@ -242,17 +270,21 @@ describe("scoped provenance (Slice 11a)", () => {
       area: { source: "rzeczoznawca", status: "confirmed" },
     });
   });
-  it("assignSampleProvenance: rcn rows to_verify, manual confirmed, geocode only with sampleMeta", () => {
-    const r = assignSampleProvenance({
-      comparables: [
-        { pricePerM2: 12000, source: "rcn", transactionId: "t1" },
-        { pricePerM2: 13000 },
-      ],
-      sampleMeta: undefined,
-    });
-    expect(r.comparables[0]!.status).toBe("to_verify");
-    expect(r.comparables[1]!.status).toBe("confirmed");
-    expect(r.geocode).toBeUndefined();
+  it("assignSampleProvenance: rcn rows to_verify, manual confirmed, and sampleMeta changes nothing", () => {
+    const comparables = [
+      { pricePerM2: 12000, source: "rcn" as const, transactionId: "t1" },
+      { pricePerM2: 13000 },
+    ];
+    const assigned = assignSampleProvenance({ comparables });
+    expect(assigned[0]!.status).toBe("to_verify");
+    expect(assigned[1]!.status).toBe("confirmed");
+    // T7: the step assigns no provenance ENTRY any more — `geocode` is step
+    // 1's key. What that means here is that `sampleMeta`, the only input the
+    // entry was ever derived from, no longer changes this step's output at
+    // all. (Passed through a variable: an object literal would be rejected
+    // for the excess property rather than reaching the function.)
+    const withMeta = { comparables, sampleMeta };
+    expect(assignSampleProvenance(withMeta)).toEqual(assigned);
   });
   it("assignFeaturesProvenance: preset weights → to_verify", () => {
     const p = assignFeaturesProvenance(DEFAULT_FEATURES, []);

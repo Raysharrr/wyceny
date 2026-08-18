@@ -9,7 +9,8 @@ export type ConfirmSubjectResult = { error: string } | undefined;
 
 /**
  * Bulk-confirm the subject snapshot (mirrors `confirmSample`, F-5/spec §5):
- * flips the draft's ewidencja/mpzp provenance groups to confirmed.
+ * flips the draft's ewidencja/mpzp groups — and, since T7, the address's
+ * geocoding — to confirmed.
  * Owner-only; the repo returns null for not-found/not-owner and throws for
  * non-draft status.
  */

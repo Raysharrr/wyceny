@@ -307,3 +307,60 @@ describe("step1DefaultsFromInputs", () => {
     expect(defaults.kwMeta).toBeUndefined();
   });
 });
+
+/**
+ * T8 fix round 1. Since T7 the step-1 save IS the confirmation, and
+ * `applySubjectUpdate` nulls `wr` unconditionally — so an appraiser who opens
+ * step 1 on a draft that was ready to issue and presses the button watches
+ * step 7 disappear (`maxReachedStep` drops from 7 to 5) with no explanation.
+ * Before T8 that cost was hidden behind a step-7 confirm button; now the
+ * blocker links send people to step 1 deliberately, so the warning has to be
+ * on the screen they land on, and above the form so it is read BEFORE the save.
+ *
+ * Fix round 2 corrected the SCOPE of that sentence. The first version said the
+ * descriptions lapse only after an address or area change — measured on those
+ * two fields alone, and wrong: seven more inputs on this same step stale
+ * `zagospodarowanie`, so an appraiser correcting „Rok budowy" was told step 6
+ * would not be needed and hit the blocker anyway. What the sentence promises
+ * now is measured field by field across the WHOLE step in
+ * `prose-section-facts.test.ts`; that table is the reason this one can still
+ * say when step 6 is NOT needed (the document fields and the MPZP block reach
+ * no prompt at all).
+ */
+describe("SubjectForm — the cost of saving step 1 (Task 8 fix round 1)", () => {
+  const defaults: Partial<FormInput> = {
+    address: "ul. Klonowa 4, m. Nowogród",
+    area: "69.56",
+    purpose: "sprzedaz" as never,
+    kwNumber: "AB1C/2/7",
+    client: "Jan Kowalski",
+  };
+
+  it("warns that the save clears the calculation, before the appraiser can submit", () => {
+    render(<SubjectForm valuationId="val-1" defaults={defaults} calculationConfirmed />);
+
+    const warning = screen.getByTestId("step1-recalc-warning");
+    expect(warning).toHaveTextContent(
+      "Zapis tego kroku kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie wyliczyć w kroku 5. Jeśli poprawisz przy tym adres, powierzchnię albo dane przedmiotu, trzeba będzie też ponownie zatwierdzić opisy w kroku 6 — sama zmiana zamawiającego, celu wyceny albo numeru księgi opisów nie rusza.",
+    );
+    // Above the FIRST FIELD, not merely above the submit button: that button
+    // lives in a fixed bottom bar which is on screen at any scroll position,
+    // so "precedes the button" is satisfied even by a paragraph at the very
+    // bottom of the page — measured, that mutation passed. What has to hold is
+    // that the appraiser meets the sentence on landing, before editing.
+    const firstField = screen.getByLabelText("Adres");
+    expect(warning.compareDocumentPosition(firstField)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("stays silent when there is no calculation to lose", () => {
+    // A draft that never reached step 5, and the create path — the sentence
+    // would describe a loss that cannot happen, which is how warnings become
+    // wallpaper.
+    render(<SubjectForm valuationId="val-1" defaults={defaults} />);
+    expect(screen.queryByTestId("step1-recalc-warning")).toBeNull();
+    cleanup();
+
+    render(<SubjectForm />);
+    expect(screen.queryByTestId("step1-recalc-warning")).toBeNull();
+  });
+});

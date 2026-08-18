@@ -72,3 +72,80 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
     expect(martwe).toEqual([]);
   });
 });
+
+/**
+ * Nazwy przyciskow cytowane w Pomocy istnieja naprawde (T8, runda poprawek 1).
+ *
+ * Powod jest empiryczny: instrukcja kroku 7 dwa razy rozjechala sie po cichu z
+ * aplikacja — raz po T4, raz po T8 — i za kazdym razem wykryl to dopiero
+ * czlowiek czytajacy diff. Kasujac przycisk, kasuje sie jego etykiete ze
+ * zrodel; ten straznik zamienia to w czerwony test zamiast w instrukcje kazaca
+ * rzeczoznawcy kliknac cos, czego nie ma.
+ *
+ * CZEGO NIE LAPIE — spisane, bo straznik uznany za kompletny jest gorszy niz
+ * jego brak (zmierzone, nie oszacowane):
+ *
+ *  1. **Etykieta zyjaca juz tylko w komentarzu.** Sprawdzamy tekst plikow, nie
+ *     drzewo JSX, wiec skasowanie przycisku przy zostawieniu komentarza, ktory
+ *     cytuje stara nazwe (np. `actions/wizard.ts:105`), przepuszcza rozjazd.
+ *  2. **Etykiety poza kotwica czasownikowa.** Wzorzec zna osiem czasownikow, a
+ *     Pomoc cytuje takze „Sprobuj ponownie", „Wygeneruj ponownie", „Zapisz
+ *     notatke", „Wpisz recznie", „Usun" i „+ Dodaj cechę z puli…" — te nie sa
+ *     pilnowane. Rozszerzanie wzorca na wszystkie cytaty (189 wystapien, 138
+ *     unikatow, w wiekszosci nie-etykiety) dawaloby falszywe czerwienie.
+ *  3. **Zdanie opisujace ZACHOWANIE, ktore sie zmienilo przy zywej etykiecie.**
+ *     Ta klasa jest poza zasiegiem jakiegokolwiek wyrazenia regularnego.
+ *
+ * Sprawdzamy ISTNIENIE etykiety w zrodlach, nie jej miejsce — wiazanie
+ * etykiety z konkretnym plikiem czynaloby test kruchym przy kazdym
+ * przeniesieniu komponentu, a oba historyczne rozjazdy polegaly na tym, ze
+ * przycisk PRZESTAL istniec.
+ *
+ * Zakres na dzis: 28 wystapien, 16 unikalnych etykiet. To siec bezpieczenstwa
+ * na jedna, najczestsza klase bledu — nie dowod zgodnosci Pomocy z aplikacja.
+ */
+const ETYKIETA_RE =
+  /„((?:Potwierdź|Zatwierdź|Dane się zgadzają|Pobierz|Dodaj|Utwórz|Podpisz|Wgraj)[^„”]{0,60})”/g;
+
+const zbierzTs = (dir: string): string[] =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return zbierzTs(full);
+    return /\.tsx?$/.test(entry.name) ? [full] : [];
+  });
+
+describe("etykiety przyciskow cytowane w Pomocy", () => {
+  const zrodla = [
+    path.join(process.cwd(), "src", "app"),
+    path.join(process.cwd(), "src", "components"),
+  ]
+    .flatMap(zbierzTs)
+    .map((file) => fs.readFileSync(file, "utf8"))
+    .join("\n");
+
+  const cytaty = zbierzMdx(CONTENT).flatMap((file) => {
+    const tresc = fs.readFileSync(file, "utf8");
+    return [...tresc.matchAll(ETYKIETA_RE)].map(([, etykieta]) => ({
+      etykieta,
+      file: path.relative(CONTENT, file),
+    }));
+  });
+
+  // Bez tego pusta lista cytatow (zepsuty wzorzec) przechodzilaby ponizszy
+  // przypadek triumfalnie — ta sama pulapka co przy odnosnikach wyzej. Liczby
+  // sa dokladne, nie „wieksze od zera": zawezenie wzorca po cichu zmniejszyloby
+  // zakres straznika, a to jest dokladnie ten rodzaj cichej utraty pokrycia,
+  // przed ktorym ten plik ma bronic. Rosna, gdy Pomoc cytuje nowy przycisk —
+  // wtedy zaktualizuj tez liczby w komentarzu wyzej.
+  it("zna dokladny zakres: 28 wystapien, 16 unikalnych etykiet", () => {
+    expect(cytaty.length).toBe(28);
+    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(16);
+  });
+
+  it("kazda cytowana etykieta wystepuje w zrodlach aplikacji", () => {
+    const nieistniejace = cytaty
+      .filter(({ etykieta }) => !zrodla.includes(etykieta))
+      .map(({ file, etykieta }) => `${file} -> „${etykieta}”`);
+    expect(nieistniejace).toEqual([]);
+  });
+});

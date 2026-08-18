@@ -65,12 +65,23 @@ async function walkToOperat(page: import("@playwright/test").Page, prices: strin
   await page.waitForURL(/step=7/);
 }
 
-test("wizard draft, 3 transactions: blocked by F-4 on operat step", async ({ page }) => {
+test("wizard draft, 3 transactions: blocked on operat step, with a link back to step 3", async ({
+  page,
+}) => {
   await login(page);
   await createDraftStep1(page);
   await walkToOperat(page, ["12000", "13000", "14000"]);
-  await expect(page.getByTestId("gate-blockers")).toContainText("co najmniej 12");
+  const blockers = page.getByTestId("gate-blockers");
+  await expect(blockers).toContainText("co najmniej 12");
   await expect(page.getByTestId("approve-button")).toBeDisabled();
+
+  // T8: step 7 reports and links back — the sample is fixed where it is
+  // visible. Following the link is the assertion that matters: a href that
+  // resolves to a step the draft cannot open would leave the appraiser
+  // exactly where they were.
+  await blockers.getByRole("link", { name: /Przejdź do kroku 3\. Próba/ }).click();
+  await page.waitForURL(/step=3/);
+  await expect(page.getByRole("button", { name: "Zatwierdź próbę i dalej" })).toBeVisible();
 });
 
 test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", async ({ page }) => {
@@ -80,8 +91,12 @@ test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", asy
     page,
     Array.from({ length: 12 }, (_, i) => String(12_000 + i * 100)),
   );
-  await page.getByTestId("confirm-features-button").click();
-  await expect(page.getByTestId("confirm-features-button")).toHaveCount(0);
+  // T8: step 7 offers no confirmation at all any more — each group is
+  // confirmed by the save on the step that shows it (T7). The four buttons
+  // are gone from the component, so this asserts the whole class rather than
+  // the one the flow used to click.
+  await expect(page.getByRole("button", { name: /^Potwierdź / })).toHaveCount(0);
+  await expect(page.getByTestId("gate-blockers")).toHaveCount(0);
   await expect(page.getByTestId("approve-button")).toBeEnabled();
   await page.getByTestId("approve-button").click();
   await expect(page.getByTestId("valuation-status")).toHaveText("Zatwierdzony", {

@@ -12,6 +12,7 @@ import type { KcsInput } from "../domain/kcs";
 import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
 import type {
+  AuditAction,
   FeaturesUpdate,
   InspectionOp,
   SampleUpdate,
@@ -63,7 +64,20 @@ export type SessionUser = {
 };
 
 export interface PortValuation {
-  create(input: NewValuationInput): Promise<Valuation>;
+  /**
+   * Inserts a new Valuation and records its `created` audit row.
+   *
+   * `audit.confirmed` names confirmations the CALLER performed as part of
+   * the same act, written as their own rows in the same transaction — today
+   * only `createDraft`, where the step-1 button saves and confirms at once
+   * (T7). The rows are not inferred from the snapshot: only the caller knows
+   * whether a human clicked, and a trail that guessed would be worse than
+   * one that stayed silent.
+   */
+  create(
+    input: NewValuationInput,
+    audit?: { confirmed?: readonly AuditAction[] },
+  ): Promise<Valuation>;
   listForUser(user: SessionUser): Promise<Valuation[]>;
   get(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
@@ -77,15 +91,17 @@ export interface PortValuation {
    */
   getByDocKey(key: string, user: SessionUser): Promise<Valuation | null>;
   /**
-   * Confirms sample provenance on a draft (rcn rows + geocode → confirmed).
+   * Confirms sample provenance on a draft (rcn rows → confirmed; geocoding
+   * moved to `confirmSubject` in T7).
    * Owner-only (admin included only if they own it). Returns null when the
    * valuation doesn't exist or the user isn't the owner; throws for
    * status violations (not a draft).
    */
   confirmSample(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
-   * Confirms subject-snapshot provenance on a draft (ewidencja/mpzp →
-   * confirmed). Mirrors `confirmSample`'s owner-only null/throw contract.
+   * Confirms subject-snapshot provenance on a draft (ewidencja/mpzp and the
+   * address's geocoding → confirmed). Mirrors `confirmSample`'s owner-only
+   * null/throw contract.
    */
   confirmSubject(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
@@ -115,8 +131,7 @@ export interface PortValuation {
   saveSubject(id: string, user: SessionUser, u: SubjectUpdate): Promise<Valuation | null>;
   /**
    * Step-3 (Próba) wizard draft save: replaces the comparables + sample
-   * metadata + geocode provenance, NULLing `wr`. Same null/throw contract
-   * as `updateInspection`.
+   * metadata, NULLing `wr`. Same null/throw contract as `updateInspection`.
    */
   saveSample(id: string, user: SessionUser, u: SampleUpdate): Promise<Valuation | null>;
   /**
@@ -137,6 +152,23 @@ export interface PortValuation {
     snapshot: ProseSnapshot,
     usage: { inputTokens: number; outputTokens: number },
   ): Promise<Valuation | null>;
+  /**
+   * Token usage recorded on this valuation's `prose_generated` audit rows —
+   * what the descriptions have cost so far, which step 6 shows the appraiser
+   * before offering another generation (T5). The audit trail is the only
+   * record of it: `saveProse` writes the row even when every section was
+   * rejected, because those tokens were spent, so this sums MONEY SPENT
+   * rather than sections delivered.
+   *
+   * Unlike every other read here it returns no `null`: an invisible or
+   * missing valuation reports zeros, which is both true (the caller has no
+   * cost to show) and free of an existence leak. Same ownership rule as
+   * `get` (admin → any; appraiser → only their own).
+   */
+  proseUsage(
+    id: string,
+    user: SessionUser,
+  ): Promise<{ generations: number; inputTokens: number; outputTokens: number }>;
   /**
    * Step-6 (Opisy) submit: the appraiser's texts become
    * `rzeczoznawca`/`confirmed` and one `prose_confirmed` row is written in the

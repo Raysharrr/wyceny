@@ -76,6 +76,56 @@ export type ProseFacts = {
   pozycja_wyniku?: string;
 };
 
+/**
+ * What each section may write from — the subset of facts its few-shot shows
+ * it. This is the basis of per-section staleness: a fact outside a section's
+ * subset changing must NOT invalidate that section's text.
+ *
+ * Verified empirically before adoption (wiki-repo
+ * `tools/spike/2026-08-18-odcisk-per-sekcja/`): across 3 runs x 6 sections,
+ * no section used a fact outside its subset. The model receives the FULL
+ * facts dict — the prompt is unchanged, only the fingerprint is scoped.
+ *
+ * `prose-section-facts.test.ts` pins this against the prompt files.
+ */
+export const PROSE_SECTION_FACTS: Record<ProseSection, readonly (keyof ProseFacts)[]> = {
+  analiza_rynku: ["adres", "obreb", "pow_uzytkowa", "rynek", "proba"],
+  opis_lokalu: ["pow_uzytkowa", "notatka_uklad"],
+  otoczenie: ["notatka_otoczenie"],
+  zagospodarowanie: [
+    "nr_dzialki",
+    "obreb",
+    "pow_dzialki_m2",
+    "uzytek",
+    "budynek_rodzaj",
+    "kondygnacje",
+    "rok_budowy",
+    "notatka_zagospodarowanie",
+  ],
+  standard: ["notatka_standard", "oceny_cech"],
+  uzasadnienie: ["pozycja_wyniku", "proba"],
+};
+
+/**
+ * Sections whose text reflects the sample's price trend. The trend is derived
+ * by the worker FROM THE TRANSACTIONS, which travel outside `fakty`, so these
+ * two sections must fingerprint the transactions too or a reordered-in-time
+ * sample would leave a contradicted trend claim in the operat.
+ *
+ * `uzasadnienie` stays in this set even though its prompt never mentions
+ * `trend_cen` — that is a deliberate over-approximation, not an oversight to
+ * "clean up". Its facts include `proba`, whose min/mean/max/count move
+ * whenever the transaction sample moves, so the section is exposed to sample
+ * edits regardless of the trend. The asymmetry that matters is legal, not
+ * computational: under-approximating staleness here would leave stale prose
+ * standing in a SIGNED appraisal — a legal defect — while over-approximating
+ * merely costs one redundant LLM call. Do not drop it from this set.
+ */
+export const SECTIONS_USING_TRANSACTIONS: ReadonlySet<ProseSection> = new Set([
+  "analiza_rynku",
+  "uzasadnienie",
+]);
+
 /** Worker wire shape: `data` is "MM-RRRR" and `cena_m2` a NUMBER (a PL string → 422). */
 export type ProseTransactionPayload = { data: string; cena_m2: number };
 
@@ -288,11 +338,72 @@ export function selectProseSections(facts: ProseFacts): ProseSection[] {
   return PROSE_SECTIONS.filter((section) => has[section]);
 }
 
+/**
+ * Sections whose stored text no longer matches the facts behind them. Absent
+ * fingerprint counts as stale (pre-change snapshots) — see `factsHashes`.
+ *
+ * `currentHash` is INJECTED rather than called directly (F-10): this module
+ * must stay importable from a Client Component (the step-6 editors), and
+ * `currentSectionFactsHash` needs `node:crypto`, which lives only in
+ * `prose-hash.ts`. The caller — a Server Component or a server action —
+ * supplies `currentSectionFactsHash` itself.
+ *
+ * `snapshot.factsHashes` is read with `?.` on purpose: a row persisted
+ * before this field existed carries `factsHash: string` and no per-section
+ * map at all. The type says it is always an object; an untyped jsonb round
+ * trip does not honour that, and this function must stay total for a
+ * snapshot that never passed through the adapter's own normalization
+ * (fix round 1, finding 1 — Task 4 reads the same jsonb inside a
+ * transaction, bypassing that adapter path entirely).
+ */
+export function staleProseSections(
+  snapshot: Pick<ProseSnapshot, "sections" | "factsHashes"> | null | undefined,
+  input: ProseFactsInput,
+  currentHash: (section: ProseSection, input: ProseFactsInput) => string,
+): ProseSection[] {
+  if (!snapshot) return [];
+  return PROSE_SECTIONS.filter((section) => {
+    if (!snapshot.sections[section]) return false;
+    return snapshot.factsHashes?.[section] !== currentHash(section, input);
+  });
+}
+
+/**
+ * Sections the automat has ALREADY been asked for at today's facts — the
+ * counterpart of {@link staleProseSections}, and the bound on re-buying a
+ * refusal (T5 fix round 1).
+ *
+ * A section can be stale or missing for a reason no further generation will
+ * change: the worker's number guard refused it, or it came back silent. Both
+ * leave the section blocking approval, so "is it out of date" answers yes
+ * forever — while "would another call change anything" must answer no until
+ * the facts themselves move. `ProseSnapshot.attempts` records the fingerprint
+ * each request was made at, so the comparison here IS that self-clearing:
+ * different facts, different hash, a retry warranted again.
+ *
+ * Deliberately says nothing about text, `factsHashes` or the F-4 gate. A
+ * section listed here is still stale, still blocking, and still shown as
+ * such — only the automatic retry is suppressed.
+ *
+ * `currentHash` is INJECTED for the same reason as in `staleProseSections`:
+ * this module must stay importable from a Client Component, and the sha256
+ * lives in `prose-hash.ts`.
+ */
+export function attemptedProseSections(
+  snapshot: Pick<ProseSnapshot, "attempts"> | null | undefined,
+  input: ProseFactsInput,
+  currentHash: (section: ProseSection, input: ProseFactsInput) => string,
+): ProseSection[] {
+  if (!snapshot?.attempts) return [];
+  const attempts = snapshot.attempts;
+  return PROSE_SECTIONS.filter((section) => attempts[section] === currentHash(section, input));
+}
+
 export type ProseProposalOutcome = {
   sections: Partial<Record<ProseSection, string>>;
   rejected: Partial<Record<ProseSection, string[]>>;
   model: string;
-  factsHash: string;
+  factsHashes: Partial<Record<ProseSection, string>>;
   /** Passed in by the caller — the domain never reads the clock (F-2). */
   generatedAt: Date;
 };
@@ -311,7 +422,16 @@ export function proseSnapshotOf(outcome: ProseProposalOutcome): ProseSnapshot {
   return {
     sections,
     rejected: outcome.rejected,
-    factsHash: outcome.factsHash,
+    factsHashes: outcome.factsHashes,
+    // Every section this run REQUESTED, at the fingerprint it was requested
+    // at — which is exactly what `factsHashes` holds on a freshly built
+    // proposal, since the caller stamps one per requested section before it
+    // knows any outcome. Derived here rather than passed in so no caller can
+    // record a request it did not make, or forget one it did. A COPY, not the
+    // same object: the two maps diverge from the very next merge, where
+    // `factsHashes` stays behind for a section whose text was refused and
+    // `attempts` does not.
+    attempts: { ...outcome.factsHashes },
     model: outcome.model,
     generatedAt: outcome.generatedAt.toISOString(),
   };

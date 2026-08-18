@@ -17,7 +17,11 @@ import {
 import { isEmptySubject } from "@/lib/subject-form";
 import { normalizeDefText, type FeatureDefinitions } from "@/domain/feature-presets";
 import { normalizeKw } from "@/domain/kw-snapshot";
-import { CalculationNotReadyError } from "@/domain/valuation";
+import {
+  CalculationNotReadyError,
+  confirmKwEntries,
+  confirmSubjectEntries,
+} from "@/domain/valuation";
 
 /**
  * Server Actions backing the 7-step wizard (Slice 11a, Task 5) — the "use
@@ -98,13 +102,26 @@ export async function createDraft(input: Step1Input): Promise<{ error: string } 
   const effSubject = subjectTouched ? parsed.data.subject : undefined;
   const effSubjectMeta = subjectTouched ? parsed.data.subjectMeta : undefined;
 
-  const provenance = assignSubjectProvenance({
+  // T7 (spec §B): "Dane się zgadzają — dalej" is one act on a new valuation
+  // too, so the create carries the same confirmation `saveSubject` performs —
+  // the appraiser read this data on the screen they just submitted. The
+  // geocode entry is stamped here for the same reason `applySubjectUpdate`
+  // stamps it: the step-1 fetch resolved the address to the point in
+  // `subjectMeta` (no sample exists yet on a draft this new).
+  const assigned = assignSubjectProvenance({
     area: parsed.data.area,
     subject: effSubject,
     subjectMeta: effSubjectMeta,
     kw: parsed.data.kw,
     kwMeta: parsed.data.kwMeta,
-  });
+  }) as InputsProvenance;
+  const provenance = confirmKwEntries(
+    confirmSubjectEntries(
+      effSubjectMeta
+        ? { ...assigned, geocode: { source: "geokoder", status: "to_verify" } }
+        : assigned,
+    ),
+  );
 
   const inputs: KcsInput = {
     area: parsed.data.area,
@@ -118,24 +135,35 @@ export async function createDraft(input: Step1Input): Promise<{ error: string } 
     // Runtime-partial, type-full (advisor BLOCKER-1): weights/ratings arrive
     // at step 4; approvalGate default-denies missing entries, and every
     // unguarded provenance.weights read is reachable only once wr is set
-    // (Task 7 gating).
-    provenance: provenance as InputsProvenance,
+    // (Slice 11a gating).
+    provenance,
   };
 
-  const created = await valuationRepository.create({
-    address: parsed.data.address,
-    area: parsed.data.area,
-    wr: null,
-    inputs,
-    amountInWords: null,
-    docUrl: null,
-    purpose: parsed.data.purpose,
-    kwNumber:
-      parsed.data.kwNumber?.trim() || normalizedKw?.kwLokalu || normalizedKw?.kwGruntu || null,
-    client: parsed.data.client,
-    inspectionDate: null,
-    ownerId: session.user.id,
-  });
+  const created = await valuationRepository.create(
+    {
+      address: parsed.data.address,
+      area: parsed.data.area,
+      wr: null,
+      inputs,
+      amountInWords: null,
+      docUrl: null,
+      purpose: parsed.data.purpose,
+      kwNumber:
+        parsed.data.kwNumber?.trim() || normalizedKw?.kwLokalu || normalizedKw?.kwGruntu || null,
+      client: parsed.data.client,
+      inspectionDate: null,
+      ownerId: session.user.id,
+    },
+    // The confirmation above is an act of the appraiser's, so the trail names
+    // it — exactly as `saveSubject` does for the same button on an existing
+    // draft, and gated the same way (a KW confirmation with no extract
+    // attached would claim something that never happened).
+    {
+      confirmed: normalizedKw
+        ? (["subject_confirmed", "kw_confirmed"] as const)
+        : (["subject_confirmed"] as const),
+    },
+  );
 
   redirect(`/valuations/${created.id}?step=2`);
 }
@@ -197,6 +225,13 @@ export async function saveSubjectAction(
  * Step-3 (Próba) draft save. Comparables pass through
  * `assignSampleProvenance` unchanged — unlike features, the sample carries no
  * percentage-to-fraction conversion.
+ *
+ * A row arriving with its fetched id stripped and its label rewritten is
+ * caught inside the write transaction (`promoteStoredRcnRows`), not here: the
+ * check compares against the stored sample, and reading that from the action
+ * would put it outside the row lock — where a concurrent save makes it fail
+ * toward `manual`/`confirmed`, i.e. machine data presented as the appraiser's
+ * own (F-5).
  */
 export async function saveSampleAction(
   valuationId: string,
@@ -212,13 +247,12 @@ export async function saveSampleAction(
     return { error: firstIssueMessage(parsed.error) };
   }
 
-  const { comparables, geocode } = assignSampleProvenance(parsed.data);
+  const comparables = assignSampleProvenance(parsed.data);
 
   try {
     const updated = await valuationRepository.saveSample(valuationId, session.user, {
       comparables,
       sampleMeta: parsed.data.sampleMeta ?? null,
-      geocode,
     });
     if (!updated) {
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
