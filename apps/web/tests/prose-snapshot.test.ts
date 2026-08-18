@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   confirmProseSnapshot,
   mergeProseProposal,
+  PROSE_SECTIONS,
+  type ProseSection,
   type ProseSnapshot,
 } from "@/domain/prose-snapshot";
 import { AUDIT_ACTIONS, applyProseConfirmation, applyProseProposal } from "@/domain/valuation";
@@ -139,6 +141,73 @@ describe("mergeProseProposal — regeneration keeps the appraiser's text", () =>
 
   it("no previous snapshot -> the incoming proposal verbatim", () => {
     expect(mergeProseProposal(null, incoming)).toEqual(incoming);
+  });
+
+  it("fix round 1, finding 1: a legacy previous (no factsHashes map) does not throw", () => {
+    // A row persisted before eb09bcf carries `factsHash: string` and no
+    // per-section map at all — the type promises `factsHashes` is always
+    // present, but an untyped jsonb round trip does not honour that.
+    const legacy = {
+      sections: {
+        otoczenie: {
+          value: "Zabudowa wielorodzinna z lat 70.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+      },
+      rejected: {},
+      factsHash: "a".repeat(64),
+      model: "claude-sonnet-5",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+    } as unknown as ProseSnapshot;
+
+    expect(() => mergeProseProposal(legacy, incoming)).not.toThrow();
+  });
+
+  it("fix round 1, finding 2: a partial regeneration (T3) leaves sections outside the batch untouched, byte-for-byte", () => {
+    const allSix: ProseSnapshot = {
+      sections: Object.fromEntries(
+        PROSE_SECTIONS.map((s) => [
+          s,
+          {
+            value: `Tekst sekcji ${s}.`,
+            provenance: { source: "ai" as const, status: "to_verify" as const },
+          },
+        ]),
+      ) as ProseSnapshot["sections"],
+      rejected: {},
+      factsHashes: Object.fromEntries(PROSE_SECTIONS.map((s) => [s, "a".repeat(64)])),
+      model: "claude-sonnet-5",
+      generatedAt: "2026-08-01T09:00:00.000Z",
+    };
+    // T3 regenerates only the STALE/requested sections — a batch of 2, not
+    // all 6. The other 4 are simply absent from `incoming.sections` AND
+    // `incoming.factsHashes`, exactly as a partial proposal looks.
+    const partial: ProseSnapshot = {
+      sections: {
+        analiza_rynku: {
+          value: "Nowy tekst analiza_rynku.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+        uzasadnienie: {
+          value: "Nowy tekst uzasadnienie.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+      },
+      rejected: {},
+      factsHashes: { analiza_rynku: "e".repeat(64), uzasadnienie: "e".repeat(64) },
+      model: "claude-sonnet-5",
+      generatedAt: "2026-08-18T12:00:00.000Z",
+    };
+
+    const merged = mergeProseProposal(allSix, partial);
+
+    const untouched: ProseSection[] = ["opis_lokalu", "otoczenie", "zagospodarowanie", "standard"];
+    for (const section of untouched) {
+      expect(merged.sections[section]).toEqual(allSix.sections[section]);
+      expect(merged.factsHashes[section]).toBe(allSix.factsHashes[section]);
+    }
+    expect(merged.sections.analiza_rynku).toEqual(partial.sections.analiza_rynku);
+    expect(merged.sections.uzasadnienie).toEqual(partial.sections.uzasadnienie);
   });
 });
 

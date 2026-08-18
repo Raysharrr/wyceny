@@ -36,13 +36,38 @@ function canSee(row: Valuation, user: SessionUser): boolean {
 }
 
 /**
+ * A row's `prose`, normalized on read (fix round 1, finding 1): a snapshot
+ * persisted before `factsHashes` existed carries `factsHash: string` and no
+ * per-section map at all, even though the type says `factsHashes` is always
+ * an object — the jsonb column is untyped, so nothing enforced that at
+ * write time. Coerced to `{}` here, NOT translated from the old single
+ * `factsHash`: that value carries no per-section information, so
+ * synthesizing per-section entries from it would mark genuinely stale prose
+ * as fresh — the exact failure this feature exists to prevent. An empty
+ * object reads every confirmed section as stale instead, which is the
+ * promised migration behaviour (`ProseSnapshot.factsHashes` docstring): one
+ * regeneration per legacy draft on the next visit to step 6.
+ *
+ * This covers only the read path through {@link toValuation} — Task 4's
+ * in-transaction F-4 gate re-derives the fingerprint from the same jsonb
+ * without going through this function, which is exactly why the domain
+ * functions (`staleProseSections`, `mergeProseProposal`) are defended
+ * against the same missing field independently of this normalization.
+ */
+function normalizeProse(prose: ProseSnapshot | null | undefined): ProseSnapshot | null | undefined {
+  if (!prose) return prose;
+  return prose.factsHashes ? prose : { ...prose, factsHashes: {} };
+}
+
+/**
  * Narrows a raw Drizzle row to {@link Valuation}. `inputs` is an untyped
  * `jsonb` column at the schema level (the schema stays free of domain
  * types, F-10) — this is the one place its shape is asserted back to
  * `KcsInput | null`, since only the caller who wrote the row knows it.
  */
 function toValuation(row: typeof schema.valuation.$inferSelect): Valuation {
-  return { ...row, inputs: row.inputs as KcsInput | null };
+  const inputs = row.inputs as KcsInput | null;
+  return { ...row, inputs: inputs ? { ...inputs, prose: normalizeProse(inputs.prose) } : inputs };
 }
 
 type Tx = Parameters<Parameters<NodePgDatabase<typeof schema>["transaction"]>[0]>[0];

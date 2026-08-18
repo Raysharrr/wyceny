@@ -104,7 +104,12 @@ describe("audit_log per mutation", () => {
         },
       },
       rejected: { analiza_rynku: ["9 871,00"] },
-      factsHash: "a".repeat(64),
+      // T2 fix round 1: this must be a per-section map, not the old single
+      // `factsHash` string — the adapter now normalizes a legacy-shaped
+      // (single-hash) `prose` on read by adding an EMPTY `factsHashes`, so a
+      // fixture still using the old field would no longer round-trip
+      // byte-for-byte through `saveProse`/`toEqual` below.
+      factsHashes: { opis_lokalu: "a".repeat(64) },
       model: "claude-sonnet-5",
       generatedAt: "2026-08-18T07:30:00.000Z",
     };

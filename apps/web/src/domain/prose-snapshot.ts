@@ -106,6 +106,18 @@ function isAppraisers(entry: Sourced<string> | undefined): entry is Sourced<stri
  * answer different questions — "did THIS regeneration invalidate the text"
  * versus "does the STORED snapshot still match today's facts" — and default
  * oppositely on purpose.
+ *
+ * Symmetrically, a section ABSENT from the incoming batch (T3 partial
+ * regeneration: only stale sections are requested) must carry its WHOLE
+ * previous entry forward — text, status and provenance, not just the hash.
+ * Carrying only the hash left the text itself unset, so a 2-of-6 partial
+ * regeneration silently dropped the other 4 from the screen until something
+ * else happened to regenerate them (fix round 1, finding 2).
+ *
+ * `previous.factsHashes` is read with `?.` throughout: a row persisted
+ * before this field existed carries `factsHash: string` and no per-section
+ * map at all, and this function must stay total against that shape (fix
+ * round 1, finding 1 — same reasoning as `staleProseSections`).
  */
 export function mergeProseProposal(
   previous: ProseSnapshot | null | undefined,
@@ -119,17 +131,17 @@ export function mergeProseProposal(
   for (const section of PROSE_SECTIONS) {
     const kept = previous.sections[section];
     const incomingHash = incoming.factsHashes[section];
+    const previousHash = previous.factsHashes?.[section];
     if (isAppraisers(kept)) {
       // The appraiser's text survives regeneration — but if the facts BEHIND
       // THIS SECTION moved, it goes back to "to_verify": every character of
       // it predates the edit, and the fingerprint it would inherit says
       // otherwise.
-      const factsMoved =
-        incomingHash !== undefined && incomingHash !== previous.factsHashes[section];
+      const factsMoved = incomingHash !== undefined && incomingHash !== previousHash;
       sections[section] = factsMoved
         ? sourced(kept.value, kept.provenance.source, "to_verify")
         : kept;
-      factsHashes[section] = incomingHash ?? previous.factsHashes[section];
+      factsHashes[section] = incomingHash ?? previousHash;
       // No rejection reason next to a text the appraiser wrote — `sections`
       // and `rejected` stay disjoint.
       continue;
@@ -138,13 +150,20 @@ export function mergeProseProposal(
     if (fresh) {
       sections[section] = fresh;
       factsHashes[section] = incomingHash;
-    } else if (previous.factsHashes[section] !== undefined) {
-      factsHashes[section] = previous.factsHashes[section];
+    } else if (kept) {
+      // This section was not part of the incoming batch — carry the whole
+      // previous entry forward, not just its hash (see the docstring above).
+      sections[section] = kept;
+      if (previousHash !== undefined) factsHashes[section] = previousHash;
+    } else if (previousHash !== undefined) {
+      factsHashes[section] = previousHash;
     }
     // A rejection from the PREVIOUS run is not carried over: it explains a
-    // generation that no longer describes this snapshot.
+    // generation that no longer describes this snapshot. Nor is a rejection
+    // shown next to text just carried forward — `sections` and `rejected`
+    // stay disjoint.
     const reason = incoming.rejected[section];
-    if (reason && !fresh) rejected[section] = reason;
+    if (reason && !fresh && !kept) rejected[section] = reason;
   }
 
   return {

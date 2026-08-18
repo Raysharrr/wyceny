@@ -4,10 +4,11 @@ import {
   buildProseTransactions,
   resultPosition,
   selectProseSections,
+  staleProseSections,
   type ProseFacts,
 } from "@/domain/prose";
 import { currentSectionFactsHash, proseFactsHash } from "@/domain/prose-hash";
-import { PROSE_SECTIONS } from "@/domain/prose-snapshot";
+import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "@/domain/prose-snapshot";
 import { buildDocumentModel, formatNumber, formatPln } from "@/domain/document-model";
 import { computeKcs, type KcsInput, type KcsResult } from "@/domain/kcs";
 
@@ -604,5 +605,58 @@ describe("controller fixes after the T7 review", () => {
 
     expect(facts.proba).not.toHaveProperty("zakres_dat");
     expect(selectProseSections(facts)).toContain("analiza_rynku");
+  });
+});
+
+describe("staleProseSections", () => {
+  const sectionsWithText = (): ProseSnapshot["sections"] =>
+    Object.fromEntries(
+      PROSE_SECTIONS.map((s) => [
+        s,
+        {
+          value: `Tekst sekcji ${s}.`,
+          provenance: { source: "ai" as const, status: "to_verify" as const },
+        },
+      ]),
+    ) as ProseSnapshot["sections"];
+
+  it("fix round 1, finding 1: a legacy snapshot (no factsHashes map) reads every populated section as stale, without throwing", () => {
+    // Any row persisted before eb09bcf carries `factsHash: string` and no
+    // `factsHashes` object — the domain must stay total against that shape,
+    // not just the one this task's own adapter code writes.
+    const legacy = {
+      sections: sectionsWithText(),
+      rejected: {},
+      factsHash: "a".repeat(64),
+      model: "claude-sonnet-5",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+    } as unknown as ProseSnapshot;
+
+    let stale: ProseSection[] = [];
+    expect(() => {
+      stale = staleProseSections(
+        legacy,
+        { address: ADDRESS, inputs: INPUTS },
+        currentSectionFactsHash,
+      );
+    }).not.toThrow();
+    expect([...stale].sort()).toEqual([...PROSE_SECTIONS].sort());
+  });
+
+  it("a snapshot whose per-section hashes match today's facts has nothing stale", () => {
+    const factsHashes = Object.fromEntries(
+      PROSE_SECTIONS.map((s) => [
+        s,
+        currentSectionFactsHash(s, { address: ADDRESS, inputs: INPUTS }),
+      ]),
+    ) as Partial<Record<ProseSection, string>>;
+
+    expect(
+      staleProseSections(
+        { sections: sectionsWithText(), factsHashes },
+        { address: ADDRESS, inputs: INPUTS },
+        currentSectionFactsHash,
+      ),
+    ).toEqual([]);
   });
 });

@@ -347,6 +347,14 @@ export function selectProseSections(facts: ProseFacts): ProseSection[] {
  * `currentSectionFactsHash` needs `node:crypto`, which lives only in
  * `prose-hash.ts`. The caller — a Server Component or a server action —
  * supplies `currentSectionFactsHash` itself.
+ *
+ * `snapshot.factsHashes` is read with `?.` on purpose: a row persisted
+ * before this field existed carries `factsHash: string` and no per-section
+ * map at all. The type says it is always an object; an untyped jsonb round
+ * trip does not honour that, and this function must stay total for a
+ * snapshot that never passed through the adapter's own normalization
+ * (fix round 1, finding 1 — Task 4 reads the same jsonb inside a
+ * transaction, bypassing that adapter path entirely).
  */
 export function staleProseSections(
   snapshot: Pick<ProseSnapshot, "sections" | "factsHashes"> | null | undefined,
@@ -356,7 +364,7 @@ export function staleProseSections(
   if (!snapshot) return [];
   return PROSE_SECTIONS.filter((section) => {
     if (!snapshot.sections[section]) return false;
-    return snapshot.factsHashes[section] !== currentHash(section, input);
+    return snapshot.factsHashes?.[section] !== currentHash(section, input);
   });
 }
 
