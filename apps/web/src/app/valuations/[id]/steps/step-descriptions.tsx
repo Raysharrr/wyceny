@@ -26,7 +26,10 @@ import type { Provenance } from "@wyceny/shared";
  * reason rather than an empty box.
  */
 const MISSING_DATA_HINT: Record<ProseSection, string> = {
-  analiza_rynku: "Próba bez dat albo bez powierzchni transakcji — napisz tę sekcję ręcznie.",
+  // Missing dates or areas no longer withhold this section: the aggregate is
+  // simply absent and the model drops that thread. What withholds it now is
+  // having no usable sample at all (writing the help page caught the drift).
+  analiza_rynku: "Brak użytecznej próby porównawczej — napisz tę sekcję ręcznie.",
   opis_lokalu: "Brak notatki z oględzin — napisz opis ręcznie.",
   otoczenie: "Brak notatki z oględzin — napisz opis ręcznie.",
   zagospodarowanie: "Brak notatki z oględzin i danych ewidencyjnych — napisz opis ręcznie.",

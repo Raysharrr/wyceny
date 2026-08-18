@@ -15,7 +15,11 @@ export const WIZARD_STEPS = [
 /**
  * Soft gating (spec decision 1): the furthest reachable step is DERIVED from
  * what the draft already holds — no separate progress state to migrate or
- * desync. Steps 2 (photos) and 6 (placeholder) are optional pass-throughs.
+ * desync. Step 2 (photos) is an optional pass-through. Step 6 is NOT, and has
+ * not been since ADR-014: it generates the operat's descriptive sections and
+ * the F-4 gate refuses approval without them. The derivation below is
+ * unchanged and still correct — step 6 opens once the calculation is
+ * confirmed — only this comment had gone stale.
  */
 export function maxReachedStep(v: Pick<Valuation, "status" | "wr" | "inputs">): number {
   if (v.status !== "in_progress" || v.wr != null) return 7;
