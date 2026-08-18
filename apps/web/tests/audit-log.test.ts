@@ -15,8 +15,12 @@ import {
   withConfirmedProse,
 } from "./fixtures/valuation-inputs";
 
-/** FR-12/NFR-6: every mutation leaves exactly one typed audit row, written
- * transactionally with the mutation itself. */
+/** FR-12/NFR-6: every mutation leaves its typed audit row(s), written
+ * transactionally with the mutation itself. Since T7 a wizard step save is
+ * TWO recorded acts — the write and the appraiser's confirmation of it —
+ * because after T8 the save is the only place a confirmation can happen, and
+ * a trail that stopped recording it would stop showing who vouched for the
+ * data under the signature. */
 const owner: SessionUser = { id: "user-audit", role: "appraiser" };
 const repo = valuationRepo(db);
 
@@ -190,7 +194,7 @@ describe("audit_log per mutation", () => {
     expect(rows[2].meta).toEqual({ sections: ["opis_lokalu"] });
   });
 
-  it("saveSubject writes a 'subject_updated' row", async () => {
+  it("saveSubject writes 'subject_updated' + the confirmations that save performs", async () => {
     const v = await repo.create({
       ...valuationInput(owner.id, "Audit Subject"),
       wr: null,
@@ -213,10 +217,57 @@ describe("audit_log per mutation", () => {
     };
     await repo.saveSubject(v.id, owner, update);
     const rows = await auditRows(v.id);
-    expect(rows.map((r) => r.action)).toEqual(["created", "subject_updated"]);
+    // No `kw_confirmed`: this update attaches no KW extract, so there is
+    // nothing of the sort for the appraiser to have confirmed.
+    expect(rows.map((r) => r.action)).toEqual(["created", "subject_updated", "subject_confirmed"]);
   });
 
-  it("saveSample writes a 'sample_updated' row", async () => {
+  it("saveSubject with a KW extract attached records the kw confirmation too", async () => {
+    const v = await repo.create({
+      ...valuationInput(owner.id, "Audit Subject KW"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+    const update: SubjectUpdate = {
+      address: "ul. Klonowa 4, m. Nowogród",
+      area: 33,
+      purpose: "sprzedaz",
+      kwNumber: "KW-TEST-1",
+      client: "p. Jan Testowy",
+      subject: null,
+      subjectMeta: null,
+      kw: {
+        source: "odpis_kw",
+        kwLokalu: "KW-TEST-1",
+        kwGruntu: "KW-TEST-1",
+        kwInne: [],
+        deweloperski: false,
+        powUzytkowaKw: null,
+        udzial: null,
+        sad: null,
+        wydzial: null,
+        dataDokumentu: null,
+        dzial3: null,
+        dzial4: null,
+      },
+      kwMeta: null,
+      provenance: {
+        address: { source: "rzeczoznawca", status: "confirmed" },
+        area: { source: "rzeczoznawca", status: "confirmed" },
+        kw: { source: "odpis_kw", status: "to_verify" },
+      },
+    };
+    await repo.saveSubject(v.id, owner, update);
+    const rows = await auditRows(v.id);
+    expect(rows.map((r) => r.action)).toEqual([
+      "created",
+      "subject_updated",
+      "subject_confirmed",
+      "kw_confirmed",
+    ]);
+  });
+
+  it("saveSample writes 'sample_updated' + 'sample_confirmed'", async () => {
     const v = await repo.create({
       ...valuationInput(owner.id, "Audit Sample"),
       wr: null,
@@ -228,10 +279,10 @@ describe("audit_log per mutation", () => {
     };
     await repo.saveSample(v.id, owner, update);
     const rows = await auditRows(v.id);
-    expect(rows.map((r) => r.action)).toEqual(["created", "sample_updated"]);
+    expect(rows.map((r) => r.action)).toEqual(["created", "sample_updated", "sample_confirmed"]);
   });
 
-  it("saveFeatures writes a 'features_updated' row", async () => {
+  it("saveFeatures writes 'features_updated' + 'features_confirmed'", async () => {
     const v = await repo.create({
       ...valuationInput(owner.id, "Audit Features"),
       wr: null,
@@ -246,7 +297,11 @@ describe("audit_log per mutation", () => {
     };
     await repo.saveFeatures(v.id, owner, update);
     const rows = await auditRows(v.id);
-    expect(rows.map((r) => r.action)).toEqual(["created", "features_updated"]);
+    expect(rows.map((r) => r.action)).toEqual([
+      "created",
+      "features_updated",
+      "features_confirmed",
+    ]);
   });
 
   it("confirmCalculation writes a 'calculation_confirmed' row", async () => {

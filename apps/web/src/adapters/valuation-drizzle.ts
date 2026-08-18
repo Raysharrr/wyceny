@@ -307,7 +307,13 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         if (!row) return null;
         const valuation = toValuation(row);
         if (valuation.ownerId !== user.id) return null;
-        const updated = applySubjectUpdate(valuation, u);
+        // T7 (spec §B): the step-1 button is one act — "Dane się zgadzają —
+        // dalej" saves AND confirms, in this transaction, while the data is
+        // still on the appraiser's screen. `confirmKwProvenance` is called
+        // unconditionally: with no KW extract on the draft it is a no-op.
+        const updated = confirmKwProvenance(
+          confirmSubjectProvenance(applySubjectUpdate(valuation, u)),
+        );
         const [saved] = await tx
           .update(schema.valuation)
           .set({
@@ -328,6 +334,14 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           action: "subject_updated",
           meta: { kwAttached: u.kw != null },
         });
+        // The confirmation is recorded as its own act, under the same
+        // vocabulary the step-7 buttons used: after T8 this save is the ONLY
+        // confirm path, and a trail that stopped naming the confirmation
+        // would stop showing who vouched for the data under the signature.
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "subject_confirmed" });
+        if (u.kw != null) {
+          await insertAudit(tx, { valuationId: id, actorId: user.id, action: "kw_confirmed" });
+        }
         return toValuation(saved);
       });
     },
@@ -342,7 +356,9 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         if (!row) return null;
         const valuation = toValuation(row);
         if (valuation.ownerId !== user.id) return null;
-        const updated = applySampleUpdate(valuation, u);
+        // T7: "Zatwierdź próbę i dalej" really does confirm the sample — see
+        // saveSubject above for why the two halves share one transaction.
+        const updated = confirmSampleProvenance(applySampleUpdate(valuation, u));
         const [saved] = await tx
           .update(schema.valuation)
           .set({ inputs: updated.inputs, wr: null })
@@ -355,6 +371,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           action: "sample_updated",
           meta: { count: u.comparables.length },
         });
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "sample_confirmed" });
         return toValuation(saved);
       });
     },
@@ -373,7 +390,8 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         if (!row) return null;
         const valuation = toValuation(row);
         if (valuation.ownerId !== user.id) return null;
-        const updated = applyFeaturesUpdate(valuation, u);
+        // T7: "Zatwierdź cechy i dalej" — same one-act shape as the two above.
+        const updated = confirmFeaturesProvenance(applyFeaturesUpdate(valuation, u));
         const [saved] = await tx
           .update(schema.valuation)
           .set({ inputs: updated.inputs, wr: null })
@@ -386,6 +404,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           action: "features_updated",
           meta: { count: u.features.length },
         });
+        await insertAudit(tx, { valuationId: id, actorId: user.id, action: "features_confirmed" });
         return toValuation(saved);
       });
     },
