@@ -433,6 +433,44 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       });
     },
 
+    async proseUsage(
+      id: string,
+      user: SessionUser,
+    ): Promise<{ generations: number; inputTokens: number; outputTokens: number }> {
+      return db.transaction(async (tx) => {
+        // No `setAppRole` here, unlike `get`: the RLS defence-in-depth layer
+        // covers `valuation` alone — `audit_log` carries no grant to
+        // `app_role` (drizzle/0003, 0009), so switching role would turn this
+        // read into a permission error rather than an isolation win.
+        // Ownership is therefore enforced the way every mutation on this repo
+        // enforces it: in the app layer, before the audit rows are touched.
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        // Zeros, not null: an invisible valuation must read exactly like one
+        // nobody has generated for (no existence leak, see the port docs).
+        if (!row || !canSee(toValuation(row), user)) {
+          return { generations: 0, inputTokens: 0, outputTokens: 0 };
+        }
+
+        // `jsonb_typeof` guard: a `prose_generated` row written before the
+        // token fields existed has no such keys, and the trail is append-only
+        // (F-7) so it cannot be backfilled. It still counts as a generation —
+        // it happened — but contributes nothing to the sums, and a bare cast
+        // would raise on anything non-numeric that ever reached the column.
+        const meta = schema.auditLog.meta;
+        const [usage] = await tx
+          .select({
+            generations: sql<number>`count(*)::int`,
+            inputTokens: sql<number>`coalesce(sum(case when jsonb_typeof(${meta} -> 'inputTokens') = 'number' then (${meta} ->> 'inputTokens')::bigint end), 0)::int`,
+            outputTokens: sql<number>`coalesce(sum(case when jsonb_typeof(${meta} -> 'outputTokens') = 'number' then (${meta} ->> 'outputTokens')::bigint end), 0)::int`,
+          })
+          .from(schema.auditLog)
+          .where(
+            and(eq(schema.auditLog.valuationId, id), eq(schema.auditLog.action, "prose_generated")),
+          );
+        return usage ?? { generations: 0, inputTokens: 0, outputTokens: 0 };
+      });
+    },
+
     async confirmProse(
       id: string,
       user: SessionUser,

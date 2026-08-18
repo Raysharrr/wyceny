@@ -7,6 +7,7 @@ import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { ApprovalBlockedError, InputsChangedError, assertNotSigned } from "../src/domain/valuation";
 import { buildPhotoKey } from "../src/domain/inspection";
 import type { KcsInput } from "../src/domain/kcs";
+import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
 import {
   approvableInputs,
@@ -604,5 +605,106 @@ describe("toValuation — normalizeProse (T2 fix round 2: legacy jsonb, read thr
     const read = await repo.get(created.id, appraiserA);
 
     expect(read?.inputs?.prose).toBeFalsy();
+  });
+});
+
+/**
+ * `proseUsage` — the read side of the `prose_generated` audit rows (T5).
+ *
+ * Step 6 shows the appraiser what the generations have already cost before
+ * offering another one, and the only record of that cost is the audit trail.
+ * Rows written for a run whose every section was rejected count too: those
+ * tokens were spent.
+ */
+describe("proseUsage (integration, real Postgres)", () => {
+  const generated = (over: Partial<ProseSnapshot> = {}): ProseSnapshot => ({
+    sections: {
+      opis_lokalu: {
+        value: "Lokal obejmuje dwa pokoje z kuchnią.",
+        provenance: { source: "ai", status: "to_verify" },
+      },
+    },
+    rejected: {},
+    factsHashes: { opis_lokalu: "a".repeat(64) },
+    model: "claude-sonnet-5",
+    generatedAt: "2026-08-18T07:30:00.000Z",
+    ...over,
+  });
+
+  async function draftWithGenerations(address: string) {
+    const v = await repo.create({
+      ...valuationInput(appraiserA.id, address),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+    await repo.saveProse(v.id, appraiserA, generated(), { inputTokens: 3120, outputTokens: 480 });
+    // A second run whose every section the worker's guard refused — no text,
+    // full bill.
+    await repo.saveProse(
+      v.id,
+      appraiserA,
+      generated({ sections: {}, rejected: { opis_lokalu: ["9 871,00"] } }),
+      { inputTokens: 2900, outputTokens: 0 },
+    );
+    return v;
+  }
+
+  it("sums the tokens over every generation, the wholly rejected one included", async () => {
+    const v = await draftWithGenerations("Prose Usage Sum");
+
+    expect(await repo.proseUsage(v.id, appraiserA)).toEqual({
+      generations: 2,
+      inputTokens: 6020,
+      outputTokens: 480,
+    });
+  });
+
+  it("a draft nobody has generated for costs nothing", async () => {
+    const v = await repo.create({
+      ...valuationInput(appraiserA.id, "Prose Usage Zero"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+
+    expect(await repo.proseUsage(v.id, appraiserA)).toEqual({
+      generations: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+  });
+
+  it("another appraiser reads zeros — the same non-answer `get` gives (F-8)", async () => {
+    const v = await draftWithGenerations("Prose Usage Foreign");
+
+    expect(await repo.proseUsage(v.id, appraiserB)).toEqual({
+      generations: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+  });
+
+  it("an admin sees the owner's cost, exactly as they can see the draft", async () => {
+    const v = await draftWithGenerations("Prose Usage Admin");
+
+    expect((await repo.proseUsage(v.id, admin)).generations).toBe(2);
+  });
+
+  it("a prose_generated row predating the token fields counts as a generation, not as NaN", async () => {
+    // The audit trail is append-only (F-7): rows written before `saveProse`
+    // recorded usage cannot be backfilled, and one of them must not turn the
+    // whole sum into null.
+    const v = await draftWithGenerations("Prose Usage Legacy");
+    await db.insert(schema.auditLog).values({
+      valuationId: v.id,
+      actorId: appraiserA.id,
+      action: "prose_generated",
+      meta: { model: "claude-sonnet-5", sections: ["opis_lokalu"] },
+    });
+
+    expect(await repo.proseUsage(v.id, appraiserA)).toEqual({
+      generations: 3,
+      inputTokens: 6020,
+      outputTokens: 480,
+    });
   });
 });

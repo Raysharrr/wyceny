@@ -138,6 +138,23 @@ export interface PortValuation {
     usage: { inputTokens: number; outputTokens: number },
   ): Promise<Valuation | null>;
   /**
+   * Token usage recorded on this valuation's `prose_generated` audit rows —
+   * what the descriptions have cost so far, which step 6 shows the appraiser
+   * before offering another generation (T5). The audit trail is the only
+   * record of it: `saveProse` writes the row even when every section was
+   * rejected, because those tokens were spent, so this sums MONEY SPENT
+   * rather than sections delivered.
+   *
+   * Unlike every other read here it returns no `null`: an invisible or
+   * missing valuation reports zeros, which is both true (the caller has no
+   * cost to show) and free of an existence leak. Same ownership rule as
+   * `get` (admin → any; appraiser → only their own).
+   */
+  proseUsage(
+    id: string,
+    user: SessionUser,
+  ): Promise<{ generations: number; inputTokens: number; outputTokens: number }>;
+  /**
    * Step-6 (Opisy) submit: the appraiser's texts become
    * `rzeczoznawca`/`confirmed` and one `prose_confirmed` row is written in the
    * same transaction. `texts` are PLAIN STRINGS — the browser never sends
