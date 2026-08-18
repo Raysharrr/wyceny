@@ -114,6 +114,19 @@ function isAppraisers(entry: Sourced<string> | undefined): entry is Sourced<stri
  * regeneration silently dropped the other 4 from the screen until something
  * else happened to regenerate them (fix round 1, finding 2).
  *
+ * A section that WAS requested this run but whose text the worker's guard
+ * rejected looks, on the wire, almost like the case above: `incoming.sections`
+ * has no entry for it either. The one difference is `incoming.rejected` DOES
+ * have an entry — and that reason must survive into the merge even though old
+ * text is carried forward alongside it (T3 ruling 2). Here `sections` and
+ * `rejected` stop being disjoint on purpose: the carried-forward text is
+ * still the best available content, but silently keeping it with no reason
+ * attached would make a failed regeneration indistinguishable from a section
+ * nobody asked about — the appraiser clicks "Wygeneruj ponownie", nothing on
+ * screen changes, and nothing says why. Whether both are shown together is a
+ * rendering decision (Task 5); this function only has to stop discarding one
+ * of them.
+ *
  * Both `previous.factsHashes` and `incoming.factsHashes` are read with `?.`
  * throughout: a row persisted before this field existed carries
  * `factsHash: string` and no per-section map at all, and this function must
@@ -154,19 +167,31 @@ export function mergeProseProposal(
       sections[section] = fresh;
       factsHashes[section] = incomingHash;
     } else if (kept) {
-      // This section was not part of the incoming batch — carry the whole
-      // previous entry forward, not just its hash (see the docstring above).
+      // Either this section was not part of the incoming batch, or it WAS
+      // requested and the worker's guard rejected the output (T3 ruling 2) —
+      // either way there is no fresh text, so carry the whole previous entry
+      // forward, not just its hash (see the docstring above).
       sections[section] = kept;
       if (previousHash !== undefined) factsHashes[section] = previousHash;
     } else if (previousHash !== undefined) {
       factsHashes[section] = previousHash;
     }
     // A rejection from the PREVIOUS run is not carried over: it explains a
-    // generation that no longer describes this snapshot. Nor is a rejection
-    // shown next to text just carried forward — `sections` and `rejected`
-    // stay disjoint.
+    // generation that no longer describes this snapshot — `reason` below is
+    // read from `incoming.rejected` alone, never `previous.rejected`.
+    //
+    // T3 ruling 2: a rejection from THIS run IS kept even when old text was
+    // carried forward (`kept`), on purpose — `sections` and `rejected` are no
+    // longer disjoint for this one case. Without it, a section that was
+    // re-requested because its facts moved, then failed the worker's number
+    // guard, would show its stale carried-forward text with NO indication a
+    // regeneration was even attempted — indistinguishable from a section
+    // nobody asked about. The old text is still the best available content,
+    // so it stays; the reason it could not be refreshed has to survive
+    // alongside it. Whether the UI renders both together is Task 5's
+    // decision — this only guarantees neither is silently dropped.
     const reason = incoming.rejected[section];
-    if (reason && !fresh && !kept) rejected[section] = reason;
+    if (reason && !fresh) rejected[section] = reason;
   }
 
   return {

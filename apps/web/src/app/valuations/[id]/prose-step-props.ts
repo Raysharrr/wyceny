@@ -1,5 +1,5 @@
-import { buildProseFacts, selectProseSections } from "@/domain/prose";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { buildProseFacts, selectProseSections, staleProseSections } from "@/domain/prose";
+import { currentSectionFactsHash } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import type { StepDescriptionsProps } from "./steps/step-descriptions";
 import type { Valuation } from "@/ports/valuation";
@@ -25,9 +25,12 @@ export function proseStepProps(v: Valuation): Omit<StepDescriptionsProps, "valua
   const input = { address: v.address, inputs: v.inputs };
   return {
     prose,
-    // A mismatch means the proposals describe a draft that has since moved on
-    // — a non-blocking signal that asks for a regeneration, not a refusal.
-    upToDate: prose != null && prose.factsHash === currentProseFactsHash(input),
+    // T2 replaced the one whole-valuation fingerprint with one per section
+    // (`factsHashes`) — "up to date" now means no PERSISTED section has gone
+    // stale, aggregated over all of them. A mismatch is a non-blocking
+    // signal that asks for a (T3: per-section) regeneration, not a refusal.
+    upToDate:
+      prose != null && staleProseSections(prose, input, currentSectionFactsHash).length === 0,
     generatableSections: selectProseSections(buildProseFacts(input)),
   };
 }

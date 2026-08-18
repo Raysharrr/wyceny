@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { proseStepProps } from "@/app/valuations/[id]/prose-step-props";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHash } from "@/domain/prose-hash";
 import type { KcsInput } from "@/domain/kcs";
 import type { ProseSnapshot } from "@/domain/prose-snapshot";
 import type { Valuation } from "@/ports/valuation";
@@ -37,7 +37,11 @@ const INPUTS: KcsInput = {
   },
 };
 
-const prose = (factsHash: string): ProseSnapshot => ({
+// T2 moved the fingerprint from one per valuation to one per SECTION — this
+// fixture carries a single section (opis_lokalu) so a mismatch on that one
+// section is enough to make the whole draft read as not up to date, which is
+// exactly what the pre-T2 whole-valuation fingerprint used to mean.
+const prose = (opisLokaluHash: string): ProseSnapshot => ({
   sections: {
     opis_lokalu: {
       value: "Lokal obejmuje dwa pokoje z kuchnią.",
@@ -45,7 +49,7 @@ const prose = (factsHash: string): ProseSnapshot => ({
     },
   },
   rejected: {},
-  factsHash,
+  factsHashes: { opis_lokalu: opisLokaluHash },
   model: "claude-sonnet-5",
   generatedAt: "2026-08-18T07:30:00.000Z",
 });
@@ -55,7 +59,7 @@ const draft = (inputs: KcsInput | null): Valuation =>
 
 describe("proseStepProps", () => {
   it("a fingerprint matching the current facts reads as up to date", () => {
-    const current = currentProseFactsHash({ address: ADDRESS, inputs: INPUTS });
+    const current = currentSectionFactsHash("opis_lokalu", { address: ADDRESS, inputs: INPUTS });
 
     const props = proseStepProps(draft({ ...INPUTS, prose: prose(current) }));
 

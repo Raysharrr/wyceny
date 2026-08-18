@@ -20,9 +20,14 @@ import { approvableInput } from "./fixtures/valuation-inputs";
  *    which are absent); a `rzeczoznawca`/`confirmed` section keeps ITS text
  *    and ITS provenance. Losing accepted text would be silent and
  *    irreversible, and the operat has legal effects.
- *  - **`sections` and `rejected` stay disjoint.** A section either carries
- *    text or carries the reason it has none — never both, or the step would
- *    show a rejection hint under a text the appraiser accepted.
+ *  - **A rejection never disappears next to text that survived it.** For an
+ *    appraiser's own text, `sections` and `rejected` stay disjoint — no
+ *    rejection reason is ever attached, because the appraiser's text was
+ *    never at risk of being replaced. For carried-forward `ai` text, the two
+ *    are NOT disjoint (T3 ruling 2): a section re-requested because its
+ *    facts moved, then rejected by the worker's number guard, keeps its old
+ *    text AND the reason it could not be refreshed — otherwise a failed
+ *    regeneration looks identical to a section nobody ever asked about.
  *
  * F-9: every address and number below is INVENTED (ul. Klonowa, m. Nowogród).
  */
@@ -137,6 +142,31 @@ describe("mergeProseProposal — regeneration keeps the appraiser's text", () =>
     const merged = mergeProseProposal(previous, incoming);
 
     expect(merged.rejected).toEqual({ uzasadnienie: [] });
+  });
+
+  // T3 ruling 2. otoczenie is AI-authored (not the appraiser's), carried
+  // forward from a PRIOR successful generation. This run re-requests it —
+  // its facts moved — and the worker's number guard rejects the fresh
+  // attempt: no `incoming.sections.otoczenie`, but a reason in
+  // `incoming.rejected.otoczenie`. Before this fix, `&& !kept` silently
+  // dropped that reason whenever carried-forward text existed to fall back
+  // to: the appraiser clicks "Wygeneruj ponownie", the text on screen does
+  // not change, and nothing says a regeneration was even attempted — a
+  // failed run made indistinguishable from a section nobody asked about.
+  // `sections` and `rejected` are no longer disjoint for this case, and that
+  // is deliberate: the old text is still the best available content, but the
+  // reason it could not be refreshed must survive too. Rendering that is
+  // Task 5's job — this only has to keep the data from disappearing.
+  it("T3 ruling 2: a rejected regeneration keeps the old text but the rejection reason must survive too", () => {
+    const merged = mergeProseProposal(previous, {
+      ...incoming,
+      sections: { standard: incoming.sections.standard! }, // otoczenie not fresh this run
+      rejected: { otoczenie: ["1 234,00"] },
+      factsHashes: { standard: incoming.factsHashes.standard, otoczenie: "c".repeat(64) },
+    });
+
+    expect(merged.sections.otoczenie).toEqual(previous.sections.otoczenie);
+    expect(merged.rejected.otoczenie).toEqual(["1 234,00"]);
   });
 
   it("no previous snapshot -> the incoming proposal verbatim", () => {

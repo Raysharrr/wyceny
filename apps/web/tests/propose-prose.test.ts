@@ -27,8 +27,10 @@ import { proposeProse } from "../src/app/actions/propose-prose";
 import { proseProposal, valuationRepository } from "@/app/valuations/_deps";
 import { PROSE_WORKER_RESPONDED_PREFIX, ProseWorkerDetailError } from "@/adapters/prose-http";
 import { buildProseFacts } from "@/domain/prose";
-import { currentProseFactsHash } from "@/domain/prose-hash";
+import { currentSectionFactsHash } from "@/domain/prose-hash";
+import { confirmedProseFor } from "./fixtures/valuation-inputs";
 import type { KcsInput } from "@/domain/kcs";
+import type { ProseSection } from "@/domain/prose-snapshot";
 import type { Valuation } from "@/ports/valuation";
 
 const fetchProposalMock = vi.mocked(proseProposal.fetchProposal);
@@ -80,6 +82,46 @@ const PROPOSAL = {
   model: "claude-sonnet-5",
   usage: { inputTokens: 3120, outputTokens: 480 },
 };
+
+/** All six sections, in the same order `PROSE_SECTIONS` — the request shape when nothing is persisted yet. */
+const ALL_SECTIONS: ProseSection[] = [
+  "analiza_rynku",
+  "opis_lokalu",
+  "otoczenie",
+  "zagospodarowanie",
+  "standard",
+  "uzasadnienie",
+];
+
+/**
+ * A draft with all six sections already `rzeczoznawca`/`confirmed`
+ * (`confirmedProseFor`, fingerprinted against the ORIGINAL `INPUTS`), then
+ * ONE comparable's price edited. `analiza_rynku` and `uzasadnienie` are the
+ * only sections whose fact subset includes `proba`/the transactions
+ * (`PROSE_SECTION_FACTS`, `SECTIONS_USING_TRANSACTIONS` — T1), so editing a
+ * price invalidates exactly those two and leaves the other four's fingerprint
+ * untouched.
+ *
+ * Deliberately appraiser-authored, not `ai` (T3 ruling 1): the sections the
+ * appraiser already wrote are NOT excluded from the batch — only ordering
+ * them lets `mergeProseProposal` demote a stale one from `confirmed` back to
+ * `to_verify` and force a re-read. Excluding them here would leave this test
+ * unable to tell that guarantee apart from one that simply skips appraiser
+ * sections entirely.
+ */
+function setupWithStaleSample() {
+  const prose = confirmedProseFor(ADDRESS, INPUTS);
+  const editedInputs: KcsInput = {
+    ...INPUTS,
+    comparables: INPUTS.comparables.map((c, i) =>
+      i === 0 ? { ...c, pricePerM2: c.pricePerM2 + 500 } : c,
+    ),
+  };
+  getMock.mockResolvedValue({ ...draft, inputs: { ...editedInputs, prose } });
+  fetchProposalMock.mockResolvedValue(PROPOSAL);
+  saveProseMock.mockResolvedValue(draft);
+  return { fetchProposal: fetchProposalMock };
+}
 
 beforeEach(() => {
   getSessionMock.mockReset();
@@ -176,15 +218,9 @@ describe("proposeProse — happy path", () => {
     const facts = buildProseFacts({ address: ADDRESS, inputs: INPUTS });
     expect(fetchProposalMock).toHaveBeenCalledWith({
       token: expect.stringMatching(/^\d+\.[0-9a-f]+\.[0-9a-f]{64}$/),
-      sections: [
-        "analiza_rynku",
-        "opis_lokalu",
-        "otoczenie",
-        // No EGiB snapshot here — the inspection note alone keeps this one alive.
-        "zagospodarowanie",
-        "standard",
-        "uzasadnienie",
-      ],
+      // draft.inputs.prose is undefined — every generatable section counts as
+      // MISSING, so T3's selection sends all six, same as before T3 existed.
+      sections: ALL_SECTIONS,
       facts,
       transactions: [
         { data: "11-2024", cena_m2: 9240 },
@@ -201,10 +237,19 @@ describe("proposeProse — happy path", () => {
         },
       },
       rejected: PROPOSAL.rejected,
-      // Over the facts AND the transactions (review I-2): the worker derives
-      // `proba.trend_cen` from the latter, so a facts-only fingerprint would
-      // miss an edit that reverses the trend the operat asserts.
-      factsHash: currentProseFactsHash({ address: ADDRESS, inputs: INPUTS }),
+      // T2 moved the fingerprint from one hash for the whole valuation to one
+      // per section; T3 stamps it only for the sections actually REQUESTED —
+      // here, all six. Each one is over its own fact subset AND (for
+      // `analiza_rynku`/`uzasadnienie`) the transactions (review I-2): the
+      // worker derives `proba.trend_cen` from the latter, so a facts-only
+      // fingerprint would miss an edit that reverses the trend the operat
+      // asserts.
+      factsHashes: Object.fromEntries(
+        ALL_SECTIONS.map((section) => [
+          section,
+          currentSectionFactsHash(section, { address: ADDRESS, inputs: INPUTS }),
+        ]),
+      ),
       model: "claude-sonnet-5",
       generatedAt: "2026-08-18T07:30:00.000Z",
     };
@@ -213,6 +258,57 @@ describe("proposeProse — happy path", () => {
       outputTokens: 480,
     });
     expect(result).toEqual({ prose: expectedSnapshot });
+  });
+});
+
+describe("proposeProse — regenerates only the sections whose facts moved (T3)", () => {
+  it("regenerates only the sections whose facts moved", async () => {
+    const { fetchProposal } = setupWithStaleSample();
+
+    await proposeProse(VALUATION_ID);
+
+    expect(fetchProposal.mock.calls[0]![0].sections.sort()).toEqual([
+      "analiza_rynku",
+      "uzasadnienie",
+    ]);
+  });
+
+  it("a draft where nothing moved is not regenerated at all — the current prose comes back untouched", async () => {
+    // Same fixture as above but WITHOUT the price edit: every section is
+    // both present and fresh, so the T3 selection is empty and the action
+    // must not call the worker at all.
+    const prose = confirmedProseFor(ADDRESS, INPUTS);
+    getMock.mockResolvedValue({ ...draft, inputs: { ...INPUTS, prose } });
+
+    const result = await proposeProse(VALUATION_ID);
+
+    expect(fetchProposalMock).not.toHaveBeenCalled();
+    expect(saveProseMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ prose });
+  });
+
+  it("opts.sections forces a named section even when it is not stale — the appraiser's own 'redo this one'", async () => {
+    const { fetchProposal } = setupWithStaleSample();
+
+    // otoczenie is untouched by the price edit — not stale — yet an explicit
+    // request for it must still reach the worker: opts bypasses the
+    // missing-or-stale filter entirely, it does not narrow it further.
+    await proposeProse(VALUATION_ID, { sections: ["otoczenie"] });
+
+    expect(fetchProposal.mock.calls[0]![0].sections).toEqual(["otoczenie"]);
+  });
+
+  it("opts.sections never asks for a section today's facts cannot back", async () => {
+    fetchProposalMock.mockResolvedValue(PROPOSAL);
+    saveProseMock.mockResolvedValue(draft);
+    // No inspection note: otoczenie is not generatable at all from these
+    // facts (mirrors the "offers only the sections today's facts can back"
+    // case in prose-step-props.test.ts) — uzasadnienie is unaffected.
+    getMock.mockResolvedValue({ ...draft, inputs: { ...INPUTS, inspection: undefined } });
+
+    await proposeProse(VALUATION_ID, { sections: ["otoczenie", "uzasadnienie"] });
+
+    expect(fetchProposalMock.mock.calls[0]![0].sections).toEqual(["uzasadnienie"]);
   });
 });
 
