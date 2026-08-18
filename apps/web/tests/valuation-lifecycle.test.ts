@@ -3,7 +3,12 @@ import {
   AUDIT_ACTIONS,
   ApprovalBlockedError,
   NotSignableError,
+  applyFeaturesUpdate,
+  applySampleUpdate,
+  applySubjectUpdate,
   approveValuation,
+  type FeaturesUpdate,
+  type SubjectUpdate,
   confirmFeaturesProvenance,
   confirmKwProvenance,
   confirmSampleProvenance,
@@ -12,7 +17,7 @@ import {
   signValuation,
 } from "../src/domain/valuation";
 import type { Valuation } from "../src/ports/valuation";
-import type { KcsInput } from "../src/domain/kcs";
+import type { Comparable, KcsInput } from "../src/domain/kcs";
 import { approvalGate, type InputsProvenance } from "../src/domain/provenance";
 import { confirmProseSnapshot, PROSE_SECTIONS } from "../src/domain/prose-snapshot";
 import { confirmedProse } from "./fixtures/valuation-inputs";
@@ -222,6 +227,203 @@ describe("confirmFeaturesProvenance (Slice 7)", () => {
     };
     expect(() => confirmFeaturesProvenance(approved)).toThrow(/draft/i);
     expect(() => confirmFeaturesProvenance(draftWith(null))).toThrow(/inputs/i);
+  });
+});
+
+/**
+ * Twelve rcn rows waiting for the bulk confirm — `confirmSampleProvenance`
+ * turns this into the twelve confirmed transactions the edit tests below
+ * work on.
+ */
+const draftWithTwelveConfirmed = draftWith(rcnInputs());
+
+/**
+ * Task 6 — an edit unconfirms exactly what changed, and nothing else. Until
+ * now every step-3 save re-derived the whole sample as `to_verify` (the ACL
+ * reads the status off the source alone), so correcting one price charged the
+ * appraiser eleven re-verifications they had already done.
+ */
+describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () => {
+  it("editing one comparable unconfirms that row and no other", () => {
+    const confirmed = confirmSampleProvenance(draftWithTwelveConfirmed);
+    const edited = applySampleUpdate(confirmed, {
+      comparables: confirmed.inputs!.comparables.map((c, i) =>
+        i === 6 ? { ...c, pricePerM2: 9999 } : c,
+      ),
+      sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+      geocode: confirmed.inputs!.provenance?.geocode,
+    });
+    const statuses = edited.inputs!.comparables.map((c) => c.status);
+    expect(statuses[6]).toBe("to_verify");
+    expect(statuses.filter((s) => s === "confirmed")).toHaveLength(11);
+  });
+
+  it("deleting a row does not slide another row's confirmation onto it", () => {
+    const confirmed = confirmSampleProvenance(draftWithTwelveConfirmed);
+    const withoutThird = confirmed.inputs!.comparables.filter((_, i) => i !== 2);
+    const edited = applySampleUpdate(confirmed, {
+      comparables: withoutThird,
+      sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+      geocode: confirmed.inputs!.provenance?.geocode,
+    });
+    // The eleven survivors keep their own confirmations — matched by content,
+    // so nothing shifted onto a neighbour.
+    expect(edited.inputs!.comparables).toHaveLength(11);
+    expect(edited.inputs!.comparables.every((c) => c.status === "confirmed")).toBe(true);
+  });
+
+  /**
+   * The manual-row exemption, and why it is not an oversight: the step-3 form
+   * has a "Dodaj transakcję" button, `confirmSampleProvenance` flips only rcn
+   * rows, and `isBlocking` blocks on `to_verify` whatever the source. Sending
+   * a hand-typed row to `to_verify` would therefore park it in a state nothing
+   * in the app can clear — approval blocked forever on data the appraiser
+   * entered themselves.
+   */
+  it("leaves a transaction the appraiser typed themselves confirmed — nothing else could clear it", () => {
+    const confirmed = confirmSampleProvenance(draftWithTwelveConfirmed);
+    const typed: Comparable = { pricePerM2: 11_000, source: "manual", status: "confirmed" };
+    const edited = applySampleUpdate(confirmed, {
+      comparables: [...confirmed.inputs!.comparables, typed],
+      sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+      geocode: confirmed.inputs!.provenance?.geocode,
+    });
+    expect(edited.inputs!.comparables[12].status).toBe("confirmed");
+    expect(approvalGate(edited.inputs!).ok).toBe(true);
+  });
+
+  /**
+   * Legacy snapshots carry rows with no `status` at all (the field is
+   * optional so they keep parsing). Stamping that absence onto the incoming
+   * row would re-open the same trap from the other side: `to_verify` is what
+   * `confirmSampleProvenance` looks for, and `undefined` is not it.
+   */
+  it("hands an unstamped snapshot row back to the ACL's verdict, so it stays confirmable", () => {
+    const unstamped = rcnInputs().comparables.map((c) => {
+      const row: Comparable = { ...c };
+      delete row.status;
+      return row;
+    });
+    const legacy = draftWith({ ...rcnInputs(), comparables: unstamped });
+    const saved = applySampleUpdate(legacy, {
+      // Exactly what the step-3 ACL re-derives for these rows.
+      comparables: unstamped.map((c) => ({ ...c, status: "to_verify" as const })),
+      sampleMeta: legacy.inputs!.sampleMeta ?? null,
+      geocode: legacy.inputs!.provenance?.geocode,
+    });
+    expect(saved.inputs!.comparables.every((c) => c.status === "to_verify")).toBe(true);
+    expect(
+      confirmSampleProvenance(saved).inputs!.comparables.every((c) => c.status === "confirmed"),
+    ).toBe(true);
+  });
+});
+
+/**
+ * What `assignSubjectProvenance` re-derives on EVERY step-1 save: the source
+ * decides the status, so the auto-fetched groups always come back
+ * `to_verify`. Handing that straight through is what used to wipe a
+ * confirmation the edit never touched.
+ */
+function reassignedSubjectProvenance(): SubjectUpdate["provenance"] {
+  return {
+    address: { source: "rzeczoznawca", status: "confirmed" },
+    area: { source: "rzeczoznawca", status: "confirmed" },
+    ewidencja: { source: "ewidencja", status: "to_verify" },
+    mpzp: { source: "mpzp", status: "to_verify" },
+  };
+}
+
+function subjectUpdateFrom(v: Valuation, overrides: Partial<SubjectUpdate> = {}): SubjectUpdate {
+  return {
+    address: v.address,
+    area: v.inputs!.area,
+    purpose: "sprzedaz",
+    kwNumber: v.kwNumber,
+    client: v.client!,
+    subject: v.inputs!.subject ?? null,
+    subjectMeta: v.inputs!.subjectMeta ?? null,
+    kw: v.inputs!.kw ?? null,
+    kwMeta: v.inputs!.kwMeta ?? null,
+    provenance: reassignedSubjectProvenance(),
+    ...overrides,
+  };
+}
+
+describe("applySubjectUpdate — the subject group survives an unrelated save (Task 6)", () => {
+  const confirmedSubject = () => confirmSubjectProvenance(draftWith(subjectInputs()));
+
+  it("keeps ewidencja/mpzp confirmed when the parcel data came back unchanged", () => {
+    // Only the client's name moved — the EGiB/MPZP snapshot is the same one
+    // the appraiser already read.
+    const v = confirmedSubject();
+    const updated = applySubjectUpdate(v, subjectUpdateFrom(v, { client: "p. Anna Testowa" }));
+    expect(updated.inputs!.provenance!.ewidencja!.status).toBe("confirmed");
+    expect(updated.inputs!.provenance!.mpzp!.status).toBe("confirmed");
+  });
+
+  it("sends the whole group back to weryfikacja when the parcel changed", () => {
+    const v = confirmedSubject();
+    const updated = applySubjectUpdate(
+      v,
+      subjectUpdateFrom(v, { subject: { obreb: "Jeżyce", nrDzialki: "162" } }),
+    );
+    expect(updated.inputs!.provenance!.ewidencja!.status).toBe("to_verify");
+    expect(updated.inputs!.provenance!.mpzp!.status).toBe("to_verify");
+  });
+
+  it("treats a changed area as a changed group — it is one snapshot, read together", () => {
+    const v = confirmedSubject();
+    const updated = applySubjectUpdate(v, subjectUpdateFrom(v, { area: 55 }));
+    expect(updated.inputs!.provenance!.ewidencja!.status).toBe("to_verify");
+  });
+});
+
+describe("applyFeaturesUpdate — the feature group survives an unrelated save (Task 6)", () => {
+  const presetFeatures = () => [
+    { name: "lokalizacja", weight: 0.6, rating: "przecietna" as const, key: "lokalizacja" },
+    { name: "standard", weight: 0.4, rating: "lepsza" as const, key: "standard" },
+  ];
+
+  /** What `assignFeaturesProvenance` re-derives when the weights still match
+   * the preset: `to_verify`, on every save, regardless of what changed. */
+  const reassigned: FeaturesUpdate["provenance"] = {
+    weights: { source: "preset", status: "to_verify" },
+    ratings: { source: "rzeczoznawca", status: "confirmed" },
+    featureDefs: { source: "preset", status: "to_verify" },
+  };
+
+  const confirmedFeatures = () =>
+    confirmFeaturesProvenance(
+      draftWith({
+        ...kwInputs({
+          weights: { source: "preset", status: "to_verify" },
+          featureDefs: { source: "preset", status: "to_verify" },
+        }),
+        features: presetFeatures(),
+      }),
+    );
+
+  it("keeps preset weights confirmed when the features came back unchanged", () => {
+    const v = confirmedFeatures();
+    const updated = applyFeaturesUpdate(v, {
+      features: presetFeatures(),
+      provenance: reassigned,
+    });
+    expect(updated.inputs!.provenance!.weights.status).toBe("confirmed");
+    expect(updated.inputs!.provenance!.featureDefs!.status).toBe("confirmed");
+  });
+
+  it("sends the group back to weryfikacja when a weight moved", () => {
+    const v = confirmedFeatures();
+    const updated = applyFeaturesUpdate(v, {
+      features: [
+        { ...presetFeatures()[0], weight: 0.7 },
+        { ...presetFeatures()[1], weight: 0.3 },
+      ],
+      provenance: reassigned,
+    });
+    expect(updated.inputs!.provenance!.weights.status).toBe("to_verify");
+    expect(updated.inputs!.provenance!.featureDefs!.status).toBe("to_verify");
   });
 });
 

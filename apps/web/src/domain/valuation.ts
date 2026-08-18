@@ -273,6 +273,142 @@ export function applyProseConfirmation(
   };
 }
 
+/**
+ * Identity of a comparable for the purpose of keeping its confirmation.
+ * NOT the array index: deleting row 3 shifts every later row, and a
+ * position-matched confirmation would then stay attached to a DIFFERENT
+ * transaction than the one the appraiser verified — in a document with legal
+ * effects, the worst failure this file could produce.
+ */
+function comparableKey(c: Comparable): string {
+  return c.transactionId ?? `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
+}
+
+/**
+ * Every field of {@link Comparable} the appraiser reads off the row, `status`
+ * excluded — that is the thing being recomputed, not part of what was
+ * verified. ADD ANY NEW FIELD HERE: one left out means a row that changed on
+ * screen still counts as unchanged and silently keeps its `confirmed` stamp.
+ */
+function sameComparable(a: Comparable, b: Comparable): boolean {
+  return (
+    a.pricePerM2 === b.pricePerM2 &&
+    a.date === b.date &&
+    a.area === b.area &&
+    a.source === b.source &&
+    a.transactionId === b.transactionId
+  );
+}
+
+/**
+ * Carries each confirmation from the snapshot onto the row it actually
+ * belongs to. A row keeps its status only when the snapshot holds an entry
+ * with the same key AND the same fields; anything else (edited, inserted,
+ * merely shifted by a deletion) is data the appraiser has not seen in this
+ * shape, so an rcn row goes back to `to_verify`.
+ *
+ * Rows the appraiser typed themselves are left as the ACL stamped them:
+ * `confirmSampleProvenance` flips only rcn rows, so a manual row parked at
+ * `to_verify` could never be confirmed again and would block approval (F-4)
+ * forever. Same reason a legacy snapshot row (no `status` at all) hands the
+ * verdict back to the ACL instead of stamping `undefined` over it.
+ *
+ * Duplicate keys are consumed one-for-one: two identical rows carry two
+ * confirmations, and neither lends its stamp to a third.
+ */
+function carryComparableConfirmations(
+  snapshot: Comparable[],
+  incoming: Comparable[],
+): Comparable[] {
+  const unclaimed = new Map<string, Comparable[]>();
+  for (const c of snapshot) {
+    const key = comparableKey(c);
+    const bucket = unclaimed.get(key);
+    if (bucket) bucket.push(c);
+    else unclaimed.set(key, [c]);
+  }
+  return incoming.map((c) => {
+    const bucket = unclaimed.get(comparableKey(c));
+    const at = bucket ? bucket.findIndex((previous) => sameComparable(previous, c)) : -1;
+    if (bucket && at >= 0) {
+      const [matched] = bucket.splice(at, 1);
+      return matched.status ? { ...c, status: matched.status } : c;
+    }
+    return c.source === "rcn" ? { ...c, status: "to_verify" as const } : c;
+  });
+}
+
+/**
+ * Structural equality for the snapshot fragments a wizard step owns — plain
+ * JSON only (objects, arrays, primitives; no Dates, no class instances).
+ * Compared field by field rather than as JSON text because the two sides
+ * arrive by different routes (a jsonb read vs a freshly validated form), and
+ * key order must not be what decides whether the appraiser keeps a
+ * confirmation. A key that is absent on one side and `undefined` on the other
+ * counts as equal: jsonb drops undefined on the way in, so the difference is
+ * an artefact of storage, not an edit.
+ */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((item, i) => sameJson(item, b[i]));
+  }
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+    if (!sameJson(left[key], right[key])) return false;
+  }
+  return true;
+}
+
+/** Provenance entries the step-1 form owns and re-derives on every save. */
+const SUBJECT_GROUP_KEYS = ["area", "ewidencja", "mpzp", "kw"] as const;
+/** Provenance entries the step-4 form owns and re-derives on every save. */
+const FEATURES_GROUP_KEYS = ["weights", "ratings", "featureDefs"] as const;
+
+/**
+ * Gives `next` back the statuses the appraiser had already granted. The ACL
+ * re-derives provenance from the SOURCE alone, so an auto-fetched group comes
+ * back `to_verify` on every save — taking that verdict wholesale is what used
+ * to wipe confirmations an edit never touched. Call ONLY once the group's
+ * content is known to be unchanged; a differing `source` means the data moved
+ * anyway, so that entry keeps the fresh verdict.
+ */
+function carryGroupStatuses(
+  previous: InputsProvenance | null | undefined,
+  next: InputsProvenance,
+  keys: readonly ((typeof SUBJECT_GROUP_KEYS)[number] | (typeof FEATURES_GROUP_KEYS)[number])[],
+): InputsProvenance {
+  const carried: InputsProvenance = { ...next };
+  for (const key of keys) {
+    const before = previous?.[key];
+    const after = carried[key];
+    if (before && after && before.source === after.source) {
+      carried[key] = { ...after, status: before.status };
+    }
+  }
+  return carried;
+}
+
+/**
+ * Step 1 owns the subject as ONE snapshot: the EGiB/MPZP fetch, the KW
+ * extract and the area they came with are read together on one screen, so a
+ * confirmation survives only when the whole group came back identical. The
+ * coarse grain is deliberate — it errs toward `to_verify`, the only safe
+ * direction for F-4.
+ */
+function sameSubjectGroup(previous: KcsInput, u: SubjectUpdate): boolean {
+  return (
+    previous.area === u.area &&
+    sameJson(previous.subject ?? null, u.subject ?? null) &&
+    sameJson(previous.subjectMeta ?? null, u.subjectMeta ?? null) &&
+    sameJson(previous.kw ?? null, u.kw ?? null) &&
+    sameJson(previous.kwMeta ?? null, u.kwMeta ?? null)
+  );
+}
+
 export type SubjectUpdate = {
   address: string;
   area: number;
@@ -294,7 +430,10 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
   // Group keys owned by this step are REPLACED, not merged — a detached
   // subject must not leave stale ewidencja/mpzp/kw provenance behind.
   const { ewidencja: _e, mpzp: _m, kw: _k, ...rest } = v.inputs.provenance ?? {};
-  const provenance = { ...rest, ...u.provenance } as InputsProvenance;
+  const reassigned = { ...rest, ...u.provenance } as InputsProvenance;
+  const provenance = sameSubjectGroup(v.inputs, u)
+    ? carryGroupStatuses(v.inputs.provenance, reassigned, SUBJECT_GROUP_KEYS)
+    : reassigned;
   return {
     ...v,
     address: u.address,
@@ -326,10 +465,11 @@ export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
   const { geocode: _g, ...rest } = v.inputs.provenance ?? {};
   const provenance = { ...rest, ...(u.geocode ? { geocode: u.geocode } : {}) } as InputsProvenance;
+  const comparables = carryComparableConfirmations(v.inputs.comparables, u.comparables);
   return {
     ...v,
     wr: null,
-    inputs: { ...v.inputs, comparables: u.comparables, sampleMeta: u.sampleMeta, provenance },
+    inputs: { ...v.inputs, comparables, sampleMeta: u.sampleMeta, provenance },
   };
 }
 
@@ -341,7 +481,12 @@ export type FeaturesUpdate = {
 export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
-  const provenance = { ...v.inputs.provenance, ...u.provenance } as InputsProvenance;
+  const reassigned = { ...v.inputs.provenance, ...u.provenance } as InputsProvenance;
+  // The feature group is one screen too: weights, ratings and the rating-scale
+  // definitions are confirmed together, so they lapse together.
+  const provenance = sameJson(v.inputs.features, u.features)
+    ? carryGroupStatuses(v.inputs.provenance, reassigned, FEATURES_GROUP_KEYS)
+    : reassigned;
   return { ...v, wr: null, inputs: { ...v.inputs, features: u.features, provenance } };
 }
 
