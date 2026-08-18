@@ -161,8 +161,12 @@ export async function approveValuation(
         console.error(`approveValuation: could not record the map freeze on ${id} — refusing`);
         await storage.delete(`mapa-ewidencyjna-${id}.png`);
         await storage.delete(`mapa-orto-${id}.jpg`);
+        // The message promises no retry: `freezeMaps` returns null when the row
+        // is gone, when the caller is not its owner, or when it is no longer a
+        // draft — and none of those clears by trying again.
         return {
-          error: "Nie udało się zapisać stanu map operatu — odśwież stronę i spróbuj ponownie.",
+          error:
+            "Nie udało się zapisać stanu map operatu. Sprawdź, czy wycena jest nadal Twoim szkicem.",
         };
       }
     } else {
