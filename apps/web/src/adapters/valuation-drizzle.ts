@@ -583,6 +583,35 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       });
     },
 
+    /**
+     * Writes only `mapsFrozenFor`, and writes NO audit row — see the port's
+     * docstring for why this one mutation stays out of the trail. The status
+     * predicate keeps it draft-only: once the operat is issued, what it
+     * carries is settled and this marker must not move under it.
+     */
+    async freezeMaps(
+      id: string,
+      user: SessionUser,
+      address: string | null,
+    ): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.id, id))
+          .for("update");
+        if (!row) return null;
+        if (toValuation(row).ownerId !== user.id) return null;
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ mapsFrozenFor: address })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        return toValuation(saved);
+      });
+    },
+
     async approve(
       id: string,
       user: SessionUser,

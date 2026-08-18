@@ -72,6 +72,12 @@ export const valuation = pgTable("valuation", {
   signedAt: timestamp("signed_at", { withTimezone: true, mode: "date" }),
   // Versioning (NFR-3): the signed valuation this one replaces. NULL = v1.
   supersedesId: uuid("supersedes_id").references((): AnyPgColumn => valuation.id),
+  // Slice 14: the address the frozen §8.1 maps were fetched FOR. NULL = no
+  // maps frozen. It holds the address rather than a bare flag because the
+  // maps are derived from it (geocoder → parcel → bbox → WMS): preview,
+  // correct the address, issue without re-fetching, and the signed operat
+  // would carry the PREVIOUS parcel's cadastral map and orthophoto.
+  mapsFrozenFor: text("maps_frozen_for"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 

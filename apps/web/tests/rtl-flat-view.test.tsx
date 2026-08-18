@@ -40,6 +40,7 @@ const baseValuation: Valuation = {
   approvedAt: new Date("2026-07-20T10:00:00.000Z"),
   signedAt: null,
   supersedesId: null,
+  mapsFrozenFor: null,
   createdAt: new Date("2026-07-01T09:00:00.000Z"),
 };
 

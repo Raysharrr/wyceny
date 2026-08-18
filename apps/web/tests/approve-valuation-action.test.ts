@@ -86,6 +86,7 @@ const approved: Valuation = {
   approvedAt: new Date("2026-07-15T00:00:00.000Z"),
   signedAt: null,
   supersedesId: null,
+  mapsFrozenFor: null,
   createdAt: new Date("2026-07-01T00:00:00.000Z"),
 };
 
@@ -135,6 +136,7 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     approvedAt: null,
     signedAt: null,
     supersedesId: null,
+    mapsFrozenFor: null,
     createdAt: new Date("2026-07-01T00:00:00.000Z"),
   };
 
@@ -270,6 +272,7 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
     approvedAt: null,
     signedAt: null,
     supersedesId: null,
+    mapsFrozenFor: null,
     createdAt: new Date("2026-07-01T00:00:00.000Z"),
   };
 
@@ -368,6 +371,7 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     approvedAt: null,
     signedAt: null,
     supersedesId: null,
+    mapsFrozenFor: null,
     createdAt: new Date("2026-07-01T00:00:00.000Z"),
   };
 
@@ -598,6 +602,7 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
     approvedAt: null,
     signedAt: null,
     supersedesId: null,
+    mapsFrozenFor: null,
     createdAt: new Date("2026-07-01T00:00:00.000Z"),
   };
 

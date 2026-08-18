@@ -85,6 +85,7 @@ const draft: Valuation = {
   approvedAt: null,
   signedAt: null,
   supersedesId: null,
+  mapsFrozenFor: null,
   createdAt: new Date("2026-07-01T00:00:00.000Z"),
 };
 

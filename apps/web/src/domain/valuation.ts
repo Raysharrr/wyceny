@@ -49,6 +49,8 @@ export function newValuation(input: NewValuationInput): Omit<Valuation, "id" | "
     approvedAt: null,
     signedAt: null,
     supersedesId: null,
+    // A brand-new draft has no maps behind it yet (Slice 14).
+    mapsFrozenFor: null,
   };
 }
 
@@ -778,5 +780,25 @@ export function newVersionOf(v: Valuation): Omit<Valuation, "id" | "createdAt"> 
     approvedAt: null,
     signedAt: null,
     supersedesId: v.id,
+    // Explicitly NOT carried over: the frozen map bytes live under the
+    // PREDECESSOR's storage keys, so a copied marker would leave the new
+    // draft claiming maps it does not have. It fetches its own.
+    mapsFrozenFor: null,
   };
+}
+
+/**
+ * True when this valuation has §8.1 maps frozen FOR ITS CURRENT ADDRESS —
+ * i.e. when preview and issue may reuse the stored bytes instead of going
+ * back to the WMS (Slice 14, Task 9).
+ *
+ * The one place this comparison lives, deliberately: the maps are derived
+ * from the address (geocoder → parcel → bbox → WMS), so a second, subtly
+ * different copy of this check is exactly how a signed operat would end up
+ * picturing the previous parcel. Exact string comparison, deliberately
+ * un-normalized — a needless re-fetch costs seconds, a wrongly reused map
+ * costs a document that describes one property and pictures another.
+ */
+export function mapsFrozenForCurrentAddress(v: Valuation): boolean {
+  return v.mapsFrozenFor !== null && v.mapsFrozenFor === v.address;
 }

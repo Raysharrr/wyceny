@@ -39,6 +39,13 @@ export type Valuation = {
   approvedAt: Date | null;
   signedAt: Date | null;
   supersedesId: string | null;
+  /**
+   * The address the frozen §8.1 maps were fetched FOR; NULL = none frozen
+   * (Slice 14). Never compare it to anything but the valuation's CURRENT
+   * address — `mapsFrozenForCurrentAddress` (domain/valuation.ts) is the one
+   * place that comparison lives.
+   */
+  mapsFrozenFor: string | null;
   createdAt: Date;
 };
 
@@ -188,6 +195,21 @@ export interface PortValuation {
    * when the draft has fewer than 3 comparables or zero features.
    */
   confirmCalculation(id: string, user: SessionUser): Promise<Valuation | null>;
+  /**
+   * Records WHICH address the §8.1 maps currently frozen in `PortStorage`
+   * were fetched for — `null` lifts the freeze (Slice 14, Task 9). Draft-only
+   * and owner-only, same null/throw contract as `updateInspection`.
+   *
+   * Deliberately writes NO audit row, unlike every other mutation here. The
+   * audit trail records acts the appraiser answers for — confirmations,
+   * approval, signature — and this is not one: it is a cache marker for an
+   * external fetch, written by a preview the appraiser may repeat a dozen
+   * times while editing. A row per preview would bury the acts that matter
+   * in an append-only trail that cannot be pruned. What the issued document
+   * actually carries is audited where it is decided, on the `approved` row
+   * (`mapsSkipped`).
+   */
+  freezeMaps(id: string, user: SessionUser, address: string | null): Promise<Valuation | null>;
   /**
    * Approves a draft — re-runs the F-4 gate AND the document-field check
    * server-side (never trusts the client). Same null/throw contract as

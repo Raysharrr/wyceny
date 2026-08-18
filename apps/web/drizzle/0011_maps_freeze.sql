@@ -1,0 +1,1 @@
+ALTER TABLE "valuation" ADD COLUMN "maps_frozen_for" text;
