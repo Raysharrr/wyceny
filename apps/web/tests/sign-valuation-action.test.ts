@@ -190,8 +190,8 @@ describe("signValuationAction", () => {
 
     const docxCall = storagePutMock.mock.calls.findLast(([key]) => key === "operat-v1-signed.docx");
     const text = textOf(docxCall?.[1] as Buffer);
-    expect(text).not.toContain("brak treści");
-    expect(text).not.toContain("Sekcja nie została uzupełniona");
+    expect(text).not.toContain("[PODGLĄD: BRAK TREŚCI]");
+    expect(text).not.toContain("w wydanym operacie to miejsce pozostanie puste");
   });
 
   it("re-renders from frozen map bytes at sign (Task 7) — byte-identical maps, no wms contact", async () => {

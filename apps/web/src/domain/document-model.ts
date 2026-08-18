@@ -73,17 +73,29 @@ function lokalAreaSentence(area: number): string {
  * date and by these markers, and by nothing else). The issued document says
  * nothing about such a section, exactly as before.
  *
- * Polish, because the appraiser reads it. It names the section and says why
- * the space is empty: "brak treści" alone reads like a rendering fault, and
- * the useful information is that the section is theirs to fill in on step 6.
+ * THE TOKEN LEADS, before the section's name. It has to: the marker prints in
+ * the section's own body style, and the first rendering showed the two ways
+ * that let it pass for content — under §8.1 it continued a true sentence
+ * inside the same paragraph ("…pod adresem: {adres}. Charakterystyka…"), and
+ * under §11 it restated the heading standing directly above it, which is
+ * precisely what a generated section's opening sentence does. A bracketed
+ * token in front stops both readings before the eye reaches the label.
+ * Styling it instead would mean editing the template — F-12, another repo.
+ *
+ * "PODGLĄD" rather than "brak treści" alone, because the one thing the reader
+ * must not doubt is that this line belongs to the preview and to no issued
+ * operat. Polish, because the appraiser reads it; it names the section, and it
+ * says why the space is empty rather than only that it is — the useful fact is
+ * that the section is theirs to fill in on step 6.
+ *
  * The closing clause is deliberately neutral about WHAT disappears — for
  * `otoczenie` and `zagospodarowanie` the surrounding paragraph keeps its
  * address sentence, so "the section will not appear at all" would be false.
  */
 function previewMarker(section: ProseSection): string {
   return (
-    `${PROSE_SECTION_LABEL[section]} ${DASH} brak treści. ` +
-    "Sekcja nie została uzupełniona w kroku 6. Opisy; " +
+    `[PODGLĄD: BRAK TREŚCI] ${PROSE_SECTION_LABEL[section]} ${DASH} ` +
+    "sekcja nie została uzupełniona w kroku 6. Opisy; " +
     "w wydanym operacie to miejsce pozostanie puste."
   );
 }
@@ -379,6 +391,8 @@ export function buildDocumentModel(
     // fact the issued operat states too. Anything less would be a THIRD
     // difference between the two renders, and one pointing the wrong way:
     // the preview would tell the appraiser less than the document they sign.
+    // The area sentence comes FIRST and unchanged; the marker leads its own
+    // text, not the whole cell.
     return section === "opis_lokalu"
       ? `${lokalAreaSentence(input.area)} ${previewMarker(section)}`
       : previewMarker(section);

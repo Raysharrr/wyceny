@@ -276,14 +276,14 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
 
     const text = docText(convertToPdfMock.mock.calls[0][0]);
     for (const section of PROSE_SECTIONS) {
-      expect(text, section).toContain(`${PROSE_SECTION_LABEL[section]} — brak treści`);
+      expect(text, section).toContain(`[PODGLĄD: BRAK TREŚCI] ${PROSE_SECTION_LABEL[section]} —`);
     }
   });
 
   it("marks nothing in a draft whose six sections are written", async () => {
     await previewOperat(ID);
 
-    expect(docText(convertToPdfMock.mock.calls[0][0])).not.toContain("brak treści");
+    expect(docText(convertToPdfMock.mock.calls[0][0])).not.toContain("[PODGLĄD: BRAK TREŚCI]");
   });
 
   it("approves nothing and writes no issued-document key (F-4)", async () => {

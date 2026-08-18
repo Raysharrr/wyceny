@@ -691,8 +691,8 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
         .file("word/document.xml")!
         .asText()
         .replace(/<[^>]+>/g, "");
-      expect(text).not.toContain("brak treści");
-      expect(text).not.toContain("Sekcja nie została uzupełniona");
+      expect(text).not.toContain("[PODGLĄD: BRAK TREŚCI]");
+      expect(text).not.toContain("w wydanym operacie to miejsce pozostanie puste");
     } finally {
       vi.unstubAllEnvs();
     }

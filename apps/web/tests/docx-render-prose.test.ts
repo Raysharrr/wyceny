@@ -229,15 +229,26 @@ describe("T11: the preview marks what is missing; the issued operat stays silent
   const issuedNoProse = docText(renderOperatDocx(buildDocumentModel(bare)));
 
   it("preview marks a missing section; the issued operat stays silent about it", () => {
-    expect(previewNoProse).toContain("Analiza i charakterystyka rynku — brak treści");
-    expect(issuedNoProse).not.toContain("brak treści");
+    expect(previewNoProse).toContain("[PODGLĄD: BRAK TREŚCI] Analiza i charakterystyka rynku —");
+    expect(issuedNoProse).not.toContain("[PODGLĄD: BRAK TREŚCI]");
+    expect(issuedNoProse).not.toContain("w wydanym operacie to miejsce pozostanie puste");
   });
 
-  it("marks all six sections, each under its own heading, and says why it is empty", () => {
+  // The token LEADS, before the section name (fix round 1). Two renderings
+  // proved the reason: under §8.1 the marker continues a true sentence in the
+  // same paragraph and the same style, and under §11 it restated the heading
+  // directly above it — which is exactly what a generated section's opening
+  // sentence does. A bracketed token in front of the label is what stops both.
+  // The assertion pins that adjacency, not just the presence of the words.
+  it("marks all six sections — token first, then the section's own heading", () => {
     for (const section of PROSE_SECTIONS) {
-      expect(previewNoProse, section).toContain(`${PROSE_SECTION_LABEL[section]} — brak treści`);
+      expect(previewNoProse, section).toContain(
+        `[PODGLĄD: BRAK TREŚCI] ${PROSE_SECTION_LABEL[section]} —`,
+      );
     }
-    expect(previewNoProse).toContain("w wydanym operacie to miejsce pozostanie puste");
+    expect(previewNoProse).toContain(
+      "sekcja nie została uzupełniona w kroku 6. Opisy; w wydanym operacie to miejsce pozostanie puste.",
+    );
   });
 
   it("flips the {#ma_proza_*} wraps open, so a marked section is actually printed", () => {
@@ -259,10 +270,12 @@ describe("T11: the preview marks what is missing; the issued operat stays silent
       ),
     );
 
-    expect(preview).toContain(`${PROSE_SECTION_LABEL.standard} — brak treści`);
+    expect(preview).toContain(`[PODGLĄD: BRAK TREŚCI] ${PROSE_SECTION_LABEL.standard} —`);
     for (const section of PROSE_SECTIONS) {
       if (section === "standard") continue;
-      expect(preview, section).not.toContain(`${PROSE_SECTION_LABEL[section]} — brak treści`);
+      expect(preview, section).not.toContain(
+        `[PODGLĄD: BRAK TREŚCI] ${PROSE_SECTION_LABEL[section]} —`,
+      );
       expect(preview, section).toContain(prose.sections[section]!.value);
     }
   });
