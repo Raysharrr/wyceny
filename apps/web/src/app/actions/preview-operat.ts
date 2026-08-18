@@ -101,9 +101,15 @@ export async function previewOperat(
   try {
     let maps: RenderMaps | null = null;
     if (opts?.skipMaps) {
+      // Marker FIRST here — the mirror image of the fetch path below, and for
+      // the same reason. Lifting the freeze before dropping the bytes can only
+      // leave a cleared marker over bytes that still exist, which costs one
+      // re-fetch; the other order can leave bytes deleted under a marker that
+      // still claims them, which is the lying-marker state this whole design
+      // exists to prevent.
+      await valuationRepository.freezeMaps(id, session.user, null);
       await storage.delete(ewidencyjnaKey(id));
       await storage.delete(ortoKey(id));
-      await valuationRepository.freezeMaps(id, session.user, null);
     } else {
       if (mapsFrozenForCurrentAddress(valuation)) {
         maps = await readFrozenMaps(id);

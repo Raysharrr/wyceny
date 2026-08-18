@@ -281,4 +281,18 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     expect(blobs.has(ORTO_KEY)).toBe(false);
     expect(current.mapsFrozenFor).toBeNull();
   });
+
+  it("skipMaps lifts the freeze before it drops the bytes — never bytes gone under a standing marker", async () => {
+    await previewOperat(ID);
+    freezeMapsMock.mockRejectedValue(new Error("baza padła"));
+
+    await previewOperat(ID, { skipMaps: true });
+
+    // The unfreeze failed, so the marker still stands — and the bytes it
+    // claims must therefore still be there. The reverse order would have left
+    // the valuation claiming maps it no longer has.
+    expect(current.mapsFrozenFor).toBe(ADDRESS);
+    expect(blobs.has(EWIDENCYJNA_KEY)).toBe(true);
+    expect(blobs.has(ORTO_KEY)).toBe(true);
+  });
 });
