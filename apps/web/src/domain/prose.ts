@@ -76,6 +76,47 @@ export type ProseFacts = {
   pozycja_wyniku?: string;
 };
 
+/**
+ * What each section may write from — the subset of facts its few-shot shows
+ * it. This is the basis of per-section staleness: a fact outside a section's
+ * subset changing must NOT invalidate that section's text.
+ *
+ * Verified empirically before adoption (wiki-repo
+ * `tools/spike/2026-08-18-odcisk-per-sekcja/`): across 3 runs x 6 sections,
+ * no section used a fact outside its subset. The model receives the FULL
+ * facts dict — the prompt is unchanged, only the fingerprint is scoped.
+ *
+ * `prose-section-facts.test.ts` pins this against the prompt files.
+ */
+export const PROSE_SECTION_FACTS: Record<ProseSection, readonly (keyof ProseFacts)[]> = {
+  analiza_rynku: ["adres", "obreb", "pow_uzytkowa", "rynek", "proba"],
+  opis_lokalu: ["pow_uzytkowa", "notatka_uklad"],
+  otoczenie: ["notatka_otoczenie"],
+  zagospodarowanie: [
+    "nr_dzialki",
+    "obreb",
+    "pow_dzialki_m2",
+    "uzytek",
+    "budynek_rodzaj",
+    "kondygnacje",
+    "rok_budowy",
+    "notatka_zagospodarowanie",
+  ],
+  standard: ["notatka_standard", "oceny_cech"],
+  uzasadnienie: ["pozycja_wyniku", "proba"],
+};
+
+/**
+ * Sections whose text reflects the sample's price trend. The trend is derived
+ * by the worker FROM THE TRANSACTIONS, which travel outside `fakty`, so these
+ * two sections must fingerprint the transactions too or a reordered-in-time
+ * sample would leave a contradicted trend claim in the operat.
+ */
+export const SECTIONS_USING_TRANSACTIONS: ReadonlySet<ProseSection> = new Set([
+  "analiza_rynku",
+  "uzasadnienie",
+]);
+
 /** Worker wire shape: `data` is "MM-RRRR" and `cena_m2` a NUMBER (a PL string → 422). */
 export type ProseTransactionPayload = { data: string; cena_m2: number };
 
