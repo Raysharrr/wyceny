@@ -107,9 +107,21 @@ export async function previewOperat(
       // re-fetch; the other order can leave bytes deleted under a marker that
       // still claims them, which is the lying-marker state this whole design
       // exists to prevent.
-      await valuationRepository.freezeMaps(id, session.user, null);
-      await storage.delete(ewidencyjnaKey(id));
-      await storage.delete(ortoKey(id));
+      //
+      // `null` back means the write did NOT happen: `freezeMaps` is owner-only
+      // while this action authorises through `get`, which also admits an
+      // admin, and it refuses anything that is no longer a draft. The bytes
+      // then stay where they are — deleting them on the strength of a write
+      // that never took would produce exactly the state the ordering above
+      // avoids. This render still leaves the maps out, which is what was
+      // asked for.
+      const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
+      if (unfrozen) {
+        await storage.delete(ewidencyjnaKey(id));
+        await storage.delete(ortoKey(id));
+      } else {
+        console.warn(`previewOperat: could not lift the map freeze on ${id} — bytes left in place`);
+      }
     } else {
       if (mapsFrozenForCurrentAddress(valuation)) {
         maps = await readFrozenMaps(id);
@@ -128,7 +140,14 @@ export async function previewOperat(
         maps = fetched.maps;
         await storage.put(ewidencyjnaKey(id), maps.ewidencyjna);
         await storage.put(ortoKey(id), maps.orto);
-        await valuationRepository.freezeMaps(id, session.user, valuation.address);
+        // Same `null` case as above, harmless in this direction: the bytes are
+        // written but nothing claims them, so the next preview simply fetches
+        // again. Logged rather than swallowed — a write that silently did
+        // nothing should be visible somewhere.
+        const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
+        if (!frozen) {
+          console.warn(`previewOperat: could not record the map freeze on ${id}`);
+        }
       }
     }
 

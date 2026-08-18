@@ -222,6 +222,11 @@ export interface PortValuation {
    * `audit.mapsSkipped` records the user's conscious "approve without maps"
    * choice on the audit row's `meta` (Slice 9) — never set when the maps
    * were simply unavailable or the kill switch (MAPS_FETCH=off) is on.
+   * `audit.mapsFrozenFor` is its counterpart when maps WERE embedded: the
+   * address they were fetched for (Slice 14). The maps are derived from the
+   * address, so this row is the only lasting record of which address the ones
+   * inside the issued document came from — evidence, and exactly one row per
+   * issue, unlike the freeze marker every preview rewrites.
    * `expectedInputs` is the inputs snapshot the caller rendered the document
    * from — when provided, the adapter throws `InputsChangedError` if the
    * row's inputs no longer serialize identically, closing the multi-second
@@ -236,7 +241,7 @@ export interface PortValuation {
     user: SessionUser,
     docs?: { docUrl: string; docxUrl: string },
     now?: Date,
-    audit?: { mapsSkipped?: boolean },
+    audit?: { mapsSkipped?: boolean; mapsFrozenFor?: string },
     expectedInputs?: KcsInput | null,
     gate?: GateOptions,
   ): Promise<Valuation | null>;

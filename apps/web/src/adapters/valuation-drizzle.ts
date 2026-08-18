@@ -617,7 +617,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       user: SessionUser,
       docs?: { docUrl: string; docxUrl: string },
       now: Date = new Date(),
-      audit?: { mapsSkipped?: boolean },
+      audit?: { mapsSkipped?: boolean; mapsFrozenFor?: string },
       expectedInputs?: KcsInput | null,
       gate?: GateOptions,
     ): Promise<Valuation | null> {
@@ -687,6 +687,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
             docUrl: updated.docUrl,
             docxUrl: updated.docxUrl,
             ...(audit?.mapsSkipped ? { mapsSkipped: true } : {}),
+            ...(audit?.mapsFrozenFor ? { mapsFrozenFor: audit.mapsFrozenFor } : {}),
           },
         });
         return toValuation(saved);

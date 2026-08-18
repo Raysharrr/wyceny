@@ -185,7 +185,15 @@ export async function approveValuation(
       session.user,
       { docUrl, docxUrl },
       now,
-      opts?.skipMaps ? { mapsSkipped: true } : undefined,
+      // One of the two, never both: the appraiser's conscious "without maps",
+      // or — when maps ARE embedded — the address they were fetched for
+      // (Slice 14). Neither when the kill switch left this document mapless
+      // without anyone choosing it.
+      opts?.skipMaps
+        ? { mapsSkipped: true }
+        : maps
+          ? { mapsFrozenFor: valuation.address }
+          : undefined,
       valuation.inputs,
       { requireProse },
     );

@@ -166,6 +166,19 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     const deleted = storageDeleteMock.mock.calls.map(([key]) => key);
     expect(deleted.filter((key) => key.startsWith("mapa-"))).toEqual([]);
 
+    // Which address the embedded maps came from is evidence and belongs on
+    // the one row per issue (Slice 14) — the freeze marker itself is rewritten
+    // by every preview and stays out of the trail.
+    expect(approveMock).toHaveBeenCalledWith(
+      draft.id,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      { mapsFrozenFor: draft.address },
+      draft.inputs,
+      { requireProse: true },
+    );
+
     const docxCall = storagePutMock.mock.calls.find(([key]) => key === `operat-${draft.id}.docx`);
     const docxBytes = docxCall?.[1] as Buffer;
     expect(generatedMedia(docxBytes)).toHaveLength(2);
@@ -588,7 +601,9 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      undefined,
+      // Maps were fetched and embedded here, so the audit meta names the
+      // address they came from (Slice 14) — this call carries no skip.
+      { mapsFrozenFor: draftBase.address },
       draftBase.inputs,
       { requireProse: true },
     );
@@ -604,7 +619,7 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      undefined,
+      { mapsFrozenFor: draftBase.address },
       expect.anything(),
       { requireProse: false },
     );

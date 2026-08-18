@@ -327,6 +327,24 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     expect(fetchMapsMock).toHaveBeenCalledWith(ADDRESS);
   });
 
+  it("an unfreeze that quietly did nothing leaves the bytes alone too", async () => {
+    // `freezeMaps` is owner-only (valuation-drizzle.ts) while this action
+    // authorises through `get`, which also admits an admin — so an admin
+    // previewing someone else's draft with skipMaps gets `null` back, not a
+    // throw. Deleting the bytes on the strength of a write that never
+    // happened would leave the owner's marker standing over nothing.
+    await previewOperat(ID);
+    freezeMapsMock.mockResolvedValue(null);
+
+    const result = await previewOperat(ID, { skipMaps: true });
+
+    expect(result).toHaveProperty("url");
+    expect(generatedMedia(convertToPdfMock.mock.calls.at(-1)![0])).toHaveLength(0);
+    expect(current.mapsFrozenFor).toBe(ADDRESS);
+    expect(blobs.has(EWIDENCYJNA_KEY)).toBe(true);
+    expect(blobs.has(ORTO_KEY)).toBe(true);
+  });
+
   it("skipMaps lifts the freeze before it drops the bytes — never bytes gone under a standing marker", async () => {
     await previewOperat(ID);
     freezeMapsMock.mockRejectedValue(new Error("baza padła"));
