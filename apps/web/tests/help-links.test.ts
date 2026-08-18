@@ -72,3 +72,62 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
     expect(martwe).toEqual([]);
   });
 });
+
+/**
+ * Nazwy przyciskow cytowane w Pomocy istnieja naprawde (T8, runda poprawek 1).
+ *
+ * Powod jest empiryczny, nie teoretyczny: instrukcja kroku 7 dwa razy
+ * rozjechala sie po cichu z aplikacja — raz po T4, raz po T8 — i za kazdym
+ * razem wykryl to dopiero czlowiek czytajacy diff. Kasujac przycisk, kasuje
+ * sie jego etykiete ze zrodel; ten straznik zamienia to w czerwony test
+ * zamiast w instrukcje kazaca rzeczoznawcy kliknac cos, czego nie ma.
+ *
+ * Sprawdzamy ISTNIENIE etykiety w zrodlach, nie jej miejsce — Pomoc opisuje
+ * te przyciski w kontekscie krokow, a wiazanie etykiety z konkretnym plikiem
+ * czynaloby test kruchym przy kazdym przeniesieniu komponentu. To wystarcza:
+ * oba historyczne rozjazdy polegaly na tym, ze przycisk PRZESTAL istniec.
+ *
+ * Wzorzec lapie wylacznie cytaty w polskim cudzyslowie zaczynajace sie od
+ * czasownika, ktorym aplikacja nazywa akcje — zdania opisowe i cytaty
+ * komunikatow bledu (inny rejestr, czesto parafrazowane) zostaja poza zakresem.
+ */
+const ETYKIETA_RE =
+  /„((?:Potwierdź|Zatwierdź|Dane się zgadzają|Pobierz|Dodaj|Utwórz|Podpisz|Wgraj)[^„”]{0,60})”/g;
+
+const zbierzTs = (dir: string): string[] =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return zbierzTs(full);
+    return /\.tsx?$/.test(entry.name) ? [full] : [];
+  });
+
+describe("etykiety przyciskow cytowane w Pomocy", () => {
+  const zrodla = [
+    path.join(process.cwd(), "src", "app"),
+    path.join(process.cwd(), "src", "components"),
+  ]
+    .flatMap(zbierzTs)
+    .map((file) => fs.readFileSync(file, "utf8"))
+    .join("\n");
+
+  const cytaty = zbierzMdx(CONTENT).flatMap((file) => {
+    const tresc = fs.readFileSync(file, "utf8");
+    return [...tresc.matchAll(ETYKIETA_RE)].map(([, etykieta]) => ({
+      etykieta,
+      file: path.relative(CONTENT, file),
+    }));
+  });
+
+  // Bez tego pusta lista cytatow (zepsuty wzorzec) przechodzilaby ponizszy
+  // przypadek triumfalnie — ta sama pulapka co przy odnosnikach wyzej.
+  it("znajduje cytowane etykiety w realnej tresci", () => {
+    expect(cytaty.length).toBeGreaterThan(0);
+  });
+
+  it("kazda cytowana etykieta wystepuje w zrodlach aplikacji", () => {
+    const nieistniejace = cytaty
+      .filter(({ etykieta }) => !zrodla.includes(etykieta))
+      .map(({ file, etykieta }) => `${file} -> „${etykieta}”`);
+    expect(nieistniejace).toEqual([]);
+  });
+});

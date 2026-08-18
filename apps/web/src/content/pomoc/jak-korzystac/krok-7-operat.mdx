@@ -2,7 +2,7 @@ W kroku 7 sprawdzasz komplet danych i zatwierdzasz operat. Zatwierdzenie generuj
 
 <img
   src="/api/pomoc/krok-7-operat.png"
-  alt="Krok 7 kreatora: karta „Podsumowanie operatu” z powierzchnią i wartością rynkową oraz karta „Zatwierdzenie” z listą pozycji do wyjaśnienia i nieaktywnym przyciskiem „Zatwierdź operat”."
+  alt="Krok 7 kreatora: karta „Podsumowanie operatu” z powierzchnią i wartością rynkową oraz karta „Zatwierdzenie” z listą pozycji do wyjaśnienia, odnośnikami do właściwych kroków i nieaktywnym przyciskiem „Zatwierdź operat”."
   style={{
     width: "100%",
     height: "auto",
@@ -23,16 +23,16 @@ Mapy są pobierane w momencie zatwierdzenia i zamrażane przy wycenie: podpisany
 
 Przycisk ponowienia pojawia się przy każdej przyczynie, ale dwie z nich są ostateczne i ponawianie ich nie ruszy: **nierozpoznany adres** („Nie rozpoznano adresu nieruchomości — sprawdź jego pisownię (…) i popraw go w kroku 1.”) oraz **adres poza obsługiwanym obszarem** („Mapy do operatu dostępne na razie dla Poznania.”). Odróżnia je od awarii usługi sama treść komunikatu — warto ją przeczytać, zanim klikniesz. Na pierwszą pomaga wyłącznie poprawienie adresu w [kroku 1](/pomoc/krok-1-przedmiot), a to niesie dalszy koszt: zapis tamtego kroku kasuje zatwierdzoną wartość rynkową, więc trzeba jeszcze raz przejść kalkulację w kroku 5 i ponownie zatwierdzić opisy w kroku 6.
 
-## Co musisz uzupełnić ręcznie
+## Gdzie potwierdza się dane
 
-Przyciski potwierdzeń pojawiają się tylko wtedy, gdy jest co potwierdzać:
+Na tym ekranie nie ma przycisków potwierdzeń. Potwierdzasz tam, gdzie dane widzisz — przyciskiem kończącym dany krok:
 
-- **„Potwierdź próbę z RCN”** — transakcje pobrane z rejestru oraz geokodowanie adresu,
-- **„Potwierdź dane przedmiotu”** — dane ewidencyjne (EGiB) i przeznaczenie planistyczne (MPZP),
-- **„Potwierdź dane KW”** — dane odczytane z aktu notarialnego albo odpisu księgi, wraz z powierzchnią, jeśli wzięła się z tego dokumentu,
-- **„Potwierdź cechy i wagi”** — wagi i definicje skali ocen w wersji zaproponowanej przez aplikację.
+- **„Dane się zgadzają — dalej”** w [kroku 1](/pomoc/krok-1-przedmiot) — dane ewidencyjne (EGiB), przeznaczenie planistyczne (MPZP), geokodowanie adresu oraz dane odczytane z aktu notarialnego albo odpisu księgi, wraz z powierzchnią, jeśli wzięła się z tego dokumentu,
+- **„Zatwierdź próbę i dalej”** w [kroku 3](/pomoc/krok-3-proba) — transakcje pobrane z rejestru,
+- **„Zatwierdź cechy i dalej”** w [kroku 4](/pomoc/krok-4-cechy) — wagi i definicje skali ocen w wersji zaproponowanej przez aplikację,
+- **„Zatwierdź opisy i dalej”** w [kroku 6](/pomoc/krok-6-opisy) — opisy sekcji operatu.
 
-Każde kliknięcie potwierdza całą grupę naraz. Reguła jest jedna: czego nie wpisałeś sam, to musisz potwierdzić.
+Zapis kroku potwierdza całą grupę naraz. Reguła jest jedna i nie zmieniła się: czego nie wpisałeś sam, to musisz potwierdzić — zmieniło się tylko miejsce. Wcześniej krok 7 prosił o potwierdzenie danych, których na nim nie widać.
 
 ## Co blokuje przejście dalej
 
@@ -44,6 +44,8 @@ Przycisk „Zatwierdź operat” jest nieaktywny, dopóki lista blokad nie jest 
 - **braki w danych z KW** (tylko gdy wgrałeś dokument) — „Numer KW gruntu (księgi macierzystej) — brak.” oraz „Numer KW lokalu — brak (zaznacz wariant deweloperski, jeśli lokal nie ma własnej księgi).”,
 - **opisy sekcji** — „Opisy sekcji nie zostały wygenerowane.”, „_nazwa sekcji_ — brak tekstu.”, „_nazwa sekcji_ — do weryfikacji.” oraz „Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.”. Wszystkie rozwiązuje się w [kroku 6](/pomoc/krok-6-opisy).
 
-Blokady rozwiązuje się tam, gdzie powstały: brakujące pola w krokach 1–2, liczebność próby w kroku 3, kwotę w kroku 5, opisy w kroku 6, a niepotwierdzone dane — przyciskami potwierdzeń na tym ekranie. Skąd te blokady się biorą i dlaczego brama stoi po stronie serwera, opisują [Zasady zatwierdzania i prowenancja danych](/pomoc/zasady-zatwierdzania).
+Blokady rozwiązuje się tam, gdzie powstały: brakujące pola w krokach 1–2, liczebność próby w kroku 3, kwotę w kroku 5, opisy w kroku 6, a niepotwierdzone dane — zapisem tego kroku, na którym są widoczne. Nie musisz tego pamiętać: przy każdej pozycji listy stoi odnośnik „Przejdź do kroku …”, prowadzący wprost tam, gdzie się ją zdejmuje. Skąd te blokady się biorą i dlaczego brama stoi po stronie serwera, opisują [Zasady zatwierdzania i prowenancja danych](/pomoc/zasady-zatwierdzania).
+
+Jedno ostrzeżenie o koszcie: powrót do kroku 1 kasuje zatwierdzoną kalkulację, więc po poprawce trzeba jeszcze raz przejść krok 5, a po zmianie adresu lub powierzchni — również ponownie zatwierdzić opisy w kroku 6. Sam kreator uprzedza o tym na kroku 1.
 
 Zatwierdzenie jest jednorazowe: druga próba kończy się komunikatem „Wycena jest już zatwierdzona.”. Co dzieje się dalej — podgląd operatu, pobieranie plików, podpis i nowa wersja — opisuje [strona o wycenie po zatwierdzeniu](/pomoc/po-zatwierdzeniu).
