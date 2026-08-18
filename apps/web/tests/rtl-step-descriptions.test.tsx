@@ -474,6 +474,25 @@ describe("what went stale, and what regenerating it costs (T5)", () => {
     );
   });
 
+  it("the appraiser cannot ask INTO a bounded call already in flight", async () => {
+    // Load-bearing, and non-obvious. `inFlight` is keyed by valuation alone
+    // (fix round 1), so a click during the automatic call would JOIN it — a
+    // bounded run that deliberately left the refused section out — and the ask
+    // would be silently swallowed. What prevents it is the disabled state:
+    // `generate()` sets `generating` before it awaits anything, so from the
+    // first commit after mount both buttons are unclickable until the call
+    // settles. Pinned here because the coarse key depends on it.
+    const pending = deferred<{ prose: ProseSnapshot }>();
+    proposeProseMock.mockReturnValue(pending.promise);
+
+    renderStep({ prose: null, upToDate: false });
+
+    await screen.findByTestId("prose-generating");
+    expect(screen.getByRole("button", { name: "Wygeneruj ponownie" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Wygeneruj wszystkie od nowa" })).toBeDisabled();
+    expect(proposeProseMock).toHaveBeenCalledTimes(1);
+  });
+
   it("the AUTOMATIC call stays bounded — no options at all", async () => {
     // The pair to the test above: entering the step sends the plain call, so
     // the server leaves out anything it has already been asked for at these
