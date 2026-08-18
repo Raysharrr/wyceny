@@ -81,9 +81,19 @@ function formatAreaDisplay(value: unknown): string | null {
 export function SubjectForm({
   valuationId,
   defaults,
+  calculationConfirmed = false,
 }: {
   valuationId?: string;
   defaults?: Partial<FormInput>;
+  /**
+   * Whether this draft already carries a confirmed calculation (`wr != null`).
+   * Drives the warning above the form: `applySubjectUpdate` nulls `wr` on
+   * every step-1 save, so submitting costs the appraiser step 5 — and step 7
+   * disappears from the stepper until they redo it (`maxReachedStep` falls
+   * from 7 to 5). Since T8 the step-7 blockers link people here on purpose,
+   * so that cost has to be stated on the screen they land on.
+   */
+  calculationConfirmed?: boolean;
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -335,6 +345,23 @@ export function SubjectForm({
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      {/* First thing on the page, not a toast after the fact: the save is
+       * irreversible for the calculation, and the appraiser has to be able to
+       * decide BEFORE pressing the button. Scope stated exactly as the code
+       * behaves — `wr` always goes; the descriptions go stale only through
+       * `analiza_rynku` (address) and `opis_lokalu` (area), measured against
+       * `currentSectionFactsHashes`, never promised more broadly. */}
+      {calculationConfirmed ? (
+        <p
+          data-testid="step1-recalc-warning"
+          role="status"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-500"
+        >
+          Zapis tego kroku kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie
+          wyliczyć w kroku 5, a po zmianie adresu lub powierzchni — również ponownie zatwierdzić
+          opisy w kroku 6.
+        </p>
+      ) : null}
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
         <div className="flex flex-col gap-4">
           <SectionCard icon={MapPin} title="Adres i lokalizacja" sub="1 pole">

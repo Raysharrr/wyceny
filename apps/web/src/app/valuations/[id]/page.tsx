@@ -91,7 +91,13 @@ export default async function ValuationViewPage({
     return (
       <WizardShell currentStep={step} maxReachedStep={max} valuationId={valuation.id}>
         {step === 1 ? (
-          <SubjectForm valuationId={valuation.id} defaults={step1DefaultsFromInputs(valuation)} />
+          <SubjectForm
+            valuationId={valuation.id}
+            defaults={step1DefaultsFromInputs(valuation)}
+            // The step-1 save nulls `wr` (`applySubjectUpdate`), which is worth
+            // a warning only when there is a confirmed calculation to lose.
+            calculationConfirmed={valuation.wr != null}
+          />
         ) : step === 2 ? (
           <StepInspection
             valuationId={valuation.id}
