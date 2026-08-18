@@ -338,6 +338,13 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         // vocabulary the step-7 buttons used: after T8 this save is the ONLY
         // confirm path, and a trail that stopped naming the confirmation
         // would stop showing who vouched for the data under the signature.
+        //
+        // `subject_confirmed` unconditionally, `kw_confirmed` only with an
+        // extract attached — not an inconsistency: the subject confirmation
+        // also covers the address's geocoding, which a draft can carry with
+        // no subject at all (the RCN fetch geocoded it), so gating this row
+        // on `u.subject` would drop it in a case where the save really did
+        // flip something. A KW confirmation with no KW extract flips nothing.
         await insertAudit(tx, { valuationId: id, actorId: user.id, action: "subject_confirmed" });
         if (u.kw != null) {
           await insertAudit(tx, { valuationId: id, actorId: user.id, action: "kw_confirmed" });
