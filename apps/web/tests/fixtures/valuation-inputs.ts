@@ -5,9 +5,11 @@ import { PROSE_SECTIONS, type ProseSnapshot } from "../../src/domain/prose-snaps
 import type { NewValuationInput } from "../../src/ports/valuation";
 
 /**
- * A prose snapshot in the ONLY shape that clears the T7 gate: all six
- * sections written, every one `rzeczoznawca`/`confirmed` — i.e. what
- * `confirmProseSnapshot` leaves behind after the appraiser submits step 6.
+ * A prose snapshot in the shape the appraiser leaves behind: all six sections
+ * written, every one `rzeczoznawca`/`confirmed` — i.e. what
+ * `confirmProseSnapshot` produces after they submit step 6. Since T4 that
+ * shape alone no longer clears the gate; read the warning below before
+ * reaching for this.
  * Fictional text (F-9): no sentence here describes a real property.
  *
  * ⚠️ `factsHash` names the SAME made-up fingerprint for all six sections (T2:
@@ -106,8 +108,11 @@ export function valuationInput(ownerId: string, address: string): NewValuationIn
 /**
  * `KcsInput` fixture with 12 rcn comparables + geocode, both `to_verify`
  * (moved from `valuation-repo.test.ts`, F-7 Task 4). Does NOT pass the F-4
- * gate on its own — `confirmSample` must flip the sample to `confirmed`
- * first; this is what makes it useful for testing that mutation.
+ * gate on its own: `confirmSample` must flip the sample to `confirmed`, and
+ * since T4 the repo derives `requireProse` itself, so confirmed prose is
+ * required too — attach {@link withConfirmedProse} when approving through the
+ * repo. Carrying neither is what makes this fixture useful for testing that
+ * the gate refuses a bare draft.
  */
 export function approvableInputs(): KcsInput {
   return {
