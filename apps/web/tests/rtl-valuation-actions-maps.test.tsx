@@ -39,7 +39,7 @@ describe("ValuationActions — maps fallback", () => {
       mapsUnavailable: true,
     });
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
     expect(await screen.findByTestId("maps-fallback")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /spróbuj ponownie/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /zatwierdź bez map/i })).toBeInTheDocument();
@@ -50,7 +50,7 @@ describe("ValuationActions — maps fallback", () => {
       error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu.",
     });
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
     expect(await screen.findByText(/zatwierdzenie zablokowane/i)).toBeInTheDocument();
     expect(screen.queryByTestId("maps-fallback")).not.toBeInTheDocument();
   });
@@ -62,7 +62,7 @@ describe("ValuationActions — maps fallback", () => {
     });
     approveValuation.mockResolvedValueOnce(undefined);
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
     await screen.findByTestId("maps-fallback");
     await userEvent.click(screen.getByRole("button", { name: /zatwierdź bez map/i }));
     expect(approveValuation).toHaveBeenLastCalledWith("v1", { skipMaps: true });
@@ -75,7 +75,7 @@ describe("ValuationActions — maps fallback", () => {
     });
     approveValuation.mockResolvedValueOnce(undefined);
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
     await screen.findByTestId("maps-fallback");
     await userEvent.click(screen.getByRole("button", { name: /spróbuj ponownie/i }));
     expect(approveValuation).toHaveBeenLastCalledWith("v1", undefined);
@@ -100,7 +100,7 @@ describe("ValuationActions — an approve refusal lists every blocker with its s
       ],
     });
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
 
     const list = await screen.findByTestId("approve-blockers");
     expect(within(list).getAllByRole("listitem")).toHaveLength(3);
@@ -123,7 +123,7 @@ describe("ValuationActions — an approve refusal lists every blocker with its s
       error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu.",
     });
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Zatwierdzenie zablokowane — brak danych wejściowych operatu.",

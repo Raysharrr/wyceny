@@ -163,7 +163,7 @@ export function ValuationActions({
             disabled={isPending || !gateOk}
             onClick={() => handleApprove()}
           >
-            {isPending ? "Zatwierdzanie…" : "Zatwierdź operat"}
+            {isPending ? "Zatwierdzanie…" : "Zatwierdź i generuj operat"}
           </Button>
         </FootNav>
       ) : null}

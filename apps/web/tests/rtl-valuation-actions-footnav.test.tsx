@@ -35,7 +35,7 @@ describe("ValuationActions — step 7 FootNav (Task 6)", () => {
     render(<ValuationActions {...baseProps} wr={500000} />);
     const approveButton = screen.getByTestId("approve-button");
     expect(approveButton).toBeInTheDocument();
-    expect(approveButton).toHaveAccessibleName(/zatwierdź operat/i);
+    expect(approveButton).toHaveAccessibleName(/zatwierdź i generuj operat/i);
     const backLink = screen.getByRole("link", { name: /wstecz/i });
     expect(backLink).toHaveAttribute("href", "?step=6");
     expect(screen.getByText(wrTextRegex, { selector: "b" })).toBeInTheDocument();

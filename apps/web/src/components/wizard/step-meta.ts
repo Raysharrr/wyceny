@@ -41,7 +41,7 @@ export const STEP_META = {
     eyebrow: "KROK 7/7 — PODGLĄD OPERATU",
     title: "Operat szacunkowy",
     description:
-      "Sprawdź kompletność danych i zatwierdź operat — PDF wygeneruje się po zatwierdzeniu.",
+      "Obejrzyj złożony dokument i zatwierdź operat — wydany PDF powstanie na nowo, z datą wydania.",
     helpSlug: "krok-7-operat",
   },
 } as const;
