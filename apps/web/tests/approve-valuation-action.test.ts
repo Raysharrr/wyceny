@@ -113,6 +113,12 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
     freezeMapsMock.mockReset();
+    // The adapter answers with the saved row; `undefined` from a bare vi.fn()
+    // would read as "the freeze write did not happen", which approve refuses on.
+    freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
+      ...draft,
+      mapsFrozenFor: address,
+    }));
   });
 
   // A gate-passing, document-field-complete draft — approvableInput() already
@@ -237,6 +243,26 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     expect(text).toContain("Dokumentacja kartograficzna zostanie uzupełniona.");
   });
 
+  it("a freeze that does not take stops the issue and leaves no maps behind", async () => {
+    getMock.mockResolvedValue(draft);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    setUpHappyMocks();
+    // Owner-only adapter, or a row that stopped being a draft: `null`, no throw.
+    freezeMapsMock.mockResolvedValue(null);
+
+    const result = await approveValuation(draft.id);
+
+    // Bytes without a marker that describes them are the state this whole
+    // design exists to prevent, so they go. And with them has to go the issue:
+    // sign re-renders from exactly these keys and reads their absence as
+    // "approved without maps", silently — so a document approved WITH maps
+    // over deleted bytes would come out of the office unillustrated.
+    expect(result).toEqual({ error: expect.stringContaining("stanu map operatu") });
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(storageDeleteMock).toHaveBeenCalledWith(`mapa-ewidencyjna-${draft.id}.png`);
+    expect(storageDeleteMock).toHaveBeenCalledWith(`mapa-orto-${draft.id}.jpg`);
+  });
+
   it("issuing drops the preview blob — two files differing only by their date invite the wrong one", async () => {
     getMock.mockResolvedValue(draft);
     fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
@@ -272,6 +298,13 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
     storageDeleteMock.mockReset();
     storageGetMock.mockReset();
     fetchMapsMock.mockReset();
+    freezeMapsMock.mockReset();
+    // The adapter answers with the saved row; `undefined` from a bare vi.fn()
+    // would read as "the freeze write did not happen", which approve refuses on.
+    freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
+      ...draftWithPhotos,
+      mapsFrozenFor: address,
+    }));
   });
 
   // Manifest with 2 keys spread across 2 of the 3 sections — enough to prove
@@ -437,6 +470,12 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
     freezeMapsMock.mockReset();
+    // The adapter answers with the saved row; `undefined` from a bare vi.fn()
+    // would read as "the freeze write did not happen", which approve refuses on.
+    freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
+      ...draftBase,
+      mapsFrozenFor: address,
+    }));
     amountInWordsMock.mockResolvedValue("siedemset tysięcy złotych");
     convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
     storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
@@ -662,6 +701,12 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
     storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
     freezeMapsMock.mockReset();
+    // The adapter answers with the saved row; `undefined` from a bare vi.fn()
+    // would read as "the freeze write did not happen", which approve refuses on.
+    freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
+      ...draftForDriftTest,
+      mapsFrozenFor: address,
+    }));
   });
 
   it("returns the Polish drift message when repo.approve rejects with InputsChangedError, no crash", async () => {

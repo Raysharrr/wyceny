@@ -140,13 +140,21 @@ export async function previewOperat(
         maps = fetched.maps;
         await storage.put(ewidencyjnaKey(id), maps.ewidencyjna);
         await storage.put(ortoKey(id), maps.orto);
-        // Same `null` case as above, harmless in this direction: the bytes are
-        // written but nothing claims them, so the next preview simply fetches
-        // again. Logged rather than swallowed — a write that silently did
-        // nothing should be visible somewhere.
+        // Same `null` case as above — a write that did not happen — and here
+        // the bytes have to go with it. Left in place they sit under whatever
+        // marker was there BEFORE, which is the previous address: correct the
+        // address back and the next reader gets the other parcel's maps under
+        // a marker that looks perfectly valid. The rule this design rests on
+        // is one line long — bytes exist only under a marker that describes
+        // them — and this is the second way to break it.
+        //
+        // The render below still uses the maps held in memory; only the reuse
+        // is given up, so the next preview fetches again.
         const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
         if (!frozen) {
-          console.warn(`previewOperat: could not record the map freeze on ${id}`);
+          console.warn(`previewOperat: could not record the map freeze on ${id} — dropping bytes`);
+          await storage.delete(ewidencyjnaKey(id));
+          await storage.delete(ortoKey(id));
         }
       }
     }

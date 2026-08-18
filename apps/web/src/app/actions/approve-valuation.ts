@@ -143,7 +143,28 @@ export async function approveValuation(
       // the drift check), revert to A — and a marker still saying A hands the
       // next reader B's parcel under A's address. Today that poisons a
       // preview; once Task 12 pairs issuing with the freeze, a signed operat.
-      await valuationRepository.freezeMaps(id, session.user, valuation.address);
+      const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
+      if (!frozen) {
+        // The write did NOT happen (owner-only adapter, or the row stopped
+        // being a draft) — so these bytes now sit under the previous address's
+        // marker, and they go, by the rule that holds everywhere else here:
+        // bytes exist only under a marker that describes them.
+        //
+        // The issue goes with them, and that is where this differs from the
+        // preview. `signValuationAction` re-renders from exactly these keys and
+        // reads their absence as "approved without maps" — silently, by design.
+        // Deleting them and approving anyway would put an illustrated document
+        // in the record and an unillustrated one under the signature. Nothing
+        // has been committed at this point, so refusing costs a retry and no
+        // more — and a `null` here means the approve was going to fail at
+        // `repo.approve` anyway, for the same two reasons.
+        console.error(`approveValuation: could not record the map freeze on ${id} — refusing`);
+        await storage.delete(`mapa-ewidencyjna-${id}.png`);
+        await storage.delete(`mapa-orto-${id}.jpg`);
+        return {
+          error: "Nie udało się zapisać stanu map operatu — odśwież stronę i spróbuj ponownie.",
+        };
+      }
     } else {
       // skipMaps (user's conscious choice) or MAPS_FETCH=off kill switch:
       // approve proceeds with maps === null. A PRIOR failed approve attempt

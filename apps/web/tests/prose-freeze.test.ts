@@ -111,6 +111,13 @@ describe("prose is frozen between approve and sign (Task 7)", () => {
       maps: { ewidencyjna: SIGNATURE_PNG, orto: SIGNATURE_PNG },
     });
     getSignatureMock.mockResolvedValue({ bytes: SIGNATURE_PNG, mime: "image/png" });
+    // The freeze write answers with the saved row, as the adapter does —
+    // `undefined` from a bare vi.fn() reads as "the write did not happen",
+    // which approve refuses on rather than issue maps nothing claims.
+    vi.mocked(valuationRepository.freezeMaps).mockImplementation(async (_id, _user, address) => ({
+      ...draft,
+      mapsFrozenFor: address,
+    }));
 
     getMock.mockResolvedValue(draft);
     approveMock.mockResolvedValue(approved);

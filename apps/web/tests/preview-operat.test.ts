@@ -130,6 +130,16 @@ function reconfirmAt(address: string) {
   };
 }
 
+/**
+ * The repo's freeze write, as the adapter performs it. Named so a test can put
+ * it back after forcing the `null` return (a write that legitimately did not
+ * happen — see the tests that use it).
+ */
+const freezeMapsFake = async (_id: string, _user: unknown, address: string | null) => {
+  current = { ...current, mapsFrozenFor: address };
+  return current;
+};
+
 /** The one row every mock below reads and writes — see the file docstring. */
 let current: Valuation;
 /** The one blob store, so a freeze can be falsified by deleting its bytes. */
@@ -163,10 +173,7 @@ beforeEach(() => {
     current = { ...current, address: u.address, area: u.area, wr: null };
     return current;
   });
-  freezeMapsMock.mockImplementation(async (_id, _user, address) => {
-    current = { ...current, mapsFrozenFor: address };
-    return current;
-  });
+  freezeMapsMock.mockImplementation(freezeMapsFake);
 
   storagePutMock.mockImplementation(async (key, data) => {
     blobs.set(key, data);
@@ -343,6 +350,34 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     expect(current.mapsFrozenFor).toBe(ADDRESS);
     expect(blobs.has(EWIDENCYJNA_KEY)).toBe(true);
     expect(blobs.has(ORTO_KEY)).toBe(true);
+  });
+
+  it("a freeze that does not take takes its bytes with it", async () => {
+    // The mirror of the test above: there the marker was written and the bytes
+    // were not, here the bytes are written and the marker is not. `freezeMaps`
+    // is owner-only while this action authorises through `get`, which admits an
+    // admin, so `null` comes back without a throw. Same ending if the new bytes
+    // were left under the old marker: revert the address and the next preview —
+    // and, after Task 12, the signed operat — shows the other parcel.
+    await previewOperat(ID);
+    reconfirmAt(NEW_ADDRESS);
+    freezeMapsMock.mockResolvedValue(null);
+
+    await previewOperat(ID);
+
+    // The marker still describes address A, so nothing may be left claiming to
+    // be its maps: the bytes just written are B's.
+    expect(current.mapsFrozenFor).toBe(ADDRESS);
+    expect(blobs.has(EWIDENCYJNA_KEY)).toBe(false);
+    expect(blobs.has(ORTO_KEY)).toBe(false);
+
+    freezeMapsMock.mockImplementation(freezeMapsFake);
+    reconfirmAt(ADDRESS);
+    fetchMapsMock.mockClear();
+    await previewOperat(ID);
+
+    expect(fetchMapsMock).toHaveBeenCalledTimes(1);
+    expect(fetchMapsMock).toHaveBeenCalledWith(ADDRESS);
   });
 
   it("skipMaps lifts the freeze before it drops the bytes — never bytes gone under a standing marker", async () => {
