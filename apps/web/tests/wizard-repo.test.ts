@@ -9,7 +9,8 @@ import {
   type SampleUpdate,
   type SubjectUpdate,
 } from "../src/domain/valuation";
-import type { Comparable } from "../src/domain/kcs";
+import type { Comparable, KcsInput } from "../src/domain/kcs";
+import { approvalGate } from "../src/domain/provenance";
 import type { SessionUser } from "../src/ports/valuation";
 import {
   approvableInput,
@@ -38,6 +39,14 @@ beforeAll(async () => {
 afterAll(async () => {
   await pool.end();
 });
+
+/** The gate's blocker paths for an inputs snapshot — the sample size and the
+ * missing features block these partial drafts too, so tests assert on the
+ * PRESENCE of one path rather than on an empty list. */
+function gateBlockerPaths(inputs: KcsInput): string[] {
+  const gate = approvalGate(inputs);
+  return gate.ok ? [] : gate.blockers.map((b) => b.path);
+}
 
 function partialDraft(address: string) {
   return { ...valuationInput(appraiserA.id, address), wr: null, inputs: partialDraftInputs() };
@@ -211,6 +220,43 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
     // The geocoding belongs to the address, so it is confirmed here — not on
     // the sample step, where the appraiser never sees the resolved point.
     expect(p.geocode).toEqual({ source: "geokoder", status: "confirmed" });
+  });
+
+  /**
+   * The flow the geocode move has to survive: the appraiser never ran the
+   * step-1 EGiB/MPZP fetch, so nothing geocoded the draft until the RCN fetch
+   * on step 3 set `sampleMeta` — at which point the F-4 gate starts demanding
+   * a geocoding confirmation for an entry that does not exist yet. Since only
+   * step 1 can give that confirmation now, this proves the way out exists:
+   * submitting step 1 stamps the entry AND confirms it. A blocker no step can
+   * clear would deadlock approval, which is the failure mode opposite to (and
+   * as bad as) confirming something unseen.
+   */
+  it("a draft geocoded only by the sample fetch still clears the gate — from step 1", async () => {
+    const created = await repo.create(partialDraft("Wizard Geocode Reachable"));
+    await repo.saveSample(created.id, appraiserA, {
+      comparables: [{ pricePerM2: 10_000, source: "manual", status: "confirmed" }],
+      sampleMeta: {
+        lat: 52.4,
+        lon: 16.9,
+        fetchedAt: "2026-07-14T09:00:00.000Z",
+        source: "rcn-wfs-gugik",
+        query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D" },
+      },
+    });
+
+    const blocked = await repo.get(created.id, appraiserA);
+    expect(blocked!.inputs!.provenance!.geocode).toBeUndefined();
+    expect(gateBlockerPaths(blocked!.inputs!)).toContain("provenance.geocode");
+
+    await repo.saveSubject(created.id, appraiserA, subjectUpdate);
+
+    const cleared = await repo.get(created.id, appraiserA);
+    expect(cleared!.inputs!.provenance!.geocode).toEqual({
+      source: "geokoder",
+      status: "confirmed",
+    });
+    expect(gateBlockerPaths(cleared!.inputs!)).not.toContain("provenance.geocode");
   });
 
   it("saving step 4 confirms the preset weights and the rating-scale definitions", async () => {

@@ -80,7 +80,9 @@ test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", asy
     page,
     Array.from({ length: 12 }, (_, i) => String(12_000 + i * 100)),
   );
-  await page.getByTestId("confirm-features-button").click();
+  // No confirm click here any more (T7): "Zatwierdź cechy i dalej" on step 4
+  // both saved AND confirmed the preset, so step 7 has nothing left to ask
+  // for — which is exactly what this assertion now checks.
   await expect(page.getByTestId("confirm-features-button")).toHaveCount(0);
   await expect(page.getByTestId("approve-button")).toBeEnabled();
   await page.getByTestId("approve-button").click();
