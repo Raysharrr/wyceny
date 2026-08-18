@@ -165,6 +165,12 @@ describe("auto-generation on entering the step", () => {
   });
 
   it("proposals still describe this draft: NOTHING is generated", async () => {
+    // `upToDate: true` next to a 1-of-6 snapshot is DELIBERATELY inconsistent
+    // with what the server would compute since T5 (a missing generatable
+    // section now reads as not up to date). That is the point: what is under
+    // test here is that the step TRUSTS the server's aggregate instead of
+    // re-deriving it from the snapshot. Make the fixture self-consistent and
+    // the property stops being tested at all.
     renderStep({ prose: snapshot(), upToDate: true });
 
     await waitFor(() => expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue(AI_TEXT));
