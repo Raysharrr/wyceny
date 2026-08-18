@@ -207,6 +207,12 @@ class SubjectProposalResponse(BaseModel):
     meta: SubjectMeta
 
 
+# Not "try again": the geocoder gave a definitive answer, and repeating the
+# request repeats it. Only a corrected address changes the outcome.
+ADDRESS_NOT_FOUND_DETAIL = (
+    "Nie rozpoznano adresu nieruchomości — sprawdź jego pisownię "
+    "(np. „ul. Główna 12, Poznań”) i popraw go w kroku 1."
+)
 OUT_OF_COVERAGE_DETAIL = "Dane przedmiotu dostępne na razie dla Poznania — wpisz dane ręcznie."
 SUBJECT_FAILED_DETAIL = (
     "Nie udało się pobrać danych przedmiotu — spróbuj ponownie albo wpisz dane ręcznie."
@@ -217,6 +223,8 @@ SUBJECT_FAILED_DETAIL = (
 def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse:
     try:
         geo = subject.geocode_address(request.address)
+    except subject.AddressNotFound as exc:
+        raise HTTPException(status_code=422, detail=ADDRESS_NOT_FOUND_DETAIL) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=SUBJECT_FAILED_DETAIL) from exc
 
@@ -294,6 +302,8 @@ MAPS_FAILED_DETAIL = "Nie udało się pobrać map z Geoportalu — spróbuj pono
 def map_proposal(request: MapProposalRequest) -> MapProposalResponse:
     try:
         geo = subject.geocode_address(request.address)
+    except subject.AddressNotFound as exc:
+        raise HTTPException(status_code=422, detail=ADDRESS_NOT_FOUND_DETAIL) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=MAPS_FAILED_DETAIL) from exc
 

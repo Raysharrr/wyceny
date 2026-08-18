@@ -85,7 +85,7 @@ function maskMonth(date: string | undefined): string {
 }
 
 /** Best-effort city from the subject address ("ul. X 1, Poznań" → "Poznań"). */
-function cityFromAddress(address: string): string {
+export function cityFromAddress(address: string): string {
   const afterComma = address.split(",").pop()?.trim();
   return afterComma && afterComma.length > 0 ? afterComma : DASH;
 }

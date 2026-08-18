@@ -81,7 +81,9 @@ describe("buildProseFacts", () => {
       adres: ADDRESS,
       obreb: "0007 Zarzecze",
       pow_uzytkowa: "68,40",
-      rynek: "wtórny, lokale mieszkalne",
+      // The city is part of the fact: without it the model had no place to
+      // put the obręb and produced a wrong grammatical case (staging QA).
+      rynek: "wtórny, lokale mieszkalne, Nowogród",
       proba: {
         liczba_transakcji: 3,
         zakres_dat: `11-2024 ${ENDASH} 03-2025`,

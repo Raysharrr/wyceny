@@ -21,13 +21,22 @@
  * the facts would authorise the model to write any of them anywhere.
  */
 
-import { formatNumber, formatPln, LEVEL_LABEL } from "./document-model";
+import { cityFromAddress, formatNumber, formatPln, LEVEL_LABEL } from "./document-model";
 import { computeKcs, type Comparable, type KcsInput, type KcsResult } from "./kcs";
 import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "./prose-snapshot";
 import { sourced, type Sourced } from "@wyceny/shared";
 
-/** Fixed market description — this product values flats on the secondary market only. */
-const RYNEK = "wtórny, lokale mieszkalne";
+/**
+ * Market description — flats on the secondary market, in the subject's own
+ * city. The city is load-bearing, not decoration: the few-shot examples carry
+ * it here ("wtórny, lokale mieszkalne, Nowogród") and their prose opens with
+ * "analizę rynku lokalnego m. Nowogród, obręb nr …". Sending it without the
+ * city, a staging run produced "przeprowadzono analizę rynku lokalnego obręb
+ * Golęcin" — the model, having no city to place, glued the bare obręb onto the
+ * sentence in the wrong grammatical case. Polish declension is decided by what
+ * the phrase is attached to, so the fact has to arrive shaped.
+ */
+const RYNEK_BASE = "wtórny, lokale mieszkalne";
 
 /** Date-range separator of the section prompts' few-shot: EN DASH between plain spaces. */
 const RANGE_SEPARATOR = "–";
@@ -197,7 +206,7 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
     // from the address (the prompt tolerates its absence).
     ...(subject?.obreb ? { obreb: subject.obreb } : {}),
     pow_uzytkowa: formatNumber(inputs.area, 2),
-    rynek: RYNEK,
+    rynek: `${RYNEK_BASE}, ${cityFromAddress(address)}`,
     ...(proba ? { proba } : {}),
     ...(subject?.nrDzialki ? { nr_dzialki: subject.nrDzialki } : {}),
     ...(subject?.powEwidHa != null

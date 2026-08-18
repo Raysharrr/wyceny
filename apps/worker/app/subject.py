@@ -153,13 +153,22 @@ def _get(url: str) -> str:
         return resp.read().decode("utf-8", "replace")
 
 
+class AddressNotFound(RuntimeError):
+    """The geocoder answered, and the answer was "no such address".
+
+    Distinct from a transport/service failure ON PURPOSE: this one is not
+    retryable, and telling the appraiser to "try again" sends them into a loop
+    that cannot end. Only correcting the address can.
+    """
+
+
 def geocode_address(address: str) -> dict:
     query = normalize_uug_address(address)
     url = GEOKODER_URL + "?" + urllib.parse.urlencode({"request": "GetAddress", "address": query})
     results = json.loads(_get(url)).get("results") or {}
     first = results.get("1")
     if not first:
-        raise RuntimeError(f"Geokoder UUG nic nie znalazl: {address}")
+        raise AddressNotFound(f"Geokoder UUG nic nie znalazl: {address}")
     return {"x": float(first["x"]), "y": float(first["y"]), "teryt": first.get("teryt")}
 
 

@@ -56,3 +56,34 @@ def test_map_proposal_wms_failure_is_502(monkeypatch):
     resp = client.post("/map-proposal", json={"address": "Poznań, Testowa 1"})
     assert resp.status_code == 502
     assert resp.json()["detail"] == main.MAPS_FAILED_DETAIL
+
+
+def test_unrecognised_address_is_422_not_a_retry_loop(monkeypatch):
+    """An address the geocoder does not know is NOT a transient failure.
+
+    Staging QA hit this: the operat could not be approved, the screen said
+    "spróbuj ponownie", and three retries produced the same error — because
+    repeating a definitive answer repeats it. Only correcting the address helps,
+    so the message has to say that, and the status has to mark it non-retryable.
+    """
+
+    def brak(address):
+        raise subject.AddressNotFound(f"Geokoder UUG nic nie znalazl: {address}")
+
+    monkeypatch.setattr(subject, "geocode_address", brak)
+    for path in ("/map-proposal", "/subject-proposal"):
+        resp = client.post(path, json={"address": "ul. Nieistniejąca 999, Poznań"})
+        assert resp.status_code == 422, path
+        detail = resp.json()["detail"]
+        assert "Nie rozpoznano adresu" in detail, path
+        assert "spróbuj ponownie" not in detail.lower(), path
+
+
+def test_service_failure_stays_502_and_retryable(monkeypatch):
+    def padlo(address):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(subject, "geocode_address", padlo)
+    resp = client.post("/map-proposal", json={"address": "ul. Główna 12, Poznań"})
+    assert resp.status_code == 502
+    assert "spróbuj ponownie" in resp.json()["detail"].lower()
