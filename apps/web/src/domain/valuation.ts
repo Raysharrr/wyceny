@@ -393,14 +393,22 @@ function carryGroupStatuses(
 }
 
 /**
- * Step 1 owns the subject as ONE snapshot: the EGiB/MPZP fetch, the KW
- * extract and the area they came with are read together on one screen, so a
- * confirmation survives only when the whole group came back identical. The
- * coarse grain is deliberate — it errs toward `to_verify`, the only safe
+ * Step 1 owns the subject as ONE snapshot: the address, the EGiB/MPZP fetch,
+ * the KW extract and the area they came with are read together on one screen,
+ * so a confirmation survives only when the whole group came back identical.
+ * The coarse grain is deliberate — it errs toward `to_verify`, the only safe
  * direction for F-4.
+ *
+ * The address is compared here even though the UI re-fetches EGiB/MPZP
+ * whenever it changes (which moves `subjectMeta.fetchedAt` and would lapse
+ * the group anyway): that is a UI invariant this module cannot see, and
+ * leaning on it would mean a later change to the re-fetch — or any path that
+ * sets `subject` without a fresh `fetchedAt` — silently starts keeping
+ * confirmations for a parcel nobody re-read.
  */
-function sameSubjectGroup(previous: KcsInput, u: SubjectUpdate): boolean {
+function sameSubjectGroup(previousAddress: string, previous: KcsInput, u: SubjectUpdate): boolean {
   return (
+    previousAddress === u.address &&
     previous.area === u.area &&
     sameJson(previous.subject ?? null, u.subject ?? null) &&
     sameJson(previous.subjectMeta ?? null, u.subjectMeta ?? null) &&
@@ -431,7 +439,7 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
   // subject must not leave stale ewidencja/mpzp/kw provenance behind.
   const { ewidencja: _e, mpzp: _m, kw: _k, ...rest } = v.inputs.provenance ?? {};
   const reassigned = { ...rest, ...u.provenance } as InputsProvenance;
-  const provenance = sameSubjectGroup(v.inputs, u)
+  const provenance = sameSubjectGroup(v.address, v.inputs, u)
     ? carryGroupStatuses(v.inputs.provenance, reassigned, SUBJECT_GROUP_KEYS)
     : reassigned;
   return {

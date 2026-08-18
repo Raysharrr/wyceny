@@ -411,6 +411,25 @@ describe("applySubjectUpdate — the subject group survives an unrelated save (T
     expect(updated.inputs!.provenance!.mpzp!.status).toBe("to_verify");
   });
 
+  /**
+   * The address is compared HERE, in the domain, rather than left to the UI:
+   * today `onAddressBlur` re-fetches EGiB/MPZP on any address change, which
+   * moves `subjectMeta.fetchedAt` and lapses the group as a side effect — but
+   * that is a UI invariant the domain cannot see, and it is the one place
+   * this file could drift toward `confirmed`. So: hold the whole snapshot
+   * constant (the autofetch-off shape) and move only the address.
+   */
+  it("lapses the group on an address change alone, with no re-fetch to lean on", () => {
+    const v = confirmedSubject();
+    const updated = applySubjectUpdate(
+      v,
+      subjectUpdateFrom(v, { address: "ul. Klonowa 5, Nowogród" }),
+    );
+    expect(updated.inputs!.subjectMeta!.fetchedAt).toBe(v.inputs!.subjectMeta!.fetchedAt);
+    expect(updated.inputs!.provenance!.ewidencja!.status).toBe("to_verify");
+    expect(updated.inputs!.provenance!.mpzp!.status).toBe("to_verify");
+  });
+
   it("treats a changed area as a changed group — it is one snapshot, read together", () => {
     const v = confirmedSubject();
     const updated = applySubjectUpdate(v, subjectUpdateFrom(v, { area: 55 }));
