@@ -214,7 +214,9 @@ znika, więc smoke wymaga aktualizacji.
 2. **Nie da się już przejść kreatora „na próbę".** Każde wyjście z kroku dalej jest
    świadomym potwierdzeniem. To cel, ale zmienia rytm pracy.
 3. **Mapy zamrażają się wcześniej** niż dziś (podgląd zamiast wydania) — zmiana wobec
-   decyzji ze Slice'u 9.
+   decyzji ze Slice'u 9. Zamrożenie **musi** trzymać adres, z którego powstało: mapy są
+   pochodną adresu (geokoder → działka → bbox → WMS), więc podgląd, poprawka adresu
+   i wydanie bez rozmrożenia dałyby w podpisanym operacie mapę **poprzedniej działki**.
 4. **Podgląd bez paska narzędzi** traci wyszukiwanie w treści i licznik stron;
    przewijanie działa.
 5. **Jedna regeneracja na istniejący szkic** przy migracji odcisków.

@@ -190,6 +190,33 @@ describe("currentSectionFactsHash — scoped to what the section sees", () => {
     );
   });
 
+  it("a changed feature rating moves ONLY standard and uzasadnienie", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        features: INPUTS.features.map((f, i) =>
+          i === 0 ? { ...f, rating: "gorsza" as const } : f,
+        ),
+      },
+    };
+    const moved = PROSE_SECTIONS.filter(
+      (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+    );
+    expect(moved.sort()).toEqual(["standard", "uzasadnienie"]);
+  });
+
+  it("changed EGiB data moves ONLY zagospodarowanie and analiza_rynku", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: { ...INPUTS, subject: { ...INPUTS.subject!, obreb: "0099 Inny Obręb" } },
+    };
+    const moved = PROSE_SECTIONS.filter(
+      (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+    );
+    expect(moved.sort()).toEqual(["analiza_rynku", "zagospodarowanie"]);
+  });
+
   it("a changed comparable price moves ONLY the two sample-dependent sections", () => {
     const edited = {
       address: ADDRESS,
@@ -482,7 +509,44 @@ it("marks only the stale sections and offers to regenerate just those", () => {
 ```
 
 - [ ] **Step 2: Run it, expect FAIL**
-- [ ] **Step 3: Implement** — znacznik przy polu sekcji nieaktualnej; przycisk główny regeneruje **tylko nieaktualne** (`proposeProse(id)` bez opcji), a drugi, mniej wyeksponowany, „Wygeneruj wszystkie od nowa" woła `proposeProse(id, { sections: PROSE_SECTIONS })`. Nad przyciskami linia: `Wygenerowano {generations} razy · koszt tej wyceny ok. {grosze/100} zł` — liczona w `prose-step-props.ts` z wierszy audytu `prose_generated` (`usage.input_tokens`, `output_tokens`).
+- [ ] **Step 2b: Add the audit read path — it does not exist yet**
+
+`valuation-drizzle.ts` **zapisuje** wiersze `prose_generated`, ale `PortValuation` nie ma ani jednej metody, która czyta audyt. Bez niej licznika kosztu nie da się policzyć. Dodaj:
+
+```ts
+// ports/valuation.ts
+/** Token usage recorded on this valuation's `prose_generated` audit rows. */
+proseUsage(id: string, user: SessionUser): Promise<{
+  generations: number;
+  inputTokens: number;
+  outputTokens: number;
+}>;
+```
+
+Adapter sumuje `meta->>'inputTokens'` i `meta->>'outputTokens'` po wierszach `action = 'prose_generated'` dla tej wyceny, z tą samą kontrolą własności co `get`.
+
+- [ ] **Step 3: Implement** — znacznik przy polu sekcji nieaktualnej; przycisk główny regeneruje **tylko nieaktualne** (`proposeProse(id)` bez opcji), a drugi, mniej wyeksponowany, „Wygeneruj wszystkie od nowa" woła `proposeProse(id, { sections: PROSE_SECTIONS })`.
+
+Linia kosztu nad przyciskami. Przeliczenie tokenów na złotówki wymaga **dwóch** liczb, które starzeją się niezależnie od kodu — cennika modelu i kursu waluty — więc muszą stać w jednym miejscu, opisane datą i źródłem, a nie być rozsypane po komponencie:
+
+```ts
+/**
+ * Token pricing for the cost line on step 6. Both numbers age on their own
+ * schedule and neither is our data — hence one named constant carrying the
+ * date it was taken and where from, instead of two anonymous literals in a
+ * template string. Anything computed from it is prefixed "ok.".
+ * Źródło: cennik Anthropic dla claude-sonnet-5, odczytany 2026-08-18;
+ * kurs przyjęty 4,00 PLN/USD.
+ */
+const PROSE_PRICING_2026_08_18 = {
+  usdPerInputToken: 3 / 1_000_000,
+  usdPerOutputToken: 15 / 1_000_000,
+  plnPerUsd: 4.0,
+} as const;
+```
+
+Tekst linii: `Wygenerowano {generations} razy · {inputTokens + outputTokens} tokenów · koszt ok. {kwota} zł`. Liczba tokenów jest faktem zmierzonym i nie zestarzeje się nigdy; kwota jest szacunkiem i tak ma być nazwana.
+
 - [ ] **Step 4: Run tests, expect PASS**
 - [ ] **Step 5: Full gates**
 
@@ -533,9 +597,43 @@ it("editing one comparable unconfirms that row and no other", () => {
 ```
 
 - [ ] **Step 2: Run it, expect FAIL** (dziś zapis nie zdejmuje statusu wcale)
-- [ ] **Step 3: Implement** — w `applySampleUpdate` porównaj każdą przychodzącą transakcję z odpowiadającą jej w migawce (po `transactionId`, a dla wpisów ręcznych po pozycji); różnica w jakimkolwiek polu → `status: "to_verify"`, brak różnicy → status zachowany. Analogicznie `applySubjectUpdate` (grupa przedmiotu jako całość — to jedna migawka) i `applyFeaturesUpdate` (grupa cech).
+- [ ] **Step 3: Implement** — w `applySampleUpdate` dopasuj przychodzące transakcje do tych z migawki **po treści, nigdy po pozycji**:
+
+```ts
+/**
+ * Identity of a comparable for the purpose of keeping its confirmation.
+ * NOT the array index: deleting row 3 shifts every later row, and a
+ * position-matched confirmation would then stay attached to a DIFFERENT
+ * transaction than the one the appraiser verified — in a document with legal
+ * effects, the worst failure this task could produce.
+ */
+function comparableKey(c: Comparable): string {
+  return c.transactionId ?? `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
+}
+```
+
+Transakcja zachowuje `status` tylko wtedy, gdy w migawce istnieje wpis o **tym samym kluczu i wszystkich tych samych polach**; w każdym innym przypadku (zmiana, wstawienie, przesunięcie po usunięciu) → `status: "to_verify"`. Analogicznie `applySubjectUpdate` (grupa przedmiotu jako całość — to jedna migawka) i `applyFeaturesUpdate` (grupa cech).
+
 - [ ] **Step 4: Run tests, expect PASS**
-- [ ] **Step 5: Verify the guard bites** — ustaw wszystkie statusy na `to_verify` bezwarunkowo; asercja o jedenastu potwierdzonych MUSI paść. Przywróć.
+- [ ] **Step 4b: Write the delete/insert test**
+
+```ts
+it("deleting a row does not slide another row's confirmation onto it", () => {
+  const confirmed = confirmSampleProvenance(draftWithTwelveConfirmed);
+  const withoutThird = confirmed.inputs!.comparables.filter((_, i) => i !== 2);
+  const edited = applySampleUpdate(confirmed, {
+    comparables: withoutThird,
+    sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+    geocode: confirmed.inputs!.provenance?.geocode ?? null,
+  });
+  // The eleven survivors keep their own confirmations — matched by content,
+  // so nothing shifted onto a neighbour.
+  expect(edited.inputs!.comparables).toHaveLength(11);
+  expect(edited.inputs!.comparables.every((c) => c.status === "confirmed")).toBe(true);
+});
+```
+
+- [ ] **Step 5: Verify the guard bites** — zamień `comparableKey` na dopasowanie po indeksie; test z usunięciem wiersza MUSI paść. Przywróć.
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -645,6 +743,19 @@ it("fetches the maps once and freezes them on the valuation", async () => {
   expect(mapImages.fetchMaps).toHaveBeenCalledTimes(1);
 });
 
+it("a changed address unfreezes them — the map must show THIS parcel", async () => {
+  // Maps are derived from the address: geokoder -> parcel -> bbox -> WMS.
+  // Before this plan they were fetched at approval, so an address edit always
+  // got fresh ones. Freezing them at preview introduces the failure this test
+  // exists to prevent: previewing, correcting the address, then issuing a
+  // signed operat carrying the PREVIOUS parcel's cadastral map and orthophoto.
+  await previewOperat(ID);
+  await saveSubjectAction(ID, { ...subjectInput, address: "ul. Brzozowa 8/21, Nowogród" });
+  mapImages.fetchMaps.mockClear();
+  await previewOperat(ID);
+  expect(mapImages.fetchMaps).toHaveBeenCalledTimes(1);
+});
+
 it("never calls the language model", async () => {
   await previewOperat(ID);
   expect(proseProposal.fetchProposal).not.toHaveBeenCalled();
@@ -652,7 +763,16 @@ it("never calls the language model", async () => {
 ```
 
 - [ ] **Step 2: Run them, expect FAIL**
-- [ ] **Step 3: Implement** — akcja renderuje `buildDocumentModel` → `renderOperatDocx` → `worker.convertToPdf`, zapisuje PDF do `storage` pod kluczem `podglad-{id}.pdf` i zwraca URL; mapy pobiera tylko wtedy, gdy nie ma ich jeszcze zamrożonych przy wycenie.
+- [ ] **Step 3: Implement**
+
+Akcja renderuje `buildDocumentModel` → `renderOperatDocx` → `worker.convertToPdf`, zapisuje PDF do `storage` pod **stałym** kluczem `podglad-{id}.pdf` i zwraca URL. Mapy pobiera tylko wtedy, gdy przy wycenie nie ma ich zamrożonych **dla bieżącego adresu** (zamrożenie trzyma adres, z którego powstały — patrz test w kroku 1).
+
+Trzy rzeczy do rozstrzygnięcia w kodzie, nie do przemilczenia:
+
+1. **Dostęp.** `/api/docs/[key]` autoryzuje przez `getByDocKey`, które dopasowuje **wyłącznie** kolumny `docUrl`/`docxUrl` — klucz podglądu nie jest tam zarejestrowany, więc tą trasą byłby nieosiągalny. Dodaj osobną trasę `apps/web/src/app/api/podglad/[id]/route.ts`, autoryzującą przez `valuationRepository.get(id, session.user)` (własność wyceny) i strumieniującą blob ze `storage`. Nie rejestruj podglądu w `docUrl` — ta kolumna oznacza dokument **wydany**.
+2. **Cykl życia.** Stały klucz `podglad-{id}.pdf` znaczy, że każdy kolejny render **nadpisuje** poprzedni: jedna wycena to jeden blob podglądu, bez narastania sierot przy każdej zmianie faktów.
+3. **Sprzątanie po wydaniu.** Wydanie operatu usuwa blob podglądu — od tej chwili obowiązuje dokument wydany, a dwa pliki różniące się tylko datą to zaproszenie do pomyłki.
+
 - [ ] **Step 4: Run tests, expect PASS**
 - [ ] **Step 5: Commit**
 
