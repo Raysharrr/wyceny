@@ -303,7 +303,11 @@ function ProseEditors({
                 </div>
                 <textarea
                   id={`prose-${section}`}
-                  className="min-h-32 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base md:text-sm"
+                  // `field-sizing-content`: the box grows to its text. QA showed the
+                  // market analysis — the longest section, ~180 words, and the one the
+                  // appraiser most needs to READ before confirming — showing three
+                  // lines with the rest behind an inner scrollbar. Native CSS, no JS.
+                  className="min-h-32 field-sizing-content w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base md:text-sm"
                   value={texts[section]}
                   disabled={generating}
                   onChange={(e) => setTexts((prev) => ({ ...prev, [section]: e.target.value }))}

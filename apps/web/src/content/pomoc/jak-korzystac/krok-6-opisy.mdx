@@ -3,6 +3,17 @@ import { plural } from "@/components/wizard/plural";
 
 W kroku 6 powstają opisowe fragmenty operatu — te, których nie da się złożyć z tabel. Propozycje pisze aplikacja z danych **tej** wyceny: nie z szablonu, nie z cudzego operatu i nie z ogólnej wiedzy o rynku. Twoja rola to je przeczytać, poprawić i zatwierdzić — zapis jest przejęciem odpowiedzialności za treść.
 
+<img
+  src="/api/pomoc/krok-6-opisy.png"
+  alt="Krok 6 kreatora: sześć pól tekstowych z propozycjami sekcji opisowych operatu, każde z plakietką „AI — do weryfikacji”, nad nimi adnotacja o odpowiedzialności rzeczoznawcy i przycisk „Wygeneruj ponownie”."
+  style={{
+    width: "100%",
+    height: "auto",
+    borderRadius: "8px",
+    border: "1px solid rgba(0,0,0,0.08)",
+  }}
+/>
+
 ## Co wypełnia się samo
 
 Ekran ma {PROSE_SECTIONS.length} {plural(PROSE_SECTIONS.length, "sekcję opisową", "sekcje opisowe", "sekcji opisowych")}, każdą we własnym polu tekstowym:
