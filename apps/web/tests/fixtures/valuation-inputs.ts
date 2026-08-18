@@ -61,6 +61,27 @@ export function confirmedProseFor(address: string, inputs: KcsInput): ProseSnaps
 }
 
 /**
+ * Attaches to `inputs` the prose the appraiser would have confirmed on THIS
+ * draft — six sections, `rzeczoznawca`/`confirmed`, fingerprinted against
+ * these facts and this address.
+ *
+ * Needed by every repo-level approve test since T4 fix round 1: the repo now
+ * derives `requireProse` from the FR-6 kill switch inside its own transaction
+ * instead of taking it from the caller, so a draft with no prose is refused
+ * there exactly as it is in the action. `approvableInput`/`approvableInputs`
+ * deliberately stay prose-less — the tests that prove the gate REFUSES a bare
+ * draft need that shape.
+ *
+ * Survives `confirmSample`: flipping provenance statuses moves none of the
+ * six fingerprints (measured, not assumed), so this can be attached at
+ * creation time and the draft still clears the gate after the sample is
+ * confirmed.
+ */
+export function withConfirmedProse(address: string, inputs: KcsInput): KcsInput {
+  return { ...inputs, prose: confirmedProseFor(address, inputs) };
+}
+
+/**
  * Shared `NewValuationInput` fixture (moved from `valuation-repo.test.ts`,
  * F-7 Task 4). Document fields present by default so gate-passing approvals
  * also clear the document-field blockers (spec §4); callers override them to

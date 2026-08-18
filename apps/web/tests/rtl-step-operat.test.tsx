@@ -93,10 +93,12 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
     expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeDisabled();
   });
 
-  it("names all six when the snapshot predates per-section fingerprints", () => {
+  it("names the first section as stale when the snapshot predates per-section fingerprints", () => {
     // The migration path: `confirmedProse()` carries a fingerprint from some
     // earlier state of the draft, so every section reads stale — one pass
-    // through step 6 and the draft is current again.
+    // through step 6 and the draft is current again. Asserted on the first
+    // section only; that all six are listed is the gate's own business and
+    // `f4-approval-gate.test.ts` counts them there.
     render(<StepOperat valuation={draft(confirmedProse())} />);
 
     expect(screen.getByTestId("gate-blockers")).toHaveTextContent(

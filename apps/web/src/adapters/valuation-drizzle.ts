@@ -27,6 +27,7 @@ import { totalInspectionPhotos } from "../domain/inspection";
 import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
 import { currentSectionFactsHashes } from "../domain/prose-hash";
+import { proseEnabled } from "../lib/prose-enabled";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -538,15 +539,30 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         // Re-runs the full gate (F-4 + document fields) in the domain — this is
         // the atomic status flip; a caller that stored files first but fails
         // here leaves harmless orphan files (same keys, overwritten on retry).
-        // The staleness fingerprints are derived HERE, from the row this
-        // transaction read, and REPLACE whatever the caller passed — a caller
-        // could otherwise hand in matching hashes (or an empty map, which
-        // disables the check section by section) and walk stale prose straight
-        // past the invariant (ADR-012).
+        //
+        // BOTH prose options are derived HERE and REPLACE whatever the caller
+        // passed (ADR-012). `gate` is still accepted so the call sites read
+        // the same on both sides of the transaction, but nothing in it about
+        // prose is trusted:
+        //
+        //  - the fingerprints, from the row THIS transaction read — matching
+        //    hashes handed in from outside (or an empty map, which disables
+        //    the check section by section) would otherwise walk stale prose
+        //    straight past the invariant;
+        //  - `requireProse`, from the kill switch — the larger door next to
+        //    it. Taken verbatim, `requireProse: false` (or simply no options
+        //    at all) removed the ENTIRE prose group: staleness, missing text
+        //    and unconfirmed status together. FR-6 is a deployment decision,
+        //    not a per-call one, so the authoritative read belongs inside the
+        //    transaction, exactly like the hashes. `proseEnabled()` is the one
+        //    place that comparison lives; the action calls it too, for its
+        //    fail-fast check before it spends anything on generation.
+        const requireProse = proseEnabled();
         const updated = approveValuation(valuation, now, docs, {
           ...gate,
+          requireProse,
           currentSectionHashes:
-            gate?.requireProse && valuation.inputs
+            requireProse && valuation.inputs
               ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
               : undefined,
         });

@@ -12,6 +12,7 @@ import {
   confirmableInput,
   partialDraftInputs,
   valuationInput,
+  withConfirmedProse,
 } from "./fixtures/valuation-inputs";
 
 /** FR-12/NFR-6: every mutation leaves exactly one typed audit row, written
@@ -256,7 +257,11 @@ describe("audit_log per mutation", () => {
   });
 
   it("approve writes an 'approved' row with doc urls in meta", async () => {
-    const v = await repo.create(approvableInput(owner.id));
+    const base = approvableInput(owner.id);
+    const v = await repo.create({
+      ...base,
+      inputs: withConfirmedProse(base.address, base.inputs!),
+    });
     await repo.approve(v.id, owner, { docUrl: "/api/docs/a.pdf", docxUrl: "/api/docs/a.docx" });
     const rows = await auditRows(v.id);
     expect(rows.at(-1)!.action).toBe("approved");

@@ -8,7 +8,12 @@ import { ApprovalBlockedError, InputsChangedError, assertNotSigned } from "../sr
 import { buildPhotoKey } from "../src/domain/inspection";
 import type { KcsInput } from "../src/domain/kcs";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
-import { approvableInputs, partialDraftInputs, valuationInput } from "./fixtures/valuation-inputs";
+import {
+  approvableInputs,
+  partialDraftInputs,
+  valuationInput,
+  withConfirmedProse,
+} from "./fixtures/valuation-inputs";
 
 const appraiserA: SessionUser = { id: "user-test-1", role: "appraiser" };
 const appraiserB: SessionUser = { id: "user-test-2", role: "appraiser" };
@@ -159,7 +164,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve succeeds after confirmSample: status approved + approvedAt persisted", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 4"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 4", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
     const approved = await repo.approve(created.id, appraiserA);
@@ -173,7 +178,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("an approved valuation refuses further mutations (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 5"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 5", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
     await repo.approve(created.id, appraiserA);
@@ -225,7 +230,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve persists docUrl + docxUrl when passed", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 8"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 8", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
     const updated = await repo.approve(created.id, appraiserA, {
@@ -244,7 +249,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve with audit.mapsSkipped writes an 'approved' audit row whose meta contains mapsSkipped: true (Slice 9)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 9"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 9", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
     await repo.approve(
@@ -298,7 +303,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve succeeds when expectedInputs matches the row exactly (no drift)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 11"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Gating 11", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
     const current = (await repo.get(created.id, appraiserA))!.inputs!;
@@ -417,7 +422,7 @@ describe("F-5: confirmKw mutation (KW-extract provenance, Task 8)", () => {
   it("confirmKw on an approved valuation throws (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 13"),
-      inputs: kwApprovableInputs(),
+      inputs: withConfirmedProse("ul. Gating 13", kwApprovableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
     await repo.confirmKw(created.id, appraiserA);
@@ -466,7 +471,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("updateInspection on an approved valuation throws (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 3"),
-      inputs: approvableInputs(),
+      inputs: withConfirmedProse("ul. Ogledziny 3", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
     const approved = await repo.approve(created.id, appraiserA);

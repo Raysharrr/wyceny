@@ -5,7 +5,7 @@ import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { pgStorage } from "../src/adapters/storage-pg";
 import { buildPhotoKey } from "../src/domain/inspection";
-import { approvableInput, valuationInput } from "./fixtures/valuation-inputs";
+import { approvableInput, valuationInput, withConfirmedProse } from "./fixtures/valuation-inputs";
 import type { SessionUser } from "../src/ports/valuation";
 
 /**
@@ -208,7 +208,11 @@ describe("/api/docs/[key] — inspection photo thumbnails (Slice 10 FR-2, Task 8
   });
 
   it("versioning: a v2 draft inherits a v1-embedded photo key; owner request still resolves via v1 -> 200", async () => {
-    const v1 = await repo.create(approvableInput(appraiserA.id));
+    const base = approvableInput(appraiserA.id);
+    const v1 = await repo.create({
+      ...base,
+      inputs: withConfirmedProse(base.address, base.inputs!),
+    });
     const key = buildPhotoKey("wnetrza", "photo-v1", v1.id);
     await repo.updateInspection(v1.id, appraiserA, { kind: "add_photo", section: "wnetrza", key });
     await storage.put(key, jpegBytes);

@@ -11,7 +11,12 @@ import {
 } from "../src/domain/valuation";
 import type { Comparable } from "../src/domain/kcs";
 import type { SessionUser } from "../src/ports/valuation";
-import { approvableInput, partialDraftInputs, valuationInput } from "./fixtures/valuation-inputs";
+import {
+  approvableInput,
+  partialDraftInputs,
+  valuationInput,
+  withConfirmedProse,
+} from "./fixtures/valuation-inputs";
 
 /** Slice 11a wizard draft mutations (Task 4) — repo/adapter integration. */
 const appraiserA: SessionUser = { id: "user-wizard-1", role: "appraiser" };
@@ -153,7 +158,11 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
   });
 
   it("draft-only: after approve, all four mutations throw (write-once at approval, like updateInspection)", async () => {
-    const created = await repo.create(approvableInput(appraiserA.id));
+    const base = approvableInput(appraiserA.id);
+    const created = await repo.create({
+      ...base,
+      inputs: withConfirmedProse(base.address, base.inputs!),
+    });
     const approved = await repo.approve(created.id, appraiserA);
     expect(approved!.status).toBe("approved");
 

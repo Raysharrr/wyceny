@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
@@ -8,7 +8,12 @@ import { ApprovalBlockedError, NotSignableError } from "../src/domain/valuation"
 import type { SessionUser } from "../src/ports/valuation";
 import { approvalGate } from "../src/domain/provenance";
 import { PROSE_SECTIONS, type ProseSection } from "../src/domain/prose-snapshot";
-import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
+import {
+  approvableInput,
+  confirmedProse,
+  confirmedProseFor,
+  withConfirmedProse,
+} from "./fixtures/valuation-inputs";
 
 /**
  * F-7 (ADR-011, adversarial): editing a signed valuation is REFUSED on every
@@ -127,10 +132,16 @@ describe("F-7 DB-level write-once (triggers)", () => {
 /**
  * Builds a signed valuation via the real create → approve → sign path, using
  * the gate-passing `approvableInput` fixture (Task 4) so approval needs no
- * prior `confirmSample` round-trip.
+ * prior `confirmSample` round-trip. Prose attached because the repo derives
+ * `requireProse` from the kill switch itself (T4 fix round 1) — a bare draft
+ * no longer reaches `approved`, here or anywhere else.
  */
 async function signedFixture(): Promise<string> {
-  const v = await repo.create(approvableInput(OWNER));
+  const base = approvableInput(OWNER);
+  const v = await repo.create({
+    ...base,
+    inputs: withConfirmedProse(base.address, base.inputs!),
+  });
   await repo.approve(v.id, ownerUser, {
     docUrl: `/api/docs/operat-${v.id}.pdf`,
     docxUrl: `/api/docs/operat-${v.id}.docx`,
@@ -343,6 +354,51 @@ describe("F-7 + FR-6 — the confirmed prose is frozen with everything else", ()
         currentSectionHashes: {},
       }),
     ).rejects.toThrow(ApprovalBlockedError);
+  });
+
+  /**
+   * `requireProse` was the larger door next to the one above. The hashes were
+   * derived in the transaction, but the flag that decides whether the prose
+   * group is checked AT ALL was still taken from the caller verbatim — so
+   * `requireProse: false`, or simply no options, removed the whole group:
+   * staleness, missing text and unconfirmed status together. FR-6 is a
+   * DEPLOYMENT decision, not a per-call one, so the repo now reads it from
+   * the same kill switch the action reads and overwrites whatever came in.
+   */
+  it("DERIVES requireProse itself — a caller passing false gains nothing", async () => {
+    const stale = await staleDraft();
+
+    await expect(
+      repo.approve(stale.id, ownerUser, undefined, undefined, undefined, undefined, {
+        requireProse: false,
+        currentSectionHashes: {},
+      }),
+    ).rejects.toThrow(ApprovalBlockedError);
+  });
+
+  it("DERIVES requireProse itself — no options at all is not an opt-out either", async () => {
+    // The quietest payload of all: `repo.approve(id, user)` used to approve a
+    // draft whose six sections describe facts that have moved.
+    const stale = await staleDraft();
+
+    await expect(repo.approve(stale.id, ownerUser)).rejects.toThrow(ApprovalBlockedError);
+  });
+
+  it("and the kill switch still turns the whole group off (NEXT_PUBLIC_PROSE=off)", async () => {
+    // The other half of the trade: deriving the flag must not make FR-6
+    // unswitchable. With the brake on, the same stale draft approves — and so
+    // would one with no prose at all, which is the pre-FR-6 world.
+    vi.stubEnv("NEXT_PUBLIC_PROSE", "off");
+    try {
+      const stale = await staleDraft();
+      const approved = await repo.approve(stale.id, ownerUser, {
+        docUrl: `/api/docs/operat-${stale.id}.pdf`,
+        docxUrl: `/api/docs/operat-${stale.id}.docx`,
+      });
+      expect(approved!.status).toBe("approved");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("a new version inherits the text but NOT the confirmation (through the real jsonb round trip)", async () => {

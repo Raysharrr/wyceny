@@ -471,12 +471,16 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     expect(storagePutMock).not.toHaveBeenCalled();
   });
 
-  it("refuses EVERY populated section of a pre-fingerprint snapshot (the migration path)", async () => {
+  it("refuses a pre-fingerprint snapshot, naming its first section (the migration path)", async () => {
     // A draft persisted before per-section fingerprints existed: the adapter
     // normalizes it to an empty map on read, so all six read stale and the
     // appraiser makes one pass through step 6. `confirmedProse()` carries a
     // fingerprint from some earlier state of the draft, which is the same
     // thing from the gate's point of view.
+    //
+    // Only the FIRST blocker can be asserted here, and that is inherent: the
+    // action returns `blockers[0].label` and nothing else. That all six are
+    // blocked is pinned where it can be — `f4-approval-gate.test.ts`.
     getMock.mockResolvedValue(withProse(confirmedProse()));
 
     const result = await approveValuation(draftBase.id);
