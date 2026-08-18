@@ -160,12 +160,58 @@ describe("T8: honest silence when the draft carries no prose", () => {
     );
     const without = renderOperatDocx(buildDocumentModel({ ...syntheticDocumentInput() }));
 
-    // Exactly the four {#ma_proza_*}-wrapped paragraphs (§11, §8.3 opis lokalu,
-    // §8.3 standard, §13). The other two tags are trailing clauses of
-    // paragraphs that keep their own address sentence either way.
-    expect(paragraphCount(withProse) - paragraphCount(without)).toBe(4);
+    // Six: the four {#ma_proza_*}-wrapped prose paragraphs (§11, §8.3 opis
+    // lokalu, §8.3 standard, §13) plus the §8.3 "Opis lokalu mieszkalnego"
+    // sub-label and its spacer, which the wrap now opens BEFORE. The other two
+    // tags are trailing clauses of paragraphs that keep their address sentence
+    // either way.
+    expect(paragraphCount(withProse) - paragraphCount(without)).toBe(6);
     expect(docText(without)).not.toContain("zostanie uzupełniony po oględzinach");
     expect(docText(without)).not.toMatch(/\{[a-z_#/.]+\}/i);
+  });
+
+  // The count above cannot see WHICH paragraphs went, and two independent
+  // reviews found the same thing it missed: the §8.3 sub-label stood outside
+  // the wrap, so a draft without prose printed a bold heading over nothing and
+  // ran straight into §8.4.
+  it("prints no heading for a lokal description that is not there", () => {
+    const without = docText(renderOperatDocx(buildDocumentModel({ ...syntheticDocumentInput() })));
+    const withProse = docText(
+      renderOperatDocx(
+        buildDocumentModel({
+          ...syntheticDocumentInput(),
+          inputs: { ...bare, prose: confirmedProse() },
+        }),
+      ),
+    );
+
+    expect(withProse).toContain("Opis lokalu mieszkalnego");
+    expect(without).not.toContain("Opis lokalu mieszkalnego");
+  });
+
+  // ...and the §1 summary must still state the area. That cell cannot take a
+  // block wrap (a table cell whose every paragraph is dropped is invalid
+  // OOXML), so it carries an inline inverted fallback. Without it the cell went
+  // blank AND {powierzchnia} survived only inside the §12 KCS table — the
+  // flat's area would have stopped being a stated fact in the operat and
+  // become a calculation input only.
+  it("the §1 summary states the area with or without prose, and never twice", () => {
+    const without = docText(renderOperatDocx(buildDocumentModel({ ...syntheticDocumentInput() })));
+    const withProse = docText(
+      renderOperatDocx(
+        buildDocumentModel({
+          ...syntheticDocumentInput(),
+          inputs: { ...bare, prose: confirmedProse() },
+        }),
+      ),
+    );
+    const fallback = "Lokal mieszkalny o powierzchni użytkowej";
+
+    // No prose: the fallback speaks, so the area is stated.
+    expect(without).toContain(fallback);
+    // With prose: the fallback is silent, because the generated opis_lokalu
+    // opens with that very sentence and would otherwise print it twice.
+    expect(withProse).not.toContain(fallback);
   });
 
   it("still prints the honest no-map variant (the one 'zostanie uzupełniona' that stays)", () => {
