@@ -114,7 +114,7 @@ describe("buildProseFacts", () => {
       address: ADDRESS,
       area: INPUTS.area,
       purpose: "sprzedaz",
-      kwNumber: "NO1N/00012345/6",
+      kwNumber: "KW-TEST-1",
       client: "Bank Przykładowy S.A.",
       inspectionDate: "2026-01-15",
       approvedAt: new Date("2026-01-20T09:00:00.000Z"),
@@ -420,18 +420,24 @@ describe("selectProseSections", () => {
 });
 
 describe("buildProseTransactions", () => {
-  it("sends MM-RRRR + a NUMERIC price, dropping rows the worker would 400 on", () => {
-    expect(
-      buildProseTransactions([
-        ...COMPARABLES,
-        { date: "2024-13", pricePerM2: 8000 },
-        { pricePerM2: 8100 },
-      ]),
-    ).toEqual([
+  it("sends MM-RRRR + a NUMERIC price for a fully dated sample", () => {
+    expect(buildProseTransactions(COMPARABLES)).toEqual([
       { data: "11-2024", cena_m2: 9240 },
       { data: "03-2025", cena_m2: 12480 },
       { data: "12-2024", cena_m2: 10725 },
     ]);
+  });
+
+  // Same all-or-nothing doctrine as the aggregates (review finding I-1). The
+  // worker turns these into `proba.trend_cen` — a claim about how prices moved
+  // across THE SAMPLE. Built from the dated subset it would describe a
+  // different sample than the one the operat presents, and the number guard
+  // cannot catch that: "wzrostowe" carries no number at all.
+  it("sends nothing when any comparable lacks a usable month", () => {
+    expect(buildProseTransactions([...COMPARABLES, { pricePerM2: 8100 }])).toEqual([]);
+    expect(buildProseTransactions([...COMPARABLES, { date: "2024-13", pricePerM2: 8000 }])).toEqual(
+      [],
+    );
   });
 });
 

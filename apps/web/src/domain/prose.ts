@@ -231,15 +231,17 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
 
 /**
  * The sample as the worker wants it: "MM-RRRR" + a numeric price, outside the
- * facts. Comparables without a usable month are dropped — the worker rejects
- * the whole request over one malformed date, and a dateless row contributes
- * nothing to the trend anyway.
+ * facts. All-or-nothing, same doctrine as the aggregates above: the worker
+ * collapses these into `proba.trend_cen`, a claim about how prices moved ACROSS
+ * THE SAMPLE. Computed from the dated subset it would describe a different
+ * sample than the one the operat presents — a partial aggregate dressed as a
+ * complete one, which is exactly the untruth the aggregates were fixed for.
+ * One dateless comparable and the trend claim is simply not made.
  */
 export function buildProseTransactions(comparables: Comparable[]): ProseTransactionPayload[] {
-  return comparables.flatMap((c) => {
-    const month = monthOf(c.date);
-    return month ? [{ data: month.label, cena_m2: c.pricePerM2 }] : [];
-  });
+  const months = comparables.map((c) => monthOf(c.date));
+  if (months.some((m) => m === null)) return [];
+  return comparables.map((c, i) => ({ data: months[i]!.label, cena_m2: c.pricePerM2 }));
 }
 
 /**
