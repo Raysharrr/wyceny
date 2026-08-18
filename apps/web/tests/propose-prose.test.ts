@@ -408,3 +408,125 @@ describe("proposeProse — failures after the call", () => {
     });
   });
 });
+
+/**
+ * The attempts bound, applied where the batch is actually decided (T5 fix
+ * round 2).
+ *
+ * `worthGenerating` in the step decides WHETHER to call; this decides WHAT the
+ * call contains, and it is the same money. Without it a section refused at
+ * today's facts rides along in every batch that any OTHER section legitimately
+ * earns — bought again each time, for as long as its own facts stay put.
+ *
+ * The bound applies to the AUTOMATIC batch only. Both ways the appraiser can
+ * ask — naming sections, or asking for the missing-or-stale set with
+ * `includeAttempted` — go through untouched: asking must always work.
+ */
+describe("proposeProse — an answer already given is not bought again (T5 fix round 2)", () => {
+  const editedInputs = (): KcsInput => ({
+    ...INPUTS,
+    comparables: INPUTS.comparables.map((c, i) =>
+      i === 0 ? { ...c, pricePerM2: c.pricePerM2 + 500 } : c,
+    ),
+  });
+
+  /**
+   * The price edit makes `analiza_rynku` AND `uzasadnienie` stale. Only
+   * `uzasadnienie` was then re-requested at the edited facts — and refused, so
+   * it kept its OLD `factsHashes` entry and is still stale. Exactly the shape
+   * that used to be re-bought on every warranted batch.
+   */
+  function setupWithRefusedSection(inputs: KcsInput = editedInputs()) {
+    const prose = confirmedProseFor(ADDRESS, INPUTS);
+    prose.attempts = {
+      uzasadnienie: currentSectionFactsHash("uzasadnienie", { address: ADDRESS, inputs }),
+    };
+    getMock.mockResolvedValue({ ...draft, inputs: { ...inputs, prose } });
+    fetchProposalMock.mockResolvedValue(PROPOSAL);
+    saveProseMock.mockResolvedValue(draft);
+    return { prose };
+  }
+
+  it("the automatic batch takes the legitimately-stale section and leaves the attempted one out", async () => {
+    setupWithRefusedSection();
+
+    await proposeProse(VALUATION_ID);
+
+    expect(fetchProposalMock.mock.calls[0]![0].sections).toEqual(["analiza_rynku"]);
+  });
+
+  it("...and the attempted section returns to the batch as soon as ITS OWN facts move", async () => {
+    // A second price edit: the fingerprint `uzasadnienie` was attempted at no
+    // longer describes the draft, so the recorded attempt stops counting and
+    // an automatic retry is warranted again. This is the self-clearing the
+    // whole design rests on — a flag could not do it.
+    const movedAgain: KcsInput = {
+      ...INPUTS,
+      comparables: INPUTS.comparables.map((c, i) =>
+        i === 0 ? { ...c, pricePerM2: c.pricePerM2 + 900 } : c,
+      ),
+    };
+    const prose = confirmedProseFor(ADDRESS, INPUTS);
+    prose.attempts = {
+      uzasadnienie: currentSectionFactsHash("uzasadnienie", {
+        address: ADDRESS,
+        inputs: editedInputs(),
+      }),
+    };
+    getMock.mockResolvedValue({ ...draft, inputs: { ...movedAgain, prose } });
+    fetchProposalMock.mockResolvedValue(PROPOSAL);
+    saveProseMock.mockResolvedValue(draft);
+
+    await proposeProse(VALUATION_ID);
+
+    expect(fetchProposalMock.mock.calls[0]![0].sections.sort()).toEqual([
+      "analiza_rynku",
+      "uzasadnienie",
+    ]);
+  });
+
+  it("the appraiser asking (includeAttempted) puts it back without having to name it", async () => {
+    // What the step's own "Wygeneruj ponownie N nieaktualnych sekcji" button
+    // sends. The server still decides the batch — the browser never re-derives
+    // the missing-or-stale rule — but the bound on re-buying is lifted,
+    // because a click IS the ask. Without this the button would silently do
+    // nothing on exactly the drafts this bound exists for.
+    setupWithRefusedSection();
+
+    await proposeProse(VALUATION_ID, { includeAttempted: true });
+
+    expect(fetchProposalMock.mock.calls[0]![0].sections.sort()).toEqual([
+      "analiza_rynku",
+      "uzasadnienie",
+    ]);
+  });
+
+  it("opts.sections bypasses the bound entirely — 'redo this one' always works", async () => {
+    setupWithRefusedSection();
+
+    await proposeProse(VALUATION_ID, { sections: ["uzasadnienie"] });
+
+    expect(fetchProposalMock.mock.calls[0]![0].sections).toEqual(["uzasadnienie"]);
+  });
+
+  it("everything that needs work was already attempted: the worker is never called", async () => {
+    // Both stale sections attempted at today's facts. Nothing automatic is
+    // left to buy, and the current snapshot comes back rather than an error —
+    // the step calls this unconditionally on mount.
+    const inputs = editedInputs();
+    const prose = confirmedProseFor(ADDRESS, INPUTS);
+    prose.attempts = Object.fromEntries(
+      (["analiza_rynku", "uzasadnienie"] as ProseSection[]).map((s) => [
+        s,
+        currentSectionFactsHash(s, { address: ADDRESS, inputs }),
+      ]),
+    );
+    getMock.mockResolvedValue({ ...draft, inputs: { ...inputs, prose } });
+
+    const result = await proposeProse(VALUATION_ID);
+
+    expect(fetchProposalMock).not.toHaveBeenCalled();
+    expect(saveProseMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ prose });
+  });
+});

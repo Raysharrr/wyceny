@@ -378,7 +378,7 @@ describe("the appraiser's responsibility", () => {
     fireEvent.click(screen.getByRole("button", { name: "Wygeneruj ponownie" }));
 
     await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
-    expect(proposeProseMock).toHaveBeenCalledWith(VID);
+    expect(proposeProseMock).toHaveBeenCalledWith(VID, { includeAttempted: true });
   });
 });
 
@@ -463,7 +463,26 @@ describe("what went stale, and what regenerating it costs (T5)", () => {
       screen.getByRole("button", { name: /Wygeneruj ponownie 1 nieaktualną sekcję/ }),
     );
 
-    // No options = "whatever is missing or stale" (T3), decided server-side.
+    // The server still decides the batch — the browser never re-derives the
+    // missing-or-stale rule — but `includeAttempted` marks this as the
+    // appraiser ASKING, which lifts the bound the automatic call carries
+    // (fix round 2). Without it this click would silently do nothing on a
+    // draft whose stale sections were all attempted already, and the only
+    // retry left for one refused section would be paying for all six.
+    await waitFor(() =>
+      expect(proposeProseMock).toHaveBeenCalledWith(VID, { includeAttempted: true }),
+    );
+  });
+
+  it("the AUTOMATIC call stays bounded — no options at all", async () => {
+    // The pair to the test above: entering the step sends the plain call, so
+    // the server leaves out anything it has already been asked for at these
+    // facts. Two different intents, two different payloads.
+    const pending = deferred<{ prose: ProseSnapshot }>();
+    proposeProseMock.mockReturnValue(pending.promise);
+
+    renderStep({ prose: null, upToDate: false });
+
     await waitFor(() => expect(proposeProseMock).toHaveBeenCalledWith(VID));
   });
 
@@ -650,7 +669,13 @@ describe("entering the step must not re-buy an answer already given (T5)", () =>
       expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue("Tekst sekcji opis_lokalu."),
     );
     expect(proposeProseMock).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Wygeneruj ponownie" })).toBeEnabled();
+
+    // …and the appraiser can still ask: the click carries `includeAttempted`,
+    // which is what lifts the same bound on the server side (fix round 2).
+    fireEvent.click(screen.getByRole("button", { name: "Wygeneruj ponownie" }));
+    await waitFor(() =>
+      expect(proposeProseMock).toHaveBeenCalledWith(VID, { includeAttempted: true }),
+    );
   });
 
   it("PATH 3 control — missing + rejected but NOT yet attempted fires exactly once", async () => {

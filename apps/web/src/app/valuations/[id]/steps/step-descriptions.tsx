@@ -92,14 +92,32 @@ function isStillTheAutomats(snapshot: ProseSnapshot | null, section: ProseSectio
  */
 const inFlight = new Map<string, Promise<ProposeProseResult>>();
 
-function generateOnce(valuationId: string, sections?: ProseSection[]): Promise<ProposeProseResult> {
+/**
+ * The three ways this step asks, and they are not interchangeable:
+ *
+ *  - `undefined` — the step entering itself. NO options at all, not
+ *    `{ sections: undefined }`: the action reads "whatever is missing or
+ *    stale, minus what was already attempted at these facts" from the ABSENCE
+ *    of opts, and that bound is what stops an automatic visit from re-buying
+ *    a refusal.
+ *  - `"ask"` — the appraiser pressing "Wygeneruj ponownie". The server still
+ *    decides the batch; `includeAttempted` only lifts the bound, because a
+ *    click IS the ask. Without it the button would silently do nothing on
+ *    exactly the drafts the bound exists for.
+ *  - an explicit list — "Wygeneruj wszystkie od nowa".
+ */
+type ProseAsk = ProseSection[] | "ask" | undefined;
+
+function generateOnce(valuationId: string, ask: ProseAsk): Promise<ProposeProseResult> {
   const running = inFlight.get(valuationId);
   if (running) return running;
-  // No options at all — not `{ sections: undefined }` — for the default batch:
-  // the action reads "whatever is missing or stale" from the ABSENCE of opts.
-  const started = (
-    sections ? proposeProse(valuationId, { sections }) : proposeProse(valuationId)
-  ).finally(() => inFlight.delete(valuationId));
+  const call =
+    ask === undefined
+      ? proposeProse(valuationId)
+      : ask === "ask"
+        ? proposeProse(valuationId, { includeAttempted: true })
+        : proposeProse(valuationId, { sections: ask });
+  const started = call.finally(() => inFlight.delete(valuationId));
   inFlight.set(valuationId, started);
   return started;
 }
@@ -260,12 +278,12 @@ function ProseEditors({
   const autoStarted = useRef(false);
   const mounted = useRef(true);
 
-  const generate = async (sections?: ProseSection[]) => {
+  const generate = async (ask?: ProseAsk) => {
     setError(null);
     setGenerating(true);
     let result: ProposeProseResult;
     try {
-      result = await generateOnce(valuationId, sections);
+      result = await generateOnce(valuationId, ask);
     } catch (error) {
       // The action itself failed to reach the server (offline, dropped
       // connection). Without this the loading state would hang forever on an
@@ -365,7 +383,7 @@ function ProseEditors({
               type="button"
               variant="outline"
               disabled={generating || saving}
-              onClick={() => void generate()}
+              onClick={() => void generate("ask")}
             >
               <Sparkles className="size-4" />
               {/* The count names what the click will actually redo: the action

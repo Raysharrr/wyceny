@@ -6,6 +6,7 @@ import { getSession } from "@/auth/session";
 import { proseProposal, valuationRepository } from "@/app/valuations/_deps";
 import { ProseWorkerDetailError } from "@/adapters/prose-http";
 import {
+  attemptedProseSections,
   buildProseFacts,
   buildProseTransactions,
   proseSnapshotOf,
@@ -40,12 +41,29 @@ const DISABLED = "Generowanie opisów jest wyłączone.";
  * honest — no section is invented, and a section the worker could not deliver
  * comes back in `rejected` for the appraiser to write by hand.
  *
- * `opts.sections`, omitted, means "whatever is missing or stale" (T3): a
- * section already present with a fingerprint matching today's facts is left
- * alone — regenerating it would pay for tokens only to have the merge
- * (`mergeProseProposal`) throw the result away. Passed explicitly it is an
- * escape hatch — "redo this one" — that still never asks for a section
+ * `opts.sections`, omitted, means "whatever is missing or stale, MINUS what
+ * was already asked for at these exact facts" (T3, bounded in T5): a section
+ * already present with a matching fingerprint is left alone — regenerating it
+ * would pay for tokens only to have the merge (`mergeProseProposal`) throw the
+ * result away — and so is one that has already been attempted and could not be
+ * delivered. Passed explicitly, `opts.sections` is an escape hatch — "redo
+ * this one" — that bypasses both filters and still never asks for a section
  * today's facts cannot back at all.
+ *
+ * Three callers, three intents, and the DEFAULT is the bounded one on purpose:
+ * a caller that forgets to say what it is doing gets the cheap behaviour, and
+ * the failure mode of forgetting is a click that does nothing rather than a
+ * bill nobody asked for.
+ *
+ *  - no opts — the step entering itself. Automatic, so it must never re-buy an
+ *    answer it already has.
+ *  - `opts.includeAttempted` — the appraiser pressing "Wygeneruj ponownie".
+ *    The server still decides the batch (the browser never re-derives the
+ *    missing-or-stale rule), but the bound is lifted, because a click IS the
+ *    ask. Without it the button would silently do nothing on exactly the
+ *    drafts the bound exists for — and the only retry left for one refused
+ *    section would be paying for all six.
+ *  - `opts.sections` — "redo these", named.
  *
  * Sections the appraiser already confirmed are NOT excluded from that batch.
  * `mergeProseProposal` demotes a confirmed section back to `to_verify` when
@@ -60,7 +78,7 @@ const DISABLED = "Generowanie opisów jest wyłączone.";
  */
 export async function proposeProse(
   id: string,
-  opts?: { sections?: ProseSection[] },
+  opts?: { sections?: ProseSection[]; includeAttempted?: boolean },
 ): Promise<ProposeProseResult> {
   const session = await getSession();
   if (!session) {
@@ -89,13 +107,31 @@ export async function proposeProse(
   const stale = new Set(
     staleProseSections(valuation.inputs.prose, factsInput, currentSectionFactsHash),
   );
+  // Sections already asked for at exactly these facts (T5 fix round 2). Left
+  // out of the AUTOMATIC batch: a section the worker refused stays stale
+  // forever — the merge keeps its old fingerprint on purpose, so the F-4 gate
+  // goes on blocking it — and would therefore ride along in every batch some
+  // OTHER section legitimately earns. Not once: every time anything at all
+  // goes stale, for as long as its own facts stay put. The step's
+  // `worthGenerating` decides WHETHER to call; this decides WHAT the call
+  // contains, and it is the same money.
+  const attempted = new Set(
+    opts?.includeAttempted
+      ? []
+      : attemptedProseSections(valuation.inputs.prose, factsInput, currentSectionFactsHash),
+  );
   const sections = opts?.sections
     ? opts.sections.filter((s) => generatable.includes(s))
-    : generatable.filter((s) => !valuation.inputs?.prose?.sections[s] || stale.has(s));
+    : generatable.filter(
+        (s) => (!valuation.inputs?.prose?.sections[s] || stale.has(s)) && !attempted.has(s),
+      );
   if (sections.length === 0) {
-    // Nothing needs regenerating. In the no-opts path this always means every
-    // generatable section is already present and fresh, so `prose` is
-    // guaranteed to exist — but `opts.sections` can ALSO filter down to
+    // Nothing left to buy. In the no-opts path that now means one of two
+    // things — every generatable section is present and fresh, OR everything
+    // that still needs work was already attempted at these exact facts —
+    // and `prose` is guaranteed to exist under both: a draft with no prose at
+    // all has recorded no attempts either, so its missing sections cannot be
+    // filtered out. But `opts.sections` can ALSO filter down to
     // nothing (e.g. naming only a section today's facts cannot back), on a
     // draft with no prior generation at all. Asserting non-null there would
     // ship `{ prose: undefined }` typed as a real snapshot to a caller that
