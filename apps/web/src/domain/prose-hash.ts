@@ -12,7 +12,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { ProseFacts } from "./prose";
+import { buildProseFacts, type ProseFacts, type ProseFactsInput } from "./prose";
 
 /**
  * JSON with keys sorted recursively. Plain `JSON.stringify` preserves
@@ -36,4 +36,17 @@ export function proseFactsHash(facts: ProseFacts): string {
   return createHash("sha256")
     .update(JSON.stringify(canonical(facts)))
     .digest("hex");
+}
+
+/**
+ * The draft's CURRENT fingerprint, in one expression.
+ *
+ * Every caller that asks "are these proposals still about this draft?" must
+ * build the facts the same way the generation did. Two independent
+ * `proseFactsHash(buildProseFacts(...))` call sites that drift apart would
+ * mark every draft stale — and the step auto-generates on stale, so the drift
+ * would bill a generation on every single visit. One function, one answer.
+ */
+export function currentProseFactsHash(input: ProseFactsInput): string {
+  return proseFactsHash(buildProseFacts(input));
 }

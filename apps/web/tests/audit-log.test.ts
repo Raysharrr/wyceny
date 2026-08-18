@@ -128,6 +128,56 @@ describe("audit_log per mutation", () => {
     });
   });
 
+  it("confirmProse writes a 'prose_confirmed' row and flips the sections to the appraiser", async () => {
+    const v = await repo.create({
+      ...valuationInput(owner.id, "Audit Prose Confirm"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+    await repo.saveProse(
+      v.id,
+      owner,
+      {
+        sections: {
+          opis_lokalu: {
+            value: "Lokal obejmuje dwa pokoje z kuchnią.",
+            provenance: { source: "ai", status: "to_verify" },
+          },
+          otoczenie: {
+            value: "Zabudowa wielorodzinna.",
+            provenance: { source: "ai", status: "to_verify" },
+          },
+        },
+        rejected: { analiza_rynku: ["9 871,00"] },
+        factsHash: "a".repeat(64),
+        model: "claude-sonnet-5",
+        generatedAt: "2026-08-18T07:30:00.000Z",
+      },
+      { inputTokens: 3120, outputTokens: 480 },
+    );
+
+    // The appraiser accepted the first section, edited nothing into the
+    // second and left it blank — the blank one must NOT survive as `ai`.
+    const saved = await repo.confirmProse(v.id, owner, {
+      opis_lokalu: "Lokal obejmuje dwa pokoje, kuchnię w aneksie i łazienkę.",
+      otoczenie: "",
+    });
+
+    expect(saved?.inputs?.prose?.sections).toEqual({
+      opis_lokalu: {
+        value: "Lokal obejmuje dwa pokoje, kuchnię w aneksie i łazienkę.",
+        provenance: { source: "rzeczoznawca", status: "confirmed" },
+      },
+    });
+    // The generation's own fingerprint survives the confirm.
+    expect(saved?.inputs?.prose?.factsHash).toBe("a".repeat(64));
+    const rows = await auditRows(v.id);
+    expect(rows.map((r) => r.action)).toEqual(["created", "prose_generated", "prose_confirmed"]);
+    // FR-12: the audit says WHICH sections the appraiser took responsibility
+    // for — never their text (the operat itself carries that).
+    expect(rows[2].meta).toEqual({ sections: ["opis_lokalu"] });
+  });
+
   it("saveSubject writes a 'subject_updated' row", async () => {
     const v = await repo.create({
       ...valuationInput(owner.id, "Audit Subject"),

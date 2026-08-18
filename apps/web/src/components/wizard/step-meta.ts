@@ -34,7 +34,7 @@ export const STEP_META = {
     eyebrow: "KROK 6/7 — SEKCJE OPISOWE",
     title: "Sekcje opisowe",
     description:
-      "Generator prozy (FR-6) w przygotowaniu — opisy powstają z szablonu przy zatwierdzeniu.",
+      "Propozycje powstają automatycznie z danych tej wyceny — przeczytaj, popraw i zatwierdź.",
     helpSlug: "krok-6-opisy",
   },
   7: {

@@ -3,7 +3,12 @@ import { documentFieldBlockers } from "./document-model";
 import { computeKcs, type Comparable, type KcsInput } from "./kcs";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
-import type { ProseSnapshot } from "./prose-snapshot";
+import {
+  confirmProseSnapshot,
+  mergeProseProposal,
+  type ProseSection,
+  type ProseSnapshot,
+} from "./prose-snapshot";
 import {
   EMPTY_INSPECTION,
   INSPECTION_SECTIONS,
@@ -235,14 +240,37 @@ export function applyInspectionOp(v: Valuation, op: InspectionOp): Valuation {
  * prose is display/render material, never an engine input (F-1), so a new
  * proposal cannot invalidate a confirmed calculation.
  *
- * The snapshot REPLACES `inputs.prose` wholesale — T5 has no edit path, so
- * there is nothing to merge yet. Once T7 gives the appraiser an edit/confirm
- * path, "regenerate" must decide what happens to text they already accepted.
+ * The snapshot is FOLDED onto what the draft already holds
+ * ({@link mergeProseProposal}): "Wygeneruj ponownie" replaces `ai` sections
+ * only, never text the appraiser confirmed.
  */
 export function applyProseProposal(v: Valuation, prose: ProseSnapshot): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
-  return { ...v, inputs: { ...v.inputs, prose } };
+  return { ...v, inputs: { ...v.inputs, prose: mergeProseProposal(v.inputs.prose, prose) } };
+}
+
+/**
+ * The appraiser's step-6 submit: every non-blank field becomes
+ * `rzeczoznawca`/`confirmed` ({@link confirmProseSnapshot}), a blank one
+ * removes the section. Draft-only, and `wr` survives for the same F-1 reason
+ * as above.
+ *
+ * `factsHash` and `now` are parameters, not reads: the domain neither hashes
+ * nor tells the time (F-2). They are only used when the draft has no snapshot
+ * yet — prose written entirely by hand.
+ */
+export function applyProseConfirmation(
+  v: Valuation,
+  texts: Partial<Record<ProseSection, string>>,
+  meta: { factsHash: string; now: Date },
+): Valuation {
+  assertDraft(v);
+  if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
+  return {
+    ...v,
+    inputs: { ...v.inputs, prose: confirmProseSnapshot(v.inputs.prose, texts, meta) },
+  };
 }
 
 export type SubjectUpdate = {
@@ -379,6 +407,7 @@ export const AUDIT_ACTIONS = [
   "features_confirmed",
   "inspection_updated",
   "prose_generated",
+  "prose_confirmed",
   "approved",
   "signed",
   "version_created",

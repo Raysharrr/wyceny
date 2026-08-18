@@ -388,6 +388,7 @@ describe("AUDIT_ACTIONS (FR-12)", () => {
       "features_confirmed",
       "inspection_updated",
       "prose_generated",
+      "prose_confirmed",
       "approved",
       "signed",
       "version_created",

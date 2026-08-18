@@ -9,7 +9,7 @@
  */
 
 import type { KcsInput } from "../domain/kcs";
-import type { ProseSnapshot } from "../domain/prose-snapshot";
+import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
 import type {
   FeaturesUpdate,
   InspectionOp,
@@ -135,6 +135,18 @@ export interface PortValuation {
     user: SessionUser,
     snapshot: ProseSnapshot,
     usage: { inputTokens: number; outputTokens: number },
+  ): Promise<Valuation | null>;
+  /**
+   * Step-6 (Opisy) submit: the appraiser's texts become
+   * `rzeczoznawca`/`confirmed` and one `prose_confirmed` row is written in the
+   * same transaction. `texts` are PLAIN STRINGS — the browser never sends
+   * provenance, the boundary assigns it (ADR-010). Same null/throw contract as
+   * `updateInspection`.
+   */
+  confirmProse(
+    id: string,
+    user: SessionUser,
+    texts: Partial<Record<ProseSection, string>>,
   ): Promise<Valuation | null>;
   /**
    * Step-5 (Kalkulacja) confirm: runs the KCS engine and persists `wr` —

@@ -8,6 +8,7 @@ import { documentFieldBlockers } from "@/domain/document-model";
 import { maxReachedStep, resolveStep } from "@/domain/wizard";
 import { step1DefaultsFromInputs } from "@/lib/subject-form";
 import { valuationRepository } from "../_deps";
+import { proseStepProps } from "./prose-step-props";
 import { SubjectForm } from "../new/subject-form";
 import { FlatView } from "./flat-view";
 import { StepCalculation } from "./steps/step-calculation";
@@ -113,7 +114,7 @@ export default async function ValuationViewPage({
         ) : step === 5 ? (
           <StepCalculation valuation={valuation} />
         ) : step === 6 ? (
-          <StepDescriptions valuationId={valuation.id} />
+          <StepDescriptions valuationId={valuation.id} {...proseStepProps(valuation)} />
         ) : (
           <StepOperat valuation={valuation} />
         )}

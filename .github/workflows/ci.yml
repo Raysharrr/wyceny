@@ -123,6 +123,12 @@ jobs:
       # the smoke path stays network-free (see inspection-section.tsx's
       # `uploadEnabled` guard).
       NEXT_PUBLIC_PHOTO_UPLOAD: "off"
+      # ADR-014 (FR-6): entering step 6 asks the worker (and an LLM behind it)
+      # for the operat's prose. Off keeps the smoke network-free AND free of
+      # charge, and renders the pre-FR-6 placeholder the spec walks through by
+      # clicking "Dalej" (see step-descriptions.tsx). An UNSET variable means
+      # ENABLED — staging/prod set it deliberately, this job must not.
+      NEXT_PUBLIC_PROSE: "off"
       # Seeded login credentials. `scripts/seed-users.ts` has no default, so
       # the "Migrate + seed" step below aborts without these; the smoke spec
       # reads SEED_ADMIN_PASSWORD from here too, so the seeded password and

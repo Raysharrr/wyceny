@@ -11,7 +11,7 @@ import {
   proseSnapshotOf,
   selectProseSections,
 } from "@/domain/prose";
-import { proseFactsHash } from "@/domain/prose-hash";
+import { currentProseFactsHash } from "@/domain/prose-hash";
 import { mintWorkerToken } from "@/lib/worker-token";
 import type { ProseSnapshot } from "@/domain/prose-snapshot";
 
@@ -83,8 +83,11 @@ export async function proposeProse(id: string): Promise<ProposeProseResult> {
     rejected: proposal.rejected,
     model: proposal.model,
     // Pins the proposals to the facts they were written from: once the draft
-    // moves on, the UI can tell a stale proposal from a current one.
-    factsHash: proseFactsHash(facts),
+    // moves on, the UI can tell a stale proposal from a current one. Via the
+    // SAME helper the step-6 page compares against — two hand-rolled copies of
+    // this expression drifting apart would mark every draft stale, and the
+    // step auto-generates on stale.
+    factsHash: currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs }),
     generatedAt: new Date(),
   });
 

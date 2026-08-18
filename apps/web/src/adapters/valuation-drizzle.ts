@@ -5,6 +5,7 @@ import {
   applyCalculationConfirm,
   applyFeaturesUpdate,
   applyInspectionOp,
+  applyProseConfirmation,
   applyProseProposal,
   applySampleUpdate,
   applySubjectUpdate,
@@ -23,7 +24,8 @@ import {
   type SubjectUpdate,
 } from "../domain/valuation";
 import { totalInspectionPhotos } from "../domain/inspection";
-import type { ProseSnapshot } from "../domain/prose-snapshot";
+import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
+import { currentProseFactsHash } from "../domain/prose-hash";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -394,6 +396,50 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
             inputTokens: usage.inputTokens,
             outputTokens: usage.outputTokens,
           },
+        });
+        return toValuation(saved);
+      });
+    },
+
+    async confirmProse(
+      id: string,
+      user: SessionUser,
+      texts: Partial<Record<ProseSection, string>>,
+    ): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        // .for("update") — same read-modify-write rationale as saveProse: a
+        // concurrent generation must not lose the appraiser's submit to
+        // last-write-wins on the inputs jsonb.
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.id, id))
+          .for("update");
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = applyProseConfirmation(valuation, texts, {
+          // Computed from the ROW READ IN THIS TRANSACTION, not from the
+          // caller's earlier read — only used when the draft has no prose
+          // snapshot yet (prose written entirely by hand).
+          factsHash: valuation.inputs
+            ? currentProseFactsHash({ address: valuation.address, inputs: valuation.inputs })
+            : "",
+          now: new Date(),
+        });
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "prose_confirmed",
+          // WHICH sections the appraiser took responsibility for — never
+          // their text; the operat itself is the record of that.
+          meta: { sections: Object.keys(updated.inputs?.prose?.sections ?? {}) },
         });
         return toValuation(saved);
       });
