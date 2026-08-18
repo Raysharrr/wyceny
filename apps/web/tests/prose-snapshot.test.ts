@@ -133,15 +133,40 @@ describe("mergeProseProposal — regeneration keeps the appraiser's text", () =>
     });
 
     expect(merged.sections.opis_lokalu?.value).toBe(HUMAN_TEXT);
+    expect(merged.rejected.opis_lokalu).toBeUndefined();
+    expect(merged.rejected.uzasadnienie).toEqual([]);
+  });
+
+  it("a rejection is superseded when THIS run asked about the section again", () => {
+    // analiza_rynku was rejected before, and this run re-requested it: it
+    // carries a fresh fingerprint and came back with text. Whatever the old
+    // reason said, it no longer describes this snapshot.
+    const merged = mergeProseProposal(previous, {
+      ...incoming,
+      sections: {
+        ...incoming.sections,
+        analiza_rynku: {
+          value: "Rynek lokalny obejmuje transakcje z lat 2024-2025.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+      },
+      factsHashes: { ...incoming.factsHashes, analiza_rynku: "b".repeat(64) },
+    });
+
     expect(merged.rejected).toEqual({ uzasadnienie: [] });
   });
 
-  it("a stale rejection from the previous run does not survive", () => {
-    // analiza_rynku was rejected before; this run neither wrote nor rejected
-    // it, so the old reason must not be shown next to the new proposals.
+  it("...but it SURVIVES a partial regeneration that never asked about it (T5)", () => {
+    // The mirror of the case above, and the one T3's partial batch created:
+    // `incoming` carries no text, no reason and no fingerprint for
+    // analiza_rynku, so this run never touched it. The box is still empty for
+    // exactly the reason recorded before — dropping it downgrades a named
+    // refusal ("9 871,00") to the generic "nie udało się" shrug, on a section
+    // nothing re-attempted. Reachable only since step 6 lets the appraiser
+    // regenerate a chosen subset (T5).
     const merged = mergeProseProposal(previous, incoming);
 
-    expect(merged.rejected).toEqual({ uzasadnienie: [] });
+    expect(merged.rejected).toEqual({ analiza_rynku: ["9 871,00"], uzasadnienie: [] });
   });
 
   // T3 ruling 2. otoczenie is AI-authored (not the appraiser's), carried

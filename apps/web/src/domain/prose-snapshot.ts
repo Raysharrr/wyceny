@@ -71,6 +71,32 @@ function isAppraisers(entry: Sourced<string> | undefined): entry is Sourced<stri
 }
 
 /**
+ * Whether the incoming run asked about this section AT ALL — the difference
+ * between "we re-attempted it" and "we never touched it" (T5).
+ *
+ * Three independent marks, because a run leaves a different one depending on
+ * how it went: text in `sections` (delivered), an entry in `rejected` (the
+ * worker's guard refused it, or the call failed), or — the case neither of
+ * those covers — merely a fingerprint in `factsHashes`, which
+ * `proposeProse` stamps for every REQUESTED section before it knows the
+ * outcome. That last one is what catches a section that came back with
+ * neither text nor a reason.
+ *
+ * `factsHashes?.` for the same reason as everywhere else in this file: a
+ * legacy-shaped `incoming` carries no per-section map at all. Such a caller
+ * loses the fingerprint mark and is judged on text and reasons alone — the
+ * conservative half of the answer, which at worst keeps a reason one run too
+ * long rather than dropping it silently.
+ */
+function wasRequested(incoming: ProseSnapshot, section: ProseSection): boolean {
+  return (
+    incoming.sections[section] !== undefined ||
+    incoming.rejected[section] !== undefined ||
+    incoming.factsHashes?.[section] !== undefined
+  );
+}
+
+/**
  * Folds a fresh proposal onto whatever the draft already holds.
  *
  * The rule the whole "Wygeneruj ponownie" button rests on: a section the
@@ -112,7 +138,9 @@ function isAppraisers(entry: Sourced<string> | undefined): entry is Sourced<stri
  * previous entry forward — text, status and provenance, not just the hash.
  * Carrying only the hash left the text itself unset, so a 2-of-6 partial
  * regeneration silently dropped the other 4 from the screen until something
- * else happened to regenerate them (fix round 1, finding 2).
+ * else happened to regenerate them (fix round 1, finding 2). Its previous
+ * REJECTION is carried forward for the same reason (T5): a section this run
+ * never asked about is still empty for exactly the reason recorded last time.
  *
  * A section that WAS requested this run but whose text the worker's guard
  * rejected looks, on the wire, almost like the case above: `incoming.sections`
@@ -176,9 +204,15 @@ export function mergeProseProposal(
     } else if (previousHash !== undefined) {
       factsHashes[section] = previousHash;
     }
-    // A rejection from the PREVIOUS run is not carried over: it explains a
-    // generation that no longer describes this snapshot — `reason` below is
-    // read from `incoming.rejected` alone, never `previous.rejected`.
+    // A rejection from the PREVIOUS run is superseded ONLY when this run
+    // asked about the section again (T5). "Absent from `incoming`" used to
+    // mean one thing — the run covered everything it could and this section
+    // was not among the answers — so dropping the old reason was right. T3's
+    // partial batch split that in two: a section can now be absent because
+    // NOTHING re-attempted it, and then the recorded reason still explains,
+    // word for word, why the box is empty. Dropping it there downgrades a
+    // named refusal to the generic "nie udało się" shrug on a section no
+    // regeneration has touched since. `wasRequested` tells the two apart.
     //
     // T3 ruling 2: a rejection from THIS run IS kept even when old text was
     // carried forward (`kept`), on purpose — `sections` and `rejected` are no
@@ -192,6 +226,10 @@ export function mergeProseProposal(
     // decision — this only guarantees neither is silently dropped.
     const reason = incoming.rejected[section];
     if (reason && !fresh) rejected[section] = reason;
+    else if (!wasRequested(incoming, section)) {
+      const before = previous.rejected?.[section];
+      if (before) rejected[section] = before;
+    }
   }
 
   return {
