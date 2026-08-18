@@ -46,8 +46,10 @@ export type PreviewOperatResult =
  *
  * `opts.skipMaps` is the appraiser's conscious "preview without maps" after
  * a WMS failure (the path that used to sit on approval, spec §C). It lifts
- * the freeze rather than ignoring it: a preview read without maps must not
- * be followed by an issue that silently embeds some.
+ * the freeze rather than ignoring it, and from Task 12 the screen carries
+ * that same choice to the issue button (`preview-maps-state.tsx`): a preview
+ * read without maps is followed by an issue without maps, not by one that
+ * silently embeds some.
  */
 export async function previewOperat(
   id: string,
