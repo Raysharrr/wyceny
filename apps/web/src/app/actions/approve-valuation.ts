@@ -136,6 +136,14 @@ export async function approveValuation(
     if (maps) {
       await storage.put(`mapa-ewidencyjna-${id}.png`, maps.ewidencyjna);
       await storage.put(`mapa-orto-${id}.jpg`, maps.orto);
+      // Slice 14: the marker moves WITH the bytes — bytes first, marker
+      // second, the order the preview freezes in. Writing one without the
+      // other needs no concurrency to go wrong: preview at address A, correct
+      // it to B, approve stores B's maps and then fails (photos, conversion,
+      // the drift check), revert to A — and a marker still saying A hands the
+      // next reader B's parcel under A's address. Today that poisons a
+      // preview; once Task 12 pairs issuing with the freeze, a signed operat.
+      await valuationRepository.freezeMaps(id, session.user, valuation.address);
     } else {
       // skipMaps (user's conscious choice) or MAPS_FETCH=off kill switch:
       // approve proceeds with maps === null. A PRIOR failed approve attempt

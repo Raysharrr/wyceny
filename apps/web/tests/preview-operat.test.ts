@@ -39,6 +39,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { previewOperat } from "../src/app/actions/preview-operat";
+import { approveValuation } from "../src/app/actions/approve-valuation";
 import { saveSubjectAction } from "../src/app/actions/wizard";
 import {
   storage,
@@ -110,6 +111,22 @@ function draft(): Valuation {
     supersedesId: null,
     mapsFrozenFor: null,
     createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+}
+
+/**
+ * Moves the draft to `address` in the state the wizard would leave behind
+ * after the appraiser corrects it: step 1 nulls `wr`, so steps 5 and 6 have to
+ * be redone, and the descriptions are re-confirmed against the new facts.
+ * Without that the F-4 gate would refuse before approve ever reaches its maps.
+ */
+function reconfirmAt(address: string) {
+  const inputs = approvableInput("test-user").inputs!;
+  current = {
+    ...current,
+    address,
+    wr: 1_044_400,
+    inputs: { ...inputs, prose: confirmedProseFor(address, inputs) },
   };
 }
 
@@ -280,6 +297,34 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     expect(blobs.has(EWIDENCYJNA_KEY)).toBe(false);
     expect(blobs.has(ORTO_KEY)).toBe(false);
     expect(current.mapsFrozenFor).toBeNull();
+  });
+
+  it("an approve that fails after storing maps cannot leave the marker on the old address", async () => {
+    // The whole sequence, with no concurrency anywhere in it: preview at A
+    // freezes maps for A; the appraiser corrects the address to B and redoes
+    // steps 5-6 as the wizard forces them to; approve fetches and stores maps
+    // for B and then fails (conversion here, but photos or the drift check do
+    // just as well); the appraiser reverts to A. If approve stored bytes for B
+    // while leaving the marker on A, the next preview would reuse B's parcel
+    // under address A — and once Task 12 pairs issuing with the freeze, so
+    // would the signed operat.
+    await previewOperat(ID);
+    expect(current.mapsFrozenFor).toBe(ADDRESS);
+
+    reconfirmAt(NEW_ADDRESS);
+    convertToPdfMock.mockRejectedValueOnce(new Error("konwersja padła"));
+    const failed = await approveValuation(ID);
+    expect(failed).toEqual({ error: expect.stringContaining("Nie udało się wygenerować operatu") });
+    expect(current.status).toBe("in_progress");
+    // The bytes under the map keys are B's now, so the marker must say B.
+    expect(current.mapsFrozenFor).toBe(NEW_ADDRESS);
+
+    reconfirmAt(ADDRESS);
+    fetchMapsMock.mockClear();
+    await previewOperat(ID);
+
+    expect(fetchMapsMock).toHaveBeenCalledTimes(1);
+    expect(fetchMapsMock).toHaveBeenCalledWith(ADDRESS);
   });
 
   it("skipMaps lifts the freeze before it drops the bytes — never bytes gone under a standing marker", async () => {
