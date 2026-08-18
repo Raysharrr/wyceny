@@ -207,14 +207,16 @@ export async function approveValuation(
       kcs,
       amountInWords,
     });
-    // Keyed on "nothing embedded", NEVER on "did not fetch" — the difference
-    // is the whole cost of this refactor. skipMaps (the appraiser's conscious
-    // choice, made on the preview) or the MAPS_FETCH=off kill switch both
-    // land here with nothing to embed; a REUSE must not, or this would delete
-    // the very bytes it just rendered from and `signValuationAction` — which
-    // re-renders from those keys and reads their absence as "approved without
-    // maps", silently — would sign an operat without the §8.1 maps the
-    // approved copy carries.
+    // Keyed on "nothing embedded", never on "did not fetch". Today the two
+    // coincide — every branch that produces maps sets `embedded` — but only
+    // the first stays correct if a third way of obtaining them is ever added,
+    // and the failure it guards against is not recoverable: this arm reached
+    // after a REUSE would delete the very bytes the document was rendered
+    // from, and `signValuationAction` re-renders from those keys and reads
+    // their absence as "approved without maps", silently. The office would
+    // then hold an illustrated operat and send out an unillustrated signed
+    // one. (Pinned by "reuse touches neither the bytes nor the marker";
+    // verified by mutating this condition to fire on the reuse path.)
     //
     // A PRIOR failed approve attempt (e.g. a PDF conversion crash) may have
     // left these keys behind; uncleaned, sign would find and embed maps this

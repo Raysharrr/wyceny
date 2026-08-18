@@ -934,13 +934,17 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
    * would have caught (every other happy path here FETCHES).
    *
    * The mapless arm of approve deletes the two map keys and lifts the marker —
-   * correct when nothing was embedded, catastrophic if reuse falls through to
-   * it: `repo.approve` would commit an operat rendered WITH maps over bytes
+   * correct when nothing was embedded, catastrophic if a reuse falls through
+   * to it: `repo.approve` would commit an operat rendered WITH maps over bytes
    * that no longer exist, and `signValuationAction` re-renders from exactly
    * those keys and reads their absence as "approved without maps" — silently.
    * The office would send out an illustrated operat and a signed one without
-   * §8.1. So the arm has to be keyed on "no maps embedded", never on "did not
-   * fetch".
+   * §8.1.
+   *
+   * Measured, not assumed: mutating that arm to fire on the reuse path
+   * reddens this case. Re-spelling its condition as "did not fetch" does NOT,
+   * because today the two coincide — which is worth knowing, since it means
+   * the guard here is on the OUTCOME, not on a particular spelling.
    */
   it("reuse touches neither the bytes nor the marker — it only reads them", async () => {
     await previewOperat(draftT12.id);
@@ -965,6 +969,11 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
    * the valuation is about. Here the two agree by construction
    * (`mapsFrozenForCurrentAddress` compares them), which is the point: this
    * pins the source of the claim, not a divergence.
+   *
+   * Honest about its own strength: swapping the marker for the row in the
+   * reuse branch reddens NOTHING (measured). This case cannot fail today and
+   * is defence in depth — it costs one line and it is the line that stays
+   * right if the equality ever stops holding.
    */
   it("audits the address the reused bytes were frozen under", async () => {
     await previewOperat(draftT12.id);

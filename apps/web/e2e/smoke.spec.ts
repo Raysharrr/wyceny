@@ -98,6 +98,14 @@ test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", asy
   await expect(page.getByRole("button", { name: /^Potwierdź / })).toHaveCount(0);
   await expect(page.getByTestId("gate-blockers")).toHaveCount(0);
   await expect(page.getByTestId("approve-button")).toBeEnabled();
+  // T10-T12: the appraiser reads the document BEFORE issuing it, and issuing
+  // reuses what they read. With no blockers the render starts on mount, so
+  // this is the whole slice in one assertion — and the only place the preview
+  // is exercised against a real worker and a real render. The timeout is the
+  // worker's DOCX->PDF conversion, not the page.
+  await expect(page.locator('iframe[title="Podgląd operatu (PDF)"]')).toBeVisible({
+    timeout: 30_000,
+  });
   await page.getByTestId("approve-button").click();
   await expect(page.getByTestId("valuation-status")).toHaveText("Zatwierdzony", {
     timeout: 30_000,
