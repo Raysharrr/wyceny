@@ -61,6 +61,36 @@ describe("audit_log per mutation", () => {
     expect(rows[0].actorId).toBe(owner.id);
   });
 
+  /**
+   * T7 fix round 1: the create path performs the step-1 confirmation, so it
+   * has to NAME it. "Implied by the `created` row" is a footnote nobody
+   * reconstructing who confirmed what will have — and in this domain that
+   * reconstruction is the trail's whole job.
+   */
+  it("a create that carries the step-1 confirmation records it as its own act", async () => {
+    const v = await repo.create(
+      {
+        ...valuationInput(owner.id, "Audit Create Confirm"),
+        wr: null,
+        inputs: partialDraftInputs(),
+      },
+      { confirmed: ["subject_confirmed", "kw_confirmed"] },
+    );
+    const rows = await auditRows(v.id);
+    expect(rows.map((r) => r.action)).toEqual(["created", "subject_confirmed", "kw_confirmed"]);
+    expect(rows.every((r) => r.actorId === owner.id)).toBe(true);
+  });
+
+  it("a create with no confirmation to record writes only 'created'", async () => {
+    const v = await repo.create({
+      ...valuationInput(owner.id, "Audit Create Plain"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+    const rows = await auditRows(v.id);
+    expect(rows.map((r) => r.action)).toEqual(["created"]);
+  });
+
   it("confirmSample writes a 'sample_confirmed' row", async () => {
     const v = await repo.create(confirmableInput(owner.id));
     await repo.confirmSample(v.id, owner);

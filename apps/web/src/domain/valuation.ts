@@ -315,13 +315,11 @@ function comparableKey(c: Comparable): string {
 
 /**
  * The same key built from the three fields the appraiser reads off the row,
- * ignoring the fetched id entirely. Exported for the step-3 ACL, which uses
- * it to recognize a row the draft already holds as `rcn` even when the
- * request arrives with the id stripped and the label rewritten (T7) — the id
- * cannot be part of that comparison, because dropping it is the move being
- * caught. One definition of "the same row by content", not two.
+ * ignoring the fetched id entirely — what {@link promoteStoredRcnRows}
+ * matches on. The id cannot be part of that comparison, because dropping it
+ * is the move being caught. One definition of "the same row by content".
  */
-export function comparableContentKey(c: Comparable): string {
+function comparableContentKey(c: Comparable): string {
   return `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
 }
 
@@ -338,6 +336,35 @@ function sameComparable(a: Comparable, b: Comparable): boolean {
     a.area === b.area &&
     a.source === b.source &&
     a.transactionId === b.transactionId
+  );
+}
+
+/**
+ * Gives a row back the `rcn` source the SNAPSHOT records for it, however the
+ * request labelled it. The step-3 ACL derives the source from the fetched id,
+ * which a crafted request can simply omit — and `sameComparable` cannot cover
+ * the gap, because it compares `transactionId`. The draft can: it is the
+ * server's own record of what the RCN fetch returned.
+ *
+ * This lives in the domain rather than in the ACL because it needs the
+ * snapshot the WRITE transaction holds locked. Deriving it from a draft read
+ * moments earlier would fail toward `manual`/`confirmed` under a concurrent
+ * save — machine data printed as the appraiser's own measurement (F-5), the
+ * unsafe direction.
+ *
+ * Promotion only, never demotion: a snapshot MANUAL row leaves an incoming
+ * rcn row alone, or a row saved before ids existed would confirm itself. A
+ * hand-typed row that happens to match a fetched one is over-promoted to
+ * `to_verify` — harmless, since the step-3 save confirms it in the same
+ * transaction, whereas under-promotion would mislabel the operat.
+ */
+function promoteStoredRcnRows(snapshot: Comparable[], incoming: Comparable[]): Comparable[] {
+  const fetched = new Set(snapshot.filter((c) => c.source === "rcn").map(comparableContentKey));
+  if (fetched.size === 0) return incoming;
+  return incoming.map((c) =>
+    c.source !== "rcn" && fetched.has(comparableContentKey(c))
+      ? { ...c, source: "rcn" as const, status: "to_verify" as const }
+      : c,
   );
 }
 
@@ -541,7 +568,10 @@ export type SampleUpdate = {
 export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
-  const comparables = carryComparableConfirmations(v.inputs.comparables, u.comparables);
+  const comparables = carryComparableConfirmations(
+    v.inputs.comparables,
+    promoteStoredRcnRows(v.inputs.comparables, u.comparables),
+  );
   return {
     ...v,
     wr: null,

@@ -110,32 +110,37 @@ describe("createDraft", () => {
       "REDIRECT:/valuations/draft-1?step=2",
     );
 
-    expect(createMock).toHaveBeenCalledWith({
-      address: "ul. Testowa 1, Poznań",
-      area: 50,
-      wr: null,
-      inputs: {
+    expect(createMock).toHaveBeenCalledWith(
+      {
+        address: "ul. Testowa 1, Poznań",
         area: 50,
-        comparables: [],
-        features: [],
-        sampleMeta: null,
-        subject: null,
-        subjectMeta: null,
-        kw: null,
-        kwMeta: null,
-        provenance: {
-          address: { source: "rzeczoznawca", status: "confirmed" },
-          area: { source: "rzeczoznawca", status: "confirmed" },
+        wr: null,
+        inputs: {
+          area: 50,
+          comparables: [],
+          features: [],
+          sampleMeta: null,
+          subject: null,
+          subjectMeta: null,
+          kw: null,
+          kwMeta: null,
+          provenance: {
+            address: { source: "rzeczoznawca", status: "confirmed" },
+            area: { source: "rzeczoznawca", status: "confirmed" },
+          },
         },
+        amountInWords: null,
+        docUrl: null,
+        purpose: "sprzedaz",
+        kwNumber: "PO1P/1/1",
+        client: "Jan Kowalski",
+        inspectionDate: null,
+        ownerId: SESSION_USER.id,
       },
-      amountInWords: null,
-      docUrl: null,
-      purpose: "sprzedaz",
-      kwNumber: "PO1P/1/1",
-      client: "Jan Kowalski",
-      inspectionDate: null,
-      ownerId: SESSION_USER.id,
-    });
+      // No `kw_confirmed`: this payload attaches no extract, so the trail
+      // must not claim the appraiser confirmed one.
+      { confirmed: ["subject_confirmed"] },
+    );
   });
 
   /**
@@ -284,67 +289,6 @@ describe("saveSampleAction", () => {
       { pricePerM2: 10500, area: 50, date: "2024-03", source: "rcn", transactionId: "t1" },
     ],
   };
-
-  // The action reads the draft (the `saveFeaturesAction` pattern) so the ACL
-  // can recognize rows the server itself fetched — see the relabelling test
-  // below. Every test here therefore needs a readable draft.
-  beforeEach(() => {
-    getMock.mockResolvedValue(draftValuation);
-  });
-
-  /**
-   * The client's label is not evidence, and neither is the absence of an id.
-   * A request that strips `transactionId` AND rewrites `source` to "manual"
-   * would otherwise put a fetched transaction into the operat labelled as one
-   * the appraiser measured themselves — a false provenance claim in a signed
-   * document (F-5). The draft is the server's own record of that fetch.
-   */
-  it("treats a row the draft holds as rcn as rcn, whatever the request calls it", async () => {
-    getMock.mockResolvedValue({
-      ...draftValuation,
-      inputs: {
-        area: 50,
-        comparables: [
-          {
-            date: "2024-03",
-            area: 50,
-            pricePerM2: 10500,
-            source: "rcn" as const,
-            transactionId: "t1",
-            status: "confirmed" as const,
-          },
-        ],
-        features: [],
-        sampleMeta: null,
-      },
-    });
-    saveSampleMock.mockResolvedValueOnce(draftValuation);
-
-    // Same three rows as `sampleInput`, except the fetched one arrives with
-    // its id gone and its label rewritten — all a crafted request can do.
-    await saveSampleAction(VALUATION_ID, {
-      comparables: [
-        { pricePerM2: 9000, area: 40, date: "2024-01", source: "manual" },
-        { pricePerM2: 9500, area: 45, date: "2024-02", source: "manual" },
-        { pricePerM2: 10500, area: 50, date: "2024-03", source: "manual" },
-      ],
-    });
-
-    const [, , update] = saveSampleMock.mock.calls.at(-1)!;
-    expect(update.comparables[2]).toMatchObject({ source: "rcn", status: "to_verify" });
-    // The two rows the draft has never seen stay the appraiser's own.
-    expect(update.comparables[0]).toMatchObject({ source: "manual", status: "confirmed" });
-    expect(update.comparables[1]).toMatchObject({ source: "manual", status: "confirmed" });
-  });
-
-  it("draft not readable -> error, no save", async () => {
-    getMock.mockResolvedValue(null);
-
-    const result = await saveSampleAction(VALUATION_ID, sampleInput);
-
-    expect(result).toEqual({ error: "Nie znaleziono wyceny albo nie masz do niej dostępu." });
-    expect(saveSampleMock).not.toHaveBeenCalled();
-  });
 
   it("comparables pass through unchanged after assignSampleProvenance (no % conversion — that's a features-step concern)", async () => {
     saveSampleMock.mockResolvedValueOnce(draftValuation);

@@ -4,7 +4,6 @@ import {
   matchesPresetWeights,
   medianAreaM2,
 } from "@/domain/feature-presets";
-import { comparableContentKey } from "@/domain/valuation";
 import type { InputsProvenance } from "@/domain/provenance";
 import type { ValuationFormValues } from "@/lib/valuation-form-schema";
 
@@ -52,15 +51,7 @@ export function assignSubjectProvenance(
  */
 export function assignSampleProvenance(
   values: Pick<ValuationFormValues, "comparables">,
-  stored: readonly Comparable[] = [],
 ): Comparable[] {
-  // Rows the DRAFT already holds as rcn, keyed by content. The draft is the
-  // server's own record of what the RCN fetch returned, so it outranks
-  // anything the request says — and it is the only evidence left once the id
-  // is gone, which is why the key ignores `transactionId` (see
-  // `comparableContentKey`). `applySampleUpdate`'s matcher cannot cover this:
-  // `sameComparable` compares the id, and dropping the id is the move.
-  const storedRcnKeys = new Set(stored.filter((c) => c.source === "rcn").map(comparableContentKey));
   return values.comparables.map((c) => {
     // The source is DERIVED, not taken on the client's word — the same rule
     // the prose fingerprints and the FR-6 gate flag already follow: a check
@@ -68,17 +59,16 @@ export function assignSampleProvenance(
     // hands out a transactionId (the form has no input for one), so an id is
     // evidence the server can verify and the label is not.
     //
-    // Trust moves one way only. An id — or a match against a stored rcn row —
-    // PROMOTES a row to rcn (re-verification required); neither their absence
-    // nor a stored MANUAL row ever DEMOTES an rcn label, or a row saved
-    // before ids existed would confirm itself on the next save.
+    // Trust moves one way only. An id PROMOTES a row to rcn (re-verification
+    // required); its absence never DEMOTES an rcn label to manual, or a row
+    // saved before ids existed would confirm itself on the next save.
     //
-    // Over-promotion is harmless: a hand-typed row that happens to match a
-    // fetched one enters `to_verify`, and the step-3 save that carried it
-    // confirms it in the same transaction (T7). Under-promotion is not — it
-    // would print machine data in the operat as the appraiser's own (F-5).
-    const fetched = Boolean(c.transactionId) || storedRcnKeys.has(comparableContentKey(c));
-    const source = fetched ? "rcn" : (c.source ?? "manual");
+    // This rule sees only the REQUEST, so it cannot catch a row that arrives
+    // with the id stripped AND the label rewritten. `promoteStoredRcnRows`
+    // (domain/valuation.ts) closes that from the other side, against the
+    // snapshot the write transaction holds locked — the comparison needs a
+    // row this layer cannot read without a race.
+    const source = c.transactionId ? "rcn" : (c.source ?? "manual");
     return { ...c, source, status: source === "rcn" ? "to_verify" : "confirmed" };
   });
 }

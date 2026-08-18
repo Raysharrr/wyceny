@@ -12,6 +12,7 @@ import {
 import type { Comparable, KcsInput } from "../src/domain/kcs";
 import { approvalGate } from "../src/domain/provenance";
 import type { SessionUser } from "../src/ports/valuation";
+import { assignSampleProvenance } from "../src/lib/assign-provenance";
 import {
   approvableInput,
   partialDraftInputs,
@@ -159,6 +160,43 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
 
     const after = await repo.get(created.id, appraiserA);
     expect(after!.inputs!.comparables.every((c) => c.status === "confirmed")).toBe(true);
+  });
+
+  /**
+   * The same rule end to end, through the real ACL and the real write
+   * transaction: a second save that strips every fetched id and calls the
+   * rows the appraiser's own still lands them as `rcn`. What the operat
+   * prints about where its transactions came from must not be a function of
+   * what the last request claimed (F-5).
+   */
+  it("a save that strips the ids and relabels the rows cannot turn RCN transactions into the appraiser's own", async () => {
+    const created = await repo.create(partialDraft("Wizard Relabel"));
+    const fetched = Array.from({ length: 12 }, (_, i) => ({
+      date: "2025-03",
+      area: 50 + i,
+      pricePerM2: 10_000 + i,
+      source: "rcn" as const,
+      transactionId: `tx-${i}`,
+    }));
+    await repo.saveSample(created.id, appraiserA, {
+      comparables: assignSampleProvenance({ comparables: fetched }),
+      sampleMeta: null,
+    });
+
+    // The crafted payload: same numbers on screen, no ids, "manual" label.
+    const relabelled = fetched.map(({ date, area, pricePerM2 }) => ({
+      date,
+      area,
+      pricePerM2,
+      source: "manual" as const,
+    }));
+    await repo.saveSample(created.id, appraiserA, {
+      comparables: assignSampleProvenance({ comparables: relabelled }),
+      sampleMeta: null,
+    });
+
+    const after = await repo.get(created.id, appraiserA);
+    expect(after!.inputs!.comparables.every((c) => c.source === "rcn")).toBe(true);
   });
 
   it("saving step 1 confirms the subject snapshot, the KW extract and the geocoding", async () => {

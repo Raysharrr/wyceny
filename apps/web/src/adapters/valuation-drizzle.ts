@@ -123,11 +123,20 @@ async function insertAudit(
  */
 export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation {
   return {
-    async create(input: NewValuationInput): Promise<Valuation> {
+    async create(
+      input: NewValuationInput,
+      audit?: { confirmed?: readonly AuditAction[] },
+    ): Promise<Valuation> {
       return db.transaction(async (tx) => {
         const toInsert = newValuation(input);
         const [row] = await tx.insert(schema.valuation).values(toInsert).returning();
         await insertAudit(tx, { valuationId: row.id, actorId: input.ownerId, action: "created" });
+        // Same act, same transaction: a draft created from step 1 was also
+        // confirmed there, and the trail says so in the same vocabulary the
+        // step saves use.
+        for (const action of audit?.confirmed ?? []) {
+          await insertAudit(tx, { valuationId: row.id, actorId: input.ownerId, action });
+        }
         return toValuation(row);
       });
     },

@@ -411,6 +411,65 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
   });
 
   /**
+   * The last path where the request's own label decided trust: strip the
+   * fetched id AND rewrite `source`, and the row would enter as the
+   * appraiser's own measurement. `sameComparable` cannot catch it (it
+   * compares `transactionId`, and dropping the id is the move), so the
+   * SNAPSHOT answers instead — it is the server's record of what the RCN
+   * fetch returned, and here it is the row the write transaction holds
+   * locked, not one read moments earlier.
+   */
+  it("re-labels a row the snapshot holds as rcn, whatever the request called it", () => {
+    const confirmed = confirmSampleProvenance(draftWithTwelveConfirmed);
+    // Exactly what the step-3 ACL stamps for rows posted with no id and a
+    // "manual" label: manual/confirmed, no click required.
+    const posted = confirmed.inputs!.comparables.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "manual" as const,
+      status: "confirmed" as const,
+    }));
+
+    const saved = applySampleUpdate(confirmed, {
+      comparables: posted,
+      sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+    });
+
+    expect(saved.inputs!.comparables.every((c) => c.source === "rcn")).toBe(true);
+    expect(saved.inputs!.comparables.every((c) => c.status === "to_verify")).toBe(true);
+  });
+
+  it("promotes only: a snapshot manual row never demotes an incoming rcn one", () => {
+    const manual = draftWith({
+      ...rcnInputs(),
+      comparables: [
+        { pricePerM2: 10_000, source: "manual" as const, status: "confirmed" as const },
+      ],
+    });
+
+    const saved = applySampleUpdate(manual, {
+      comparables: [{ pricePerM2: 10_000, source: "rcn" as const, status: "to_verify" as const }],
+      sampleMeta: manual.inputs!.sampleMeta ?? null,
+    });
+
+    expect(saved.inputs!.comparables[0].source).toBe("rcn");
+    expect(saved.inputs!.comparables[0].status).toBe("to_verify");
+  });
+
+  it("leaves a hand-typed row matching nothing in the snapshot alone", () => {
+    const confirmed = confirmSampleProvenance(draftWithTwelveConfirmed);
+    const typed: Comparable = { pricePerM2: 7_777, source: "manual", status: "confirmed" };
+
+    const saved = applySampleUpdate(confirmed, {
+      comparables: [...confirmed.inputs!.comparables, typed],
+      sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+    });
+
+    expect(saved.inputs!.comparables[12]).toEqual(typed);
+  });
+
+  /**
    * Legacy snapshots carry rows with no `status` at all (the field is
    * optional so they keep parsing). Stamping that absence onto the incoming
    * row would re-open the same trap from the other side: `to_verify` is what

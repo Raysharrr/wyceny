@@ -139,20 +139,31 @@ export async function createDraft(input: Step1Input): Promise<{ error: string } 
     provenance,
   };
 
-  const created = await valuationRepository.create({
-    address: parsed.data.address,
-    area: parsed.data.area,
-    wr: null,
-    inputs,
-    amountInWords: null,
-    docUrl: null,
-    purpose: parsed.data.purpose,
-    kwNumber:
-      parsed.data.kwNumber?.trim() || normalizedKw?.kwLokalu || normalizedKw?.kwGruntu || null,
-    client: parsed.data.client,
-    inspectionDate: null,
-    ownerId: session.user.id,
-  });
+  const created = await valuationRepository.create(
+    {
+      address: parsed.data.address,
+      area: parsed.data.area,
+      wr: null,
+      inputs,
+      amountInWords: null,
+      docUrl: null,
+      purpose: parsed.data.purpose,
+      kwNumber:
+        parsed.data.kwNumber?.trim() || normalizedKw?.kwLokalu || normalizedKw?.kwGruntu || null,
+      client: parsed.data.client,
+      inspectionDate: null,
+      ownerId: session.user.id,
+    },
+    // The confirmation above is an act of the appraiser's, so the trail names
+    // it — exactly as `saveSubject` does for the same button on an existing
+    // draft, and gated the same way (a KW confirmation with no extract
+    // attached would claim something that never happened).
+    {
+      confirmed: normalizedKw
+        ? (["subject_confirmed", "kw_confirmed"] as const)
+        : (["subject_confirmed"] as const),
+    },
+  );
 
   redirect(`/valuations/${created.id}?step=2`);
 }
@@ -215,15 +226,12 @@ export async function saveSubjectAction(
  * `assignSampleProvenance` unchanged — unlike features, the sample carries no
  * percentage-to-fraction conversion.
  *
- * The draft is read first (the `saveFeaturesAction` pattern) so the ACL can
- * see which rows the server itself fetched: without it, a request that
- * strips a row's `transactionId` and relabels it `manual` decides its own
- * provenance, and a fetched transaction would print in the operat as one the
- * appraiser established themselves (F-5).
- *
- * The read is outside the row lock `saveSample` takes, like the median in
- * `saveFeaturesAction`: two step-3 saves racing each other can miss a row the
- * other has just added, and that row then falls back to the id rule.
+ * A row arriving with its fetched id stripped and its label rewritten is
+ * caught inside the write transaction (`promoteStoredRcnRows`), not here: the
+ * check compares against the stored sample, and reading that from the action
+ * would put it outside the row lock — where a concurrent save makes it fail
+ * toward `manual`/`confirmed`, i.e. machine data presented as the appraiser's
+ * own (F-5).
  */
 export async function saveSampleAction(
   valuationId: string,
@@ -239,12 +247,7 @@ export async function saveSampleAction(
     return { error: firstIssueMessage(parsed.error) };
   }
 
-  const current = await valuationRepository.get(valuationId, session.user);
-  if (!current) {
-    return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
-  }
-
-  const comparables = assignSampleProvenance(parsed.data, current.inputs?.comparables ?? []);
+  const comparables = assignSampleProvenance(parsed.data);
 
   try {
     const updated = await valuationRepository.saveSample(valuationId, session.user, {

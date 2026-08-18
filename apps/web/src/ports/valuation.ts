@@ -12,6 +12,7 @@ import type { KcsInput } from "../domain/kcs";
 import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
 import type {
+  AuditAction,
   FeaturesUpdate,
   InspectionOp,
   SampleUpdate,
@@ -63,7 +64,20 @@ export type SessionUser = {
 };
 
 export interface PortValuation {
-  create(input: NewValuationInput): Promise<Valuation>;
+  /**
+   * Inserts a new Valuation and records its `created` audit row.
+   *
+   * `audit.confirmed` names confirmations the CALLER performed as part of
+   * the same act, written as their own rows in the same transaction — today
+   * only `createDraft`, where the step-1 button saves and confirms at once
+   * (T7). The rows are not inferred from the snapshot: only the caller knows
+   * whether a human clicked, and a trail that guessed would be worse than
+   * one that stayed silent.
+   */
+  create(
+    input: NewValuationInput,
+    audit?: { confirmed?: readonly AuditAction[] },
+  ): Promise<Valuation>;
   listForUser(user: SessionUser): Promise<Valuation[]>;
   get(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
