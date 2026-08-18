@@ -137,10 +137,17 @@ export function approvableInputs(): KcsInput {
 }
 
 /**
- * `NewValuationInput` wrapper that passes the F-4 gate AND the
- * document-field blockers already at creation time (sample + geocode
+ * `NewValuationInput` wrapper that clears the F-4 gate's PRE-PROSE groups AND
+ * the document-field blockers already at creation time (sample + geocode
  * pre-confirmed) — lets a test call `repo.approve` directly with no
  * `confirmSample` round-trip (F-7 Task 4 audit-log coverage).
+ *
+ * ⚠️ It carries NO prose, so on its own it does NOT clear the whole gate any
+ * more: since T4 fix round 1 the repo derives `requireProse` from the FR-6
+ * kill switch inside its own transaction, so `repo.approve` refuses this
+ * shape exactly as the action does. That is deliberate — the tests proving
+ * the gate REFUSES a bare draft need it. A test that wants an approval to
+ * SUCCEED wraps the inputs in {@link withConfirmedProse}.
  */
 export function approvableInput(ownerId: string): NewValuationInput {
   const base = approvableInputs();
