@@ -41,6 +41,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { approveValuation } from "../src/app/actions/approve-valuation";
+import { previewOperat } from "../src/app/actions/preview-operat";
 import { storage, valuationRepository, worker, mapImages } from "@/app/valuations/_deps";
 import { StorageNotFoundError } from "@/ports/storage";
 import { ApprovalBlockedError, InputsChangedError } from "@/domain/valuation";
@@ -817,5 +818,224 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
       "Zatwierdzenie zablokowane — operat zawiera niezweryfikowane wartości.",
     );
     expect(result!.blockers).toEqual([]);
+  });
+});
+
+/**
+ * Task 12 — issuing reuses what the appraiser just read.
+ *
+ * Before this task the two paths were independent: the preview fetched the
+ * §8.1 maps and froze them, and then the issue went back to the WMS and
+ * fetched its own. Two consequences, one of them serious. The cheap one is a
+ * duplicated multi-second call. The serious one is that the document under
+ * the signature was composed from bytes nobody had looked at — the whole
+ * complaint this slice answers, in the one part of the operat that comes from
+ * outside.
+ *
+ * These tests need a mock pair the earlier blocks do not: `getMock` must
+ * REFLECT the freeze (a fixed row with `mapsFrozenFor: null` would make every
+ * reuse assertion vacuous), and `storage` must round-trip put→get (otherwise
+ * `readFrozenMaps` finds nothing and approve fetches again — the test would
+ * pass, or fail, for the wrong reason). Hence the mutable `current` row and
+ * the in-memory blob map below.
+ */
+describe("approveValuation — issuing reuses the maps the preview froze (Slice 14, Task 12)", () => {
+  const draftT12: Valuation = {
+    id: "valuation-t12-1",
+    address: "ul. Klonowa 7, m. Nowogród",
+    area: 71.63,
+    wr: 1_044_400,
+    inputs: {
+      ...approvableInput("test-user").inputs!,
+      prose: confirmedProseFor("ul. Klonowa 7, m. Nowogród", approvableInput("test-user").inputs!),
+    },
+    amountInWords: null,
+    docUrl: null,
+    docxUrl: null,
+    purpose: "sprzedaz",
+    kwNumber: "KW-TEST-1",
+    client: "Jan Testowy",
+    inspectionDate: "2026-07-10",
+    ownerId: "test-user",
+    status: "in_progress",
+    approvedAt: null,
+    signedAt: null,
+    supersedesId: null,
+    mapsFrozenFor: null,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+
+  /** The row as the repository would hold it — rewritten by `freezeMaps`. */
+  let current: Valuation;
+  /** Storage that actually remembers, so a freeze can be read back. */
+  const blobs = new Map<string, Buffer>();
+
+  const mapKeys = [`mapa-ewidencyjna-${draftT12.id}.png`, `mapa-orto-${draftT12.id}.jpg`];
+  const deletedKeys = () => storageDeleteMock.mock.calls.map(([key]) => key);
+  const putKeys = () => storagePutMock.mock.calls.map(([key]) => key);
+  const issuedDocx = () =>
+    storagePutMock.mock.calls.find(([key]) => key === `operat-${draftT12.id}.docx`)?.[1] as Buffer;
+
+  beforeEach(() => {
+    getMock.mockReset();
+    approveMock.mockReset();
+    amountInWordsMock.mockReset();
+    convertToPdfMock.mockReset();
+    storagePutMock.mockReset();
+    storageDeleteMock.mockReset();
+    storageGetMock.mockReset();
+    fetchMapsMock.mockReset();
+    freezeMapsMock.mockReset();
+
+    current = { ...draftT12 };
+    blobs.clear();
+
+    getMock.mockImplementation(async () => current);
+    freezeMapsMock.mockImplementation(async (_id, _user, address) => {
+      current = { ...current, mapsFrozenFor: address };
+      return current;
+    });
+    storagePutMock.mockImplementation(async (key: string, bytes: Buffer | string) => {
+      blobs.set(key, Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes));
+      return `/api/docs/${key}`;
+    });
+    storageGetMock.mockImplementation(async (key: string) => {
+      const bytes = blobs.get(key);
+      if (!bytes) throw new StorageNotFoundError(key);
+      return bytes;
+    });
+    storageDeleteMock.mockImplementation(async (key: string) => {
+      blobs.delete(key);
+    });
+    amountInWordsMock.mockResolvedValue("milion czterdzieści cztery tysiące czterysta złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("%PDF-fake"));
+    approveMock.mockImplementation(async () => ({ ...current, status: "approved" as const }));
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+  });
+
+  it("issuing after a preview does not go back to Geoportal", async () => {
+    const preview = await previewOperat(draftT12.id);
+    expect(preview).toEqual({ url: expect.stringContaining(`/api/podglad/${draftT12.id}`) });
+    expect(fetchMapsMock).toHaveBeenCalledTimes(1);
+    fetchMapsMock.mockClear();
+
+    const result = await approveValuation(draftT12.id);
+
+    expect(result).toBeUndefined();
+    expect(fetchMapsMock).not.toHaveBeenCalled();
+    // Reused, not skipped: the issued operat carries the same two images the
+    // appraiser saw. Asserting only the absent fetch would pass just as well
+    // for an operat that quietly came out with no maps at all.
+    expect(generatedMedia(issuedDocx())).toHaveLength(2);
+  });
+
+  /**
+   * The refactor's most expensive way to go wrong, and one no existing test
+   * would have caught (every other happy path here FETCHES).
+   *
+   * The mapless arm of approve deletes the two map keys and lifts the marker —
+   * correct when nothing was embedded, catastrophic if reuse falls through to
+   * it: `repo.approve` would commit an operat rendered WITH maps over bytes
+   * that no longer exist, and `signValuationAction` re-renders from exactly
+   * those keys and reads their absence as "approved without maps" — silently.
+   * The office would send out an illustrated operat and a signed one without
+   * §8.1. So the arm has to be keyed on "no maps embedded", never on "did not
+   * fetch".
+   */
+  it("reuse touches neither the bytes nor the marker — it only reads them", async () => {
+    await previewOperat(draftT12.id);
+    storagePutMock.mockClear();
+    storageDeleteMock.mockClear();
+    freezeMapsMock.mockClear();
+
+    const result = await approveValuation(draftT12.id);
+
+    expect(result).toBeUndefined();
+    expect(deletedKeys().filter((key) => key.startsWith("mapa-"))).toEqual([]);
+    expect(putKeys().filter((key) => key.startsWith("mapa-"))).toEqual([]);
+    expect(freezeMapsMock).not.toHaveBeenCalled();
+    // ...and the bytes are still there for `signValuationAction` to re-render from.
+    for (const key of mapKeys) expect(blobs.has(key)).toBe(true);
+  });
+
+  /**
+   * The address on the audit row is the only lasting record of which parcel
+   * the embedded maps depict, so in the reuse branch it comes from the MARKER
+   * the bytes were frozen under — not from the row, which says which parcel
+   * the valuation is about. Here the two agree by construction
+   * (`mapsFrozenForCurrentAddress` compares them), which is the point: this
+   * pins the source of the claim, not a divergence.
+   */
+  it("audits the address the reused bytes were frozen under", async () => {
+    await previewOperat(draftT12.id);
+
+    await approveValuation(draftT12.id);
+
+    expect(approveMock).toHaveBeenCalledWith(
+      draftT12.id,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      { mapsFrozenFor: draftT12.address },
+      draftT12.inputs,
+      { requireProse: true },
+    );
+  });
+
+  /**
+   * A marker is a claim about bytes, and bytes can be gone (an eviction, a
+   * failed put, a half-finished cleanup) while the claim stands. Absence has
+   * to mean "fetch again", exactly as the preview reads it — the alternative
+   * is an operat issued without §8.1 because a claim was believed.
+   */
+  it("a marker whose bytes are gone falls back to a fetch instead of issuing without maps", async () => {
+    await previewOperat(draftT12.id);
+    blobs.delete(mapKeys[0]);
+    fetchMapsMock.mockClear();
+
+    const result = await approveValuation(draftT12.id);
+
+    expect(result).toBeUndefined();
+    expect(fetchMapsMock).toHaveBeenCalledWith(draftT12.address);
+    expect(generatedMedia(issuedDocx())).toHaveLength(2);
+  });
+
+  /**
+   * The freeze that does not take, now told apart by WHY (Task 10 fixed the
+   * same defect on the preview side with the same positive condition).
+   *
+   * Two concurrent approves: the loser spends seconds inside the WMS call, the
+   * winner commits meanwhile, and the loser's `freezeMaps` comes back `null`
+   * because the row is no longer a draft. Deleting on that unattributed `null`
+   * would take the WINNER's frozen bytes with it, and the winner's signature
+   * would then be applied to a document without the §8.1 maps its approved
+   * copy carries.
+   */
+  it("leaves the bytes alone when the freeze failed because the row is no longer our draft", async () => {
+    freezeMapsMock.mockResolvedValue(null);
+    // Approve's OWN read still sees the draft it set out to issue; the fresh
+    // read the guard makes, seconds later, is the one that finds the winner's
+    // committed row. Anything else would trip the fast status guard at the top
+    // of the action and never reach the freeze at all.
+    getMock.mockImplementationOnce(async () => current);
+    getMock.mockImplementation(async () => ({ ...current, status: "approved" as const }));
+
+    const result = await approveValuation(draftT12.id);
+
+    // The refusal is unconditional — whose bytes those are decides only
+    // whether they are deleted, never whether this approve goes through.
+    expect(result).toEqual({ error: expect.stringContaining("stanu map operatu") });
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(deletedKeys().filter((key) => key.startsWith("mapa-"))).toEqual([]);
+  });
+
+  it("drops the bytes when the freeze failed and this is still our draft", async () => {
+    freezeMapsMock.mockResolvedValue(null);
+
+    const result = await approveValuation(draftT12.id);
+
+    expect(result).toEqual({ error: expect.stringContaining("stanu map operatu") });
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(deletedKeys()).toEqual(expect.arrayContaining(mapKeys));
   });
 });

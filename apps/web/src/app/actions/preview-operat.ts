@@ -5,12 +5,12 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
-import type { SessionUser, Valuation } from "@/ports/valuation";
 import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
 import { computeKcs } from "@/domain/kcs";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
+import { dropMapBytesIfStillOurDraft, frozenMapKeys, readFrozenMaps } from "@/lib/frozen-maps";
 
 export type PreviewOperatResult =
   | { url: string }
@@ -19,83 +19,6 @@ export type PreviewOperatResult =
       /** Same meaning as on approval: the WMS said no, so the caller may offer "podgląd bez map". */
       mapsUnavailable?: boolean;
     };
-
-const ewidencyjnaKey = (id: string) => `mapa-ewidencyjna-${id}.png`;
-const ortoKey = (id: string) => `mapa-orto-${id}.jpg`;
-
-/**
- * Reads the frozen §8.1 maps back from storage, or `null` when they are not
- * there to read.
- *
- * ANY failure means "not frozen after all" here — deliberately unlike
- * `signValuationAction`, which treats everything but `StorageNotFoundError`
- * as a hard error. The two are protecting opposite things: a sign that
- * silently dropped maps would issue a signed document without them, whereas
- * a preview that fails to read them simply fetches them again. Falling back
- * to a fetch cannot lose maps; it can only cost seconds.
- */
-async function readFrozenMaps(id: string): Promise<RenderMaps | null> {
-  try {
-    const ewidencyjna = await storage.get(ewidencyjnaKey(id));
-    const orto = await storage.get(ortoKey(id));
-    if (Buffer.isBuffer(ewidencyjna) && Buffer.isBuffer(orto)) {
-      return { ewidencyjna, orto };
-    }
-  } catch (error) {
-    console.error("previewOperat: reading frozen maps failed, re-fetching", error);
-  }
-  return null;
-}
-
-/**
- * Drops the §8.1 map bytes this preview just wrote — but ONLY on positive
- * evidence that they are still this draft's to drop.
- *
- * `freezeMaps` answers `null` for three different reasons and the caller
- * cannot tell them apart from the return value alone:
- *
- *  1. **not the owner** — this action authorises through `get`, which admits
- *     an admin, while `freezeMaps` is owner-only. The bytes just written then
- *     sit under whatever marker was there BEFORE, which may be the previous
- *     address: correct the address back and the next reader gets the other
- *     parcel's maps under a marker that looks perfectly valid. These bytes
- *     must GO.
- *  2. **no longer a draft** — an approve committed while this preview was
- *     inside its multi-second WMS call, which Task 10 made reachable by
- *     rendering on mount. The bytes under those keys are now the ISSUE's:
- *     `signValuationAction` re-renders from exactly them and reads their
- *     absence as "approved without maps", silently. These bytes must STAY —
- *     deleting them would put an illustrated operat in the record and an
- *     unillustrated one under the signature, the very drift
- *     `approveValuation` refuses to create from the other side.
- *  3. **the row is gone** — or the read that would tell us fails. Unknowable,
- *     and it is the case where a stale answer is most likely.
- *
- * So the condition is single and positive: delete only when a fresh read
- * still shows a draft we can see. Everything else keeps the bytes, because
- * the two costs are not comparable — an orphaned byte pair costs one
- * re-fetch and is overwritten by the next render, while bytes deleted out
- * from under an issued operat cost a signed document that silently differs
- * from the approved one.
- */
-async function dropBytesIfStillOurDraft(id: string, user: SessionUser): Promise<void> {
-  let still: Valuation | null = null;
-  try {
-    still = await valuationRepository.get(id, user);
-  } catch (error) {
-    console.error(`previewOperat: could not establish why the freeze on ${id} failed`, error);
-    return;
-  }
-  if (still?.status !== "in_progress") {
-    console.error(
-      `previewOperat: the map freeze on ${id} failed and this is no longer our draft — bytes left for the issued operat`,
-    );
-    return;
-  }
-  console.warn(`previewOperat: could not record the map freeze on ${id} — dropping bytes`);
-  await storage.delete(ewidencyjnaKey(id));
-  await storage.delete(ortoKey(id));
-}
 
 /**
  * Renders the operat the appraiser is about to take responsibility for, and
@@ -168,14 +91,15 @@ export async function previewOperat(
       // asked for.
       const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
       if (unfrozen) {
-        await storage.delete(ewidencyjnaKey(id));
-        await storage.delete(ortoKey(id));
+        const keys = frozenMapKeys(id);
+        await storage.delete(keys.ewidencyjna);
+        await storage.delete(keys.orto);
       } else {
         console.warn(`previewOperat: could not lift the map freeze on ${id} — bytes left in place`);
       }
     } else {
       if (mapsFrozenForCurrentAddress(valuation)) {
-        maps = await readFrozenMaps(id);
+        maps = await readFrozenMaps(storage, id, "previewOperat");
       }
       // `mapImages === null` is the MAPS_FETCH=off kill switch (CI e2e stays
       // network-free) — the preview then renders the same honest "no maps"
@@ -189,17 +113,23 @@ export async function previewOperat(
           };
         }
         maps = fetched.maps;
-        await storage.put(ewidencyjnaKey(id), maps.ewidencyjna);
-        await storage.put(ortoKey(id), maps.orto);
+        const keys = frozenMapKeys(id);
+        await storage.put(keys.ewidencyjna, maps.ewidencyjna);
+        await storage.put(keys.orto, maps.orto);
         // Same `null` case as above — a write that did not happen — but NOT
         // the same answer, because `null` has more than one cause and they
-        // pull in opposite directions. See `dropBytesIfStillOurDraft`.
+        // pull in opposite directions. See `dropMapBytesIfStillOurDraft`.
         //
         // The render below still uses the maps held in memory; only the reuse
         // is given up, so the next preview fetches again.
         const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
         if (!frozen) {
-          await dropBytesIfStillOurDraft(id, session.user);
+          await dropMapBytesIfStillOurDraft(
+            { storage, valuationRepository },
+            id,
+            session.user,
+            "previewOperat",
+          );
         }
       }
     }

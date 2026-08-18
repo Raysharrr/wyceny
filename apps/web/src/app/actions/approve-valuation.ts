@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
-import { ApprovalBlockedError, InputsChangedError } from "@/domain/valuation";
+import {
+  ApprovalBlockedError,
+  InputsChangedError,
+  mapsFrozenForCurrentAddress,
+} from "@/domain/valuation";
 import { approvalGate, type Blocker } from "@/domain/provenance";
 import { proseEnabled } from "@/lib/prose-enabled";
 import {
@@ -17,6 +21,7 @@ import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
+import { dropMapBytesIfStillOurDraft, frozenMapKeys, readFrozenMaps } from "@/lib/frozen-maps";
 
 export type ApproveValuationResult =
   | {
@@ -43,11 +48,13 @@ export type ApproveValuationResult =
  * flip (which re-runs the gate atomically, ADR-012) happens LAST — a failed
  * flip leaves harmless orphan files that the retry overwrites (same keys).
  *
- * Slice 9 (Task 6): also fetches + freezes the §8.1 WMS maps at the approve
- * moment (spec decision 1). `opts.skipMaps` is the user's conscious "approve
- * without maps" choice — audited on the approved row's meta. `mapImages ===
- * null` (MAPS_FETCH=off kill switch, CI e2e) silently renders the honest
- * "no maps" stub instead and is NOT audited as a skip.
+ * Slice 14 (Task 12): the §8.1 WMS maps are REUSED from the freeze the
+ * step-7 preview made, and fetched only when there is nothing to reuse
+ * (spec §C). `opts.skipMaps` is the appraiser's conscious "without maps",
+ * now made on the preview and carried here by the screen that made it —
+ * audited on the approved row's meta. `mapImages === null` (MAPS_FETCH=off
+ * kill switch, CI e2e) silently renders the honest "no maps" stub instead
+ * and is NOT audited as a skip.
  */
 export async function approveValuation(
   id: string,
@@ -106,20 +113,87 @@ export async function approveValuation(
     const kcs = computeKcs(valuation.inputs);
     const amountInWords = await worker.amountInWords(kcs.wr);
 
-    // Slice 9: fetch + freeze maps at the approve moment (spec decision 1).
+    // Slice 14 (Task 12): issuing REUSES the maps the appraiser just read.
+    // They are fetched and frozen by the step-7 preview, and the issue reads
+    // them back — so the document under the signature is the document that
+    // was on the screen, in the one part of the operat that comes from
+    // outside this application.
+    //
+    // The fetch is still here, and it is load-bearing rather than vestigial:
+    // the issue button sits on the same screen as the preview, so it can be
+    // clicked before the render that freezes them has finished, and a marker
+    // can outlive its bytes. Both cases mean "nothing to reuse", and the
+    // answer is to fetch — never to issue without maps, because map absence
+    // is never silent (Slice 9, spec decision 4).
+    //
+    // The maps and the address they depict travel together, so that no path
+    // can record one without the other: the audit row is the only lasting
+    // evidence of which parcel the images inside the issued document show.
+    //
     // mapImages === null -> MAPS_FETCH=off (CI e2e): silent stub, NOT audited
-    // as a skip — only the user's conscious "approve without maps" is.
-    let maps: RenderMaps | null = null;
+    // as a skip — only the user's conscious "without maps" is.
+    let embedded: { maps: RenderMaps; address: string } | null = null;
     if (!opts?.skipMaps && mapImages) {
-      const mapsResult = await mapImages.fetchMaps(valuation.address);
-      if (mapsResult.kind !== "ok") {
-        return {
-          error: `Nie udało się pobrać map do operatu — ${mapsResult.message}`,
-          mapsUnavailable: true,
-        };
+      if (mapsFrozenForCurrentAddress(valuation) && valuation.mapsFrozenFor) {
+        const frozenMaps = await readFrozenMaps(storage, id, "approveValuation");
+        // The address comes off the MARKER, not the row. They are equal here
+        // by construction — that is what `mapsFrozenForCurrentAddress`
+        // compares — and taking it from the marker anyway is what keeps the
+        // claim and its evidence in one place: the row says which parcel the
+        // valuation is about, the marker says which parcel these bytes show.
+        if (frozenMaps) embedded = { maps: frozenMaps, address: valuation.mapsFrozenFor };
       }
-      maps = mapsResult.maps;
+      if (!embedded) {
+        const mapsResult = await mapImages.fetchMaps(valuation.address);
+        if (mapsResult.kind !== "ok") {
+          return {
+            error: `Nie udało się pobrać map do operatu — ${mapsResult.message}`,
+            mapsUnavailable: true,
+          };
+        }
+        embedded = { maps: mapsResult.maps, address: valuation.address };
+        const keys = frozenMapKeys(id);
+        await storage.put(keys.ewidencyjna, embedded.maps.ewidencyjna);
+        await storage.put(keys.orto, embedded.maps.orto);
+        // Slice 14: the marker moves WITH the bytes — bytes first, marker
+        // second, the order the preview freezes in. Writing one without the
+        // other needs no concurrency to go wrong: preview at address A,
+        // correct it to B, this fetch stores B's maps and then the issue
+        // fails (photos, conversion, the drift check), revert to A — and a
+        // marker still saying A hands the next reader B's parcel under A's
+        // address.
+        const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
+        if (!frozen) {
+          // The write did NOT happen, and `null` does not say why. Whether
+          // these bytes are ours to delete is decided by a fresh read
+          // (`dropMapBytesIfStillOurDraft`) — the loser of two concurrent
+          // approves would otherwise delete the WINNER's frozen bytes, and
+          // the winner's signature would go on a document without the §8.1
+          // maps its approved copy carries.
+          //
+          // The refusal, on the other hand, is unconditional. Whatever those
+          // keys hold, this issue cannot vouch for it, and nothing has been
+          // committed yet — so refusing costs a retry and no more. A `null`
+          // here also means `repo.approve` was going to fail anyway, for the
+          // same two reasons.
+          console.error(`approveValuation: could not record the map freeze on ${id} — refusing`);
+          await dropMapBytesIfStillOurDraft(
+            { storage, valuationRepository },
+            id,
+            session.user,
+            "approveValuation",
+          );
+          // The message promises no retry: `freezeMaps` returns null when the
+          // row is gone, when the caller is not its owner, or when it is no
+          // longer a draft — and none of those clears by trying again.
+          return {
+            error:
+              "Nie udało się zapisać stanu map operatu. Sprawdź, czy wycena jest nadal Twoim szkicem.",
+          };
+        }
+      }
     }
+    const maps = embedded?.maps ?? null;
 
     const model = buildDocumentModel({
       address: valuation.address,
@@ -133,57 +207,28 @@ export async function approveValuation(
       kcs,
       amountInWords,
     });
-    if (maps) {
-      await storage.put(`mapa-ewidencyjna-${id}.png`, maps.ewidencyjna);
-      await storage.put(`mapa-orto-${id}.jpg`, maps.orto);
-      // Slice 14: the marker moves WITH the bytes — bytes first, marker
-      // second, the order the preview freezes in. Writing one without the
-      // other needs no concurrency to go wrong: preview at address A, correct
-      // it to B, approve stores B's maps and then fails (photos, conversion,
-      // the drift check), revert to A — and a marker still saying A hands the
-      // next reader B's parcel under A's address. Today that poisons a
-      // preview; once Task 12 pairs issuing with the freeze, a signed operat.
-      const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
-      if (!frozen) {
-        // The write did NOT happen (owner-only adapter, or the row stopped
-        // being a draft) — so these bytes now sit under the previous address's
-        // marker, and they go, by the rule that holds everywhere else here:
-        // bytes exist only under a marker that describes them.
-        //
-        // The issue goes with them, and that is where this differs from the
-        // preview. `signValuationAction` re-renders from exactly these keys and
-        // reads their absence as "approved without maps" — silently, by design.
-        // Deleting them and approving anyway would put an illustrated document
-        // in the record and an unillustrated one under the signature. Nothing
-        // has been committed at this point, so refusing costs a retry and no
-        // more — and a `null` here means the approve was going to fail at
-        // `repo.approve` anyway, for the same two reasons.
-        console.error(`approveValuation: could not record the map freeze on ${id} — refusing`);
-        await storage.delete(`mapa-ewidencyjna-${id}.png`);
-        await storage.delete(`mapa-orto-${id}.jpg`);
-        // The message promises no retry: `freezeMaps` returns null when the row
-        // is gone, when the caller is not its owner, or when it is no longer a
-        // draft — and none of those clears by trying again.
-        return {
-          error:
-            "Nie udało się zapisać stanu map operatu. Sprawdź, czy wycena jest nadal Twoim szkicem.",
-        };
-      }
-    } else {
-      // skipMaps (user's conscious choice) or MAPS_FETCH=off kill switch:
-      // approve proceeds with maps === null. A PRIOR failed approve attempt
-      // (e.g. PDF conversion crash) may have already written these keys
-      // before failing — left uncleaned, sign would find and embed maps this
-      // approved document doesn't have (approve<->sign drift in a legal
-      // document, final review Important #1). delete() is idempotent, so
-      // this is a no-op on the common case where nothing was ever orphaned.
-      await storage.delete(`mapa-ewidencyjna-${id}.png`);
-      await storage.delete(`mapa-orto-${id}.jpg`);
-      // Slice 14: and the freeze marker with them, while this is still a
-      // draft (`freezeMaps` refuses anything else). A marker left standing
-      // over deleted bytes would tell the next reader — the step-7 preview,
-      // and from Task 12 the issue itself — that this valuation has maps
-      // frozen for its address when it has none.
+    // Keyed on "nothing embedded", NEVER on "did not fetch" — the difference
+    // is the whole cost of this refactor. skipMaps (the appraiser's conscious
+    // choice, made on the preview) or the MAPS_FETCH=off kill switch both
+    // land here with nothing to embed; a REUSE must not, or this would delete
+    // the very bytes it just rendered from and `signValuationAction` — which
+    // re-renders from those keys and reads their absence as "approved without
+    // maps", silently — would sign an operat without the §8.1 maps the
+    // approved copy carries.
+    //
+    // A PRIOR failed approve attempt (e.g. a PDF conversion crash) may have
+    // left these keys behind; uncleaned, sign would find and embed maps this
+    // approved document does not have. delete() is idempotent, so this is a
+    // no-op on the common case where nothing was ever orphaned.
+    if (!embedded) {
+      const keys = frozenMapKeys(id);
+      await storage.delete(keys.ewidencyjna);
+      await storage.delete(keys.orto);
+      // ...and the freeze marker with them, while this is still a draft
+      // (`freezeMaps` refuses anything else). A marker left standing over
+      // deleted bytes would tell the next reader — the step-7 preview, and
+      // now the issue itself — that this valuation has maps frozen for its
+      // address when it has none.
       await valuationRepository.freezeMaps(id, session.user, null);
     }
 
@@ -216,8 +261,8 @@ export async function approveValuation(
       // without anyone choosing it.
       opts?.skipMaps
         ? { mapsSkipped: true }
-        : maps
-          ? { mapsFrozenFor: valuation.address }
+        : embedded
+          ? { mapsFrozenFor: embedded.address }
           : undefined,
       valuation.inputs,
       { requireProse },
