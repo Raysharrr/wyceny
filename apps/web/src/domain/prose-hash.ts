@@ -12,7 +12,12 @@
  */
 
 import { createHash } from "node:crypto";
-import { buildProseFacts, type ProseFacts, type ProseFactsInput } from "./prose";
+import {
+  buildProseFacts,
+  buildProseTransactions,
+  type ProseFacts,
+  type ProseFactsInput,
+} from "./prose";
 
 /**
  * JSON with keys sorted recursively. Plain `JSON.stringify` preserves
@@ -32,21 +37,45 @@ function canonical(value: unknown): unknown {
   return value;
 }
 
-export function proseFactsHash(facts: ProseFacts): string {
+function sha256Canonical(value: unknown): string {
   return createHash("sha256")
-    .update(JSON.stringify(canonical(facts)))
+    .update(JSON.stringify(canonical(value)))
     .digest("hex");
 }
 
 /**
- * The draft's CURRENT fingerprint, in one expression.
+ * Canonical hash of the facts dictionary ALONE.
  *
- * Every caller that asks "are these proposals still about this draft?" must
- * build the facts the same way the generation did. Two independent
- * `proseFactsHash(buildProseFacts(...))` call sites that drift apart would
- * mark every draft stale — and the step auto-generates on stale, so the drift
- * would bill a generation on every single visit. One function, one answer.
+ * NOT the draft's fingerprint — it does not see the transactions, and the
+ * worker derives `proba.trend_cen` from those. Production code wants
+ * {@link currentProseFactsHash}; this stays exported for the canonicalisation
+ * tests that pin the hashing itself.
+ */
+export function proseFactsHash(facts: ProseFacts): string {
+  return sha256Canonical(facts);
+}
+
+/**
+ * The draft's CURRENT fingerprint, in one expression — over the facts AND the
+ * transactions.
+ *
+ * Two reasons this is the only entry point production may use:
+ *
+ *  - **The transactions are an input to the prose.** They travel outside
+ *    `fakty`, but the worker injects `proba.trend_cen = price_trend(transakcje)`
+ *    into the facts every section sees (`apps/worker/app/main.py`). Swapping
+ *    which comparable carries which month leaves every fact byte-identical
+ *    while reversing the trend the operat asserts — a facts-only fingerprint
+ *    would call those proposals current (review finding I-2).
+ *  - **One expression, one answer.** Every caller asking "are these proposals
+ *    still about this draft?" must build the inputs the same way the generation
+ *    did. Two hand-rolled copies drifting apart would mark every draft stale,
+ *    and the step auto-generates on stale — the drift would bill a generation
+ *    on every single visit.
  */
 export function currentProseFactsHash(input: ProseFactsInput): string {
-  return proseFactsHash(buildProseFacts(input));
+  return sha256Canonical({
+    facts: buildProseFacts(input),
+    transactions: buildProseTransactions(input.inputs.comparables),
+  });
 }

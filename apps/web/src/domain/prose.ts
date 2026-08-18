@@ -137,19 +137,28 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
   const subject = inputs.subject ?? null;
   const note = inputs.inspection?.note ?? null;
 
+  // ALL-OR-NOTHING, for the months here and for the areas below. `date` and
+  // `area` are both OPTIONAL on a manually entered comparable, so a mixed
+  // sample is a normal flow — while `liczba_transakcji` counts EVERY
+  // comparable. An aggregate built from a subset would therefore attribute the
+  // subset's span to the whole sample ("3 transakcje" spanning
+  // "11-2024 – 11-2024"), and the worker's number guard cannot catch it,
+  // because every number in it IS in the facts. A missing aggregate is honest;
+  // a partial one is a falsifiable untruth inside an operat.
   const months = inputs.comparables.map((c) => monthOf(c.date)).filter((m) => m !== null);
-  const ordered = [...months].sort((a, b) => a.order - b.order);
-  const areas = minMax(
-    inputs.comparables.map((c) => c.area).filter((a): a is number => a != null && a > 0),
+  const ordered =
+    months.length === inputs.comparables.length
+      ? [...months].sort((a, b) => a.order - b.order)
+      : [];
+  const withArea = inputs.comparables.filter(
+    (c): c is Comparable & { area: number } => c.area != null && c.area > 0,
   );
+  const everyAreaKnown = withArea.length === inputs.comparables.length;
+  const areas = everyAreaKnown ? minMax(withArea.map((c) => c.area)) : null;
   // Each comparable's OWN area — "what those flats actually sold for". The
   // subject's area × sample prices would put a number adjacent to WR in front
   // of the model (F-11).
-  const totals = minMax(
-    inputs.comparables
-      .filter((c): c is Comparable & { area: number } => c.area != null && c.area > 0)
-      .map((c) => c.pricePerM2 * c.area),
-  );
+  const totals = everyAreaKnown ? minMax(withArea.map((c) => c.pricePerM2 * c.area)) : null;
 
   const proba: ProseSampleFacts | null = kcs
     ? {

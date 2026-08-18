@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { confirmProse } from "@/app/actions/confirm-prose";
-import { proposeProse } from "@/app/actions/propose-prose";
+import { proposeProse, type ProposeProseResult } from "@/app/actions/propose-prose";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { SectionCard } from "@/components/wizard/section-card";
 import {
@@ -58,6 +58,26 @@ function textsOf(snapshot: ProseSnapshot | null): ProseTexts {
 function isStillTheAutomats(snapshot: ProseSnapshot | null, section: ProseSection): boolean {
   const entry = snapshot?.sections[section];
   return !entry || entry.provenance.source === "ai";
+}
+
+/**
+ * Generations in flight, keyed by valuation — MODULE scope on purpose.
+ *
+ * The mount guard is a `useRef`, so it dies with the component: stepping 6 → 5
+ * → 6 during the ~10 s call remounts the step, finds nothing persisted yet, and
+ * starts a SECOND paid generation. This map outlives the mount (client-side
+ * navigation keeps the module alive), so the returning mount JOINS the running
+ * call instead of buying another one — it still shows the loading state and
+ * still receives the result.
+ */
+const inFlight = new Map<string, Promise<ProposeProseResult>>();
+
+function generateOnce(valuationId: string): Promise<ProposeProseResult> {
+  const running = inFlight.get(valuationId);
+  if (running) return running;
+  const started = proposeProse(valuationId).finally(() => inFlight.delete(valuationId));
+  inFlight.set(valuationId, started);
+  return started;
 }
 
 function ProseProvenanceBadge({ provenance }: { provenance: Provenance | undefined }) {
@@ -146,7 +166,20 @@ function ProseEditors({
   const generate = async () => {
     setError(null);
     setGenerating(true);
-    const result = await proposeProse(valuationId);
+    let result: ProposeProseResult;
+    try {
+      result = await generateOnce(valuationId);
+    } catch (error) {
+      // The action itself failed to reach the server (offline, dropped
+      // connection). Without this the loading state would hang forever on an
+      // unhandled rejection, and the step offers no way out of it.
+      console.error("proposeProse call failed", error);
+      if (mounted.current) {
+        setGenerating(false);
+        setError("Nie udało się połączyć z serwerem — sprawdź połączenie i spróbuj ponownie.");
+      }
+      return;
+    }
     // The appraiser may have left the step during the ~10 s call; writing into
     // an unmounted tree (or over a newer state) helps nobody.
     if (!mounted.current) return;

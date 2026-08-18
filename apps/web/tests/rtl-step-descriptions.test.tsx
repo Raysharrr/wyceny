@@ -46,7 +46,12 @@ vi.mock("next/navigation", () => ({
 import { StepDescriptions } from "@/app/valuations/[id]/steps/step-descriptions";
 import { PROSE_SECTIONS, type ProseSnapshot } from "@/domain/prose-snapshot";
 
-const VID = "11111111-2222-3333-4444-555555555555";
+// A FRESH id per test: the step keeps a module-scoped map of in-flight
+// generations (that is what stops a back-and-forth between steps from paying
+// twice), and module state outlives a test. A test that leaves its promise
+// pending would otherwise hand it to the next one.
+let vidSeq = 0;
+let VID = "";
 const AI_TEXT = "Lokal o powierzchni 68,40 m2 obejmuje dwa pokoje z kuchnią.";
 const HUMAN_TEXT = "Lokal obejmuje dwa pokoje, kuchnię w aneksie i łazienkę z WC.";
 
@@ -82,6 +87,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  VID = `11111111-2222-3333-4444-${String(++vidSeq).padStart(12, "0")}`;
   proposeProseMock.mockReset();
   confirmProseMock.mockReset();
   pushMock.mockReset();
@@ -104,6 +110,27 @@ describe("auto-generation on entering the step", () => {
     // The response settling re-renders the step — it must not re-fire.
     pending.resolve({ prose: snapshot() });
     await waitFor(() => expect(screen.queryByTestId("prose-generating")).not.toBeInTheDocument());
+    expect(proposeProseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaving and re-entering mid-flight joins the running generation, it does not buy a second", async () => {
+    // Step 5 -> 6 -> back -> 6 again during the ~10 s call. Nothing is
+    // persisted yet, so the second mount sees `prose: null` and would start its
+    // own paid generation; a per-component ref cannot see across mounts.
+    const pending = deferred<{ prose: ProseSnapshot }>();
+    proposeProseMock.mockReturnValue(pending.promise);
+
+    const first = renderStep();
+    await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
+    first.unmount();
+    renderStep();
+
+    await screen.findByTestId("prose-generating");
+    expect(proposeProseMock).toHaveBeenCalledTimes(1);
+
+    // …and the re-entering mount still gets the result it is waiting for.
+    pending.resolve({ prose: snapshot() });
+    await waitFor(() => expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue(AI_TEXT));
     expect(proposeProseMock).toHaveBeenCalledTimes(1);
   });
 

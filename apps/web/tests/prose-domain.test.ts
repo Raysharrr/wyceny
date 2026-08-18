@@ -6,7 +6,7 @@ import {
   selectProseSections,
   type ProseFacts,
 } from "@/domain/prose";
-import { proseFactsHash } from "@/domain/prose-hash";
+import { currentProseFactsHash, proseFactsHash } from "@/domain/prose-hash";
 import { buildDocumentModel, formatNumber, formatPln } from "@/domain/document-model";
 import { computeKcs, type KcsInput, type KcsResult } from "@/domain/kcs";
 
@@ -220,6 +220,115 @@ describe("proseFactsHash", () => {
         proba: { ...facts.proba!, liczba_transakcji: facts.proba!.liczba_transakcji + 1 },
       }),
     ).not.toBe(proseFactsHash(facts));
+  });
+});
+
+describe("a partial sample never describes itself as a whole one (review I-1)", () => {
+  // `date` and `area` are both OPTIONAL on a manually entered comparable, so a
+  // mixed sample is a normal flow, not an edge case. `liczba_transakcji` counts
+  // EVERY comparable, so any aggregate computed from a subset would attribute
+  // the subset's span to the whole sample — a falsifiable untruth the number
+  // guard cannot catch, because every number in it IS in the facts.
+  const probaFor = (comparables: KcsInput["comparables"]) =>
+    buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, comparables } }).proba;
+
+  it("one dateless comparable: no date range at all, not the dated subset's range", () => {
+    const mixed = [COMPARABLES[0], { area: 64, pricePerM2: 10725, source: "manual" as const }];
+
+    const proba = probaFor(mixed);
+
+    expect(proba?.liczba_transakcji).toBe(2);
+    expect(proba?.zakres_dat).toBeUndefined();
+  });
+
+  it("one arealess comparable: no area band and no total-price range", () => {
+    const mixed = [
+      COMPARABLES[0],
+      { date: "2025-03", pricePerM2: 12480, source: "manual" as const },
+    ];
+
+    const proba = probaFor(mixed);
+
+    expect(proba?.liczba_transakcji).toBe(2);
+    expect(proba?.pow_min_m2).toBeUndefined();
+    expect(proba?.pow_max_m2).toBeUndefined();
+    expect(proba?.cena_calkowita_min_zl).toBeUndefined();
+    expect(proba?.cena_calkowita_max_zl).toBeUndefined();
+  });
+
+  it("either gap drops analiza_rynku through the EXISTING gate — no new rule needed", () => {
+    const undated = [COMPARABLES[0], { area: 64, pricePerM2: 10725, source: "manual" as const }];
+    const arealess = [
+      COMPARABLES[0],
+      { date: "2025-03", pricePerM2: 12480, source: "manual" as const },
+    ];
+
+    for (const comparables of [undated, arealess]) {
+      expect(
+        selectProseSections(
+          buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, comparables } }),
+        ),
+      ).not.toContain("analiza_rynku");
+    }
+  });
+
+  it("a complete sample still reports both", () => {
+    const proba = probaFor(COMPARABLES);
+
+    expect(proba?.zakres_dat).toBe(`11-2024 ${ENDASH} 03-2025`);
+    expect(proba?.pow_min_m2).toBe("58,10");
+    expect(proba?.cena_calkowita_min_zl).toBeDefined();
+  });
+});
+
+describe("currentProseFactsHash — the fingerprint covers the transactions too (review I-2)", () => {
+  /**
+   * The worker injects `proba.trend_cen = price_trend(transakcje)` into the
+   * facts EVERY section sees (`apps/worker/app/main.py`), so the transactions
+   * are an input to the prose even though they travel outside `fakty`. A
+   * fingerprint over the facts alone would call the proposals current after an
+   * edit that reverses the trend the operat asserts.
+   *
+   * Same prices, same areas, same month SET — only which row carries which
+   * month changes. Every fact is therefore byte-identical (the date range is
+   * built from the sorted month set; the price and area aggregates are
+   * order-free), while `price_trend` sorts chronologically and reads the
+   * opposite direction.
+   */
+  const row = (date: string, pricePerM2: number) => ({
+    date,
+    area: 60,
+    pricePerM2,
+    source: "manual" as const,
+  });
+  const rising: KcsInput = {
+    ...INPUTS,
+    comparables: [row("2024-01", 9000), row("2024-06", 10000), row("2024-12", 11000)],
+  };
+  const falling: KcsInput = {
+    ...INPUTS,
+    comparables: [row("2024-12", 9000), row("2024-06", 10000), row("2024-01", 11000)],
+  };
+
+  it("the facts alone cannot tell these two samples apart", () => {
+    expect(buildProseFacts({ address: ADDRESS, inputs: falling })).toEqual(
+      buildProseFacts({ address: ADDRESS, inputs: rising }),
+    );
+  });
+
+  it("…but the transactions do, so the fingerprint must differ", () => {
+    expect(currentProseFactsHash({ address: ADDRESS, inputs: falling })).not.toBe(
+      currentProseFactsHash({ address: ADDRESS, inputs: rising }),
+    );
+  });
+
+  it("is a hex sha256 and still moves when a plain fact moves", () => {
+    const hash = currentProseFactsHash({ address: ADDRESS, inputs: INPUTS });
+
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(
+      currentProseFactsHash({ address: "ul. Klonowa 14/4, Nowogród", inputs: INPUTS }),
+    ).not.toBe(hash);
   });
 });
 

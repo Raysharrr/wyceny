@@ -27,7 +27,7 @@ import { proposeProse } from "../src/app/actions/propose-prose";
 import { proseProposal, valuationRepository } from "@/app/valuations/_deps";
 import { PROSE_WORKER_RESPONDED_PREFIX } from "@/adapters/prose-http";
 import { buildProseFacts } from "@/domain/prose";
-import { proseFactsHash } from "@/domain/prose-hash";
+import { currentProseFactsHash } from "@/domain/prose-hash";
 import type { KcsInput } from "@/domain/kcs";
 import type { Valuation } from "@/ports/valuation";
 
@@ -183,7 +183,10 @@ describe("proposeProse — happy path", () => {
         },
       },
       rejected: PROPOSAL.rejected,
-      factsHash: proseFactsHash(facts),
+      // Over the facts AND the transactions (review I-2): the worker derives
+      // `proba.trend_cen` from the latter, so a facts-only fingerprint would
+      // miss an edit that reverses the trend the operat asserts.
+      factsHash: currentProseFactsHash({ address: ADDRESS, inputs: INPUTS }),
       model: "claude-sonnet-5",
       generatedAt: "2026-08-18T07:30:00.000Z",
     };
