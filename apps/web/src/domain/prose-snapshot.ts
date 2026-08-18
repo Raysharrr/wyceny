@@ -114,10 +114,13 @@ function isAppraisers(entry: Sourced<string> | undefined): entry is Sourced<stri
  * regeneration silently dropped the other 4 from the screen until something
  * else happened to regenerate them (fix round 1, finding 2).
  *
- * `previous.factsHashes` is read with `?.` throughout: a row persisted
- * before this field existed carries `factsHash: string` and no per-section
- * map at all, and this function must stay total against that shape (fix
- * round 1, finding 1 — same reasoning as `staleProseSections`).
+ * Both `previous.factsHashes` and `incoming.factsHashes` are read with `?.`
+ * throughout: a row persisted before this field existed carries
+ * `factsHash: string` and no per-section map at all, and this function must
+ * stay total against that shape on EITHER side — not only the `previous`
+ * side (fix round 1, finding 1), but also `incoming`, since a caller that
+ * has not yet migrated to building a `factsHashes` map (e.g. a not-yet-
+ * updated UI action) can hand this function that shape too (fix round 2).
  */
 export function mergeProseProposal(
   previous: ProseSnapshot | null | undefined,
@@ -130,7 +133,7 @@ export function mergeProseProposal(
   const factsHashes: ProseSnapshot["factsHashes"] = {};
   for (const section of PROSE_SECTIONS) {
     const kept = previous.sections[section];
-    const incomingHash = incoming.factsHashes[section];
+    const incomingHash = incoming.factsHashes?.[section];
     const previousHash = previous.factsHashes?.[section];
     if (isAppraisers(kept)) {
       // The appraiser's text survives regeneration — but if the facts BEHIND

@@ -8,7 +8,7 @@ import { ApprovalBlockedError, InputsChangedError, assertNotSigned } from "../sr
 import { buildPhotoKey } from "../src/domain/inspection";
 import type { KcsInput } from "../src/domain/kcs";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
-import { approvableInputs, valuationInput } from "./fixtures/valuation-inputs";
+import { approvableInputs, partialDraftInputs, valuationInput } from "./fixtures/valuation-inputs";
 
 const appraiserA: SessionUser = { id: "user-test-1", role: "appraiser" };
 const appraiserB: SessionUser = { id: "user-test-2", role: "appraiser" };
@@ -509,5 +509,95 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
       .orderBy(schema.auditLog.id);
     expect(rows.at(-1)!.action).toBe("inspection_updated");
     expect(rows.at(-1)!.meta).toMatchObject({ op: "date_updated" });
+  });
+});
+
+describe("toValuation — normalizeProse (T2 fix round 2: legacy jsonb, read through the real adapter)", () => {
+  // `normalizeProse` (adapters/valuation-drizzle.ts) is the single narrowing
+  // point protecting every draft already persisted on staging. Its only
+  // previous coverage was accidental — an audit-log.test.ts fixture that
+  // happened to use the legacy shape — and that fixture was converted to
+  // the modern shape in fix round 1, silently deleting the coverage. This
+  // exercises it directly, through the real repo/Postgres round trip rather
+  // than calling the (unexported) helper in isolation.
+  it("a legacy prose jsonb (old factsHash, no factsHashes) reads back with factsHashes: {} — nothing synthesized, the rest untouched", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "Legacy Prose Read"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+
+    // Simulate a row persisted before eb09bcf: write the OLD single-hash
+    // shape straight into the untyped jsonb column, bypassing every domain
+    // function (none of which can build this shape today — this is exactly
+    // why the write has to go around the domain, direct to the DB).
+    const legacyProse = {
+      sections: {
+        opis_lokalu: {
+          value: "Lokal obejmuje dwa pokoje.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+      },
+      rejected: { analiza_rynku: ["9 871,00"] },
+      factsHash: "a".repeat(64),
+      model: "claude-sonnet-5",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    await db
+      .update(schema.valuation)
+      .set({ inputs: { ...partialDraftInputs(), prose: legacyProse } })
+      .where(eq(schema.valuation.id, created.id));
+
+    const read = await repo.get(created.id, appraiserA);
+
+    expect(read?.inputs?.prose?.factsHashes).toEqual({});
+    // NOT synthesized from the old hash — an empty object, never e.g. every
+    // section stamped with "a".repeat(64), which would mark stale prose as
+    // fresh: the exact failure this normalization exists to prevent.
+    expect(read?.inputs?.prose?.factsHashes).not.toHaveProperty("opis_lokalu");
+    expect(read?.inputs?.prose?.sections).toEqual(legacyProse.sections);
+    expect(read?.inputs?.prose?.rejected).toEqual(legacyProse.rejected);
+    expect(read?.inputs?.prose?.model).toBe(legacyProse.model);
+    expect(read?.inputs?.prose?.generatedAt).toBe(legacyProse.generatedAt);
+  });
+
+  it("a modern prose jsonb (factsHashes already present) round-trips byte-for-byte — normalization is a no-op", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "Modern Prose Read"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+    const modernProse = {
+      sections: {
+        opis_lokalu: {
+          value: "Lokal obejmuje dwa pokoje.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+      },
+      rejected: {},
+      factsHashes: { opis_lokalu: "b".repeat(64) },
+      model: "claude-sonnet-5",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    await db
+      .update(schema.valuation)
+      .set({ inputs: { ...partialDraftInputs(), prose: modernProse } })
+      .where(eq(schema.valuation.id, created.id));
+
+    const read = await repo.get(created.id, appraiserA);
+
+    expect(read?.inputs?.prose).toEqual(modernProse);
+  });
+
+  it("no prose at all reads back as no prose — normalization does not invent one", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "No Prose Read"),
+      wr: null,
+      inputs: partialDraftInputs(),
+    });
+
+    const read = await repo.get(created.id, appraiserA);
+
+    expect(read?.inputs?.prose).toBeFalsy();
   });
 });

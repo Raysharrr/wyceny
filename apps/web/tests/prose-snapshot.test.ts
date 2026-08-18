@@ -163,6 +163,29 @@ describe("mergeProseProposal — regeneration keeps the appraiser's text", () =>
     expect(() => mergeProseProposal(legacy, incoming)).not.toThrow();
   });
 
+  it("fix round 2: a legacy-shaped incoming (no factsHashes map) does not throw either", () => {
+    // The mirror of the previous test on the OTHER side of the merge — a
+    // caller (e.g. a not-yet-migrated UI action) that builds `incoming`
+    // without a `factsHashes` map must not crash the merge. This is exactly
+    // the frame the T2 fix-round-2 review traced 3 unhandled rejections to
+    // (rtl-step-descriptions.test.tsx, via step-descriptions.tsx's own
+    // not-yet-migrated `generate()` — T5 territory, unrelated to this fix).
+    const legacyIncoming = {
+      sections: {
+        otoczenie: {
+          value: "Nowy tekst otoczenia.",
+          provenance: { source: "ai", status: "to_verify" },
+        },
+      },
+      rejected: {},
+      factsHash: "f".repeat(64),
+      model: "claude-sonnet-5",
+      generatedAt: "2026-08-18T12:00:00.000Z",
+    } as unknown as ProseSnapshot;
+
+    expect(() => mergeProseProposal(previous, legacyIncoming)).not.toThrow();
+  });
+
   it("fix round 1, finding 2: a partial regeneration (T3) leaves sections outside the batch untouched, byte-for-byte", () => {
     const allSix: ProseSnapshot = {
       sections: Object.fromEntries(

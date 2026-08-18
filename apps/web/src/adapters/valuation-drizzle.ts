@@ -48,11 +48,16 @@ function canSee(row: Valuation, user: SessionUser): boolean {
  * promised migration behaviour (`ProseSnapshot.factsHashes` docstring): one
  * regeneration per legacy draft on the next visit to step 6.
  *
- * This covers only the read path through {@link toValuation} — Task 4's
- * in-transaction F-4 gate re-derives the fingerprint from the same jsonb
- * without going through this function, which is exactly why the domain
- * functions (`staleProseSections`, `mergeProseProposal`) are defended
- * against the same missing field independently of this normalization.
+ * This covers every read through {@link toValuation} — every method on this
+ * repo narrows a raw row through it, `approve`'s in-transaction read
+ * included, so a Task 4 F-4 gate built on `repo.get`/`repo.approve` is
+ * already covered here too (an earlier draft of this comment claimed
+ * otherwise — it was wrong). The `?.` defenses added to the domain
+ * functions (`staleProseSections`, `mergeProseProposal`) are not plugging a
+ * hole THIS path leaves open; they protect against a caller that reads the
+ * jsonb some other way, or builds a `ProseSnapshot` by hand without going
+ * through this adapter at all (fix round 2: an `incoming` built by a
+ * not-yet-migrated UI action did exactly that).
  */
 function normalizeProse(prose: ProseSnapshot | null | undefined): ProseSnapshot | null | undefined {
   if (!prose) return prose;
