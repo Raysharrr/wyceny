@@ -60,11 +60,24 @@ const snapshot = (over: Partial<ProseSnapshot> = {}): ProseSnapshot => ({
     opis_lokalu: { value: AI_TEXT, provenance: { source: "ai", status: "to_verify" } },
   },
   rejected: {},
-  factsHash: "a".repeat(64),
+  factsHashes: { opis_lokalu: "a".repeat(64) },
   model: "claude-sonnet-5",
   generatedAt: "2026-08-18T07:30:00.000Z",
   ...over,
 });
+
+/** All six sections written by the automat and fingerprinted against today's facts. */
+const allSixFresh = (over: Partial<ProseSnapshot> = {}): ProseSnapshot =>
+  snapshot({
+    sections: Object.fromEntries(
+      PROSE_SECTIONS.map((s) => [
+        s,
+        { value: `Tekst sekcji ${s}.`, provenance: { source: "ai", status: "to_verify" } },
+      ]),
+    ) as ProseSnapshot["sections"],
+    factsHashes: Object.fromEntries(PROSE_SECTIONS.map((s) => [s, "a".repeat(64)])),
+    ...over,
+  });
 
 function renderStep(props: Partial<Parameters<typeof StepDescriptions>[0]> = {}) {
   return render(
@@ -73,7 +86,9 @@ function renderStep(props: Partial<Parameters<typeof StepDescriptions>[0]> = {})
         valuationId={VID}
         prose={null}
         upToDate={false}
+        staleSections={[]}
         generatableSections={[...PROSE_SECTIONS]}
+        usage={{ generations: 0, tokens: 0, grosze: 0 }}
         {...props}
       />
     </StrictMode>,
@@ -357,6 +372,217 @@ describe("the appraiser's responsibility", () => {
 
     await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
     expect(proposeProseMock).toHaveBeenCalledWith(VID);
+  });
+});
+
+describe("what went stale, and what regenerating it costs (T5)", () => {
+  /**
+   * All six written, then the sample edited underneath a section the
+   * appraiser had already CONFIRMED: stale, but no longer open to the automat,
+   * so entering the step marks it without buying anything. That is what keeps
+   * these assertions free of a generation in flight — and it is the realistic
+   * shape of the case the F-4 staleness blocker exists for.
+   */
+  const oneStale = (): ProseSnapshot =>
+    allSixFresh({
+      sections: {
+        ...allSixFresh().sections,
+        analiza_rynku: {
+          value: HUMAN_TEXT,
+          provenance: { source: "rzeczoznawca", status: "confirmed" },
+        },
+      },
+    });
+
+  it("marks only the stale sections and offers to regenerate just those", () => {
+    renderStep({ prose: oneStale(), upToDate: false, staleSections: ["analiza_rynku"] });
+
+    expect(screen.getByTestId("prose-stale-analiza_rynku")).toHaveTextContent("dane się zmieniły");
+    expect(screen.queryByTestId("prose-stale-otoczenie")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Wygeneruj ponownie 1 nieaktualną sekcję/ }),
+    ).toBeEnabled();
+    // Marking is free; only the appraiser's click is not.
+    expect(proposeProseMock).not.toHaveBeenCalled();
+  });
+
+  it("counts in Polish — two stale sections read 'nieaktualne sekcje'", () => {
+    const twoStale = allSixFresh({
+      sections: {
+        ...allSixFresh().sections,
+        analiza_rynku: {
+          value: HUMAN_TEXT,
+          provenance: { source: "rzeczoznawca", status: "confirmed" },
+        },
+        uzasadnienie: {
+          value: HUMAN_TEXT,
+          provenance: { source: "rzeczoznawca", status: "confirmed" },
+        },
+      },
+    });
+
+    renderStep({
+      prose: twoStale,
+      upToDate: false,
+      staleSections: ["analiza_rynku", "uzasadnienie"],
+    });
+
+    expect(
+      screen.getByRole("button", { name: /Wygeneruj ponownie 2 nieaktualne sekcje/ }),
+    ).toBeEnabled();
+  });
+
+  it("a stale section the facts can no longer back is marked but not counted", () => {
+    // The button would not touch it — `proposeProse` only ever asks for
+    // sections today's facts can back — so promising to regenerate it would
+    // be a label that does not survive the click.
+    renderStep({
+      prose: oneStale(),
+      upToDate: false,
+      staleSections: ["analiza_rynku"],
+      generatableSections: PROSE_SECTIONS.filter((s) => s !== "analiza_rynku"),
+    });
+
+    expect(screen.getByTestId("prose-stale-analiza_rynku")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wygeneruj ponownie" })).toBeInTheDocument();
+  });
+
+  it("nothing stale: the button keeps its plain label", () => {
+    renderStep({ prose: allSixFresh(), upToDate: true });
+
+    expect(screen.getByRole("button", { name: "Wygeneruj ponownie" })).toBeInTheDocument();
+    expect(screen.queryByTestId("prose-stale-analiza_rynku")).toBeNull();
+  });
+
+  it("the counted button asks for the missing-or-stale set, not for all six", async () => {
+    renderStep({ prose: oneStale(), upToDate: false, staleSections: ["analiza_rynku"] });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Wygeneruj ponownie 1 nieaktualną sekcję/ }),
+    );
+
+    // No options = "whatever is missing or stale" (T3), decided server-side.
+    await waitFor(() => expect(proposeProseMock).toHaveBeenCalledWith(VID));
+  });
+
+  it("'Wygeneruj wszystkie od nowa' names all six explicitly", async () => {
+    renderStep({ prose: allSixFresh(), upToDate: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Wygeneruj wszystkie od nowa" }));
+
+    await waitFor(() =>
+      expect(proposeProseMock).toHaveBeenCalledWith(VID, { sections: [...PROSE_SECTIONS] }),
+    );
+  });
+
+  it("shows what has been spent: generations, the measured tokens, and the cost as an estimate", () => {
+    renderStep({
+      prose: allSixFresh(),
+      upToDate: true,
+      usage: { generations: 3, tokens: 12400, grosze: 24 },
+    });
+
+    const line = screen.getByTestId("prose-usage");
+    expect(line).toHaveTextContent("Wygenerowano 3 razy");
+    expect(line).toHaveTextContent("12 400 tokenów");
+    // "ok." is not decoration: the token count is measured, the złotówki are
+    // derived from a price list that ages.
+    expect(line).toHaveTextContent("koszt ok. 0,24 zł");
+  });
+
+  it("nothing generated yet: no cost line to misread", () => {
+    renderStep({ prose: allSixFresh(), upToDate: true });
+
+    expect(screen.queryByTestId("prose-usage")).toBeNull();
+  });
+});
+
+describe("a refused refresh is visible, not silent (T5)", () => {
+  it("carried-forward text keeps the reason the regeneration was refused", () => {
+    // T3 ruling 2 made the snapshot keep BOTH: the old text (still the best
+    // available content) and the reason the fresh attempt was thrown away.
+    // Rendering only the text is the failure this test exists for — the
+    // appraiser clicks regenerate, nothing on screen moves, and nothing says
+    // a refusal happened.
+    renderStep({
+      prose: snapshot({
+        sections: {
+          otoczenie: { value: AI_TEXT, provenance: { source: "ai", status: "to_verify" } },
+        },
+        rejected: { otoczenie: ["1 234,00"] },
+      }),
+      upToDate: true,
+    });
+
+    expect(screen.getByLabelText(/Charakterystyka bezpośredniego otoczenia/)).toHaveValue(AI_TEXT);
+    const hint = screen.getByTestId("prose-hint-otoczenie");
+    expect(hint).toHaveTextContent("Nie udało się odświeżyć tej sekcji");
+    expect(hint).toHaveTextContent("1 234,00");
+    expect(hint).toHaveTextContent("wcześniejszej generacji");
+  });
+
+  it("a refusal with no numbers behind it still says the text is the older one", () => {
+    renderStep({
+      prose: snapshot({
+        sections: {
+          otoczenie: { value: AI_TEXT, provenance: { source: "ai", status: "to_verify" } },
+        },
+        rejected: { otoczenie: [] },
+      }),
+      upToDate: true,
+    });
+
+    const hint = screen.getByTestId("prose-hint-otoczenie");
+    expect(hint).toHaveTextContent("Nie udało się odświeżyć tej sekcji");
+    expect(hint).toHaveTextContent("wcześniejszej generacji");
+  });
+
+  it("text the appraiser owns needs no excuse — the merge keeps it free of refusals", () => {
+    renderStep({
+      prose: snapshot({
+        sections: {
+          otoczenie: {
+            value: HUMAN_TEXT,
+            provenance: { source: "rzeczoznawca", status: "confirmed" },
+          },
+        },
+        rejected: {},
+      }),
+      upToDate: true,
+    });
+
+    expect(screen.queryByTestId("prose-hint-otoczenie")).toBeNull();
+  });
+});
+
+describe("entering the step must not re-buy a refusal (T5)", () => {
+  it("a missing section nothing has attempted yet: one generation", async () => {
+    const pending = deferred<{ prose: ProseSnapshot }>();
+    proposeProseMock.mockReturnValue(pending.promise);
+    const fiveOfSix = allSixFresh();
+    delete fiveOfSix.sections.uzasadnienie;
+
+    renderStep({ prose: fiveOfSix, upToDate: false });
+
+    await waitFor(() => expect(proposeProseMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("...but a missing section the worker already refused: NOTHING, until asked", async () => {
+    // The bill this task exists to prevent: the guard refuses a section, the
+    // appraiser steps 6 -> 7 -> 6, and every visit buys the same refusal
+    // again. A recorded rejection means it was attempted and paid for — from
+    // here on it takes a click.
+    const refused = allSixFresh({ rejected: { uzasadnienie: ["9 871,00"] } });
+    delete refused.sections.uzasadnienie;
+
+    renderStep({ prose: refused, upToDate: false });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue("Tekst sekcji opis_lokalu."),
+    );
+    expect(proposeProseMock).not.toHaveBeenCalled();
+    // …and the button is still there to ask with.
+    expect(screen.getByRole("button", { name: "Wygeneruj ponownie" })).toBeEnabled();
   });
 });
 

@@ -116,7 +116,13 @@ export default async function ValuationViewPage({
         ) : step === 5 ? (
           <StepCalculation valuation={valuation} />
         ) : step === 6 ? (
-          <StepDescriptions valuationId={valuation.id} {...proseStepProps(valuation)} />
+          // Awaited inside the ternary on purpose: the props now include an
+          // audit aggregate, and only step 6 has any use for it — evaluating
+          // it above would put a query on every other step of the wizard.
+          <StepDescriptions
+            valuationId={valuation.id}
+            {...await proseStepProps(valuation, session.user, valuationRepository)}
+          />
         ) : (
           <StepOperat valuation={valuation} />
         )}

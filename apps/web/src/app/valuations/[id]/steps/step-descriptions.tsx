@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { confirmProse } from "@/app/actions/confirm-prose";
 import { proposeProse, type ProposeProseResult } from "@/app/actions/propose-prose";
 import { FootNav } from "@/components/wizard/foot-nav";
+import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import {
   PROSE_SECTIONS,
@@ -40,6 +41,24 @@ const MISSING_DATA_HINT: Record<ProseSection, string> = {
 const DISCLAIMER =
   "Propozycja wygenerowana automatycznie — za treść operatu odpowiada rzeczoznawca.";
 
+/**
+ * Wording taken from the F-4 blocker's own label ("dane się zmieniły,
+ * przejrzyj ponownie", `domain/provenance.ts`): the screen and the gate must
+ * name the same problem with the same words, or re-reading looks like a
+ * different chore from the one that unblocks approval.
+ */
+const STALE_HINT =
+  "Ta sekcja jest nieaktualna — dane się zmieniły, przejrzyj ją ponownie albo wygeneruj od nowa.";
+
+// Plain grouped digits and two decimal places, same convention as step 5's
+// wrFormatter — " zł" is appended as literal text, never baked into the
+// format, so the amount and the unit stay one readable run.
+const tokenFormatter = new Intl.NumberFormat("pl-PL");
+const zlotyFormatter = new Intl.NumberFormat("pl-PL", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 type ProseTexts = Record<ProseSection, string>;
 
 function textsOf(snapshot: ProseSnapshot | null): ProseTexts {
@@ -55,7 +74,7 @@ function isStillTheAutomats(snapshot: ProseSnapshot | null, section: ProseSectio
 }
 
 /**
- * Generations in flight, keyed by valuation — MODULE scope on purpose.
+ * Generations in flight, keyed by valuation AND batch — MODULE scope on purpose.
  *
  * The mount guard is a `useRef`, so it dies with the component: stepping 6 → 5
  * → 6 during the ~10 s call remounts the step, finds nothing persisted yet, and
@@ -63,15 +82,51 @@ function isStillTheAutomats(snapshot: ProseSnapshot | null, section: ProseSectio
  * navigation keeps the module alive), so the returning mount JOINS the running
  * call instead of buying another one — it still shows the loading state and
  * still receives the result.
+ *
+ * The batch is part of the key because the two buttons no longer ask for the
+ * same thing (T5): joining a missing-or-stale run when the appraiser asked for
+ * all six would hand back a result that answers a different question.
  */
 const inFlight = new Map<string, Promise<ProposeProseResult>>();
 
-function generateOnce(valuationId: string): Promise<ProposeProseResult> {
-  const running = inFlight.get(valuationId);
+function generateOnce(valuationId: string, sections?: ProseSection[]): Promise<ProposeProseResult> {
+  const key = sections ? `${valuationId}|${sections.join(",")}` : valuationId;
+  const running = inFlight.get(key);
   if (running) return running;
-  const started = proposeProse(valuationId).finally(() => inFlight.delete(valuationId));
-  inFlight.set(valuationId, started);
+  // No options at all — not `{ sections: undefined }` — for the default batch:
+  // the action reads "whatever is missing or stale" from the ABSENCE of opts.
+  const started = (
+    sections ? proposeProse(valuationId, { sections }) : proposeProse(valuationId)
+  ).finally(() => inFlight.delete(key));
+  inFlight.set(key, started);
   return started;
+}
+
+/**
+ * Whether ENTERING the step should buy a generation — as opposed to whether
+ * the draft's prose is out of date, which is `upToDate`'s question and the
+ * gate's (T5).
+ *
+ * The two must not be the same answer. A section the worker's number guard
+ * already refused stays missing and keeps blocking approval, so `upToDate`
+ * says no forever — but re-asking on every visit would buy the same refusal
+ * again, silently, with no click behind it. A recorded rejection means "this
+ * has been attempted and paid for": from then on it takes the button.
+ *
+ * Sections the appraiser owns are excluded throughout (`isStillTheAutomats`),
+ * as before: the merge would preserve them and the tokens would be spent for
+ * nothing. Their staleness is still marked, and the button still offers to
+ * redo them — that is a decision, not a default.
+ */
+function worthGenerating(
+  prose: ProseSnapshot | null,
+  staleSections: ProseSection[],
+  generatableSections: ProseSection[],
+): boolean {
+  const open = generatableSections.filter((s) => isStillTheAutomats(prose, s));
+  if (!prose) return open.length > 0;
+  const stale = new Set(staleSections);
+  return open.some((s) => stale.has(s) || (!prose.sections[s] && !prose.rejected[s]));
 }
 
 /**
@@ -97,10 +152,29 @@ export type StepDescriptionsProps = {
   valuationId: string;
   /** Proposals persisted on the draft, or null when none were ever generated. */
   prose: ProseSnapshot | null;
-  /** Whether `prose.factsHash` still matches the draft's current facts. */
+  /**
+   * Whether the persisted prose still describes this draft: no section's
+   * fingerprint has moved and no generatable section is missing. The same two
+   * questions the F-4 gate asks, so the screen cannot claim "fine" about a
+   * draft approval would refuse.
+   */
   upToDate: boolean;
+  /**
+   * Sections whose PERSISTED text no longer matches the facts behind it —
+   * per section since T2, so one edited transaction price no longer accuses
+   * all six. Missing sections are NOT in here: absent and out-of-date are
+   * different states and the step says different things about them.
+   */
+  staleSections: ProseSection[];
   /** Sections today's facts can back — computed server-side by `selectProseSections`. */
   generatableSections: ProseSection[];
+  /**
+   * What this draft's generations have cost so far, from the `prose_generated`
+   * audit rows. `tokens` is measured; `grosze` is derived from a price list
+   * that ages (`lib/prose-pricing.ts`) and is labelled as an estimate on
+   * screen. Converted server-side — the browser never receives the price list.
+   */
+  usage: { generations: number; tokens: number; grosze: number };
 };
 
 /**
@@ -148,7 +222,9 @@ function ProseEditors({
   valuationId,
   prose,
   upToDate,
+  staleSections,
   generatableSections,
+  usage,
 }: StepDescriptionsProps) {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<ProseSnapshot | null>(prose);
@@ -164,12 +240,12 @@ function ProseEditors({
   const autoStarted = useRef(false);
   const mounted = useRef(true);
 
-  const generate = async () => {
+  const generate = async (sections?: ProseSection[]) => {
     setError(null);
     setGenerating(true);
     let result: ProposeProseResult;
     try {
-      result = await generateOnce(valuationId);
+      result = await generateOnce(valuationId, sections);
     } catch (error) {
       // The action itself failed to reach the server (offline, dropped
       // connection). Without this the loading state would hang forever on an
@@ -203,10 +279,15 @@ function ProseEditors({
     mounted.current = true;
     // Entering the step generates when there is nothing yet, or when the draft
     // moved on since the proposals were written — but never when every section
-    // the facts can back already belongs to the appraiser: the merge would
-    // discard all of it and the tokens would be spent for nothing.
-    const openToTheAutomat = generatableSections.some((s) => isStillTheAutomats(prose, s));
-    if (!autoStarted.current && openToTheAutomat && (!prose || !upToDate)) {
+    // the facts can back already belongs to the appraiser (the merge would
+    // discard all of it), and never for a section the worker has already
+    // refused (`worthGenerating`): both would spend tokens on a result nobody
+    // can use, without a click behind them.
+    if (
+      !autoStarted.current &&
+      !upToDate &&
+      worthGenerating(prose, staleSections, generatableSections)
+    ) {
       autoStarted.current = true;
       void generate();
     }
@@ -233,6 +314,10 @@ function ProseEditors({
   };
 
   const filled = PROSE_SECTIONS.filter((s) => texts[s].trim().length > 0).length;
+  // Stale AND still within reach of the generator — what the primary button
+  // may honestly promise. `staleSections` itself drives the per-section marks,
+  // which are true regardless of whether anything can redo them.
+  const staleToRedo = staleSections.filter((s) => generatableSections.includes(s));
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
@@ -246,6 +331,15 @@ function ProseEditors({
             {DISCLAIMER}
           </p>
 
+          {usage.generations > 0 ? (
+            <p data-testid="prose-usage" className="text-[12.5px] text-muted-foreground">
+              Wygenerowano {usage.generations} {plural(usage.generations, "raz", "razy", "razy")} ·{" "}
+              {tokenFormatter.format(usage.tokens)}{" "}
+              {plural(usage.tokens, "token", "tokeny", "tokenów")} · koszt ok.{" "}
+              {zlotyFormatter.format(usage.grosze / 100)} zł
+            </p>
+          ) : null}
+
           <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
@@ -254,13 +348,39 @@ function ProseEditors({
               onClick={() => void generate()}
             >
               <Sparkles className="size-4" />
-              Wygeneruj ponownie
+              {/* The count names what the click will actually redo: the action
+                  asks for the missing-or-stale set and never for a section
+                  today's facts cannot back, so a stale section outside
+                  `generatableSections` is marked but not promised here. */}
+              {staleToRedo.length > 0
+                ? `Wygeneruj ponownie ${staleToRedo.length} ${plural(
+                    staleToRedo.length,
+                    "nieaktualną sekcję",
+                    "nieaktualne sekcje",
+                    "nieaktualnych sekcji",
+                  )}`
+                : "Wygeneruj ponownie"}
             </Button>
             <p data-testid="prose-regenerate-note" className="text-[12.5px] text-muted-foreground">
               Ponowna generacja nadpisze niezapisane teksty; zatwierdzone teksty nie zostaną
               nadpisane.
             </p>
           </div>
+
+          {/* Deliberately quieter than the button above it: redoing all six
+              pays for five sections nobody complained about. It exists because
+              the appraiser sometimes wants a different draft of text that is
+              not stale at all — a choice, never the default. */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-fit text-muted-foreground"
+            disabled={generating || saving}
+            onClick={() => void generate([...PROSE_SECTIONS])}
+          >
+            Wygeneruj wszystkie od nowa
+          </Button>
 
           {generating ? (
             <p data-testid="prose-generating" className="text-sm text-muted-foreground">
@@ -271,18 +391,32 @@ function ProseEditors({
           {PROSE_SECTIONS.map((section) => {
             const entry = snapshot?.sections[section];
             const rejected = snapshot?.rejected[section];
-            // Hints explain an EMPTY box; a section with persisted text needs
-            // no excuse. Order matters: a concrete rejection outranks the
-            // generic "we never asked for this one", which in turn outranks the
-            // catch-all. There is no fourth state — an empty box with no
-            // explanation is exactly what honest silence forbids, so a section
-            // that was asked for and came back with neither text nor a reason
-            // still says so. Only a draft where nothing has been attempted yet
-            // (no snapshot at all) stays quiet.
+            // A rejection is shown WHETHER OR NOT the box has text (T5). The
+            // snapshot keeps both on purpose (T3 ruling 2): a section whose
+            // refresh the worker's guard refused carries the older text —
+            // still the best available content — next to the reason it could
+            // not be replaced. Rendering only the text was the silent failure:
+            // the appraiser clicks "Wygeneruj ponownie", nothing on screen
+            // moves, and a refusal reads exactly like a section nobody asked
+            // about. The wording differs from the empty-box case because the
+            // remedy does: there IS something to read, it is just older.
+            //
+            // Below that, hints explain an EMPTY box, and order matters: a
+            // concrete rejection outranks the generic "we never asked for this
+            // one", which in turn outranks the catch-all. There is no fourth
+            // state — an empty box with no explanation is exactly what honest
+            // silence forbids, so a section that was asked for and came back
+            // with neither text nor a reason still says so. Only a draft where
+            // nothing has been attempted yet (no snapshot at all) stays quiet.
+            const numbers = rejected && rejected.length > 0 ? ` (${rejected.join("; ")})` : "";
             const hint = entry
-              ? null
+              ? rejected && rejected.length > 0
+                ? `Nie udało się odświeżyć tej sekcji — automat użył liczb spoza danych wyceny${numbers}. Poniższy tekst pochodzi z wcześniejszej generacji.`
+                : rejected
+                  ? "Nie udało się odświeżyć tej sekcji — poniższy tekst pochodzi z wcześniejszej generacji."
+                  : null
               : rejected && rejected.length > 0
-                ? `Automat użył liczb spoza danych wyceny (${rejected.join("; ")}) — napisz tę sekcję ręcznie.`
+                ? `Automat użył liczb spoza danych wyceny${numbers} — napisz tę sekcję ręcznie.`
                 : rejected
                   ? "Nie udało się wygenerować tej sekcji — spróbuj ponownie albo napisz ją ręcznie."
                   : !generatableSections.includes(section)
@@ -312,6 +446,14 @@ function ProseEditors({
                   disabled={generating}
                   onChange={(e) => setTexts((prev) => ({ ...prev, [section]: e.target.value }))}
                 />
+                {staleSections.includes(section) ? (
+                  <p
+                    data-testid={`prose-stale-${section}`}
+                    className="text-[12.5px] text-amber-600 dark:text-amber-500"
+                  >
+                    {STALE_HINT}
+                  </p>
+                ) : null}
                 {hint ? (
                   <p
                     data-testid={`prose-hint-${section}`}
