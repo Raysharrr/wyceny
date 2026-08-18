@@ -21,6 +21,7 @@ import type { Comparable, KcsInput } from "../src/domain/kcs";
 import { approvalGate, type InputsProvenance } from "../src/domain/provenance";
 import { confirmProseSnapshot, PROSE_SECTIONS } from "../src/domain/prose-snapshot";
 import { confirmedProse } from "./fixtures/valuation-inputs";
+import { assignSampleProvenance } from "../src/lib/assign-provenance";
 
 const confirmedScalars: InputsProvenance = {
   address: { source: "rzeczoznawca", status: "confirmed" },
@@ -290,6 +291,45 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
     });
     expect(edited.inputs!.comparables[12].status).toBe("confirmed");
     expect(approvalGate(edited.inputs!).ok).toBe(true);
+  });
+
+  /**
+   * The matcher is only worth anything if the boundary preserves what it
+   * matches on. This runs the REAL step-3 ACL over form-shaped rows, exactly
+   * as `saveSampleAction` does — `assignSampleProvenance` re-derives every
+   * status from the source alone, which is what used to wipe the whole
+   * sample. `status` is deliberately absent from what the form posts: the
+   * server owns it (ADR-010).
+   */
+  it("survives the real step-3 ACL: one corrected price costs exactly one confirmation", () => {
+    const fetched = Array.from({ length: 12 }, (_, i) => ({
+      date: "2025-03",
+      area: 50 + i,
+      pricePerM2: 10_000 + i,
+      source: "rcn" as const,
+      transactionId: `tx-${i}`,
+    }));
+    const confirmed = confirmSampleProvenance(
+      draftWith({
+        ...rcnInputs(),
+        comparables: fetched.map((c) => ({ ...c, status: "to_verify" as const })),
+      }),
+    );
+    const posted = fetched.map((c, i) => (i === 6 ? { ...c, pricePerM2: 9_999 } : c));
+    const { comparables, geocode } = assignSampleProvenance({
+      comparables: posted,
+      sampleMeta: confirmed.inputs!.sampleMeta ?? undefined,
+    });
+
+    const edited = applySampleUpdate(confirmed, {
+      comparables,
+      sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+      geocode,
+    });
+
+    const statuses = edited.inputs!.comparables.map((c) => c.status);
+    expect(statuses[6]).toBe("to_verify");
+    expect(statuses.filter((s) => s === "confirmed")).toHaveLength(11);
   });
 
   /**
