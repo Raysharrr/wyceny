@@ -238,12 +238,62 @@ def test_twice_dirty_section_is_rejected_while_the_rest_returns(monkeypatch):
     assert body["usage"] == {"input_tokens": 300, "output_tokens": 30}  # 3 calls billed
 
 
-def test_all_sections_rejected_502(monkeypatch):
+def test_guard_rejecting_every_section_returns_200_with_the_reasons(monkeypatch):
+    """T5b: "no section survived" meant "the run failed" only while a batch was
+    always six sections. T3 made it one or two, so a single refused section
+    turned the whole request into a 502 — and a 502 carries nothing but a
+    sentence, so every reason the guard found was discarded in exactly the
+    "redo this one section" case they are kept for. A refusal IS a verdict
+    about that text: it comes back, and the section stays for the appraiser."""
     fake = FakeLlm({}, default=DIRTY)
     monkeypatch.setattr(main, "_generate_prose_section", fake)
     resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"])
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sekcje"] == {}
+    assert body["odrzucone"] == {
+        "opis_lokalu": ["99,90", "1998"],
+        "otoczenie": ["99,90", "1998"],
+    }
+    # 2 sections x 2 attempts: spent money is reported like on any other run,
+    # because the web side takes the cost it records from this very response.
+    assert body["usage"] == {"input_tokens": 400, "output_tokens": 40}
+
+
+def test_single_section_batch_that_never_landed_still_502(monkeypatch):
+    """The other half of the T5b split. An EMPTY list in `odrzucone` says the
+    call itself failed, i.e. we learned nothing about that section — so even in
+    the ordinary T3 batch shape (one section) this stays an error. A 200 here
+    would have the web side record an attempt and stop retrying by itself after
+    an ordinary network blip."""
+
+    def boom(section, prompt, correction=None):
+        raise RuntimeError("timeout")
+
+    monkeypatch.setattr(main, "_generate_prose_section", boom)
+    resp = post(mint(), sekcje=["opis_lokalu"])
     assert resp.status_code == 502
     assert "spróbuj ponownie" in resp.json()["detail"].lower()
+
+
+def test_mixed_batch_is_200_because_one_verdict_is_real(monkeypatch):
+    """Nothing generated: one call that never landed, one text the guard refused
+    twice. That refusal is something we learned about a real section, so the
+    response is worth keeping — the batch falls on the 200 side even though half
+    of it was transient."""
+    dirty = FakeLlm({}, default=DIRTY)
+
+    def flaky(section, prompt, correction=None):
+        if section == "opis_lokalu":
+            raise RuntimeError("429 rate limit")
+        return dirty(section, prompt, correction)
+
+    monkeypatch.setattr(main, "_generate_prose_section", flaky)
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"])
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sekcje"] == {}
+    assert body["odrzucone"] == {"opis_lokalu": [], "otoczenie": ["99,90", "1998"]}
 
 
 def test_anthropic_touchpoint_is_confined_to_the_llm_helper():

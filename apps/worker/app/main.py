@@ -461,8 +461,12 @@ class ProseProposalResponse(BaseModel):
     section prose out. `odrzucone` maps a section to the numbers the guard found
     outside the facts twice in a row; an EMPTY list there means the call itself
     failed. Either way that section is left for the appraiser to write by hand
-    ("honest silence") instead of failing the whole request — the sections that
-    did succeed are returned and stay paid for."""
+    ("honest silence") instead of failing the whole request — whatever did
+    succeed is returned and stays paid for.
+
+    A batch where the guard refused EVERY section is a 200 too (T5b): `sekcje`
+    comes back empty and the reasons are the answer. Only a batch where no call
+    landed at all is an error."""
 
     sekcje: dict[str, str]
     odrzucone: dict[str, list[str]]
@@ -662,9 +666,25 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
         else:
             sekcje[section] = outcome.text
 
-    if not sekcje:
-        logger.error("prose: no section survived, %s", odrzucone)
+    # 502 only when we learned NOTHING. The two things `odrzucone` encodes
+    # (see the response model) call for different answers: a non-empty list is
+    # the number guard's verdict on real text — durable, and the explanation
+    # the appraiser gets — while an empty one only says the call never landed.
+    # "No section survived" was written when a batch was always six, where it
+    # could only mean the run had failed; since T3 a batch is one or two
+    # sections, so refusing the single requested one is an ORDINARY outcome.
+    # Answering 502 there would throw the reasons away AND leave the web side
+    # with no attempt recorded, so entering the step would buy the same refusal
+    # again. A batch where nothing landed stays an error, so the web side's
+    # automatic retry still covers an ordinary network blip.
+    if not sekcje and not any(odrzucone.values()):
+        logger.error("prose: no call landed for %s", list(odrzucone))
         raise HTTPException(status_code=502, detail=PROSE_FAILED_DETAIL)
+    if not sekcje:
+        # Not an error — the appraiser gets the reasons and writes by hand —
+        # but a whole batch refused is worth seeing without reading the
+        # per-section lines above.
+        logger.warning("prose: no section survived the number guard, %s", odrzucone)
 
     return ProseProposalResponse(
         sekcje=sekcje,
