@@ -662,10 +662,15 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
   });
 
   /**
-   * The same catch's fallback arm: `blockers[0]?.label` tolerates an empty
-   * list, and the field must then be an empty array rather than absent — the
-   * renderer keys on `blockers?.length`, so an empty list correctly falls back
-   * to the plain paragraph instead of an empty bulleted box.
+   * The same catch's other arm: `blockers[0]?.label` tolerates an empty list,
+   * so the generic sentence has to survive one.
+   *
+   * The empty array is NOT behaviourally distinct from an absent field — the
+   * renderer keys on `blockers?.length`, falsy either way, so both fall back to
+   * the plain paragraph. This is a second pin on the same line as the case
+   * above, covering the other branch of the `??`, and nothing more. Spelled out
+   * because an earlier version of this comment claimed a distinction that does
+   * not exist.
    */
   it("degrades to the generic sentence when the throw carries no blockers", async () => {
     getMock.mockResolvedValue(draftForDriftTest);
