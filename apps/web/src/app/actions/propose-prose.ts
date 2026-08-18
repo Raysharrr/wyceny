@@ -92,11 +92,19 @@ export async function proposeProse(
   const sections = opts?.sections
     ? opts.sections.filter((s) => generatable.includes(s))
     : generatable.filter((s) => !valuation.inputs?.prose?.sections[s] || stale.has(s));
-  // Nothing needs regenerating — every generatable section is already
-  // present and fresh. Returning the current snapshot (rather than calling
-  // the worker for nothing) is what makes it safe to always call this action
-  // on mount: a no-op costs neither tokens nor a write.
-  if (sections.length === 0) return { prose: valuation.inputs.prose! };
+  if (sections.length === 0) {
+    // Nothing needs regenerating. In the no-opts path this always means every
+    // generatable section is already present and fresh, so `prose` is
+    // guaranteed to exist — but `opts.sections` can ALSO filter down to
+    // nothing (e.g. naming only a section today's facts cannot back), on a
+    // draft with no prior generation at all. Asserting non-null there would
+    // ship `{ prose: undefined }` typed as a real snapshot to a caller that
+    // only checks `"error" in result`. Returning the current snapshot (rather
+    // than calling the worker for nothing) is what makes it safe to always
+    // call this action unconditionally on mount: a no-op costs neither tokens
+    // nor a write.
+    return valuation.inputs.prose ? { prose: valuation.inputs.prose } : { error: NO_FACTS };
+  }
 
   const token = mintWorkerToken();
   if (!token) return { error: NOT_CONFIGURED };

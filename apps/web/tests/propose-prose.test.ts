@@ -310,6 +310,25 @@ describe("proposeProse — regenerates only the sections whose facts moved (T3)"
 
     expect(fetchProposalMock.mock.calls[0]![0].sections).toEqual(["uzasadnienie"]);
   });
+
+  it("opts.sections trimmed to nothing, with no prior prose to fall back on -> honest error, worker untouched", async () => {
+    // otoczenie is not generatable at all (no note) AND nothing was ever
+    // generated before: the "nothing needs regenerating, return the current
+    // snapshot" short-circuit has no snapshot to return. `valuation.inputs
+    // .prose` is undefined here, and the return type promises a REAL
+    // ProseSnapshot — asserting it non-null would ship `{ prose: undefined }`
+    // to a caller that only checks `"error" in result`.
+    getMock.mockResolvedValue({ ...draft, inputs: { ...INPUTS, inspection: undefined } });
+
+    const result = await proposeProse(VALUATION_ID, { sections: ["otoczenie"] });
+
+    expect(result).toEqual({
+      error:
+        "Za mało danych, żeby wygenerować opisy — uzupełnij próbę, notatkę z oględzin albo dane ewidencyjne.",
+    });
+    expect(fetchProposalMock).not.toHaveBeenCalled();
+    expect(saveProseMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("proposeProse — failures after the call", () => {
