@@ -317,11 +317,15 @@ describe("step1DefaultsFromInputs", () => {
  * blocker links send people to step 1 deliberately, so the warning has to be
  * on the screen they land on, and above the form so it is read BEFORE the save.
  *
- * The wording is measured, not guessed (verified against
- * `currentSectionFactsHashes`): the calculation always goes, while the
- * descriptions only go stale when the address or the area moves —
- * `analiza_rynku` for the address, plus `opis_lokalu` for the area. Promising
- * more than that would train the appraiser to ignore the sentence.
+ * Fix round 2 corrected the SCOPE of that sentence. The first version said the
+ * descriptions lapse only after an address or area change — measured on those
+ * two fields alone, and wrong: seven more inputs on this same step stale
+ * `zagospodarowanie`, so an appraiser correcting „Rok budowy" was told step 6
+ * would not be needed and hit the blocker anyway. What the sentence promises
+ * now is measured field by field across the WHOLE step in
+ * `prose-section-facts.test.ts`; that table is the reason this one can still
+ * say when step 6 is NOT needed (the document fields and the MPZP block reach
+ * no prompt at all).
  */
 describe("SubjectForm — the cost of saving step 1 (Task 8 fix round 1)", () => {
   const defaults: Partial<FormInput> = {
@@ -337,7 +341,7 @@ describe("SubjectForm — the cost of saving step 1 (Task 8 fix round 1)", () =>
 
     const warning = screen.getByTestId("step1-recalc-warning");
     expect(warning).toHaveTextContent(
-      "Zapis tego kroku kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie wyliczyć w kroku 5, a po zmianie adresu lub powierzchni — również ponownie zatwierdzić opisy w kroku 6.",
+      "Zapis tego kroku kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie wyliczyć w kroku 5. Jeśli poprawisz przy tym adres, powierzchnię albo dane przedmiotu, trzeba będzie też ponownie zatwierdzić opisy w kroku 6 — sama zmiana zamawiającego, celu wyceny albo numeru księgi opisów nie rusza.",
     );
     // Above the FIRST FIELD, not merely above the submit button: that button
     // lives in a fixed bottom bar which is on screen at any scroll position,
