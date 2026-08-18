@@ -7,7 +7,7 @@ import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { ApprovalBlockedError, NotSignableError } from "../src/domain/valuation";
 import type { SessionUser } from "../src/ports/valuation";
 import { approvalGate } from "../src/domain/provenance";
-import { PROSE_SECTIONS } from "../src/domain/prose-snapshot";
+import { PROSE_SECTIONS, type ProseSection } from "../src/domain/prose-snapshot";
 import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
 
 /**
@@ -294,6 +294,34 @@ describe("F-7 + FR-6 — the confirmed prose is frozen with everything else", ()
       { requireProse: true },
     );
     expect(approved!.status).toBe("approved");
+  });
+
+  it("REPLACES the caller's fingerprints — matching hashes, or none at all, buy nothing", async () => {
+    // The gate takes its per-section hashes as an OPTION (T4), and
+    // `approveValuation` in the domain takes the whole options object as a
+    // parameter — so a caller could hand in the snapshot's own hashes, or an
+    // empty map (which disables the check section by section), and the domain
+    // would have no way to know. ADR-012's answer is that the repo OVERWRITES
+    // that field with hashes computed from the row it just read; these two
+    // payloads pin it. Both would approve if the repo merged instead.
+    const base = approvableInput(OWNER);
+    const claimed: Array<Partial<Record<ProseSection, string>>> = [
+      confirmedProse("9".repeat(64)).factsHashes,
+      {},
+    ];
+
+    for (const currentSectionHashes of claimed) {
+      const stale = await repo.create({
+        ...base,
+        inputs: { ...base.inputs!, prose: confirmedProse("9".repeat(64)) },
+      });
+      await expect(
+        repo.approve(stale.id, ownerUser, undefined, undefined, undefined, undefined, {
+          requireProse: true,
+          currentSectionHashes,
+        }),
+      ).rejects.toThrow(ApprovalBlockedError);
+    }
   });
 
   it("a new version inherits the text but NOT the confirmation (through the real jsonb round trip)", async () => {
