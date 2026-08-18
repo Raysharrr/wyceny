@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { BlockerList } from "@/components/wizard/blocker-list";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { approveValuation, type ApproveValuationResult } from "@/app/actions/approve-valuation";
 import { signValuationAction } from "@/app/actions/sign-valuation";
@@ -69,14 +70,16 @@ export function ValuationActions({
   // Slice 9 (Task 9): approve is no longer covered by the generic `run` —
   // it needs to forward `opts` (the user's "approve without maps" choice)
   // and its result carries an extra `mapsUnavailable` flag that drives the
-  // inline retry/skip-maps block instead of the plain error paragraph.
+  // inline retry/skip-maps block instead of the plain error paragraph. Since
+  // T8 it may also carry the full blocker list, which renders as a linked
+  // list instead. Everything else still falls through to the plain paragraph.
   const handleApprove = (opts?: { skipMaps?: boolean }) => {
     setError(null);
     setApproveResult(undefined);
     startTransition(async () => {
       const result = await approveValuation(id, opts);
       if (result?.error) {
-        if (result.mapsUnavailable) {
+        if (result.mapsUnavailable || result.blockers?.length) {
           setApproveResult(result);
         } else {
           setError(result.error);
@@ -109,6 +112,9 @@ export function ValuationActions({
           </Button>
         ) : null}
       </div>
+      {approveResult?.blockers?.length ? (
+        <BlockerList blockers={approveResult.blockers} testId="approve-blockers" role="alert" />
+      ) : null}
       {approveResult?.mapsUnavailable ? (
         <div data-testid="maps-fallback" className="flex flex-wrap items-center gap-2">
           <p className="text-sm text-amber-600">⚠ {approveResult.error}</p>
