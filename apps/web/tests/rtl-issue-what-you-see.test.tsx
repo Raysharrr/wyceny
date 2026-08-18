@@ -114,6 +114,35 @@ describe("step 7 — the issue takes the maps decision from the preview on scree
     expect(screen.getByTestId("preview-retry-maps")).toBeInTheDocument();
   });
 
+  /**
+   * The state where the decision is live and its explanation would be easiest
+   * to lose: the appraiser read a mapless document, asked for the maps again,
+   * and the fetch failed. The render is gone, the decision is not — issuing
+   * still produces the mapless document they read — so the notice has to
+   * follow the DECISION, not the document that happens to be embedded.
+   *
+   * Its retry button steps aside here: the error block above already offers
+   * „Spróbuj ponownie", and it is the same act.
+   */
+  it("keeps saying it, and keeps meaning it, when the retry fails", async () => {
+    previewOperat.mockResolvedValueOnce(mapsDown);
+    previewOperat.mockResolvedValueOnce({ url: "/api/podglad/v1?v=abc" });
+    previewOperat.mockResolvedValueOnce(mapsDown);
+    approveValuation.mockResolvedValueOnce(undefined);
+    renderStep7();
+
+    await userEvent.click(await screen.findByTestId("preview-skip-maps"));
+    await userEvent.click(await screen.findByTestId("preview-retry-maps"));
+    await screen.findByTestId("preview-error");
+
+    expect(screen.getByTestId("preview-without-maps")).toBeInTheDocument();
+    expect(screen.queryByTestId("preview-retry-maps")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /spróbuj ponownie/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("approve-button"));
+    expect(approveValuation).toHaveBeenLastCalledWith("v1", { skipMaps: true });
+  });
+
   it("a successful retry takes the decision back — the maps are on screen again", async () => {
     previewOperat.mockResolvedValueOnce(mapsDown);
     previewOperat.mockResolvedValueOnce({ url: "/api/podglad/v1?v=abc" });

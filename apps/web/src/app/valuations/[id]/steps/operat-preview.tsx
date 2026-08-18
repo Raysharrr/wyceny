@@ -184,27 +184,34 @@ export function OperatPreview({
         {/* A mapless render SUCCEEDS, so the error block that offered „Pokaż
             podgląd bez map" goes away with it — and what is missing from the
             document below is a section that simply is not there, which no
-            reader can show. Hence a standing notice: it says what this
-            document is, says what issuing it will produce, and holds the only
-            way back to the maps. */}
-        {previewWithoutMaps && url ? (
+            reader can show. Hence a standing notice.
+
+            It follows the DECISION, not the document: a failed retry clears
+            the render but not the choice, and issuing would still produce the
+            mapless document — the one state where map absence could go quiet
+            again. Only `pending` hides it, because mid-render nothing is
+            settled yet. Its retry steps aside while the error block is up:
+            that block already offers „Spróbuj ponownie", and it is the same
+            act. */}
+        {previewWithoutMaps && !pending ? (
           <div
             data-testid="preview-without-maps"
             className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2"
           >
             <p className="text-sm text-amber-700">
-              ⚠ Ten podgląd jest bez map. Zatwierdzenie wyda operat bez dokumentacji kartograficznej
-              — i tak zostanie to odnotowane przy wycenie.
+              ⚠ Wydanie bez map. Ostatni złożony podgląd nie zawierał dokumentacji kartograficznej —
+              zatwierdzenie wyda dokładnie taki dokument i odnotuje tę decyzję przy wycenie.
             </p>
-            <Button
-              type="button"
-              variant="outline"
-              data-testid="preview-retry-maps"
-              disabled={pending}
-              onClick={() => void build()}
-            >
-              Spróbuj pobrać mapy
-            </Button>
+            {error ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="preview-retry-maps"
+                onClick={() => void build()}
+              >
+                Spróbuj pobrać mapy
+              </Button>
+            )}
           </div>
         ) : null}
 

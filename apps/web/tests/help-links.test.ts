@@ -90,8 +90,8 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
  *     cytuje stara nazwe (np. `actions/wizard.ts:105`), przepuszcza rozjazd.
  *  2. **Etykiety poza kotwica czasownikowa.** Wzorzec zna osiem czasownikow, a
  *     Pomoc cytuje takze „Sprobuj ponownie", „Wygeneruj ponownie", „Zapisz
- *     notatke", „Wpisz recznie", „Usun" i „+ Dodaj cechę z puli…" — te nie sa
- *     pilnowane. Rozszerzanie wzorca na wszystkie cytaty (189 wystapien, 138
+ *     notatke", „Wpisz recznie", „Usun", „+ Dodaj cechę z puli…", „Pokaż podgląd
+ *     bez map" i „Spróbuj pobrać mapy" — te nie sa pilnowane. Rozszerzanie wzorca na wszystkie cytaty (189 wystapien, 138
  *     unikatow, w wiekszosci nie-etykiety) dawaloby falszywe czerwienie.
  *  3. **Zdanie opisujace ZACHOWANIE, ktore sie zmienilo przy zywej etykiecie.**
  *     Ta klasa jest poza zasiegiem jakiegokolwiek wyrazenia regularnego.
