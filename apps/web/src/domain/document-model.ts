@@ -1,4 +1,5 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
+import type { ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 
 /**
@@ -231,6 +232,30 @@ export type DocumentModel = {
   /** §8.3 "Uwagi z oględzin" block (Slice 10) — conditional, honest silence when empty. */
   ma_uwagi_ogledzin: boolean;
   uwagi_ogledzin: string;
+  // The six prose sections (ADR-014, FR-6), each printed where the source
+  // operat's own description used to stand: §11 market analysis, §8.1
+  // surroundings, §8.4 site, §1+§8.3 flat description, §8.3 finish standard,
+  // §13 justification. The text is the appraiser's, verbatim — the document
+  // never substitutes a sentence of its own for a section they left empty
+  // (stubs are exactly what this slice removed), so an absent section is "".
+  proza_analiza_rynku: string;
+  proza_otoczenie: string;
+  proza_zagospodarowanie: string;
+  proza_opis_lokalu: string;
+  proza_standard: string;
+  proza_uzasadnienie: string;
+  // Honest silence, `ma_uwagi_ogledzin`'s pattern: the four sections that own
+  // their paragraph in the template are wrapped in {#ma_proza_*}, so an empty
+  // one leaves no blank line under its heading. `otoczenie` and
+  // `zagospodarowanie` need no flag — they are trailing clauses of a paragraph
+  // whose address sentence is true with or without prose.
+  //
+  // With the F-4 prose gate on (T7) an approved valuation always carries all
+  // six; these flags are what an unapproved/legacy/kill-switched draft needs.
+  ma_proza_analiza_rynku: boolean;
+  ma_proza_opis_lokalu: boolean;
+  ma_proza_standard: boolean;
+  ma_proza_uzasadnienie: boolean;
 };
 
 export type DocumentFields = {
@@ -283,6 +308,20 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     subject.mpzpAbsent !== true &&
     Boolean(subject.mpzpSymbol || subject.mpzpNazwa || subject.mpzpUchwala);
   const kw = inputs.kw ?? null;
+  // Blank reads as absent: `confirmProseSnapshot` already drops a field the
+  // appraiser cleared, but a legacy or half-written snapshot (no gate when the
+  // kill-switch is off) can still carry whitespace, and a paragraph of spaces
+  // under a heading is the same lie as a stub.
+  const proseText = (section: ProseSection): string =>
+    (inputs.prose?.sections[section]?.value ?? "").trim();
+  const proza: Record<ProseSection, string> = {
+    analiza_rynku: proseText("analiza_rynku"),
+    opis_lokalu: proseText("opis_lokalu"),
+    otoczenie: proseText("otoczenie"),
+    zagospodarowanie: proseText("zagospodarowanie"),
+    standard: proseText("standard"),
+    uzasadnienie: proseText("uzasadnienie"),
+  };
 
   // Weight-0 features stay out of the legal document entirely (workshop
   // decision: "pancerz obronny" — a zero-weight row invites challenge).
@@ -403,5 +442,15 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
     ma_skale: skalaOcen.length > 0,
     ma_uwagi_ogledzin: Boolean(input.inputs.inspection?.note),
     uwagi_ogledzin: input.inputs.inspection?.note ?? "",
+    proza_analiza_rynku: proza.analiza_rynku,
+    proza_otoczenie: proza.otoczenie,
+    proza_zagospodarowanie: proza.zagospodarowanie,
+    proza_opis_lokalu: proza.opis_lokalu,
+    proza_standard: proza.standard,
+    proza_uzasadnienie: proza.uzasadnienie,
+    ma_proza_analiza_rynku: proza.analiza_rynku !== "",
+    ma_proza_opis_lokalu: proza.opis_lokalu !== "",
+    ma_proza_standard: proza.standard !== "",
+    ma_proza_uzasadnienie: proza.uzasadnienie !== "",
   };
 }

@@ -4,7 +4,8 @@ import path from "node:path";
 import PizZip from "pizzip";
 import { renderOperatDocx } from "../src/adapters/docx-render";
 import { buildDocumentModel } from "../src/domain/document-model";
-import { syntheticDocumentInput } from "./fixtures/document-model-fixture";
+import { goldenInputs, syntheticDocumentInput } from "./fixtures/document-model-fixture";
+import { confirmedProse } from "./fixtures/valuation-inputs";
 
 const SIGNATURE = fs.readFileSync(path.join(__dirname, "fixtures", "signature-synthetic.png"));
 
@@ -37,5 +38,22 @@ describe("renderOperatDocx signature (F-7 sign path)", () => {
     const plain = renderOperatDocx(model);
     const signed = renderOperatDocx(model, { signature: SIGNATURE });
     expect(textOf(signed)).toBe(textOf(plain));
+  });
+
+  // T7 handoff #2 expected the guard above to cover the prose "for free" once
+  // T8 put it in the model. It does not: `syntheticDocumentInput()` carries no
+  // prose, so the assertion is silent about the six sections. This case is what
+  // makes the promise real — approve↔sign equality on the PRINTED paragraphs,
+  // one floor below `prose-freeze.test.ts` (which pins it at snapshot level).
+  it("signed and approved renders have identical text when the operat carries prose", () => {
+    const withProse = buildDocumentModel({
+      ...syntheticDocumentInput(),
+      inputs: { ...goldenInputs(), prose: confirmedProse() },
+    });
+    const plain = renderOperatDocx(withProse);
+    const signed = renderOperatDocx(withProse, { signature: SIGNATURE });
+    expect(textOf(signed)).toBe(textOf(plain));
+    // Not a vacuous pass: the prose really is in both renders.
+    expect(textOf(plain)).toContain("Tekst sekcji uzasadnienie");
   });
 });

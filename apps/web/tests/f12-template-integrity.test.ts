@@ -73,6 +73,29 @@ const FORBIDDEN_LITERALS = [
   "dodatkowe oraz lokalizację szczegółową",
   "dodatkowe oraz lokalizacja szczegółowa",
   "za pomocą 5 atrybutów",
+  // Slice "proza operatu" (T8): the §11 market-analysis criteria and the sample's
+  // own figures were the source operat's, and the descriptive sections carried
+  // "will be completed after the inspection" stubs. Both classes are now written
+  // by the model into {proza_*}; neither may survive in the shipped template.
+  "61,35", // sample area band (min) — §11
+  "76,41", // sample area band (max) — §11
+  "po 2000 r.", // construction-year selection criterion — §11
+  "od 50 m2 do 90 m2", // area selection criterion — §11
+  "poniżej 60 m2", // rejection criterion — §11
+  "2 lata wstecz", // time-window selection criterion — §11
+  // Descriptive stubs (§1 wyciąg, §8.1, §8.3, §8.4). NOTE the "po oględzinach"
+  // suffix: `{^mapy}Dokumentacja kartograficzna zostanie uzupełniona.{/mapy}` is
+  // an honest no-map variant, not a stub, and must keep rendering.
+  "zostanie uzupełniony po oględzinach",
+  "zostanie uzupełniona po oględzinach",
+  // §11 correlation claims — the engine computes no such relationship (same
+  // class as the r² sentence dropped in Slice 4). BOTH directions listed: the
+  // generator deletes the two paragraphs under one assertion, and this list is
+  // what keeps either of them from coming back ("mieszalnego" precedent).
+  "odwrotnie proporcjonalna",
+  "wprost proporcjonalna",
+  // §13 claimed an offer-market analysis the application never performs.
+  "analizy rynku ofertowego",
 ];
 
 const REQUIRED_PLACEHOLDERS = [
@@ -186,6 +209,25 @@ const REQUIRED_PLACEHOLDERS = [
   "{#ma_uwagi_ogledzin}",
   "{/ma_uwagi_ogledzin}",
   "{uwagi_ogledzin}",
+  // Slice "proza operatu" (T8, ADR-014/FR-6): the six model-written sections.
+  // `otoczenie` and `zagospodarowanie` are trailing clauses of a paragraph that
+  // keeps its own address sentence, so an empty value already renders as
+  // silence; the four that OWN their paragraph carry a {#ma_proza_*} wrap so a
+  // draft without prose shows no heading over emptiness.
+  "{proza_analiza_rynku}",
+  "{proza_otoczenie}",
+  "{proza_zagospodarowanie}",
+  "{proza_opis_lokalu}",
+  "{proza_standard}",
+  "{proza_uzasadnienie}",
+  "{#ma_proza_analiza_rynku}",
+  "{/ma_proza_analiza_rynku}",
+  "{#ma_proza_opis_lokalu}",
+  "{/ma_proza_opis_lokalu}",
+  "{#ma_proza_standard}",
+  "{/ma_proza_standard}",
+  "{#ma_proza_uzasadnienie}",
+  "{/ma_proza_uzasadnienie}",
 ];
 
 describe("F-12: template integrity (operat-szablon.docx)", () => {
