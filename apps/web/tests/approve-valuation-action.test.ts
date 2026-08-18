@@ -53,6 +53,7 @@ const storagePutMock = vi.mocked(storage.put);
 const storageDeleteMock = vi.mocked(storage.delete);
 const storageGetMock = vi.mocked(storage.get);
 const fetchMapsMock = vi.mocked(mapImages!.fetchMaps);
+const freezeMapsMock = vi.mocked(valuationRepository.freezeMaps);
 
 // Synthetic 1x1 images (F-9: no real map data in fixtures) — same fixture
 // bytes as docx-render-maps.test.ts.
@@ -111,6 +112,7 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     storagePutMock.mockReset();
     storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
+    freezeMapsMock.mockReset();
   });
 
   // A gate-passing, document-field-complete draft — approvableInput() already
@@ -159,8 +161,10 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     expect(storagePutMock).toHaveBeenCalledWith(`mapa-ewidencyjna-${draft.id}.png`, PNG_1PX);
     expect(storagePutMock).toHaveBeenCalledWith(`mapa-orto-${draft.id}.jpg`, JPG_1PX);
     // Maps were fetched fresh and frozen this call — nothing orphaned to
-    // clean up (final review, Important #1).
-    expect(storageDeleteMock).not.toHaveBeenCalled();
+    // clean up (final review, Important #1). The preview blob dropped after
+    // the flip is a different matter, asserted in its own test below.
+    const deleted = storageDeleteMock.mock.calls.map(([key]) => key);
+    expect(deleted.filter((key) => key.startsWith("mapa-"))).toEqual([]);
 
     const docxCall = storagePutMock.mock.calls.find(([key]) => key === `operat-${draft.id}.docx`);
     const docxBytes = docxCall?.[1] as Buffer;
@@ -210,11 +214,38 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     // review, Important #1).
     expect(storageDeleteMock).toHaveBeenCalledWith(`mapa-ewidencyjna-${draft.id}.png`);
     expect(storageDeleteMock).toHaveBeenCalledWith(`mapa-orto-${draft.id}.jpg`);
+    // ...and the freeze marker goes with them (Slice 14): left standing, it
+    // would tell the next reader this valuation has maps it just deleted.
+    expect(freezeMapsMock).toHaveBeenCalledWith(draft.id, expect.anything(), null);
 
     const docxCall = storagePutMock.mock.calls.find(([key]) => key === `operat-${draft.id}.docx`);
     const docxBytes = docxCall?.[1] as Buffer;
     const text = new PizZip(docxBytes).file("word/document.xml")!.asText();
     expect(text).toContain("Dokumentacja kartograficzna zostanie uzupełniona.");
+  });
+
+  it("issuing drops the preview blob — two files differing only by their date invite the wrong one", async () => {
+    getMock.mockResolvedValue(draft);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    setUpHappyMocks();
+
+    await approveValuation(draft.id);
+
+    expect(storageDeleteMock).toHaveBeenCalledWith(`podglad-${draft.id}.pdf`);
+  });
+
+  it("a storage failure while dropping the preview does not undo an approval that already happened", async () => {
+    getMock.mockResolvedValue(draft);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    setUpHappyMocks();
+    storageDeleteMock.mockRejectedValue(new Error("storage down"));
+
+    const result = await approveValuation(draft.id);
+
+    // The status flip is committed by now: reporting a failure here would
+    // send the appraiser to re-approve an operat that is already issued.
+    expect(result).toBeUndefined();
+    expect(approveMock).toHaveBeenCalled();
   });
 });
 
@@ -392,6 +423,7 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     storagePutMock.mockReset();
     storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
+    freezeMapsMock.mockReset();
     amountInWordsMock.mockResolvedValue("siedemset tysięcy złotych");
     convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
     storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
@@ -614,6 +646,7 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
     storagePutMock.mockReset();
     storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
+    freezeMapsMock.mockReset();
   });
 
   it("returns the Polish drift message when repo.approve rejects with InputsChangedError, no crash", async () => {

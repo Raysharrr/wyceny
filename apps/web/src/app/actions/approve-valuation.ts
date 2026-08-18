@@ -16,6 +16,7 @@ import { computeKcs } from "@/domain/kcs";
 import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
+import { previewDocKey } from "@/lib/preview-doc";
 
 export type ApproveValuationResult =
   | {
@@ -145,6 +146,12 @@ export async function approveValuation(
       // this is a no-op on the common case where nothing was ever orphaned.
       await storage.delete(`mapa-ewidencyjna-${id}.png`);
       await storage.delete(`mapa-orto-${id}.jpg`);
+      // Slice 14: and the freeze marker with them, while this is still a
+      // draft (`freezeMaps` refuses anything else). A marker left standing
+      // over deleted bytes would tell the next reader — the step-7 preview,
+      // and from Task 12 the issue itself — that this valuation has maps
+      // frozen for its address when it has none.
+      await valuationRepository.freezeMaps(id, session.user, null);
     }
 
     // Slice 10 (Task 8): the photo manifest lives in inputs.inspection —
@@ -176,6 +183,24 @@ export async function approveValuation(
     );
     if (!updated) {
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+    }
+
+    // Slice 14: the preview is now spent — from here on the issued operat is
+    // the document that counts, and two PDFs differing only by their date
+    // are an invitation to send the wrong one.
+    //
+    // AFTER the commit, and in its own try/catch, for two reasons. The
+    // storage adapter holds its own db handle and `PortStorage` has no
+    // transaction-aware call, so this could not have joined `repo.approve`'s
+    // transaction even if we wanted it to. And it must not be able to fail
+    // the action: the status flip is already committed, so an error here
+    // would send the appraiser back to re-approve an operat that has been
+    // issued — an orphan blob is by far the lesser problem, and the next
+    // render of this key overwrites it anyway.
+    try {
+      await storage.delete(previewDocKey(id));
+    } catch (error) {
+      console.error("approveValuation: dropping the preview blob failed (approval stands)", error);
     }
   } catch (error) {
     if (error instanceof InputsChangedError) {
