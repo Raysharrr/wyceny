@@ -31,7 +31,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const valuation = await valuationRepository.get(id, session.user);
-  if (!valuation) {
+  // Not a draft any more means an operat has been ISSUED, and that is the
+  // document that counts. `approveValuation` drops the preview blob after the
+  // flip, but deliberately without failing the approval when storage refuses —
+  // so the blob can outlive the draft, and without this guard the route would
+  // keep serving it. Whoever holds the link would then be reading a document
+  // that differs from the one actually issued and signed. The action refuses a
+  // non-draft too; that is not enough on its own, because the artefact
+  // outlives the action that made it.
+  if (!valuation || valuation.status !== "in_progress") {
     return new NextResponse("Nie znaleziono podglądu.", { status: 404, headers: TEXT_HEADERS });
   }
 

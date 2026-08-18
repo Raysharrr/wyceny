@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
@@ -89,6 +90,32 @@ describe("/api/podglad/[id] — access control", () => {
 
     getSessionMock.mockResolvedValue({ user: admin });
     expect((await GET(request, paramsFor(valuation.id))).status).toBe(200);
+  });
+
+  it("stops serving the preview once the operat is issued, however the blob survived", async () => {
+    // The post-issue delete in approveValuation is deliberately non-fatal, so
+    // a storage failure there leaves the blob behind. Without this guard the
+    // route would keep serving it forever — the appraiser, or whoever they
+    // hand the link to, reading a document that differs from the one actually
+    // issued and signed. The action refuses a non-draft; the artefact outlives
+    // the action, so the route has to refuse too.
+    const valuation = await draftWithPreview(Buffer.from("%PDF-1.7 podgląd sprzed wydania"));
+    const request = new Request(`http://test/api/podglad/${valuation.id}`);
+    getSessionMock.mockResolvedValue({ user: appraiserA });
+
+    expect((await GET(request, paramsFor(valuation.id))).status).toBe(200);
+
+    await db
+      .update(schema.valuation)
+      .set({ status: "approved", approvedAt: new Date() })
+      .where(eq(schema.valuation.id, valuation.id));
+    expect((await GET(request, paramsFor(valuation.id))).status).toBe(404);
+
+    await db
+      .update(schema.valuation)
+      .set({ status: "signed", signedAt: new Date() })
+      .where(eq(schema.valuation.id, valuation.id));
+    expect((await GET(request, paramsFor(valuation.id))).status).toBe(404);
   });
 
   it("a valuation the caller owns but has never previewed -> 404", async () => {
