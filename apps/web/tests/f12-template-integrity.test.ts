@@ -94,8 +94,24 @@ const FORBIDDEN_LITERALS = [
   // what keeps either of them from coming back ("mieszalnego" precedent).
   "odwrotnie proporcjonalna",
   "wprost proporcjonalna",
-  // §13 claimed an offer-market analysis the application never performs.
-  "analizy rynku ofertowego",
+  // The application never looks at asking prices. Listed WITHOUT the
+  // inflectional ending on purpose: the first version spelled the genitive
+  // ("analizy rynku ofertowego") from §13, and the nominative went on shipping
+  // in §7's list of sources — an independent review found it. Polish
+  // declension is a hole in any guard that spells a whole phrase out.
+  "rynku ofertowego",
+  // §7 credited the location map to the city's own GIS while the caption the
+  // generator inserts under the map says Geoportal — a contradiction a reader
+  // catches by comparing two pages of the same operat.
+  "System Informacji Przestrzennej",
+  // The remaining paragraphs the prose stage deletes. A review restored five
+  // of them in a mutant template and this list caught exactly one; the .docx
+  // is binary to `git grep`, so what is not listed here is not guarded at all.
+  "Cechy analizowanego rynku", // §11 selection-criteria block
+  "W okresie monitorowania rynku", // §11 monitoring paragraph
+  "W toku analizy odrzucono", // §11 rejected-transactions paragraph
+  "odbywa się komunikacją miejską", // §8.1 — the source flat's own transit fact
+  "mieści się w zbiorze", // §13 justification paragraph
 ];
 
 const REQUIRED_PLACEHOLDERS = [
