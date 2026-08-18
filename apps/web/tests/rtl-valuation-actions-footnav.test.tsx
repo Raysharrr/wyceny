@@ -19,7 +19,6 @@ import { currencyFormatter } from "@/app/valuations/[id]/cards";
 
 const baseProps = {
   id: "v1",
-
   gateOk: true,
   canApprove: true,
   canSign: false,

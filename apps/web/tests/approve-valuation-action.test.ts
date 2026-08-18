@@ -43,7 +43,7 @@ vi.mock("next/navigation", () => ({
 import { approveValuation } from "../src/app/actions/approve-valuation";
 import { storage, valuationRepository, worker, mapImages } from "@/app/valuations/_deps";
 import { StorageNotFoundError } from "@/ports/storage";
-import { InputsChangedError } from "@/domain/valuation";
+import { ApprovalBlockedError, InputsChangedError } from "@/domain/valuation";
 
 const getMock = vi.mocked(valuationRepository.get);
 const approveMock = vi.mocked(valuationRepository.approve);
@@ -625,5 +625,61 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
       error:
         "Dane wyceny zmieniły się w trakcie zatwierdzania — odśwież stronę i spróbuj ponownie.",
     });
+  });
+
+  /**
+   * The SECOND refusal site (T8 fix round 1). The gate runs twice: once here
+   * before generation, and again inside `repo.approve`'s write transaction
+   * (ADR-012) — where it can refuse a draft this action read as clean, because
+   * the owner edited it in the seconds the operat took to render.
+   *
+   * That path was the one the T8 review found unpinned: deleting
+   * `blockers: error.blockers` from the catch left the whole suite green,
+   * because every other prose/gate test refuses at the FIRST site. Then the
+   * appraiser hitting the race would get a plain sentence and no links, from a
+   * screen whose whole job since T8 is to link back — the one moment the draft
+   * really did change under them.
+   *
+   * `getMock` returns a clean draft on purpose, so the first gate passes and
+   * only the throw can produce the result.
+   */
+  it("carries the blockers from the in-transaction gate too, not just the pre-generation one", async () => {
+    getMock.mockResolvedValue(draftForDriftTest);
+    amountInWordsMock.mockResolvedValue("milion czterdzieści cztery tysiące czterysta złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    const blockers = [
+      { path: "provenance.geocode", label: "Geokodowanie adresu — do weryfikacji." },
+      { path: "prose.standard", label: "Opis standardu wykończenia — do weryfikacji." },
+    ];
+    approveMock.mockRejectedValue(new ApprovalBlockedError(blockers));
+
+    const result = await approveValuation(draftForDriftTest.id);
+
+    expect(result!.error).toBe("Zatwierdzenie zablokowane — Geokodowanie adresu — do weryfikacji.");
+    expect(result!.blockers).toEqual(blockers);
+  });
+
+  /**
+   * The same catch's fallback arm: `blockers[0]?.label` tolerates an empty
+   * list, and the field must then be an empty array rather than absent — the
+   * renderer keys on `blockers?.length`, so an empty list correctly falls back
+   * to the plain paragraph instead of an empty bulleted box.
+   */
+  it("degrades to the generic sentence when the throw carries no blockers", async () => {
+    getMock.mockResolvedValue(draftForDriftTest);
+    amountInWordsMock.mockResolvedValue("milion czterdzieści cztery tysiące czterysta złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    approveMock.mockRejectedValue(new ApprovalBlockedError([]));
+
+    const result = await approveValuation(draftForDriftTest.id);
+
+    expect(result!.error).toBe(
+      "Zatwierdzenie zablokowane — operat zawiera niezweryfikowane wartości.",
+    );
+    expect(result!.blockers).toEqual([]);
   });
 });

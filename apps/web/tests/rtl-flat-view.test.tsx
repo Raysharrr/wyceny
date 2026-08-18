@@ -51,7 +51,6 @@ const baseProps = {
   successor: undefined,
   allBlockers: [],
   gateOk: true,
-
   hasAnyAction: true,
   canCreateNewVersion: false,
 };

@@ -26,7 +26,6 @@ import { ValuationActions } from "@/app/valuations/[id]/valuation-actions";
 
 const baseProps = {
   id: "v1",
-
   gateOk: true,
   canApprove: true,
   canSign: false,
