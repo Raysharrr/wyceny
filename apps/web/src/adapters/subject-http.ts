@@ -1,4 +1,5 @@
 import type { PortSubjectData, SubjectFetchResult, SubjectProposal } from "../ports/subject";
+import { traceHeaders } from "../lib/trace";
 
 /**
  * Prefix of the fallback error message thrown below when the worker's error
@@ -18,7 +19,7 @@ export function httpSubjectProposal(baseUrl: string): PortSubjectData {
     async fetchSubject(address: string): Promise<SubjectFetchResult> {
       const response = await fetch(`${baseUrl}/subject-proposal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...traceHeaders() },
         body: JSON.stringify({ address }),
       });
       if (response.status === 422) {

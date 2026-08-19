@@ -1,4 +1,5 @@
 import type { PortSampleProposal, SampleProposal } from "../ports/sample";
+import { traceHeaders } from "../lib/trace";
 
 /**
  * Prefix of the fallback error message thrown below when the worker's error
@@ -18,7 +19,7 @@ export function httpSampleProposal(baseUrl: string): PortSampleProposal {
     async fetchProposal(address: string, area: number): Promise<SampleProposal> {
       const response = await fetch(`${baseUrl}/sample-proposal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...traceHeaders() },
         body: JSON.stringify({ address, area }),
       });
       if (!response.ok) {

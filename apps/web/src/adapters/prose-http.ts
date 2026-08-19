@@ -1,5 +1,6 @@
 import type { PortProseProposal, ProseProposal, ProseProposalRequest } from "../ports/prose";
 import type { ProseSection } from "../domain/prose-snapshot";
+import { traceHeaders } from "../lib/trace";
 
 /**
  * Prefix of the fallback error thrown below when the worker's error response
@@ -44,7 +45,7 @@ export function httpProseProposal(baseUrl: string): PortProseProposal {
     async fetchProposal(request: ProseProposalRequest): Promise<ProseProposal> {
       const response = await fetch(`${baseUrl}/prose-proposal`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...traceHeaders() },
         body: JSON.stringify({
           token: request.token,
           sekcje: request.sections,

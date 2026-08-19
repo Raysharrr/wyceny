@@ -1,4 +1,5 @@
 import type { PortWorker } from "../ports/worker";
+import { traceHeaders } from "../lib/trace";
 
 /**
  * HTTP adapter for {@link PortWorker}, backed by the Python worker service.
@@ -8,7 +9,7 @@ export function httpWorker(baseUrl: string): PortWorker {
     async amountInWords(amount: number): Promise<string> {
       const response = await fetch(`${baseUrl}/amount-in-words`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...traceHeaders() },
         body: JSON.stringify({ amount }),
       });
       if (!response.ok) {
@@ -24,6 +25,7 @@ export function httpWorker(baseUrl: string): PortWorker {
         method: "POST",
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          ...traceHeaders(),
         },
         body: new Uint8Array(docx),
       });
