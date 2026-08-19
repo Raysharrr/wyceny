@@ -115,6 +115,22 @@ export function ValuationActions({
           </Button>
         ) : null}
       </div>
+      {/* Deliberately NOT a tooltip. Signing is irreversible at the DATABASE
+       * level — the `valuation_write_once` trigger refuses every UPDATE and
+       * DELETE on a signed row — and "(nieodwracalne)" in the label carries
+       * none of what that means. A hover-only explanation is unreachable on
+       * touch, invisible to anyone scanning the page, and easiest to miss
+       * exactly when someone is clicking quickly; this stays on screen for as
+       * long as the button does. */}
+      {canSign ? (
+        <p data-testid="sign-explainer" className="max-w-[70ch] text-sm text-muted-foreground">
+          <strong className="font-medium text-foreground">Podpisanie jest ostateczne.</strong>{" "}
+          Operat zostanie złożony jeszcze raz — z Twoim skanem podpisu, z tą samą datą sporządzenia
+          i z mapami zamrożonymi przy zatwierdzeniu. Po podpisaniu żadnej danej tej wyceny nie da
+          się już zmienić, a w dzienniku zapisze się odcisk SHA-256 podpisanych plików. Poprawka
+          jest możliwa wyłącznie przez „Utwórz nową wersję”. Podpisać może tylko właściciel wyceny.
+        </p>
+      ) : null}
       {approveResult?.blockers?.length ? (
         <BlockerList blockers={approveResult.blockers} testId="approve-blockers" role="alert" />
       ) : null}
