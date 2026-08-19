@@ -1,0 +1,181 @@
+# Obserwowalność: strukturalne logi, traceId, dziennik zdarzeń — design slice'a
+
+Status: DRAFT po brainstormie (2026-08-19) · Zamyka: otwarty punkt ADR-009 (trace-id web↔worker) · Poprzedza: metrykę „% pól as proposed" z NEXT roadmapy
+
+## Sekcja produktowa
+
+Dziś, gdy rzeczoznawca mówi „coś nie poszło", nie ma czym tego sprawdzić. Aplikacja
+prowadzi wzorowy dziennik prawny (`audit_log`: kto, co, kiedy zatwierdził — append-only,
+pilnowany triggerem), ale ten dziennik z założenia zapisuje **wyłącznie sukcesy**: wpis
+powstaje w tej samej transakcji co zmiana, więc nieudana próba nie zostawia po sobie nic.
+Porażki lądują w 21 gołych `console.error`, bez numeru wyceny, bez użytkownika, bez
+powiązania — a użytkownik widzi ostrożnie ogólne zdanie („Nie udało się potwierdzić próby
+— spróbuj ponownie"). Zdanie po stronie użytkownika i wpis po stronie serwera nic nie łączy.
+Do tego połowa pracy dzieje się w workerze, na osobnym hostingu, bez wspólnego identyfikatora
+żądania — więc „proza się nie wygenerowała" wymaga ręcznego zestawiania znaczników czasu
+między Vercelem a Railway.
+
+Po tym slice'ie każde zdarzenie w aplikacji ma **ośmioznakowy kod**, który przechodzi przez
+cały system — od kliknięcia, przez wywołanie workera, po zewnętrzne API — i który przy błędzie
+pokazuje się użytkownikowi („kod: a3f1c2d9"). Rzeczoznawca podaje ten kod przez telefon,
+a `pnpm trace a3f1c2d9` odtwarza cały przebieg: co robił, co odpowiedział worker, gdzie
+i dlaczego pękło. Ślady istotne diagnostycznie przeżywają tydzień i więcej, bo lądują
+w bazie, a nie tylko w ulotnych logach hostingu.
+
+Slice nie zmienia niczego, co użytkownik widzi w normalnej pracy — poza kodem błędu
+w komunikacie. Nie liczy też jeszcze metryk produktowych; zbiera pod nie dane, bo
+części z nich (jak wyglądała propozycja AI, zanim rzeczoznawca ją poprawił) nie da się
+odtworzyć wstecz.
+
+## Zakres (co wchodzi)
+
+1. **pino + wrapper z allowlistą** w web; reguła `no-console` w eslint poza modułem loggera.
+2. **traceId przez `AsyncLocalStorage`**, widoczny użytkownikowi w komunikacie błędu jako
+   „kod: a3f1c2d9".
+3. **structlog + middleware `X-Request-Id`** w workerze; ruff `T201` na `print`.
+4. **Migracja `event_log`** + port `PortEventLog` i adapter drizzle.
+5. **Zapis trzech rodzajów zdarzeń** (błąd akcji, nieudane wywołanie workera, snapshot
+   propozycji AI) — podpięcie w 21 istniejących miejscach `console.error` oraz w trzech
+   miejscach pobierania propozycji.
+6. **Czytnik `pnpm trace <id>`** — skrypt konsolowy przyjmujący **albo** traceId, **albo**
+   identyfikator wyceny; wypisuje oś czasu przebiegu (zdarzenia z `event_log` przeplecione
+   z wierszami `audit_log` tej wyceny, rosnąco po czasie). Bez UI.
+7. **F-13 „logi bez PII"** w CI.
+
+## Architektura
+
+**Dwa ujścia o różnych zadaniach.**
+
+- **stdout, JSON** — wszystko: początek i koniec akcji, czas trwania, wywołania workera,
+  błędy. Zero kosztu przy zapisie, retencja hostingu. Widok „co się dzieje teraz".
+  Web: `pino`. Worker: `structlog`.
+- **Postgres `event_log`** — wyłącznie to, co ma wartość po tygodniu. Widok „co się stało wtedy".
+
+**Co trafia do `event_log` (lista zamknięta na starcie):**
+
+| Zdarzenie                                   | Dlaczego przeżywa tydzień                     |
+| ------------------------------------------- | --------------------------------------------- |
+| błąd akcji użytkownika                      | dokładnie to, co dziś ginie w `console.error` |
+| nieudane wywołanie workera                  | zewnętrzne API (GUGiK, GEOPOZ) i koszt LLM    |
+| snapshot propozycji AI (RCN / EGiB / proza) | nieodtwarzalny wstecz — patrz niżej           |
+
+**Tabela** — bliźniacza do `audit_log`, żeby nie wprowadzać drugiego wzorca:
+`id bigserial, at, level, event, trace_id, actor_id, valuation_id, meta jsonb`.
+Bez FK (ten sam powód co przy audycie: wiersze mają przeżyć operacje na danych).
+**Bez triggera append-only** — to zapis operacyjny, nie dowodowy; kasowanie starych
+wierszy jest funkcją, nie naruszeniem.
+
+**Trzy rozstrzygnięcia, które łatwo zepsuć refaktorem:**
+
+1. **`audit_log` zostaje nietknięty.** Zamknięty enum akcji, trigger, artefakt prawny
+   (FR-12). Dokładanie tam błędów rozcieńcza jego wartość dowodową i wymusza rozszerzanie
+   enumu przy każdym nowym typie zdarzenia.
+2. **Zapis zdarzenia idzie POZA transakcją mutacji.** `audit_log` pisze _wewnątrz_
+   transakcji, bo ma zniknąć razem z nieudaną zmianą. Z błędem jest odwrotnie: w tej samej
+   transakcji rollback skasowałby zapis o własnej porażce. Osobny insert, po `catch`.
+3. **Snapshot propozycji AI zapisujemy od razu, mimo że metryki nie budujemy.** Metrykę
+   „% pól as proposed" (PRD §10) da się policzyć kiedykolwiek, ale wyłącznie z danych
+   zebranych wcześniej: propozycja z RCN/EGiB ląduje w `inputs`, a gdy rzeczoznawca ją
+   poprawi, wartość pierwotna znika bezpowrotnie (write-once dotyczy snapshotu, nie historii
+   pola). Bez tego kroku slice zamyka drogę do tej metryki na zawsze.
+
+**traceId — jeden identyfikator na całe życie żądania.**
+
+Osiem znaków hex (`crypto.randomUUID().slice(0, 8)`), bo ma być czytany przez człowieka na
+głos. Przy kilku tysiącach zdarzeń tygodniowo kolizja jest nierealna, a jej jedynym skutkiem
+byłyby dwa przebiegi w wyniku wyszukiwania. Rodzi się w server action → nagłówek
+`X-Request-Id` do workera → wraca do użytkownika w komunikacie błędu.
+
+Propagacja do adapterów przez **`AsyncLocalStorage`** (`node:async_hooks`, biblioteka
+standardowa — brak konfliktu z bundlerem). Powód: jedna pętla zdarzeń obsługuje równoległe
+żądania, więc traceId w zmiennej modułowej byłby nadpisywany między użytkownikami. Wariant
+jawny (traceId jako parametr) wymagałby zmiany pięciu interfejsów portów i wszystkich
+wywołań — duży diff w warstwie niezwiązanej z logowaniem. W workerze rolę tę pełni
+`structlog.contextvars` (ten sam problem, to samo rozwiązanie, inny język).
+
+**Warstwy (F-10).** Logger i zapis zdarzeń żyją w akcjach i adapterach, **nigdy w `domain/`**
+— domena zostaje czysta (`kcs.ts` bez I/O). `event_log` dostaje port + adapter drizzle,
+wzorcem `PortValuation`.
+
+## Bramka RODO — allowlista, nie denylista
+
+Wszystkie wpisy przechodzą przez jeden cienki wrapper nad pino, przyjmujący **zamknięty
+zestaw kluczy**: `valuationId, actorId, traceId, event, ms, status, count, section, model,
+errName, errMessage, errStack`. Adres nieruchomości, dane z księgi wieczystej, imiona,
+treść prozy nie mają w tym zestawie miejsca, więc nie wyciekną przez zapomnienie.
+Typ TypeScriptu pilnuje tego w kompilacji, `pick()` w locie jako druga warstwa.
+
+Kierunek jest tu istotny. `redact` z pino działa **denylistą**: wyliczasz ścieżki do
+zamaskowania, a jedna zapomniana ścieżka to wyciek. Allowlista odwraca kierunek błędu
+na „brakujące pole w logu" — właściwy dla Security=H i RODO. Realizujemy ją własnym
+serializerem wewnątrz pino, nie przez `redact`.
+
+`errMessage` obcinamy do 300 znaków i **zostaje** — komunikat zewnętrznego API teoretycznie
+może zacytować adres, który mu wysłaliśmy, ale na stagingu koszt pomyłki jest niski,
+a wartość diagnostyczna wysoka. **Założenie do przeglądu przy przejściu na produkcję
+z danymi realnych klientów.**
+
+Bypass zamykamy lintem: eslintowa reguła `no-console` w `apps/web/src` z wyjątkiem modułu
+loggera (goły `console.log` nie przejdzie CI), w workerze ruff `T201` na `print`.
+
+## Fitness functions
+
+- **F-13 „logi bez PII"** (nowa): test odrzucania nieznanych kluczy przez wrapper + reguła
+  lintera. Dokłada się do F-9, która pilnuje tego samego, tylko w repo.
+- F-1 (golden 1 044 400 zł), F-12 (szablon) i pozostałe — **nietknięte**; slice nie dotyka
+  domeny ani szablonu.
+
+## Testy
+
+| Test                                            | Co pilnuje                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------ |
+| wrapper odrzuca nieznany klucz                  | F-13, sedno bramki RODO                                      |
+| traceId przeżywa `await`                        | ALS działa — inaczej ślady mieszają się między użytkownikami |
+| wycofana transakcja **zostawia** wpis o błędzie | rozstrzygnięcie 2 z Architektury                             |
+| worker wiąże `X-Request-Id` i zwraca go w logu  | korelacja web↔worker, dług z ADR-009                         |
+| ścieżka błędu w UI pokazuje kod                 | to, co użytkownik odczytuje przez telefon                    |
+
+## Task zerowy: spike bundlingowy pino
+
+Pino pod Turbopackiem to jedyna niezwalidowana rzecz w tym slicie; odkrycie problemu
+w połowie implementacji kosztuje dużo. Ryzyko edge runtime **zweryfikowane i odpadło**
+(2026-08-19: `grep` po `apps/web/src` — zero `runtime = "edge"`, brak `middleware.ts`,
+wszystko na Node runtime). Pino nie występuje na domyślnej liście `serverExternalPackages`
+Next-a, więc może wymagać wpisu w `next.config.ts`.
+
+Zakres spike'a: najcieńsza server action logująca przez pino → `pnpm build` → deploy na
+staging → sprawdzenie logów Vercela.
+
+**Kryterium PASS ustalone przed uruchomieniem:** build przechodzi bez ostrzeżeń bundlera
+**i** wpis pojawia się w logach Vercela jako JSON.
+**FAIL → decyzja użytkownika:** `serverExternalPackages` jako obejście albo zejście na
+własny cienki logger (~30 linii, ta sama allowlista, ten sam interfejs wrappera).
+`structlog` w workerze zostaje niezależnie od wyniku.
+
+## Poza zakresem tego slice'a
+
+- **Alerty** (Sentry, powiadomienia mailem/Slackiem) — użytkownik świadomie ich nie wybrał.
+- **Metryka „% pól as proposed"** — osobna pozycja NEXT roadmapy; ten slice kładzie pod nią
+  szynę i zbiera dane.
+- **Dreny logów** do zewnętrznego zbieracza.
+- **Dziennik w UI** dla rzeczoznawcy — czytnikiem jest `pnpm trace` w konsoli.
+- **Automatyczne kasowanie starych zdarzeń** — na stagingu bezprzedmiotowe, ale tabela
+  rośnie bez ograniczeń; follow-up.
+
+## Rozstrzygnięcia brainstormu (user, 2026-08-19)
+
+1. Cel: odtwarzanie zgłoszeń użytkownika + zbieranie danych pod metryki + zamknięcie długu
+   z ADR-009. **Alerty odrzucone.**
+2. Horyzont sięgania po ślad: „kilka dni do tygodnia" → przesądza o trwałym zapisie
+   w Postgresie (retencja Vercela jest krótsza, Railway ~7 dni).
+3. Logger: **pino** w web (wybór użytkownika mimo rekomendacji własnego wrappera),
+   **structlog** w workerze — pino nie wchodzi do workera, bo worker jest w Pythonie.
+4. Kwestia RODO rozwiązana serializerami z allowlistą zamiast `redact`.
+5. `errMessage` zostaje (300 znaków) — uzasadnienie: staging, tani koszt pomyłki.
+6. Do DoD wchodzi **punkt kontrolny po pierwszych realnych zgłoszeniach**: czy zebrane
+   zdarzenia wystarczają do diagnozy, czy trzeba dołożyć kolejne.
+
+## Uwaga F-9 (repo publiczne!)
+
+Ani spec, ani testy, ani przykłady logów nie zawierają realnych adresów, numerów ksiąg
+wieczystych ani danych osobowych. Fixture'y testowe używają danych syntetycznych.
