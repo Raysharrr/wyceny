@@ -68,6 +68,38 @@ slice'a — Task 10, krok 5. Kryterium 3 celowo nie było odtwarzane na stagingu
 wypchnięcia jednorazowego echa na współdzielony serwis `worker-v2`, a przekazanie nagłówka
 HTTP nie zależy od hostingu.
 
+## Przegląd bramki RODO (2026-08-19) — co sprawdzono i co z tego wynika
+
+Przegląd adwersaryjny pytania „czy dane osobowe mogą trafić do logów albo do `event_log`".
+Niezależny recenzent na Opus 5 **nie dostarczył raportu** (dwa kolejne uruchomienia zawisły
+i zostały zatrzymane) — poniższe jest wynikiem przeglądu prowadzącego, wsparte weryfikacją
+runtime na działającej aplikacji. Zasięg zapewnienia jest więc węższy, niż zakładał plan,
+i warto przed merge puścić `/code-review`.
+
+**Znalezione i naprawione (Critical, commit `10543d0`):** `errFields()` zwracał nieobcięte
+`errMessage`/`errStack`, a limit 300/2000 znaków siedział wyłącznie w `pickAllowed` — przez
+które przechodzi tylko ścieżka stdout. `recordFailure` kopiował surowe wartości do
+`event_log.meta`, a `meta` jest `jsonb` i allowlisty nie przechodzi. Skutek: pełna treść
+błędu i wielokilobajtowe stack trace'y lądowały w bazie, wbrew ograniczeniu zapisanemu
+w tym samym dokumencie. Obcinanie przeniesione do `errFields`, czyli do źródła; `pickAllowed`
+nadal obcina jako druga warstwa.
+
+**Sprawdzone i czyste:**
+
+| Ścieżka                | Ustalenie                                                                                                                                                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Klucze `fingerprint()` | Wszystkie trzy zestawy to zamknięte, generyczne literały: `parcel`/`building`/`mpzp`, sześć nazw sekcji prozy (`analiza_rynku`, `opis_lokalu`, …), oraz `tx0…txN` po pozycji. Żaden nie niesie `transactionId` ani adresu. |
+| `detail` z workera     | Wszystkie stałe. Jedyny składany dynamicznie (`Za mało transakcji w okolicy (znaleziono N)`) wstawia liczbę, nie adres.                                                                                                    |
+| Komunikaty adapterów   | `worker /X responded <status> <statusText>` — adres jedzie w ciele POST-a, nie w URL-u, więc nie ma go w komunikacie błędu.                                                                                                |
+| Logi workera           | Zdarzenia + `section`, `violations`, `err=str(exc)`. `violations` niesie wyłącznie liczby dopasowane regexem (`_NUM_RE`), bez otaczającego tekstu — logujemy „model wymyślił 2019", nie fragment prozy.                    |
+| Sonda empiryczna       | Po pełnym przebiegu przez UI: adres wyceny w logach web **0 trafień**, w logach workera **0**, w `event_log.meta` **0 wierszy**.                                                                                           |
+
+**Pozostałe ryzyko, świadomie przyjęte:** `err=str(exc)` w `kw_extraction_failed`
+i `prose_section_failed` opakowuje wyjątki z wywołań LLM, których prompty zawierają dane
+osobowe. Błędy SDK Anthropica niosą komunikat API, nie treść promptu, więc ryzyko jest
+niskie — ale niezerowe i nieprzetestowane na żywym błędzie. Do przeglądu przy przejściu
+na produkcję z danymi realnych klientów, razem z decyzją o `errMessage`.
+
 ## Zakres (co wchodzi)
 
 1. **pino + wrapper z allowlistą** w web; reguła `no-console` w eslint poza modułem loggera.
