@@ -270,6 +270,11 @@ function ProseEditors({
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Offers the appraiser has answered on THIS visit — taken or dismissed.
+  // Local on purpose: the snapshot's `proposals` are wiped by the confirm that
+  // ends this step, so nothing here needs a round trip of its own, and reading
+  // an offer and saying "no" is not a mutation worth a server action.
+  const [answeredOffers, setAnsweredOffers] = useState<ProseSection[]>([]);
   // Read path for the async callbacks — a dependency-free mirror of the state
   // above, so the mount effect below never has to re-run to see a fresh value.
   const snapshotRef = useRef<ProseSnapshot | null>(prose);
@@ -429,6 +434,11 @@ function ProseEditors({
           {PROSE_SECTIONS.map((section) => {
             const entry = snapshot?.sections[section];
             const rejected = snapshot?.rejected[section];
+            // A proposal the merge kept rather than overwrite the appraiser's
+            // text with — offered once per visit, then answered.
+            const offer = answeredOffers.includes(section)
+              ? undefined
+              : snapshot?.proposals?.[section];
             // A rejection is shown WHETHER OR NOT the box has text (T5). The
             // snapshot keeps both on purpose (T3 ruling 2): a section whose
             // refresh the worker's guard refused carries the older text —
@@ -499,6 +509,49 @@ function ProseEditors({
                   >
                     {hint}
                   </p>
+                ) : null}
+                {/* The proposal the merge refused to overwrite this text with.
+                    It used to be thrown away unseen, which made "Wygeneruj
+                    ponownie" a paid click whose only visible effect was the
+                    staleness warning going quiet. Shown in full rather than
+                    behind a toggle: the whole point is that the appraiser can
+                    compare it against what they wrote, and a section is a
+                    paragraph, not a document. */}
+                {offer ? (
+                  <div
+                    data-testid={`prose-offer-${section}`}
+                    className="flex flex-col gap-2 rounded-lg border border-input bg-muted/40 px-3 py-2.5"
+                  >
+                    <p className="text-[12.5px] text-muted-foreground">
+                      Automat napisał nową wersję tej sekcji na podstawie aktualnych danych. Twój
+                      tekst zostaje, dopóki go nie zastąpisz.
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap text-foreground">{offer.value}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={generating || saving}
+                        onClick={() => {
+                          setTexts((prev) => ({ ...prev, [section]: offer.value }));
+                          setAnsweredOffers((prev) => [...prev, section]);
+                        }}
+                      >
+                        Wstaw zamiast mojego tekstu
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground"
+                        disabled={generating || saving}
+                        onClick={() => setAnsweredOffers((prev) => [...prev, section])}
+                      >
+                        Zostaw mój tekst
+                      </Button>
+                    </div>
+                  </div>
                 ) : null}
               </div>
             );
