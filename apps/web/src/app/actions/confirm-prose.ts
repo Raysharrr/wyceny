@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { valuationRepository } from "@/app/valuations/_deps";
 import { PROSE_SECTIONS, type ProseSection } from "@/domain/prose-snapshot";
-import { errFields, log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type ConfirmProseResult = { error: string } | undefined;
@@ -46,11 +46,11 @@ export async function confirmProse(
       const updated = await valuationRepository.confirmProse(id, session.user, payload);
       if (!updated) return { error: NOT_FOUND };
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "confirmProse.failed",
         valuationId: id,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode(GENERIC) };
     }

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { valuationRepository } from "@/app/valuations/_deps";
-import { errFields, log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type ConfirmSampleResult = { error: string } | undefined;
@@ -32,11 +32,11 @@ export async function confirmSample(id: string): Promise<ConfirmSampleResult> {
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "confirmSample.failed",
         valuationId: id,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się potwierdzić próby — spróbuj ponownie.") };
     }

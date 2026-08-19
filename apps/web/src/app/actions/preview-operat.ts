@@ -11,7 +11,8 @@ import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
 import { dropMapBytesIfStillOurDraft, frozenMapKeys, readFrozenMaps } from "@/lib/frozen-maps";
-import { errFields, log } from "@/lib/log";
+import { log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type PreviewOperatResult =
@@ -147,11 +148,11 @@ export async function previewOperat(
       try {
         photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
       } catch (error) {
-        log.error({
+        await recordFailure({
           event: "previewOperat.photosReadFailed",
           valuationId: id,
           actorId: session.user.id,
-          ...errFields(error),
+          error: error,
         });
         return {
           error: errorWithCode(
@@ -195,11 +196,11 @@ export async function previewOperat(
       const version = createHash("sha256").update(pdf).digest("hex").slice(0, 16);
       return { url: `/api/podglad/${id}?v=${version}` };
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "previewOperat.failed",
         valuationId: id,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return {
         error: errorWithCode(

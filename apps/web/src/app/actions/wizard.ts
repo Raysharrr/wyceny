@@ -15,7 +15,7 @@ import {
   assignSubjectProvenance,
 } from "@/lib/assign-provenance";
 import { isEmptySubject } from "@/lib/subject-form";
-import { errFields, log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 import { normalizeDefText, type FeatureDefinitions } from "@/domain/feature-presets";
 import { normalizeKw } from "@/domain/kw-snapshot";
@@ -217,11 +217,11 @@ export async function saveSubjectAction(
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "saveSubjectAction.failed",
         valuationId,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się zapisać danych — spróbuj ponownie.") };
     }
@@ -268,11 +268,11 @@ export async function saveSampleAction(
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "saveSampleAction.failed",
         valuationId,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się zapisać próby — spróbuj ponownie.") };
     }
@@ -331,11 +331,11 @@ export async function saveFeaturesAction(
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "saveFeaturesAction.failed",
         valuationId,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się zapisać cech — spróbuj ponownie.") };
     }
@@ -363,11 +363,11 @@ export async function confirmCalculationAction(
       if (error instanceof CalculationNotReadyError) {
         return { error: "Uzupełnij próbę (krok 3) i cechy (krok 4)." };
       }
-      log.error({
+      await recordFailure({
         event: "confirmCalculationAction.failed",
         valuationId,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się potwierdzić kalkulacji — spróbuj ponownie.") };
     }

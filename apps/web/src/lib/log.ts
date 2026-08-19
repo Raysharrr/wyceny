@@ -70,6 +70,9 @@ export const log = {
 
 /** Flattens an unknown thrown value into allowlisted fields. */
 export function errFields(error: unknown): Pick<LogFields, "errName" | "errMessage" | "errStack"> {
+  // A failure with no throw behind it carries no error fields — better an
+  // absent key than `errMessage: "undefined"` polluting the trail.
+  if (error === undefined) return {};
   if (error instanceof Error) {
     return { errName: error.name, errMessage: error.message, errStack: error.stack ?? "" };
   }

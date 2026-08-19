@@ -22,7 +22,8 @@ import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
 import { dropMapBytesIfStillOurDraft, frozenMapKeys, readFrozenMaps } from "@/lib/frozen-maps";
-import { errFields, log } from "@/lib/log";
+import { log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type ApproveValuationResult =
@@ -179,7 +180,7 @@ export async function approveValuation(
             // committed yet — so refusing costs a retry and no more. A `null`
             // here also means `repo.approve` was going to fail anyway, for the
             // same two reasons.
-            log.error({
+            await recordFailure({
               event: "approveValuation.mapFreezeNotRecorded",
               valuationId: id,
               actorId: session.user.id,
@@ -202,7 +203,6 @@ export async function approveValuation(
         }
       }
       const maps = embedded?.maps ?? null;
-
       const model = buildDocumentModel({
         address: valuation.address,
         area: valuation.area,
@@ -271,7 +271,6 @@ export async function approveValuation(
           });
         }
       }
-
       // Slice 10 (Task 8): the photo manifest lives in inputs.inspection —
       // unlike maps, a manifest key that fails to resolve is a HARD integrity
       // error (manifest + bytes are written in the same tx) and aborts the
@@ -280,11 +279,11 @@ export async function approveValuation(
       try {
         photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
       } catch (error) {
-        log.error({
+        await recordFailure({
           event: "approveValuation.photosReadFailed",
           valuationId: id,
           actorId: session.user.id,
-          ...errFields(error),
+          error,
         });
         return {
           error: errorWithCode(
@@ -333,11 +332,11 @@ export async function approveValuation(
       try {
         await storage.delete(previewDocKey(id));
       } catch (error) {
-        log.error({
+        await recordFailure({
           event: "approveValuation.previewBlobDropFailed",
           valuationId: id,
           actorId: session.user.id,
-          ...errFields(error),
+          error: error,
         });
       }
     } catch (error) {
@@ -353,11 +352,11 @@ export async function approveValuation(
           blockers: error.blockers,
         };
       }
-      log.error({
+      await recordFailure({
         event: "approveValuation.failed",
         valuationId: id,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return {
         error: errorWithCode(

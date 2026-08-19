@@ -14,7 +14,7 @@ import {
   INSPECTION_SECTIONS,
 } from "@/domain/inspection";
 import { hasApp1, isJpeg, jpegDimensions } from "@/lib/jpeg";
-import { errFields, log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 
 /** Processed-photo hard ceiling: worker emits ~150-250 KB at 1200 px q85. */
@@ -72,11 +72,11 @@ export async function uploadInspectionPhoto(
       if (error instanceof InspectionLimitError) {
         return { error: `Limit ${MAX_INSPECTION_PHOTOS} zdjęć na wycenę został osiągnięty.` };
       }
-      log.error({
+      await recordFailure({
         event: "uploadInspectionPhoto.failed",
         valuationId,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się zapisać zdjęcia — spróbuj ponownie.") };
     }
@@ -110,11 +110,11 @@ export async function removeInspectionPhoto(
         await storage.delete(key);
       }
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "removeInspectionPhoto.failed",
         valuationId,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się usunąć zdjęcia — spróbuj ponownie.") };
     }
@@ -141,11 +141,11 @@ export async function saveInspectionNote(
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "saveInspectionNote.failed",
         valuationId,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się zapisać notatki — spróbuj ponownie.") };
     }
@@ -179,11 +179,11 @@ export async function saveInspectionDate(
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "saveInspectionDate.failed",
         valuationId,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się zapisać daty — spróbuj ponownie.") };
     }

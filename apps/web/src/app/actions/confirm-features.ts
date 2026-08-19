@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { valuationRepository } from "@/app/valuations/_deps";
-import { errFields, log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type ConfirmFeaturesResult = { error: string } | undefined;
@@ -26,11 +26,11 @@ export async function confirmFeatures(id: string): Promise<ConfirmFeaturesResult
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "confirmFeatures.failed",
         valuationId: id,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się potwierdzić cech i wag — spróbuj ponownie.") };
     }

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { profileRepository } from "@/app/valuations/_deps";
-import { errFields, log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type SaveSignatureResult = { error: string } | undefined;
@@ -35,10 +35,10 @@ export async function saveSignature(formData: FormData): Promise<SaveSignatureRe
     try {
       await profileRepository.saveSignature(session.user.id, bytes, file.type);
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "saveSignature.failed",
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return { error: errorWithCode("Nie udało się zapisać podpisu — spróbuj ponownie.") };
     }

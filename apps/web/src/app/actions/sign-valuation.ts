@@ -12,7 +12,7 @@ import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters
 import { StorageNotFoundError } from "@/ports/storage";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { frozenMapKeys } from "@/lib/frozen-maps";
-import { errFields, log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type SignValuationResult = { error: string } | undefined;
@@ -98,11 +98,11 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
         }
       } catch (error) {
         if (!(error instanceof StorageNotFoundError)) {
-          log.error({
+          await recordFailure({
             event: "signValuationAction.frozenMapsReadFailed",
             valuationId: id,
             actorId: session.user.id,
-            ...errFields(error),
+            error: error,
           });
           return {
             error: errorWithCode(
@@ -122,11 +122,11 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
       try {
         photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
       } catch (error) {
-        log.error({
+        await recordFailure({
           event: "signValuationAction.frozenPhotosReadFailed",
           valuationId: id,
           actorId: session.user.id,
-          ...errFields(error),
+          error: error,
         });
         return {
           error: errorWithCode(
@@ -152,11 +152,11 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
       if (error instanceof NotSignableError) {
         return { error: "Podpisać można tylko zatwierdzoną wycenę." };
       }
-      log.error({
+      await recordFailure({
         event: "signValuationAction.failed",
         valuationId: id,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       return {
         error: errorWithCode(

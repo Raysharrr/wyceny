@@ -16,7 +16,7 @@ import {
 import { currentSectionFactsHash } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import { mintWorkerToken } from "@/lib/worker-token";
-import { errFields, log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 import type { ProseSection, ProseSnapshot } from "@/domain/prose-snapshot";
 
@@ -157,11 +157,11 @@ export async function proposeProse(
         transactions: buildProseTransactions(valuation.inputs.comparables),
       });
     } catch (error) {
-      log.error({
+      await recordFailure({
         event: "proposeProse.failed",
         valuationId: id,
         actorId: session.user.id,
-        ...errFields(error),
+        error: error,
       });
       // Default-deny on error text (T5 review): ONLY the worker's own Polish
       // `detail` — which the adapter marks with its own type — is written for a
