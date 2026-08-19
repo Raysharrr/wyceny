@@ -30,3 +30,16 @@ describe("proposal fingerprint", () => {
     expect(fingerprint({ a: 1 }).a).not.toBe(fingerprint({ a: "1" }).a);
   });
 });
+
+describe("irreversibility", () => {
+  it("is keyed, so the table is not a lookup dictionary", async () => {
+    // Plain sha256 over a low-entropy value is reversible by enumeration:
+    // a gmina has a few thousand parcel ids, and RCN transactions are public.
+    // An unsalted digest of computable data is still personal data under
+    // GDPR — and this repo is public. Keying it keeps the equality check the
+    // metric needs while making the column useless to anyone without the key.
+    const { createHash } = await import("node:crypto");
+    const plain = createHash("sha256").update(JSON.stringify("Jeżyce AR_10 dz. 161")).digest("hex");
+    expect(fingerprint({ parcel: "Jeżyce AR_10 dz. 161" }).parcel).not.toBe(plain);
+  });
+});

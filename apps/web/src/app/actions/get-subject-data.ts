@@ -2,8 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { eventLog, subjectData } from "@/app/valuations/_deps";
-import { recordFailure } from "@/app/actions/_record-failure";
+import { subjectData } from "@/app/valuations/_deps";
+import { recordEvent, recordFailure } from "@/app/actions/_record-failure";
 import { fingerprint } from "@/lib/fingerprint";
 import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_SUBJECT_PREFIX } from "@/adapters/subject-http";
@@ -46,7 +46,7 @@ export async function getSubjectData(input: { address: string }): Promise<GetSub
         // Not a failure: the worker's 422 says this address is outside the
         // supported area, which is a legitimate answer the appraiser acts on
         // by filling the data by hand. Worth counting, not worth alarming.
-        await eventLog.record({
+        await recordEvent({
           level: "info",
           event: "proposal.subjectOutOfCoverage",
           traceId: currentTraceId(),
@@ -54,7 +54,7 @@ export async function getSubjectData(input: { address: string }): Promise<GetSub
         });
         return { outOfCoverage: result.message };
       }
-      await eventLog.record({
+      await recordEvent({
         level: "info",
         event: "proposal.subject",
         traceId: currentTraceId(),

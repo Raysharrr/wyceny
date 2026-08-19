@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { eventLog, proseProposal, valuationRepository } from "@/app/valuations/_deps";
+import { proseProposal, valuationRepository } from "@/app/valuations/_deps";
 import { ProseWorkerDetailError } from "@/adapters/prose-http";
 import {
   attemptedProseSections,
@@ -16,7 +16,7 @@ import {
 import { currentSectionFactsHash } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import { mintWorkerToken } from "@/lib/worker-token";
-import { recordFailure } from "@/app/actions/_record-failure";
+import { recordEvent, recordFailure } from "@/app/actions/_record-failure";
 import { fingerprint } from "@/lib/fingerprint";
 import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import type { ProseSection, ProseSnapshot } from "@/domain/prose-snapshot";
@@ -199,7 +199,7 @@ export async function proposeProse(
     // cost, never its text; a hash keeps that promise while still allowing a
     // later "% accepted as proposed" to tell an edited section from one taken
     // as written.
-    await eventLog.record({
+    await recordEvent({
       level: "info",
       event: "proposal.prose",
       traceId: currentTraceId(),

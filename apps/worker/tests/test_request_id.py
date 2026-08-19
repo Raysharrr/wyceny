@@ -49,3 +49,26 @@ def test_trace_id_reaches_a_sync_handler_in_the_threadpool(monkeypatch, capsys):
     from_handler = [ln for ln in lines if ln["event"] == "convert_to_pdf_failed"]
     assert len(from_handler) == 1
     assert from_handler[0]["trace_id"] == "d0cf11e0"
+
+
+def test_unhandled_error_still_logs_with_the_trace_id(capsys):
+    """A 500 is the case where correlation matters most; it used to be the
+    one case that lost both the log line and the header."""
+    from fastapi import FastAPI
+
+    from app.logging_setup import RequestIdMiddleware, configure_logging
+
+    configure_logging()
+    boom = FastAPI()
+    boom.add_middleware(RequestIdMiddleware)
+
+    @boom.get("/boom")
+    def _boom() -> dict[str, bool]:
+        raise RuntimeError("nope")
+
+    with TestClient(boom, raise_server_exceptions=False) as c:
+        c.get("/boom", headers={"X-Request-Id": "deadfeed"})
+
+    out = capsys.readouterr().out
+    assert "request_failed" in out
+    assert "deadfeed" in out

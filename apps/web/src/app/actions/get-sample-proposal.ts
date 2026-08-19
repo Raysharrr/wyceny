@@ -2,8 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { eventLog, sampleProposal } from "@/app/valuations/_deps";
-import { recordFailure } from "@/app/actions/_record-failure";
+import { sampleProposal } from "@/app/valuations/_deps";
+import { recordEvent, recordFailure } from "@/app/actions/_record-failure";
 import { fingerprint } from "@/lib/fingerprint";
 import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
@@ -53,7 +53,7 @@ export async function getSampleProposal(
       // in the clear. Only the three fields the appraiser can actually edit
       // are hashed — a later "% as proposed" needs to tell an edit from an
       // acceptance, not to re-identify a transaction.
-      await eventLog.record({
+      await recordEvent({
         level: "info",
         event: "proposal.sample",
         traceId: currentTraceId(),

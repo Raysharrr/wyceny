@@ -42,7 +42,20 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(trace_id=request_id)
         started = time.monotonic()
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # An unhandled 500 used to lose BOTH the log line and the header:
+            # the exception propagated straight past them, leaving the
+            # traceback to stdlib logging without a trace_id. That is the case
+            # where correlation matters most, so it must not be the one case
+            # without it.
+            log.error(
+                "request_failed",
+                path=request.url.path,
+                ms=round((time.monotonic() - started) * 1000),
+            )
+            raise
         log.info(
             "request_completed",
             path=request.url.path,

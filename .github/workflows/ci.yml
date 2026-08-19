@@ -102,6 +102,17 @@ jobs:
             echo "F-13: no-console is gone from eslint.config.mjs — the log allowlist can be bypassed"
             exit 1
           }
+          # The rule existing is not enough: widening `ignores` to silence a
+          # noisy directory (say `src/app/actions/**`) leaves the rule in place
+          # while letting a bare console.* put an unfiltered valuation into the
+          # log. Exactly TWO exemptions are sanctioned, both client components
+          # whose console runs in the browser and reaches no sink of ours.
+          exemptions=$(grep -c 'src/app/valuations/\*/steps/' eslint.config.mjs || true)
+          if [ "$exemptions" -ne 2 ]; then
+            echo "F-13: the no-console exemption list changed (expected 2 client components, found $exemptions)."
+            echo "      Adding one is a deliberate decision — update this check in the same commit."
+            exit 1
+          fi
 
       # Catches the deployed migration ledger drifting from the repo's. Skips
       # itself when the secret is absent (forks), so it can never block an
