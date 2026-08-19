@@ -5,7 +5,7 @@ import { getSession } from "@/auth/session";
 import { eventLog, sampleProposal } from "@/app/valuations/_deps";
 import { recordFailure } from "@/app/actions/_record-failure";
 import { fingerprint } from "@/lib/fingerprint";
-import { currentTraceId, withTrace } from "@/lib/trace";
+import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
 import { valuationFormObject } from "@/lib/valuation-form-schema";
 import type { SampleProposal } from "@/ports/sample";
@@ -79,9 +79,9 @@ export async function getSampleProposal(
       });
       const message = error instanceof Error ? error.message : undefined;
       if (message && !message.startsWith(WORKER_RESPONDED_PREFIX)) {
-        return { error: message };
+        return { error: errorWithCode(message) };
       }
-      return { error: GENERIC_ERROR };
+      return { error: errorWithCode(GENERIC_ERROR) };
     }
   });
 }

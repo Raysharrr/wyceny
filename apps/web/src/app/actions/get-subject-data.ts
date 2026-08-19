@@ -5,7 +5,7 @@ import { getSession } from "@/auth/session";
 import { eventLog, subjectData } from "@/app/valuations/_deps";
 import { recordFailure } from "@/app/actions/_record-failure";
 import { fingerprint } from "@/lib/fingerprint";
-import { currentTraceId, withTrace } from "@/lib/trace";
+import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_SUBJECT_PREFIX } from "@/adapters/subject-http";
 import { valuationFormObject } from "@/lib/valuation-form-schema";
 import type { SubjectProposal } from "@/ports/subject";
@@ -76,9 +76,9 @@ export async function getSubjectData(input: { address: string }): Promise<GetSub
       });
       const message = error instanceof Error ? error.message : undefined;
       if (message && !message.startsWith(WORKER_SUBJECT_PREFIX)) {
-        return { error: message };
+        return { error: errorWithCode(message) };
       }
-      return { error: GENERIC_ERROR };
+      return { error: errorWithCode(GENERIC_ERROR) };
     }
   });
 }
