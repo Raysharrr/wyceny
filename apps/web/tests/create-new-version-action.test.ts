@@ -47,6 +47,7 @@ const signedValuation: Valuation = {
   approvedAt: new Date("2026-07-19"),
   signedAt: new Date("2026-07-19"),
   supersedesId: null,
+  mapsFrozenFor: null,
   createdAt: new Date(),
 };
 

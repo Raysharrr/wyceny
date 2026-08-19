@@ -29,7 +29,9 @@ Zasada jest jedna i wynika z tego, że produkt jest z założenia automatyczny: 
 
 ## Pełna lista warunków blokujących zatwierdzenie
 
-Blokady zbierane są **wszystkie naraz** — brama zwraca listę, a nie pierwszą napotkaną przeszkodę. Ekran zatwierdzenia pokazuje ją w całości; komunikat błędu samej akcji cytuje z niej tylko pozycję pierwszą.
+Blokady zbierane są **wszystkie naraz** — brama zwraca listę, a nie pierwszą napotkaną przeszkodę. Ekran zatwierdzenia pokazuje ją w całości, z odnośnikiem „Przejdź do kroku …” przy każdej pozycji; odmowa samej akcji niesie tę samą listę, choć zdanie komunikatu cytuje z niej tylko pozycję pierwszą.
+
+Lista jest przy tym drobnoziarnista tam, gdzie ma to znaczenie: blokuje **każda transakcja z osobna** i **każda sekcja opisowa z osobna**, a nie grupa jako całość. Nie jest to kosmetyka — jedna pozycja „opisy do poprawy” kazałaby przeglądać {PROSE_SECTIONS.length} sekcji, żeby znaleźć tę jedną. Ta sama zasada rządzi [podglądem operatu](/pomoc/krok-7-operat): sekcja, której jeszcze nie ma, jest w podglądzie nazwana w miejscu, w którym powinna stać.
 
 ### Sprawdzane zawsze
 
@@ -62,7 +64,7 @@ Konsekwencje tej reguły są trzy i wszystkie zamierzone. Migawka bez mapy prowe
 
 ## Dlaczego brama stoi po stronie serwera
 
-Na ekranie widać jej skutek: przycisk zatwierdzenia jest nieaktywny, dopóki lista blokad nie jest pusta. Nieaktywny przycisk jest jednak własnością ekranu, nie dokumentu — i nie jest tym, co chroni operat.
+Na ekranie widać jej skutek: przycisk zatwierdzenia jest nieaktywny, dopóki lista blokad nie jest pusta — a obok listy stoi podgląd dokumentu, którego dotyczy. Nieaktywny przycisk jest jednak własnością ekranu, nie dokumentu — i nie jest tym, co chroni operat.
 
 Zatwierdzenie przechodzi przez bramę **dwa razy**:
 

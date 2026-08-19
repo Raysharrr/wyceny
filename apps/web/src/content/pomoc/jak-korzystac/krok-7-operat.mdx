@@ -1,8 +1,8 @@
-W kroku 7 sprawdzasz komplet danych i zatwierdzasz operat. Zatwierdzenie generuje dokument — DOCX i PDF — i wyprowadza wycenę z kreatora: od tej chwili otwiera się ona w widoku dokumentu, a nie w siedmiu krokach.
+W kroku 7 oglądasz gotowy dokument, sprawdzasz komplet danych i zatwierdzasz operat. Zatwierdzenie generuje dokument — DOCX i PDF — i wyprowadza wycenę z kreatora: od tej chwili otwiera się ona w widoku dokumentu, a nie w siedmiu krokach.
 
 <img
   src="/api/pomoc/krok-7-operat.png"
-  alt="Krok 7 kreatora: karta „Podsumowanie operatu” z powierzchnią i wartością rynkową oraz karta „Zatwierdzenie” z listą pozycji do wyjaśnienia, odnośnikami do właściwych kroków i nieaktywnym przyciskiem „Zatwierdź operat”."
+  alt="Krok 7 kreatora: karta „Podsumowanie operatu” z powierzchnią i wartością rynkową oraz karta „Zatwierdzenie” z listą pozycji do wyjaśnienia, odnośnikami do właściwych kroków i nieaktywnym przyciskiem „Zatwierdź i generuj operat”."
   style={{
     width: "100%",
     height: "auto",
@@ -17,9 +17,19 @@ Karta „Podsumowanie operatu” pokazuje powierzchnię i wartość rynkową. Kw
 
 Karta „Zatwierdzenie” zbiera wszystko, co blokuje zatwierdzenie, w jedną listę „Zatwierdzenie zablokowane — do wyjaśnienia”.
 
-Samo zatwierdzenie robi w tle całą resztę: pobiera mapy do operatu, dokłada zdjęcia z oględzin jako dokumentację fotograficzną, składa dokument i zapisuje go przy wycenie w obu formatach. Chwilę to trwa — przycisk pokazuje wtedy „Zatwierdzanie…”. Co dokładnie dzieje się w tej chwili i co potem zamraża podpis, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
+Samo zatwierdzenie robi w tle całą resztę: wkłada do dokumentu mapy zamrożone przy podglądzie, dokłada zdjęcia z oględzin jako dokumentację fotograficzną, składa dokument i zapisuje go przy wycenie w obu formatach. Chwilę to trwa — przycisk pokazuje wtedy „Zatwierdzanie…”. Co dokładnie dzieje się w tej chwili i co potem zamraża podpis, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
 
-Mapy są pobierane w momencie zatwierdzenia i zamrażane przy wycenie: podpisany dokument użyje dokładnie tych samych map, bez ponownego pobierania. Gdy pobranie się nie uda, zamiast zatwierdzenia dostajesz ostrzeżenie z dwoma wyjściami — „Spróbuj ponownie” albo „Zatwierdź bez map”. To drugie jest świadomą decyzją i zostaje odnotowane przy wycenie.
+## Podgląd operatu
+
+Karta „Podgląd operatu” pokazuje dokument, pod którym masz się podpisać — złożony z tych samych danych, z których powstanie wydany operat. Gdy lista blokad jest pusta, podgląd składa się sam po wejściu na krok. Gdy blokady zostały, kreator czeka na kliknięcie „Pokaż podgląd mimo braków” i pokazuje dokument w takim stanie, w jakim jest teraz — wydanie pozostaje wtedy nieaktywne.
+
+Podgląd nie jest wydaniem: nie dopisuje operatu do wyceny i niczego nie zatwierdza. Od wydanego operatu różni się datą sporządzenia — podgląd nosi datę dzisiejszą, wydany dostaje datę wydania. Dlatego zatwierdzenie składa dokument jeszcze raz, a nie promuje podglądu.
+
+### Mapy do operatu
+
+Mapy pobiera podgląd, nie zatwierdzenie. Pobrane raz zostają zamrożone przy wycenie i od tej chwili służą wszystkim: kolejnemu podglądowi, wydanemu operatowi i dokumentowi podpisanemu — te same obrazy, bez ponownego pobierania. Zatwierdzenie sięga po nie do Geoportalu tylko wtedy, gdy nie ma czego użyć — bo klikniesz „Zatwierdź i generuj operat”, zanim podgląd zdąży się złożyć, albo bo zamrożone pliki zniknęły z magazynu.
+
+Gdy pobranie się nie uda, podgląd proponuje „Spróbuj ponownie” albo „Pokaż podgląd bez map”. To drugie składa dokument bez rozdziału kartograficznego i zostawia nad nim ostrzeżenie „Wydanie bez map” z przyciskiem „Spróbuj pobrać mapy”. Dopóki to ostrzeżenie stoi, zatwierdzenie wyda dokładnie ten dokument — bez map — i odnotuje tę decyzję przy wycenie. Stoi ono także wtedy, gdy kolejna próba pobrania map znowu się nie powiedzie i na ekranie nie ma już żadnego dokumentu: decyzja jest wciąż w mocy, więc musi być widoczna. To jedyny sposób, w jaki operat wychodzi dziś bez map — trzeba go najpierw w tej postaci zobaczyć. Odświeżenie strony cofa ten wybór i podgląd próbuje pobrać mapy od nowa.
 
 Przycisk ponowienia pojawia się przy każdej przyczynie, ale dwie z nich są ostateczne i ponawianie ich nie ruszy: **nierozpoznany adres** („Nie rozpoznano adresu nieruchomości — sprawdź jego pisownię (…) i popraw go w kroku 1.”) oraz **adres poza obsługiwanym obszarem** („Mapy do operatu dostępne na razie dla Poznania.”). Odróżnia je od awarii usługi sama treść komunikatu — warto ją przeczytać, zanim klikniesz. Na pierwszą pomaga wyłącznie poprawienie adresu w [kroku 1](/pomoc/krok-1-przedmiot), a to niesie dalszy koszt: zapis tamtego kroku kasuje zatwierdzoną wartość rynkową, więc trzeba jeszcze raz przejść kalkulację w kroku 5 i ponownie zatwierdzić opisy w kroku 6.
 
@@ -36,7 +46,7 @@ Zapis kroku potwierdza całą grupę naraz. Reguła jest jedna i nie zmieniła s
 
 ## Co blokuje przejście dalej
 
-Przycisk „Zatwierdź operat” jest nieaktywny, dopóki lista blokad nie jest pusta. Pozycje, które się na niej pojawiają:
+Przycisk „Zatwierdź i generuj operat” jest nieaktywny, dopóki lista blokad nie jest pusta. Pozycje, które się na niej pojawiają:
 
 - **liczebność próby** — „Próba ma N transakcji — wymagane co najmniej 12.”,
 - **niepotwierdzone dane** — „Transakcja N (RCN) — do weryfikacji.”, „Geokodowanie adresu — do weryfikacji.”, „Dane ewidencyjne przedmiotu (EGiB) — do weryfikacji.”, „Przeznaczenie planistyczne (MPZP) — do weryfikacji.”, „Stan prawny (KW) — do weryfikacji.”, „Powierzchnia — do weryfikacji.”, „Wagi cech — do weryfikacji.”, „Definicje skali ocen — do weryfikacji.”,

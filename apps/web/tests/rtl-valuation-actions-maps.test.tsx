@@ -32,17 +32,26 @@ const baseProps = {
   canCreateNewVersion: false,
 };
 
+/**
+ * T12: the issue no longer decides about maps — it reuses what the step-7
+ * preview froze, and reaches Geoportal only when there is nothing to reuse.
+ * So this message survives, and the retry with it; what goes is „Zatwierdź
+ * bez map" (spec §C). Issuing a document the appraiser has not seen is the
+ * one thing this slice exists to stop, and that button was the last way to do
+ * it — the way out now is on the reader below, where the document is.
+ */
 describe("ValuationActions — maps fallback", () => {
-  it("shows the maps-fallback block with both buttons when approve reports mapsUnavailable", async () => {
+  it("offers the retry and points at the reader, never a second way to issue unseen", async () => {
     approveValuation.mockResolvedValueOnce({
       error: "Nie udało się pobrać map do operatu — timeout.",
       mapsUnavailable: true,
     });
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
     expect(await screen.findByTestId("maps-fallback")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /spróbuj ponownie/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /zatwierdź bez map/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /zatwierdź bez map/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId("maps-fallback")).toHaveTextContent(/podgląd bez map/i);
   });
 
   it("does not show the maps-fallback block for plain (non-maps) errors", async () => {
@@ -50,22 +59,9 @@ describe("ValuationActions — maps fallback", () => {
       error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu.",
     });
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
     expect(await screen.findByText(/zatwierdzenie zablokowane/i)).toBeInTheDocument();
     expect(screen.queryByTestId("maps-fallback")).not.toBeInTheDocument();
-  });
-
-  it("clicking 'Zatwierdź bez map' calls approveValuation with skipMaps: true", async () => {
-    approveValuation.mockResolvedValueOnce({
-      error: "Nie udało się pobrać map do operatu — timeout.",
-      mapsUnavailable: true,
-    });
-    approveValuation.mockResolvedValueOnce(undefined);
-    render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
-    await screen.findByTestId("maps-fallback");
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź bez map/i }));
-    expect(approveValuation).toHaveBeenLastCalledWith("v1", { skipMaps: true });
   });
 
   it("clicking 'Spróbuj ponownie' calls approveValuation again without opts", async () => {
@@ -75,7 +71,7 @@ describe("ValuationActions — maps fallback", () => {
     });
     approveValuation.mockResolvedValueOnce(undefined);
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
     await screen.findByTestId("maps-fallback");
     await userEvent.click(screen.getByRole("button", { name: /spróbuj ponownie/i }));
     expect(approveValuation).toHaveBeenLastCalledWith("v1", undefined);
@@ -100,7 +96,7 @@ describe("ValuationActions — an approve refusal lists every blocker with its s
       ],
     });
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
 
     const list = await screen.findByTestId("approve-blockers");
     expect(within(list).getAllByRole("listitem")).toHaveLength(3);
@@ -123,7 +119,7 @@ describe("ValuationActions — an approve refusal lists every blocker with its s
       error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu.",
     });
     render(<ValuationActions {...baseProps} />);
-    await userEvent.click(screen.getByRole("button", { name: /zatwierdź operat/i }));
+    await userEvent.click(screen.getByRole("button", { name: /zatwierdź i generuj operat/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Zatwierdzenie zablokowane — brak danych wejściowych operatu.",

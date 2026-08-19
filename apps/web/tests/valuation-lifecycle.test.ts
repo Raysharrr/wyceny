@@ -52,6 +52,7 @@ function draftWith(inputs: KcsInput | null, overrides: Partial<Valuation> = {}):
     approvedAt: null,
     signedAt: null,
     supersedesId: null,
+    mapsFrozenFor: null,
     createdAt: new Date("2026-07-14T10:00:00Z"),
     ...overrides,
   };
@@ -697,6 +698,7 @@ const approvedValuation: Valuation = {
   approvedAt: new Date("2026-07-15T10:00:00Z"),
   signedAt: null,
   supersedesId: null,
+  mapsFrozenFor: null,
 };
 
 describe("signValuation (F-7)", () => {

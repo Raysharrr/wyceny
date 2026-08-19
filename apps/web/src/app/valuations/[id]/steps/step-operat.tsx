@@ -8,15 +8,26 @@ import { proseEnabled } from "@/lib/prose-enabled";
 import type { Valuation } from "@/ports/valuation";
 import { currencyFormatter } from "../cards";
 import { ValuationActions } from "../valuation-actions";
+import { OperatPreview } from "./operat-preview";
+import { PreviewMapsProvider } from "./preview-maps-state";
 
 /**
  * Step 7 ("Operat") — the wizard's final step. Only ever reached for an
  * in-progress draft owned by the current user (the branch condition in
  * page.tsx guarantees both), so this needs none of the flat view's
  * isDraft/isOwner/canSign/canCreateNewVersion ternaries: status is always
- * "in_progress" and the viewer is always the owner. No PDF iframe — a draft
- * has no document yet; approve flips status and the record leaves the
- * wizard for the flat view, which renders the operat.
+ * "in_progress" and the viewer is always the owner.
+ *
+ * T10: the draft now HAS a document to show — a preview rendered from the
+ * same pipeline the issue uses, differing from it only by the date on the
+ * title page (and, from T11, by the placeholders standing in for missing
+ * sections). That is the whole slice in one line: the appraiser was being
+ * asked to take responsibility for a document nobody had shown them.
+ * `OperatPreview` is a Client Component and takes only what it needs — this
+ * module reaches `domain/prose-hash`, which imports `node:crypto`.
+ *
+ * An ISSUED operat is still not rendered here: `page.tsx` sends anything that
+ * is no longer a draft to the flat view, which embeds `docUrl`.
  */
 export function StepOperat({ valuation }: { valuation: Valuation }) {
   // Same kill-switch answer the approve action computes (FR-6): the list
@@ -43,7 +54,12 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
   const gateOk = gate?.ok === true && fieldBlockers.length === 0;
 
   return (
-    <>
+    // T12: the reader and the issue button are separate components with these
+    // cards between them, and they have to agree on ONE thing — whether the
+    // document on screen has its §8.1 maps. The provider is what carries it;
+    // without it the issue would read the no-reader default and fetch maps
+    // for a document the appraiser chose to read without them.
+    <PreviewMapsProvider>
       <div className="flex flex-col gap-4">
         <SectionCard icon={FileStack} title="Podsumowanie operatu">
           <div className="grid gap-5 sm:grid-cols-2">
@@ -81,7 +97,13 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
             />
           </div>
         </SectionCard>
+
+        {/* Last on purpose: in the "braki" state the list above is what the
+            button below it answers ("mimo braków"), and an 85vh reader belongs
+            under the short cards rather than between them. The shell's pb-32
+            keeps the fixed FootNav off its final rows. */}
+        <OperatPreview valuationId={valuation.id} hasBlockers={allBlockers.length > 0} />
       </div>
-    </>
+    </PreviewMapsProvider>
   );
 }

@@ -11,6 +11,7 @@ import { computeKcs } from "@/domain/kcs";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { StorageNotFoundError } from "@/ports/storage";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
+import { frozenMapKeys } from "@/lib/frozen-maps";
 
 export type SignValuationResult = { error: string } | undefined;
 
@@ -81,8 +82,14 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
     // undefined instead of throwing (advisor B2).
     let maps: RenderMaps | null = null;
     try {
-      const ewidencyjna = await storage.get(`mapa-ewidencyjna-${id}.png`);
-      const orto = await storage.get(`mapa-orto-${id}.jpg`);
+      // The keys come from the one place that spells them (`frozenMapKeys`),
+      // shared with the preview that freezes them and the issue that reuses
+      // them. This is the call site where a typo costs the most: a key that
+      // misses reads as StorageNotFoundError, which this branch treats as the
+      // legal "approved without maps" — silently.
+      const keys = frozenMapKeys(id);
+      const ewidencyjna = await storage.get(keys.ewidencyjna);
+      const orto = await storage.get(keys.orto);
       if (Buffer.isBuffer(ewidencyjna) && Buffer.isBuffer(orto)) {
         maps = { ewidencyjna, orto };
       }

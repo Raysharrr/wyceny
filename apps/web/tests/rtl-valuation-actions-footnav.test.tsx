@@ -35,7 +35,7 @@ describe("ValuationActions — step 7 FootNav (Task 6)", () => {
     render(<ValuationActions {...baseProps} wr={500000} />);
     const approveButton = screen.getByTestId("approve-button");
     expect(approveButton).toBeInTheDocument();
-    expect(approveButton).toHaveAccessibleName(/zatwierdź operat/i);
+    expect(approveButton).toHaveAccessibleName(/zatwierdź i generuj operat/i);
     const backLink = screen.getByRole("link", { name: /wstecz/i });
     expect(backLink).toHaveAttribute("href", "?step=6");
     expect(screen.getByText(wrTextRegex, { selector: "b" })).toBeInTheDocument();
@@ -48,17 +48,30 @@ describe("ValuationActions — step 7 FootNav (Task 6)", () => {
     expect(screen.queryByText(wrTextRegex, { selector: "b" })).not.toBeInTheDocument();
   });
 
-  it("shows the existing WR blocker hint in mid when wr is null", () => {
+  /**
+   * T12: the bar's middle slot carries STATE — a stable label whose VALUE
+   * changes, never an instruction. It used to carry the WR blocker's whole
+   * sentence, which is the one thing the bar is not for; that blocker is
+   * already on the list above, with a link to the step that clears it.
+   *
+   * The empty state is NAMED rather than a bare dash, and named with the word
+   * the parallel bottom-bar branch uses for the same state on step 5, so the
+   * two agree the moment they meet: a missing WR here means the calculation
+   * was never confirmed, which is a fact about this step, not a blank.
+   */
+  it("names the empty state in mid when wr is null, under the same label", () => {
     render(<ValuationActions {...baseProps} wr={null} />);
-    expect(
-      screen.getByText(/wartość rynkowa — kalkulacja niezatwierdzona \(krok 5\. kalkulacja\)/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText("niezatwierdzona", { selector: "b" })).toBeInTheDocument();
+    expect(screen.getByText(/Wartość rynkowa/)).toBeInTheDocument();
+    // The label stays; only the value moves. And the blocker's instruction
+    // does not come back with it.
+    expect(screen.queryByText(/krok 5\. kalkulacja/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
   });
 
-  it("shows the existing WR blocker hint in mid when wr is omitted entirely (optional prop, advisor I2)", () => {
+  it("names it the same way when wr is omitted entirely (optional prop, advisor I2)", () => {
     render(<ValuationActions {...baseProps} />);
-    expect(
-      screen.getByText(/wartość rynkowa — kalkulacja niezatwierdzona \(krok 5\. kalkulacja\)/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText("niezatwierdzona", { selector: "b" })).toBeInTheDocument();
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
   });
 });

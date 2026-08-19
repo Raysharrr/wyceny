@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 
 afterEach(cleanup);
@@ -13,11 +14,23 @@ globalThis.ResizeObserver ??= class {
 vi.mock("@/app/actions/approve-valuation", () => ({ approveValuation: vi.fn() }));
 vi.mock("@/app/actions/sign-valuation", () => ({ signValuationAction: vi.fn() }));
 vi.mock("@/app/actions/create-new-version", () => ({ createNewVersionAction: vi.fn() }));
+vi.mock("@/app/actions/preview-operat", () => ({ previewOperat: vi.fn() }));
 
 import { StepOperat } from "@/app/valuations/[id]/steps/step-operat";
+import { previewOperat } from "@/app/actions/preview-operat";
 import type { ProseSnapshot } from "@/domain/prose-snapshot";
 import type { Valuation } from "@/ports/valuation";
 import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
+
+/** What the action hands back: the blob key is stable, so the version is the
+ * only thing distinguishing this render from the one it overwrote. */
+const PREVIEW_URL = "/api/podglad/valuation-step7-1?v=0123456789abcdef";
+const preview = vi.mocked(previewOperat);
+
+beforeEach(() => {
+  preview.mockReset();
+  preview.mockResolvedValue({ url: PREVIEW_URL });
+});
 
 /**
  * Step 7 ("Operat") renders the blocker list the approve action enforces.
@@ -43,6 +56,7 @@ const draft = (prose: ProseSnapshot | null): Valuation => ({
   approvedAt: null,
   signedAt: null,
   supersedesId: null,
+  mapsFrozenFor: null,
   createdAt: new Date("2026-07-01T00:00:00.000Z"),
 });
 
@@ -57,7 +71,7 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
     expect(screen.getByTestId("gate-blockers")).toHaveTextContent(
       "Opisy sekcji nie zostały wygenerowane.",
     );
-    expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeDisabled();
   });
 
   it("names the section the appraiser has not accepted yet", () => {
@@ -86,7 +100,7 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
       "Uzasadnienie wyniku — pozycja na tle próby — dane się zmieniły, przejrzyj ponownie.",
     );
     expect(blockers).not.toHaveTextContent("Analiza i charakterystyka rynku");
-    expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeDisabled();
   });
 
   it("names the first section as stale when the snapshot predates per-section fingerprints", () => {
@@ -100,22 +114,26 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
     expect(screen.getByTestId("gate-blockers")).toHaveTextContent(
       "Analiza i charakterystyka rynku — dane się zmieniły, przejrzyj ponownie.",
     );
-    expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeDisabled();
   });
 
-  it("shows no blockers once all six sections are confirmed", () => {
+  it("shows no blockers once all six sections are confirmed", async () => {
     render(<StepOperat valuation={draft(currentProse())} />);
 
     expect(screen.queryByTestId("gate-blockers")).toBeNull();
-    expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeEnabled();
+    // No blockers means the preview renders by itself — awaited so the
+    // resolving action settles inside the test rather than after it.
+    await screen.findByTitle("Podgląd operatu (PDF)");
   });
 
-  it("NEXT_PUBLIC_PROSE=off: the same prose-less draft shows no blockers at all", () => {
+  it("NEXT_PUBLIC_PROSE=off: the same prose-less draft shows no blockers at all", async () => {
     vi.stubEnv("NEXT_PUBLIC_PROSE", "off");
     render(<StepOperat valuation={draft(null)} />);
 
     expect(screen.queryByTestId("gate-blockers")).toBeNull();
-    expect(screen.getByRole("button", { name: /Zatwierdź operat/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeEnabled();
+    await screen.findByTitle("Podgląd operatu (PDF)");
     vi.unstubAllEnvs();
   });
 });
@@ -212,5 +230,101 @@ describe("StepOperat — no bulk confirmation, only links back (Task 8)", () => 
       "href",
       expect.stringContaining("step=6"),
     );
+  });
+});
+
+/**
+ * T10: step 7 stops describing the operat and starts showing it. Three states
+ * (spec §C): **braki** — blockers plus an explicit "preview anyway"; **gotowe**
+ * — the render happens by itself and the reader is embedded; **wydany** — as
+ * today, and unreachable from here (page.tsx routes a non-draft to the flat
+ * view, which embeds `docUrl`).
+ */
+describe("StepOperat — the document on the screen (Task 10)", () => {
+  it("with blockers: no automatic render, an explicit button instead", () => {
+    render(<StepOperat valuation={draft(null)} />);
+
+    expect(previewOperat).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Pokaż podgląd mimo braków" })).toBeEnabled();
+    expect(screen.queryByTitle("Podgląd operatu (PDF)")).toBeNull();
+  });
+
+  it("with blockers: the preview stays a preview — issuing is still refused", async () => {
+    render(<StepOperat valuation={draft(null)} />);
+    await userEvent.click(screen.getByRole("button", { name: "Pokaż podgląd mimo braków" }));
+
+    await screen.findByTitle("Podgląd operatu (PDF)");
+    expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeDisabled();
+  });
+
+  it("without blockers: renders by itself and embeds the reader without its chrome", async () => {
+    render(<StepOperat valuation={draft(currentProse())} />);
+
+    const frame = await screen.findByTitle("Podgląd operatu (PDF)");
+    expect(frame).toHaveAttribute("src", expect.stringContaining("#toolbar=0&navpanes=0"));
+  });
+
+  it("embeds the URL the action returned, version and all", async () => {
+    // The blob key is stable and every render overwrites it, so the version
+    // the action computed from the bytes is the only thing that stops the
+    // reader re-serving the render the appraiser just replaced. Rebuilding
+    // the URL from the id would drop it.
+    render(<StepOperat valuation={draft(currentProse())} />);
+
+    const frame = await screen.findByTitle("Podgląd operatu (PDF)");
+    expect(frame).toHaveAttribute("src", `${PREVIEW_URL}#toolbar=0&navpanes=0`);
+    expect(preview.mock.calls[0][0]).toBe("valuation-step7-1");
+  });
+
+  it("offers the without-maps path on the preview, and only on an explicit click", async () => {
+    // Spec §C: the "bez map" path moves from issuing onto the preview. It is
+    // never automatic — `skipMaps` lifts the map freeze and deletes the bytes.
+    preview.mockResolvedValueOnce({
+      error: "Nie udało się pobrać map do operatu — WMS nie odpowiada.",
+      mapsUnavailable: true,
+    });
+    render(<StepOperat valuation={draft(currentProse())} />);
+
+    const skip = await screen.findByRole("button", { name: "Pokaż podgląd bez map" });
+    expect(preview).toHaveBeenCalledTimes(1);
+    expect(preview).not.toHaveBeenCalledWith("valuation-step7-1", { skipMaps: true });
+
+    await userEvent.click(skip);
+    expect(preview).toHaveBeenCalledWith("valuation-step7-1", { skipMaps: true });
+    await screen.findByTitle("Podgląd operatu (PDF)");
+  });
+
+  it("says why there is nothing to look at when the render fails", async () => {
+    preview.mockResolvedValueOnce({
+      error: "Brak danych wejściowych operatu — nie ma czego pokazać.",
+    });
+    render(<StepOperat valuation={draft(currentProse())} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Brak danych wejściowych operatu — nie ma czego pokazać.",
+    );
+    expect(screen.queryByTitle("Podgląd operatu (PDF)")).toBeNull();
+  });
+});
+
+describe("StepOperat — what is on screen is the current render (fix round 1)", () => {
+  it("a failed re-render clears the document instead of leaving the previous one up", async () => {
+    // Reachable only in braki, which is the only state with a control that
+    // starts a second build. Leaving the first render above a red alert would
+    // show the appraiser a document that no longer corresponds to the draft —
+    // the exact failure class this slice exists to remove.
+    render(<StepOperat valuation={draft(null)} />);
+    await userEvent.click(screen.getByRole("button", { name: "Pokaż podgląd mimo braków" }));
+    await screen.findByTitle("Podgląd operatu (PDF)");
+
+    preview.mockResolvedValueOnce({
+      error: "Nie udało się złożyć podglądu operatu — sprawdź dane wyceny i spróbuj ponownie.",
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Pokaż podgląd mimo braków" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Nie udało się złożyć podglądu operatu",
+    );
+    expect(screen.queryByTitle("Podgląd operatu (PDF)")).toBeNull();
   });
 });

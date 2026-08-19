@@ -3,7 +3,11 @@ import PizZip from "pizzip";
 import { computeKcs, type KcsInput } from "../src/domain/kcs";
 import { buildDocumentModel } from "../src/domain/document-model";
 import { renderOperatDocx } from "../src/adapters/docx-render";
-import { PROSE_SECTIONS, type ProseSnapshot } from "../src/domain/prose-snapshot";
+import {
+  PROSE_SECTIONS,
+  PROSE_SECTION_LABEL,
+  type ProseSnapshot,
+} from "../src/domain/prose-snapshot";
 import { goldenInputs, syntheticDocumentInput } from "./fixtures/document-model-fixture";
 import { confirmedProse } from "./fixtures/valuation-inputs";
 
@@ -216,5 +220,76 @@ describe("T8: honest silence when the draft carries no prose", () => {
 
   it("still prints the honest no-map variant (the one 'zostanie uzupełniona' that stays)", () => {
     expect(renderText(bare)).toContain("Dokumentacja kartograficzna zostanie uzupełniona.");
+  });
+});
+
+describe("T11: the preview marks what is missing; the issued operat stays silent", () => {
+  const bare = syntheticDocumentInput();
+  const previewNoProse = docText(renderOperatDocx(buildDocumentModel(bare, { preview: true })));
+  const issuedNoProse = docText(renderOperatDocx(buildDocumentModel(bare)));
+
+  it("preview marks a missing section; the issued operat stays silent about it", () => {
+    expect(previewNoProse).toContain("[PODGLĄD: BRAK TREŚCI] Analiza i charakterystyka rynku —");
+    expect(issuedNoProse).not.toContain("[PODGLĄD: BRAK TREŚCI]");
+    expect(issuedNoProse).not.toContain("w wydanym operacie to miejsce pozostanie puste");
+  });
+
+  // The token LEADS, before the section name (fix round 1). Two renderings
+  // proved the reason: under §8.1 the marker continues a true sentence in the
+  // same paragraph and the same style, and under §11 it restated the heading
+  // directly above it — which is exactly what a generated section's opening
+  // sentence does. A bracketed token in front of the label is what stops both.
+  // The assertion pins that adjacency, not just the presence of the words.
+  it("marks all six sections — token first, then the section's own heading", () => {
+    for (const section of PROSE_SECTIONS) {
+      expect(previewNoProse, section).toContain(
+        `[PODGLĄD: BRAK TREŚCI] ${PROSE_SECTION_LABEL[section]} —`,
+      );
+    }
+    expect(previewNoProse).toContain(
+      "sekcja nie została uzupełniona w kroku 6. Opisy; w wydanym operacie to miejsce pozostanie puste.",
+    );
+  });
+
+  it("flips the {#ma_proza_*} wraps open, so a marked section is actually printed", () => {
+    const model = buildDocumentModel(bare, { preview: true });
+
+    expect(model.ma_proza_analiza_rynku).toBe(true);
+    expect(model.ma_proza_opis_lokalu).toBe(true);
+    expect(model.ma_proza_standard).toBe(true);
+    expect(model.ma_proza_uzasadnienie).toBe(true);
+    // ...and the §8.3 heading the wrap carries comes back with them.
+    expect(previewNoProse).toContain("Opis lokalu mieszkalnego");
+  });
+
+  it("marks ONLY what is missing — a section the appraiser wrote prints its own text", () => {
+    const prose = proseWith({ standard: undefined });
+    const preview = docText(
+      renderOperatDocx(
+        buildDocumentModel({ ...bare, inputs: { ...goldenInputs(), prose } }, { preview: true }),
+      ),
+    );
+
+    expect(preview).toContain(`[PODGLĄD: BRAK TREŚCI] ${PROSE_SECTION_LABEL.standard} —`);
+    for (const section of PROSE_SECTIONS) {
+      if (section === "standard") continue;
+      expect(preview, section).not.toContain(
+        `[PODGLĄD: BRAK TREŚCI] ${PROSE_SECTION_LABEL[section]} —`,
+      );
+      expect(preview, section).toContain(prose.sections[section]!.value);
+    }
+  });
+
+  // The §1 Wyciąg cell states the area through an INVERTED wrap
+  // ({^ma_proza_opis_lokalu}), so opening that wrap silences it. Marking the
+  // section must not cost the preview a true sentence the issued operat does
+  // print — that would be a third difference, and one pointing the wrong way.
+  it("the §1 summary still states the area in a prose-less preview", () => {
+    // Twice, exactly as an operat with real prose reads: the generated
+    // `opis_lokalu` opens with this very sentence, and the tag stands in both
+    // the Wyciąg cell and the §8.3 body.
+    const fallback = "Lokal mieszkalny o powierzchni użytkowej 48,20 m2.";
+
+    expect(previewNoProse.split(fallback)).toHaveLength(3);
   });
 });

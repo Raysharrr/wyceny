@@ -39,6 +39,13 @@ export type Valuation = {
   approvedAt: Date | null;
   signedAt: Date | null;
   supersedesId: string | null;
+  /**
+   * The address the frozen §8.1 maps were fetched FOR; NULL = none frozen
+   * (Slice 14). Never compare it to anything but the valuation's CURRENT
+   * address — `mapsFrozenForCurrentAddress` (domain/valuation.ts) is the one
+   * place that comparison lives.
+   */
+  mapsFrozenFor: string | null;
   createdAt: Date;
 };
 
@@ -189,6 +196,21 @@ export interface PortValuation {
    */
   confirmCalculation(id: string, user: SessionUser): Promise<Valuation | null>;
   /**
+   * Records WHICH address the §8.1 maps currently frozen in `PortStorage`
+   * were fetched for — `null` lifts the freeze (Slice 14, Task 9). Draft-only
+   * and owner-only, same null/throw contract as `updateInspection`.
+   *
+   * Deliberately writes NO audit row, unlike every other mutation here. The
+   * audit trail records acts the appraiser answers for — confirmations,
+   * approval, signature — and this is not one: it is a cache marker for an
+   * external fetch, written by a preview the appraiser may repeat a dozen
+   * times while editing. A row per preview would bury the acts that matter
+   * in an append-only trail that cannot be pruned. What the issued document
+   * actually carries is audited where it is decided, on the `approved` row
+   * (`mapsSkipped`).
+   */
+  freezeMaps(id: string, user: SessionUser, address: string | null): Promise<Valuation | null>;
+  /**
    * Approves a draft — re-runs the F-4 gate AND the document-field check
    * server-side (never trusts the client). Same null/throw contract as
    * confirmSample; additionally throws ApprovalBlockedError when either the
@@ -200,6 +222,11 @@ export interface PortValuation {
    * `audit.mapsSkipped` records the user's conscious "approve without maps"
    * choice on the audit row's `meta` (Slice 9) — never set when the maps
    * were simply unavailable or the kill switch (MAPS_FETCH=off) is on.
+   * `audit.mapsFrozenFor` is its counterpart when maps WERE embedded: the
+   * address they were fetched for (Slice 14). The maps are derived from the
+   * address, so this row is the only lasting record of which address the ones
+   * inside the issued document came from — evidence, and exactly one row per
+   * issue, unlike the freeze marker every preview rewrites.
    * `expectedInputs` is the inputs snapshot the caller rendered the document
    * from — when provided, the adapter throws `InputsChangedError` if the
    * row's inputs no longer serialize identically, closing the multi-second
@@ -214,7 +241,7 @@ export interface PortValuation {
     user: SessionUser,
     docs?: { docUrl: string; docxUrl: string },
     now?: Date,
-    audit?: { mapsSkipped?: boolean },
+    audit?: { mapsSkipped?: boolean; mapsFrozenFor?: string },
     expectedInputs?: KcsInput | null,
     gate?: GateOptions,
   ): Promise<Valuation | null>;

@@ -353,6 +353,30 @@ describe("audit_log per mutation", () => {
     expect(rows.at(-1)!.meta).toMatchObject({ docUrl: "/api/docs/a.pdf" });
   });
 
+  it("approve records WHICH address the embedded maps were fetched for", async () => {
+    // Evidence, not decoration: the maps in an issued operat are derived from
+    // the address (geocoder -> parcel -> bbox -> WMS), and this row is the only
+    // record of which address the ones actually embedded came from. Exactly one
+    // row per issue, unlike the freeze marker itself, which every preview
+    // rewrites and which therefore stays out of the trail.
+    const base = approvableInput(owner.id);
+    const v = await repo.create({
+      ...base,
+      inputs: withConfirmedProse(base.address, base.inputs!),
+    });
+
+    await repo.approve(
+      v.id,
+      owner,
+      { docUrl: "/api/docs/m.pdf", docxUrl: "/api/docs/m.docx" },
+      undefined,
+      { mapsFrozenFor: base.address },
+    );
+
+    const rows = await auditRows(v.id);
+    expect(rows.at(-1)!.meta).toMatchObject({ mapsFrozenFor: base.address });
+  });
+
   it("a failed mutation writes NO audit row (same transaction)", async () => {
     const v = await repo.create({
       address: "Audit fail",

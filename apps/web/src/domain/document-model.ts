@@ -1,5 +1,5 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
-import type { ProseSection } from "./prose-snapshot";
+import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 
 /**
@@ -54,6 +54,51 @@ const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 
 /** `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych na podstawie: …"). */
 const KW_ZRODLO_TEXT = { akt: "akt notarialny", odpis_kw: "odpis księgi wieczystej" } as const;
+
+/**
+ * The §1 Wyciąg cell's own area sentence — the template prints it through an
+ * INVERTED wrap ({^ma_proza_opis_lokalu}), i.e. only while `opis_lokalu` is
+ * empty, because the generated description opens with this very sentence and
+ * would otherwise state the area twice. Kept here character-for-character
+ * identical to the template's copy: `previewMarker` has to reproduce it when
+ * it opens that wrap (see `buildDocumentModel`).
+ */
+function lokalAreaSentence(area: number): string {
+  return `Lokal mieszkalny o powierzchni użytkowej ${formatNumber(area, 2)} m2.`;
+}
+
+/**
+ * PREVIEW ONLY — the marker a section the appraiser has not written yet gets
+ * in the on-screen preview (spec §C: preview and issued operat differ by the
+ * date and by these markers, and by nothing else). The issued document says
+ * nothing about such a section, exactly as before.
+ *
+ * THE TOKEN LEADS, before the section's name. It has to: the marker prints in
+ * the section's own body style, and the first rendering showed the two ways
+ * that let it pass for content — under §8.1 it continued a true sentence
+ * inside the same paragraph ("…pod adresem: {adres}. Charakterystyka…"), and
+ * under §11 it restated the heading standing directly above it, which is
+ * precisely what a generated section's opening sentence does. A bracketed
+ * token in front stops both readings before the eye reaches the label.
+ * Styling it instead would mean editing the template — F-12, another repo.
+ *
+ * "PODGLĄD" rather than "brak treści" alone, because the one thing the reader
+ * must not doubt is that this line belongs to the preview and to no issued
+ * operat. Polish, because the appraiser reads it; it names the section, and it
+ * says why the space is empty rather than only that it is — the useful fact is
+ * that the section is theirs to fill in on step 6.
+ *
+ * The closing clause is deliberately neutral about WHAT disappears — for
+ * `otoczenie` and `zagospodarowanie` the surrounding paragraph keeps its
+ * address sentence, so "the section will not appear at all" would be false.
+ */
+function previewMarker(section: ProseSection): string {
+  return (
+    `[PODGLĄD: BRAK TREŚCI] ${PROSE_SECTION_LABEL[section]} ${DASH} ` +
+    "sekcja nie została uzupełniona w kroku 6. Opisy; " +
+    "w wydanym operacie to miejsce pozostanie puste."
+  );
+}
 
 /** `1044400` → `"1 044 400,00"` (NBSP thousands separator — matches the source operat). */
 export function formatPln(value: number): string {
@@ -238,6 +283,10 @@ export type DocumentModel = {
   // §13 justification. The text is the appraiser's, verbatim — the document
   // never substitutes a sentence of its own for a section they left empty
   // (stubs are exactly what this slice removed), so an absent section is "".
+  //
+  // …in the ISSUED document. Under `opts.preview` an absent section carries
+  // `previewMarker(section)` instead, so the appraiser reading the preview
+  // sees what is still missing (spec §C).
   proza_analiza_rynku: string;
   proza_otoczenie: string;
   proza_zagospodarowanie: string;
@@ -252,6 +301,11 @@ export type DocumentModel = {
   //
   // With the F-4 prose gate on (T7) an approved valuation always carries all
   // six; these flags are what an unapproved/legacy/kill-switched draft needs.
+  //
+  // Derived from the RESULTING text, not from the snapshot — which is what
+  // makes a preview marker visible: the marker fills the section, so its wrap
+  // opens and the block prints, with no second code path and no template
+  // change.
   ma_proza_analiza_rynku: boolean;
   ma_proza_opis_lokalu: boolean;
   ma_proza_standard: boolean;
@@ -296,7 +350,21 @@ export type BuildDocumentInput = {
   amountInWords: string;
 };
 
-export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
+/**
+ * `opts.preview` builds the STEP-7 PREVIEW rather than the document that gets
+ * issued: every prose section the appraiser has not written yet is marked
+ * (`previewMarker`) instead of being passed over in silence. That, plus the
+ * caller's `approvedAt` (today for a preview, the issue date for the real
+ * thing), is the whole difference between the two renders — spec §C.
+ *
+ * The default is the ISSUED document, and only `previewOperat` passes the
+ * flag. Approve and sign call this with one argument, so a marker cannot
+ * reach a document that carries a signature.
+ */
+export function buildDocumentModel(
+  input: BuildDocumentInput,
+  opts?: { preview?: boolean },
+): DocumentModel {
   const { kcs, inputs } = input;
   const city = cityFromAddress(input.address);
   const subject = inputs.subject ?? null;
@@ -312,8 +380,23 @@ export function buildDocumentModel(input: BuildDocumentInput): DocumentModel {
   // appraiser cleared, but a legacy or half-written snapshot (no gate when the
   // kill-switch is off) can still carry whitespace, and a paragraph of spaces
   // under a heading is the same lie as a stub.
-  const proseText = (section: ProseSection): string =>
-    (inputs.prose?.sections[section]?.value ?? "").trim();
+  const proseText = (section: ProseSection): string => {
+    const written = (inputs.prose?.sections[section]?.value ?? "").trim();
+    if (written !== "" || opts?.preview !== true) return written;
+    // The §8.3 description is the one section whose absence the template
+    // ALREADY says something about: its {^ma_proza_opis_lokalu} inverted wrap
+    // states the flat's area in the §1 Wyciąg cell while no description
+    // stands there. Marking the section opens the wrap and silences that
+    // sentence — so the marker carries it, and the preview keeps stating a
+    // fact the issued operat states too. Anything less would be a THIRD
+    // difference between the two renders, and one pointing the wrong way:
+    // the preview would tell the appraiser less than the document they sign.
+    // The area sentence comes FIRST and unchanged; the marker leads its own
+    // text, not the whole cell.
+    return section === "opis_lokalu"
+      ? `${lokalAreaSentence(input.area)} ${previewMarker(section)}`
+      : previewMarker(section);
+  };
   const proza: Record<ProseSection, string> = {
     analiza_rynku: proseText("analiza_rynku"),
     opis_lokalu: proseText("opis_lokalu"),

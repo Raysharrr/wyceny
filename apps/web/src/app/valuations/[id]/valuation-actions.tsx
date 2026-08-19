@@ -7,11 +7,8 @@ import { FootNav } from "@/components/wizard/foot-nav";
 import { approveValuation, type ApproveValuationResult } from "@/app/actions/approve-valuation";
 import { signValuationAction } from "@/app/actions/sign-valuation";
 import { createNewVersionAction } from "@/app/actions/create-new-version";
+import { usePreviewMaps } from "./steps/preview-maps-state";
 import { currencyFormatter } from "./cards";
-
-/** Mirrors the WR blocker label in documentFieldBlockers (document-model.ts) — shown
- * in the FootNav mid slot when `wr` isn't confirmed yet, instead of a formatted amount. */
-const WR_BLOCKER_HINT = "Wartość rynkowa — kalkulacja niezatwierdzona (krok 5. Kalkulacja).";
 
 /**
  * Owner-only action bar, mounted for the owner across all statuses.
@@ -49,13 +46,16 @@ export function ValuationActions({
   canCreateNewVersion: boolean;
   /** Optional: ValuationActions also mounts on the flat view
    * (page.tsx), whose call site doesn't pass it — `undefined` and `null`
-   * both fall back to the WR blocker hint in the FootNav mid slot. */
+   * both fall back to "—" in the FootNav mid slot. */
   wr?: number | null;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [approveResult, setApproveResult] = useState<ApproveValuationResult>(undefined);
   const [isPending, startTransition] = useTransition();
   const wrFormatted = wr != null ? currencyFormatter.format(wr) : null;
+  // Task 12: the issue embeds maps if — and only if — the preview on screen
+  // has them. Outside step 7 there is no reader and this is always false.
+  const { previewWithoutMaps } = usePreviewMaps();
 
   const run = (action: (id: string) => Promise<{ error: string } | undefined>) => {
     setError(null);
@@ -73,9 +73,12 @@ export function ValuationActions({
   // inline retry/skip-maps block instead of the plain error paragraph. Since
   // T8 it may also carry the full blocker list, which renders as a linked
   // list instead. Everything else still falls through to the plain paragraph.
-  const handleApprove = (opts?: { skipMaps?: boolean }) => {
+  const handleApprove = () => {
     setError(null);
     setApproveResult(undefined);
+    // The appraiser made this choice once, on the reader below, and it is the
+    // reader that knows which document they ended up looking at.
+    const opts = previewWithoutMaps ? { skipMaps: true } : undefined;
     startTransition(async () => {
       const result = await approveValuation(id, opts);
       if (result?.error) {
@@ -115,25 +118,22 @@ export function ValuationActions({
       {approveResult?.blockers?.length ? (
         <BlockerList blockers={approveResult.blockers} testId="approve-blockers" role="alert" />
       ) : null}
+      {/* Task 12: the second button here — the one that used to issue an
+          operat without maps — is gone (spec §C). The issue
+          no longer decides about maps — it reuses what the preview froze, and
+          reaches Geoportal only when there is nothing to reuse, which is the
+          one way this message still appears. The way out is a click below, on
+          the document itself, not another way to issue one unseen. */}
       {approveResult?.mapsUnavailable ? (
         <div data-testid="maps-fallback" className="flex flex-wrap items-center gap-2">
           <p className="text-sm text-amber-600">⚠ {approveResult.error}</p>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isPending}
-            onClick={() => handleApprove()}
-          >
+          <Button type="button" variant="outline" disabled={isPending} onClick={handleApprove}>
             Spróbuj ponownie
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isPending}
-            onClick={() => handleApprove({ skipMaps: true })}
-          >
-            Zatwierdź bez map
-          </Button>
+          <p className="text-sm text-muted-foreground">
+            Albo złóż podgląd bez map w karcie „Podgląd operatu” — zatwierdzenie wyda wtedy
+            dokładnie ten dokument.
+          </p>
         </div>
       ) : null}
       {error ? (
@@ -147,23 +147,29 @@ export function ValuationActions({
       {canApprove ? (
         <FootNav
           back={{ href: "?step=6", label: "Wstecz" }}
+          // The bar's middle slot carries STATE — a stable label whose value
+          // changes, never an instruction. This one used to spell out the WR
+          // blocker, which is already on the list above it, with a link to
+          // the step that clears it.
+          //
+          // The empty state is NAMED, and named with the word the parallel
+          // bottom-bar branch gives the same state on step 5: a missing WR
+          // here is not an absence of information, it is the information —
+          // the calculation was never confirmed.
           mid={
-            wrFormatted ? (
-              <span>
-                Wartość rynkowa <b className="num">{wrFormatted}</b>
-              </span>
-            ) : (
-              WR_BLOCKER_HINT
-            )
+            <span>
+              Wartość rynkowa{" "}
+              {wrFormatted ? <b className="num">{wrFormatted}</b> : <b>niezatwierdzona</b>}
+            </span>
           }
         >
           <Button
             type="button"
             data-testid="approve-button"
             disabled={isPending || !gateOk}
-            onClick={() => handleApprove()}
+            onClick={handleApprove}
           >
-            {isPending ? "Zatwierdzanie…" : "Zatwierdź operat"}
+            {isPending ? "Zatwierdzanie…" : "Zatwierdź i generuj operat"}
           </Button>
         </FootNav>
       ) : null}
