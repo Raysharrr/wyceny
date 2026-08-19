@@ -239,8 +239,18 @@ export function pickAllowed(input: Record<string, unknown>): Record<string, unkn
   return out;
 }
 
-// eslint-disable-next-line no-console -- this module IS the sanctioned console.
-const pinoLogger = pino({ base: undefined });
+/**
+ * `sync: true` is load-bearing, not a preference. Vercel functions run on AWS
+ * Lambda, and pino's own docs warn that asynchronous logging there yields
+ * "delayed or lost log messages, as logs may not be written to the
+ * destination before the runtime is frozen". The freeze happens right after
+ * the response — i.e. right after we log a failure. Spike finding, 2026-08-19:
+ * a local run never shows it, because a local process does not freeze.
+ *
+ * `base: undefined` drops pid/hostname: noise on serverless, where both are
+ * meaningless.
+ */
+const pinoLogger = pino({ base: undefined }, pino.destination({ sync: true }));
 
 export const log = {
   info: (fields: LogFields) => pinoLogger.info(pickAllowed(fields)),

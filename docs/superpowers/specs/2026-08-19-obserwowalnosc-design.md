@@ -36,6 +36,38 @@ w nowej tabeli `event_log` — świadomie osobnej od `audit_log`, który zostaje
 dziennikiem prawnym. Wpisy przechodzą przez allowlistę pól, więc dane osobowe nie mogą
 do nich trafić przez przeoczenie, a propozycje AI zapisujemy jako skróty, nie treść.
 
+## Wynik spike'a (2026-08-19) — PASS z jedną poprawką designu
+
+Zweryfikowane empirycznie na **produkcyjnym buildzie** (`next build` + `next start`,
+worker z worktree na porcie 8001):
+
+| Kryterium                      | Wynik                                                                |
+| ------------------------------ | -------------------------------------------------------------------- |
+| build bez ostrzeżeń bundlera   | **PASS** — `serverExternalPackages` okazało się niepotrzebne         |
+| JSON z pino na wyjściu         | **PASS** — `{"level":30,"event":"spike.start","traceId":"7181afe4"}` |
+| ten sam traceId w logu workera | **PASS** — `SPIKE health x-request-id=7181afe4`                      |
+
+ALS przeżył `await` oraz zagnieżdżone wywołanie, któremu identyfikatora nigdy nie podano —
+czyli założenie, na którym stoi rezygnacja z przepychania traceId przez pięć interfejsów
+portów, jest potwierdzone.
+
+**Znalezisko zmieniające design:** domyślne pino loguje **asynchronicznie**, a jego własna
+dokumentacja (`docs/asynchronous.md`) ostrzega, że na AWS Lambda kończy się to opóźnionymi
+albo **zgubionymi** wpisami, bo runtime zamarza, zanim bufor trafi na wyjście. Funkcje
+Vercela to Lambda, a moment zamarznięcia wypada tuż po odpowiedzi — czyli dokładnie po
+zalogowaniu porażki. Nieskorygowane, gubiłoby to logi, dla których ten slice powstaje.
+**Logger musi używać `pino.destination({ sync: true })`** (Task 1). Lokalny test tego nie
+pokazuje — proces nie zamarza.
+
+**Odstępstwo od zarejestrowanego kryterium:** kryterium 2 brzmiało „wpis widoczny w logach
+**Vercela**". Wdrożenie preview z worktree nie doszło do skutku (link `.vercel` nie
+przenosi się między katalogami), więc potwierdzenie jest z produkcyjnego builda lokalnie,
+nie z Vercela. Ryzyko rezydualne (przechwytywanie stdout przez Vercel) jest znane i
+adresowane przez `sync: true`; domknięcie następuje przy pierwszym realnym wdrożeniu
+slice'a — Task 10, krok 5. Kryterium 3 celowo nie było odtwarzane na stagingu: wymagałoby
+wypchnięcia jednorazowego echa na współdzielony serwis `worker-v2`, a przekazanie nagłówka
+HTTP nie zależy od hostingu.
+
 ## Zakres (co wchodzi)
 
 1. **pino + wrapper z allowlistą** w web; reguła `no-console` w eslint poza modułem loggera.
