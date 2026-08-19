@@ -82,6 +82,20 @@ jobs:
       - name: F-10 — dependency rule (dependency-cruiser)
         run: pnpm depcruise
 
+      # The turbo step above already runs the lint and the test, so this does
+      # NOT re-run them for coverage — it asserts the one thing nothing else
+      # would notice: that the rule making the log wrapper mandatory is still
+      # configured. Delete `no-console` and every existing test still passes
+      # while a bare console.* can put an unfiltered payload into the log.
+      - name: F-13 — no PII in logs (the allowlist gate is still wired)
+        working-directory: apps/web
+        run: |
+          grep -q '"no-console": "error"' eslint.config.mjs || {
+            echo "F-13: no-console is gone from eslint.config.mjs — the log allowlist can be bypassed"
+            exit 1
+          }
+          pnpm vitest run tests/log.test.ts
+
       - name: Set up Python + uv
         uses: astral-sh/setup-uv@v8.2.0
         with:

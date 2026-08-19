@@ -1362,10 +1362,17 @@ Expected: FAIL — the message carries no code until Task 3's `errorWithCode` is
 - [ ] **Step 3: Wire F-13 into CI**
 
 ```yaml
-- name: F-13 — no PII in logs (allowlist + no bare console)
+- name: F-13 — no PII in logs (the allowlist gate is still wired)
   working-directory: apps/web
-  run: pnpm vitest run tests/log.test.ts && pnpm lint
+  run: |
+    grep -q '"no-console": "error"' eslint.config.mjs || {
+      echo "F-13: no-console is gone from eslint.config.mjs — the allowlist can be bypassed"
+      exit 1
+    }
+    pnpm vitest run tests/log.test.ts
 ```
+
+The turbo step already runs both the lint and the test, so repeating them buys nothing. What nothing else catches is the rule being **deleted**: remove `no-console` and every test still passes while a bare `console.*` can put an unfiltered payload into the log. F-13 therefore asserts the gate is still wired, not that it currently passes.
 
 - [ ] **Step 4: Run the full local gate**
 
