@@ -341,7 +341,7 @@ describe("SubjectForm — the cost of saving step 1 (Task 8 fix round 1)", () =>
 
     const warning = screen.getByTestId("step1-recalc-warning");
     expect(warning).toHaveTextContent(
-      "Zapis tego kroku kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie wyliczyć w kroku 5. Jeśli poprawisz przy tym adres, powierzchnię albo dane przedmiotu, trzeba będzie też ponownie zatwierdzić opisy w kroku 6 — sama zmiana zamawiającego, celu wyceny albo numeru księgi opisów nie rusza.",
+      "Zmiana powierzchni kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie wyliczyć w kroku 5. Poprawka adresu, powierzchni albo danych przedmiotu wymaga też ponownego zatwierdzenia opisów w kroku 6 — sama zmiana zamawiającego, celu wyceny albo numeru księgi nie rusza ani kwoty, ani opisów.",
     );
     // Above the FIRST FIELD, not merely above the submit button: that button
     // lives in a fixed bottom bar which is on screen at any scroll position,

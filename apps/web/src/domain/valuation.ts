@@ -534,6 +534,21 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
   const provenance = sameSubjectGroup(v.address, v.inputs, u)
     ? carryGroupStatuses(v.inputs.provenance, reassigned, SUBJECT_GROUP_KEYS)
     : reassigned;
+  // `wr` dies only when the number behind it can have moved. `computeKcs`
+  // reads exactly three things — `area`, `comparables`, `features` — and of
+  // those this step touches only `area`; address, purpose, client, KW number
+  // and the EGiB/MPZP snapshot are all display and document fields.
+  //
+  // Nulling it unconditionally was over-conservative in a way that had a
+  // price. The F-4 gate can demand a step-1 save for a reason that has
+  // nothing to do with the amount — a draft geocoded by the step-3 RCN fetch
+  // has to come back here for the `geocode` entry — and the appraiser then
+  // paid for that detour with their confirmed calculation, and with a prose
+  // regeneration on top when the facts hash moved with it. The step's own
+  // warning already tells the truth about the prose ("jeśli poprawisz przy
+  // tym adres, powierzchnię albo dane przedmiotu"); the amount now follows
+  // the same rule instead of always assuming the worst.
+  const areaMoved = v.inputs.area !== u.area;
   return {
     ...v,
     address: u.address,
@@ -541,7 +556,7 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
     purpose: u.purpose,
     kwNumber: u.kwNumber,
     client: u.client,
-    wr: null,
+    ...(areaMoved ? { wr: null } : {}),
     inputs: {
       ...v.inputs,
       area: u.area,

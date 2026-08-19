@@ -332,7 +332,13 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
             purpose: updated.purpose,
             kwNumber: updated.kwNumber,
             client: updated.client,
-            wr: null,
+            // `updated.wr`, NOT a hardcoded null: `applySubjectUpdate` decides
+            // whether the amount survives — it does when the area did not
+            // move, since nothing else this step writes reaches `computeKcs`
+            // — and a literal here would silently overrule that decision. The
+            // sibling saves below still null it outright, because they edit
+            // the sample and the features, which ARE two of those inputs.
+            wr: updated.wr,
           })
           .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
           .returning();
