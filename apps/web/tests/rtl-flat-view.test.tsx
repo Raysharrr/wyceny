@@ -77,4 +77,58 @@ describe("FlatView — approved valuation, PDF variant (Task 13)", () => {
     expect(screen.queryByTestId("approve-button")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /wstecz/i })).not.toBeInTheDocument();
   });
+
+  // The reader used to share a row with a sidebar, which cost it ~38% of the
+  // shell. Order is what encodes the fix — summary cards first, document
+  // after — and it is the one thing a CSS-blind renderer can still check.
+  it("puts the summary cards BEFORE the document, not beside it", () => {
+    render(<FlatView {...baseProps} />);
+
+    const wynik = screen.getByRole("heading", { name: "Wynik" });
+    const iframe = screen.getByTitle("Operat szacunkowy (PDF)");
+
+    expect(wynik.compareDocumentPosition(iframe) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("explains what signing does, next to the button that does it", () => {
+    render(<FlatView {...baseProps} />);
+
+    const explainer = screen.getByTestId("sign-explainer");
+    expect(explainer).toHaveTextContent("Podpisanie jest ostateczne.");
+    expect(explainer).toHaveTextContent("Utwórz nową wersję");
+
+    // Gone with the button: a valuation nobody may sign must not carry a
+    // warning about signing it.
+    cleanup();
+    render(<FlatView {...baseProps} canSign={false} />);
+    expect(screen.queryByTestId("sign-explainer")).not.toBeInTheDocument();
+  });
+});
+
+// The variant page.tsx routes an ADMIN to when they open someone else's
+// draft: no document exists yet, so the data cards ARE the page. They used to
+// live in the left column of the two-column grid; with that grid gone they
+// have to keep rendering from their new place.
+describe("FlatView — draft seen by a non-owner admin (no document)", () => {
+  const draftProps = {
+    ...baseProps,
+    valuation: { ...baseValuation, status: "in_progress", docUrl: null, docxUrl: null },
+    isOwner: false,
+    isDraft: true,
+    canSign: false,
+    hasAnyAction: false,
+    allBlockers: [{ path: "provenance.geocode", label: "Geokodowanie adresu — brak prowenancji." }],
+  } satisfies Parameters<typeof FlatView>[0];
+
+  it("renders the data cards and the blockers, and no reader", () => {
+    render(<FlatView {...draftProps} />);
+
+    expect(screen.queryByTitle("Operat szacunkowy (PDF)")).not.toBeInTheDocument();
+    expect(screen.getByTestId("gate-blockers")).toHaveTextContent(
+      "Geokodowanie adresu — brak prowenancji.",
+    );
+    expect(screen.getByRole("heading", { name: /Cechy/ })).toBeInTheDocument();
+    // Not the owner and nothing to do — no action card, so no sign explainer.
+    expect(screen.queryByTestId("sign-explainer")).not.toBeInTheDocument();
+  });
 });
