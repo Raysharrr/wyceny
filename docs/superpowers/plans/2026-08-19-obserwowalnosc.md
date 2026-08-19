@@ -288,7 +288,7 @@ Expected: PASS (4 tests)
 - [ ] **Step 6: Verify the rule bites**
 
 Run: `cd apps/web && pnpm lint`
-Expected: FAIL, listing the 21 existing `console.error` sites. That failure is the proof the rule works; Task 3 clears it.
+Expected: FAIL with **32** violations across 15 files. That failure is the proof the rule works; Task 3 clears the 30 server-side ones and exempts the 2 client-side ones.
 
 - [ ] **Step 7: Commit**
 
@@ -407,7 +407,12 @@ git commit -m "feat(web): one traceId per request, ambient through the async cha
 
 **Files:**
 
-- Modify: all 21 sites listed by `pnpm lint` after Task 1 — `apps/web/src/app/actions/*.ts` (confirm-sample, confirm-subject, confirm-prose, confirm-features, confirm-kw, propose-prose, save-signature, inspection ×4, sign-valuation ×3, approve-valuation ×2, wizard ×4) and `apps/web/src/app/valuations/[id]/steps/step-descriptions.tsx:177`
+- Modify: the **30 server-side sites** listed by `pnpm lint` after Task 1 — `approve-valuation.ts` ×5, `wizard.ts` ×4, `inspection.ts` ×4, `frozen-maps.ts` ×4, `sign-valuation.ts` ×3, `preview-operat.ts` ×3, and ×1 each in `save-signature.ts`, `propose-prose.ts`, `confirm-subject.ts`, `confirm-sample.ts`, `confirm-prose.ts`, `confirm-kw.ts`, `confirm-features.ts`
+
+**Two carve-outs, decided 2026-08-19 after the real count came in at 32, not 21:**
+
+- `src/app/valuations/[id]/steps/step-descriptions.tsx` and `operat-preview.tsx` are `"use client"`. Their `console.error` runs in the browser, where pino and `AsyncLocalStorage` do not exist and where nothing reaches our sinks. They are exempted in `eslint.config.mjs` and **left as they are** — their catch blocks record a request that never left the browser, which the server cannot observe by any other means.
+- `src/lib/frozen-maps.ts` is under `lib/`, which F-10 forbids from importing adapters. It therefore uses **`log` only — never `recordFailure`** (Task 7), which reaches for `_deps`. Its failures live in stdout, not `event_log`. Wiring it to the database would mean either breaking the dependency rule or threading a port through it, and neither is worth it for a map-freeze retry that already degrades gracefully.
 - Test: `apps/web/tests/action-error-code.test.ts`
 
 **Interfaces:**
@@ -493,7 +498,7 @@ export async function confirmSample(id: string): Promise<ConfirmSampleResult> {
 
 Note `redirect()` stays OUTSIDE the wrapper: Next implements it by throwing, and swallowing that throw inside a traced block would turn a redirect into a logged error.
 
-- [ ] **Step 5: Convert the remaining 20 sites the same way**
+- [ ] **Step 5: Convert the remaining 29 sites the same way**
 
 Each keeps its existing Polish message; only the log call and the `errorWithCode` wrapper are new. Event names follow `<action>.failed`.
 
