@@ -100,13 +100,19 @@ jobs:
         working-directory: apps/worker
         run: uv run ruff check . && uv run ruff format --check .
 
-      - name: Ensure LibreOffice + Carlito (F-12 conversion tests)
-        run: |
-          if ! command -v soffice >/dev/null; then sudo apt-get update && sudo apt-get install -y libreoffice-writer; fi
-          if ! fc-list | grep -qi carlito; then sudo apt-get install -y fonts-crosextra-carlito; fi
-          soffice --version
-
-      - name: Worker tests (F-5, F-11, F-12)
+      # NO LibreOffice here, on purpose. This job used to install ~400 MB from
+      # apt to serve ONE assertion — `test_convert_to_pdf_returns_pdf_bytes`
+      # checking that five bytes are `%PDF-`. The other conversion tests (400
+      # on an empty body, 502 on failure, SOFFICE env resolution) need no
+      # binary at all, and nothing anywhere asserts the Carlito font. On
+      # 2026-08-19 that download outlasted the whole job budget twice, killing
+      # runs whose every other step had passed.
+      #
+      # The conversion is NOT left unverified: the `e2e` job below runs the
+      # real worker through a real approval, which converts a real operat —
+      # a stronger check than this one, in the job that has to pay for
+      # LibreOffice anyway.
+      - name: Worker tests (F-5, F-11, F-12 — conversion covered by e2e)
         working-directory: apps/worker
         run: uv run pytest -q
 
