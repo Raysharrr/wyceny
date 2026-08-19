@@ -758,6 +758,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import { eventLogRepo } from "../src/adapters/event-log-drizzle";
+import { newTraceId } from "../src/lib/trace";
 
 const repo = eventLogRepo(db);
 
@@ -770,7 +771,7 @@ afterAll(async () => {
 
 describe("event_log", () => {
   it("records and reads back by trace", async () => {
-    const traceId = "aaaa1111";
+    const traceId = newTraceId(); // not a literal: nothing deletes here, so fixed ids accumulate across reruns
     await repo.record({ level: "error", event: "confirmSample.failed", traceId, actorId: "u1" });
     const rows = await repo.byTrace(traceId);
     expect(rows).toHaveLength(1);
@@ -779,7 +780,7 @@ describe("event_log", () => {
   });
 
   it("is ordered oldest-first, so a run reads as a timeline", async () => {
-    const traceId = "bbbb2222";
+    const traceId = newTraceId();
     await repo.record({ level: "info", event: "first", traceId });
     await repo.record({ level: "error", event: "second", traceId });
     expect((await repo.byTrace(traceId)).map((r) => r.event)).toEqual(["first", "second"]);
