@@ -69,12 +69,27 @@ export const log = {
 };
 
 /** Flattens an unknown thrown value into allowlisted fields. */
+/**
+ * Flattens an unknown thrown value into allowlisted fields.
+ *
+ * Truncation happens HERE, at the source, not only in `pickAllowed`.
+ * `recordFailure` copies this output straight into `event_log.meta`, and meta
+ * is jsonb — it does not pass through the allowlist. Capping only on the way
+ * to stdout left the database holding the full text, which is exactly where an
+ * external API echoing back an address we sent it would come to rest, and
+ * where a 5 kB stack trace would sit forever. `pickAllowed` still caps as
+ * well; two layers, because the cheap one is not the one that matters.
+ */
 export function errFields(error: unknown): Pick<LogFields, "errName" | "errMessage" | "errStack"> {
   // A failure with no throw behind it carries no error fields — better an
   // absent key than `errMessage: "undefined"` polluting the trail.
   if (error === undefined) return {};
   if (error instanceof Error) {
-    return { errName: error.name, errMessage: error.message, errStack: error.stack ?? "" };
+    return {
+      errName: error.name,
+      errMessage: error.message.slice(0, MAX_ERR_MESSAGE),
+      errStack: (error.stack ?? "").slice(0, MAX_ERR_STACK),
+    };
   }
-  return { errName: "NonError", errMessage: String(error) };
+  return { errName: "NonError", errMessage: String(error).slice(0, MAX_ERR_MESSAGE) };
 }
