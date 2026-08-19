@@ -53,7 +53,11 @@ describe("getSampleProposal", () => {
 
     const result = await getSampleProposal(validInput);
 
-    expect(result).toEqual({ error: detail });
+    // The worker's own Polish sentence is preserved verbatim; the trace code
+    // is appended so the appraiser can read it back (Slice: obserwowalność).
+    expect(result).toEqual({ error: expect.stringMatching(/^Za mało transakcji/) });
+    expect(result).toEqual({ error: expect.stringContaining(detail) });
+    expect(result).toEqual({ error: expect.stringMatching(/ \(kod: [0-9a-f]{8}\)$/) });
   });
 
   it("adapter throw with the status-text fallback -> generic Polish { error }", async () => {
@@ -64,8 +68,11 @@ describe("getSampleProposal", () => {
     const result = await getSampleProposal(validInput);
 
     expect(result).toEqual({
-      error: "Nie udało się pobrać próby z RCN — spróbuj ponownie albo wpisz transakcje ręcznie.",
+      error: expect.stringContaining(
+        "Nie udało się pobrać próby z RCN — spróbuj ponownie albo wpisz transakcje ręcznie.",
+      ),
     });
+    expect(result).toEqual({ error: expect.stringMatching(/ \(kod: [0-9a-f]{8}\)$/) });
   });
 
   it("rejects an empty address using the shared schema's rule, without calling the adapter", async () => {

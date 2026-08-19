@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
+import { recordFailure } from "@/app/actions/_record-failure";
+import { log } from "@/lib/log";
+import { errorWithCode, withTrace } from "@/lib/trace";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import {
   ApprovalBlockedError,
@@ -65,283 +68,312 @@ export async function approveValuation(
     redirect("/login");
   }
 
-  const valuation = await valuationRepository.get(id, session.user);
-  if (!valuation) {
-    return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
-  }
-
-  // Status guard BEFORE any generation work: re-invoking approve on an
-  // already-approved valuation must not regenerate (= overwrite) the stored
-  // operat files — they are a frozen artifact. Without this, the overwrite
-  // would happen and only then `assertDraft` inside repo.approve would fail.
-  if (valuation.status !== "in_progress") {
-    return { error: "Wycena jest już zatwierdzona." };
-  }
-
-  // FR-6: whether the operat's descriptive sections are part of the F-4
-  // invariant is a deployment decision (the NEXT_PUBLIC_PROSE kill switch),
-  // so the APP layer resolves it and hands the answer to the gate — both
-  // here and, through the repo, inside the write transaction (ADR-012).
-  // `domain/` reads no env (F-10). Unset means enabled, like every other
-  // NEXT_PUBLIC_* switch in this app.
-  const requireProse = proseEnabled();
-
-  // Fail fast with the first blocker before any expensive generation work.
-  if (valuation.inputs) {
-    const gate = approvalGate(valuation.inputs, {
-      requireProse,
-      // Lets the gate see the sections whose facts have since moved on (T6
-      // review, I-2; per section since T4). Derived here, never taken from
-      // the client.
-      currentSectionHashes: requireProse
-        ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
-        : undefined,
-    });
-    const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(valuation)];
-    if (blockers.length > 0) {
-      // `error` stays the one-line summary it has always been; `blockers`
-      // carries the rest, so the action bar can show them all with their steps.
-      return { error: `Zatwierdzenie zablokowane — ${blockers[0].label}`, blockers };
-    }
-  }
-
-  try {
-    if (!valuation.inputs) {
-      return { error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu." };
-    }
-    const now = new Date();
-    const kcs = computeKcs(valuation.inputs);
-    const amountInWords = await worker.amountInWords(kcs.wr);
-
-    // Slice 14 (Task 12): issuing REUSES the maps the appraiser just read.
-    // They are fetched and frozen by the step-7 preview, and the issue reads
-    // them back — so the document under the signature is the document that
-    // was on the screen, in the one part of the operat that comes from
-    // outside this application.
-    //
-    // The fetch is still here, and it is load-bearing rather than vestigial:
-    // the issue button sits on the same screen as the preview, so it can be
-    // clicked before the render that freezes them has finished, and a marker
-    // can outlive its bytes. Both cases mean "nothing to reuse", and the
-    // answer is to fetch — never to issue without maps, because map absence
-    // is never silent (Slice 9, spec decision 4).
-    //
-    // The maps and the address they depict travel together, so that no path
-    // can record one without the other: the audit row is the only lasting
-    // evidence of which parcel the images inside the issued document show.
-    //
-    // mapImages === null -> MAPS_FETCH=off (CI e2e): silent stub, NOT audited
-    // as a skip — only the user's conscious "without maps" is.
-    let embedded: { maps: RenderMaps; address: string } | null = null;
-    if (!opts?.skipMaps && mapImages) {
-      if (mapsFrozenForCurrentAddress(valuation) && valuation.mapsFrozenFor) {
-        const frozenMaps = await readFrozenMaps(storage, id, "approveValuation");
-        // The address comes off the MARKER, not the row. They are equal here
-        // by construction — that is what `mapsFrozenForCurrentAddress`
-        // compares — and taking it from the marker anyway is what keeps the
-        // claim and its evidence in one place: the row says which parcel the
-        // valuation is about, the marker says which parcel these bytes show.
-        if (frozenMaps) embedded = { maps: frozenMaps, address: valuation.mapsFrozenFor };
-      }
-      if (!embedded) {
-        const mapsResult = await mapImages.fetchMaps(valuation.address);
-        if (mapsResult.kind !== "ok") {
-          return {
-            error: `Nie udało się pobrać map do operatu — ${mapsResult.message}`,
-            mapsUnavailable: true,
-          };
-        }
-        embedded = { maps: mapsResult.maps, address: valuation.address };
-        const keys = frozenMapKeys(id);
-        await storage.put(keys.ewidencyjna, embedded.maps.ewidencyjna);
-        await storage.put(keys.orto, embedded.maps.orto);
-        // Slice 14: the marker moves WITH the bytes — bytes first, marker
-        // second, the order the preview freezes in. Writing one without the
-        // other needs no concurrency to go wrong: preview at address A,
-        // correct it to B, this fetch stores B's maps and then the issue
-        // fails (photos, conversion, the drift check), revert to A — and a
-        // marker still saying A hands the next reader B's parcel under A's
-        // address.
-        const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
-        if (!frozen) {
-          // The write did NOT happen, and `null` does not say why. Whether
-          // these bytes are ours to delete is decided by a fresh read
-          // (`dropMapBytesIfStillOurDraft`) — the loser of two concurrent
-          // approves would otherwise delete the WINNER's frozen bytes, and
-          // the winner's signature would go on a document without the §8.1
-          // maps its approved copy carries.
-          //
-          // The refusal, on the other hand, is unconditional. Whatever those
-          // keys hold, this issue cannot vouch for it, and nothing has been
-          // committed yet — so refusing costs a retry and no more. A `null`
-          // here also means `repo.approve` was going to fail anyway, for the
-          // same two reasons.
-          console.error(`approveValuation: could not record the map freeze on ${id} — refusing`);
-          await dropMapBytesIfStillOurDraft(
-            { storage, valuationRepository },
-            id,
-            session.user,
-            "approveValuation",
-          );
-          // The message promises no retry: `freezeMaps` returns null when the
-          // row is gone, when the caller is not its owner, or when it is no
-          // longer a draft — and none of those clears by trying again.
-          return {
-            error:
-              "Nie udało się zapisać stanu map operatu. Sprawdź, czy wycena jest nadal Twoim szkicem.",
-          };
-        }
-      }
-    }
-    const maps = embedded?.maps ?? null;
-
-    const model = buildDocumentModel({
-      address: valuation.address,
-      area: valuation.area,
-      purpose: valuation.purpose as OperatPurpose,
-      kwNumber: valuation.kwNumber ?? "",
-      client: valuation.client ?? "",
-      inspectionDate: valuation.inspectionDate ?? "",
-      approvedAt: now,
-      inputs: valuation.inputs,
-      kcs,
-      amountInWords,
-    });
-    // Keyed on "nothing embedded", never on "did not fetch". Today the two
-    // coincide — every branch that produces maps sets `embedded` — but only
-    // the first stays correct if a third way of obtaining them is ever added,
-    // and the failure it guards against is not recoverable: this arm reached
-    // after a REUSE would delete the very bytes the document was rendered
-    // from, and `signValuationAction` re-renders from those keys and reads
-    // their absence as "approved without maps", silently. The office would
-    // then hold an illustrated operat and send out an unillustrated signed
-    // one. (Pinned by "reuse touches neither the bytes nor the marker";
-    // verified by mutating this condition to fire on the reuse path.)
-    //
-    // A PRIOR failed approve attempt (e.g. a PDF conversion crash) may have
-    // left these keys behind; uncleaned, sign would find and embed maps this
-    // approved document does not have. delete() is idempotent, so this is a
-    // no-op on the common case where nothing was ever orphaned.
-    if (!embedded) {
-      // MARKER FIRST, bytes only if the lift took — the order `previewOperat`
-      // uses for the same act, and here it is what makes the delete safe.
-      //
-      // `freezeMaps` is owner-only and CAS's on `in_progress`: the SAME two
-      // predicates `repo.approve` applies below. So "the lift took" IS "this
-      // issue may commit", established by a locking write rather than by an
-      // unlocked read of a row that can change underneath it. Lift took ⇒ the
-      // bytes are ours and they go; lift did not ⇒ they are somebody else's
-      // and they stay, and this issue cannot commit either.
-      //
-      // Without that condition the loser of two concurrent issues deleted the
-      // WINNER's frozen bytes, and `signValuationAction` — which re-renders
-      // from those keys and reads their absence as "approved without maps",
-      // silently — would sign an operat without the §8.1 maps the approved
-      // copy carries. Task 12 sharpened that window from both ends: the
-      // winner now REUSES the frozen bytes instead of re-putting them, so
-      // nothing heals behind the delete, and it no longer waits on the WMS,
-      // so it commits sooner.
-      //
-      // What has to be true at commit time is that the BYTES are gone — sign
-      // reads the bytes and never the marker. This order guarantees exactly
-      // that; the reverse could leave bytes deleted under a marker still
-      // claiming them, which is the lying-marker state the whole design
-      // avoids.
-      const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
-      if (unfrozen) {
-        const keys = frozenMapKeys(id);
-        // Same orphan cleanup as the fetch arm above, for the same reason.
-        await storage.delete(keys.ewidencyjna);
-        await storage.delete(keys.orto);
-      } else {
-        // No refusal of our own: `repo.approve` is about to refuse on the very
-        // predicate that refused this write, with the message that fits.
-        console.warn(
-          `approveValuation: could not lift the map freeze on ${id} — bytes left in place`,
-        );
-      }
-    }
-
-    // Slice 10 (Task 8): the photo manifest lives in inputs.inspection —
-    // unlike maps, a manifest key that fails to resolve is a HARD integrity
-    // error (manifest + bytes are written in the same tx) and aborts the
-    // approve before repo.approve is ever called.
-    let photos: RenderPhotos | null = null;
-    try {
-      photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
-    } catch (error) {
-      console.error("approveValuation: reading inspection photos failed", error);
-      return {
-        error: "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
-      };
-    }
-    const docx = renderOperatDocx(model, { maps, photos });
-    const pdf = await worker.convertToPdf(docx);
-    const docxUrl = await storage.put(`operat-${id}.docx`, docx);
-    const docUrl = await storage.put(`operat-${id}.pdf`, pdf);
-
-    const updated = await valuationRepository.approve(
-      id,
-      session.user,
-      // `amountInWords` travels with the URLs because it describes the same
-      // artifact: it is the exact string `buildDocumentModel` was handed
-      // above, so the row and the PDF cannot end up spelling different
-      // amounts.
-      { docUrl, docxUrl, amountInWords },
-      now,
-      // One of the two, never both: the appraiser's conscious "without maps",
-      // or — when maps ARE embedded — the address they were fetched for
-      // (Slice 14). Neither when the kill switch left this document mapless
-      // without anyone choosing it.
-      opts?.skipMaps
-        ? { mapsSkipped: true }
-        : embedded
-          ? { mapsFrozenFor: embedded.address }
-          : undefined,
-      valuation.inputs,
-      { requireProse },
-    );
-    if (!updated) {
+  // The session guard stays OUTSIDE the traced block: Next implements
+  // `redirect()` by throwing, and that control-flow throw has no business
+  // travelling through a scope whose whole job is to record failures.
+  return withTrace(async () => {
+    const valuation = await valuationRepository.get(id, session.user);
+    if (!valuation) {
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
     }
 
-    // Slice 14: the preview is now spent — from here on the issued operat is
-    // the document that counts, and two PDFs differing only by their date
-    // are an invitation to send the wrong one.
-    //
-    // AFTER the commit, and in its own try/catch, for two reasons. The
-    // storage adapter holds its own db handle and `PortStorage` has no
-    // transaction-aware call, so this could not have joined `repo.approve`'s
-    // transaction even if we wanted it to. And it must not be able to fail
-    // the action: the status flip is already committed, so an error here
-    // would send the appraiser back to re-approve an operat that has been
-    // issued — an orphan blob is by far the lesser problem, and the next
-    // render of this key overwrites it anyway.
-    try {
-      await storage.delete(previewDocKey(id));
-    } catch (error) {
-      console.error("approveValuation: dropping the preview blob failed (approval stands)", error);
+    // Status guard BEFORE any generation work: re-invoking approve on an
+    // already-approved valuation must not regenerate (= overwrite) the stored
+    // operat files — they are a frozen artifact. Without this, the overwrite
+    // would happen and only then `assertDraft` inside repo.approve would fail.
+    if (valuation.status !== "in_progress") {
+      return { error: "Wycena jest już zatwierdzona." };
     }
-  } catch (error) {
-    if (error instanceof InputsChangedError) {
-      return {
-        error:
-          "Dane wyceny zmieniły się w trakcie zatwierdzania — odśwież stronę i spróbuj ponownie.",
-      };
-    }
-    if (error instanceof ApprovalBlockedError) {
-      return {
-        error: `Zatwierdzenie zablokowane — ${error.blockers[0]?.label ?? "operat zawiera niezweryfikowane wartości."}`,
-        blockers: error.blockers,
-      };
-    }
-    console.error("approveValuation failed", error);
-    return {
-      error:
-        "Nie udało się wygenerować operatu — worker lub magazyn dokumentów są niedostępne. Spróbuj ponownie.",
-    };
-  }
 
-  revalidatePath(`/valuations/${id}`);
-  revalidatePath("/valuations");
+    // FR-6: whether the operat's descriptive sections are part of the F-4
+    // invariant is a deployment decision (the NEXT_PUBLIC_PROSE kill switch),
+    // so the APP layer resolves it and hands the answer to the gate — both
+    // here and, through the repo, inside the write transaction (ADR-012).
+    // `domain/` reads no env (F-10). Unset means enabled, like every other
+    // NEXT_PUBLIC_* switch in this app.
+    const requireProse = proseEnabled();
+
+    // Fail fast with the first blocker before any expensive generation work.
+    if (valuation.inputs) {
+      const gate = approvalGate(valuation.inputs, {
+        requireProse,
+        // Lets the gate see the sections whose facts have since moved on (T6
+        // review, I-2; per section since T4). Derived here, never taken from
+        // the client.
+        currentSectionHashes: requireProse
+          ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
+          : undefined,
+      });
+      const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(valuation)];
+      if (blockers.length > 0) {
+        // `error` stays the one-line summary it has always been; `blockers`
+        // carries the rest, so the action bar can show them all with their steps.
+        return { error: `Zatwierdzenie zablokowane — ${blockers[0].label}`, blockers };
+      }
+    }
+
+    try {
+      if (!valuation.inputs) {
+        return { error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu." };
+      }
+      const now = new Date();
+      const kcs = computeKcs(valuation.inputs);
+      const amountInWords = await worker.amountInWords(kcs.wr);
+
+      // Slice 14 (Task 12): issuing REUSES the maps the appraiser just read.
+      // They are fetched and frozen by the step-7 preview, and the issue reads
+      // them back — so the document under the signature is the document that
+      // was on the screen, in the one part of the operat that comes from
+      // outside this application.
+      //
+      // The fetch is still here, and it is load-bearing rather than vestigial:
+      // the issue button sits on the same screen as the preview, so it can be
+      // clicked before the render that freezes them has finished, and a marker
+      // can outlive its bytes. Both cases mean "nothing to reuse", and the
+      // answer is to fetch — never to issue without maps, because map absence
+      // is never silent (Slice 9, spec decision 4).
+      //
+      // The maps and the address they depict travel together, so that no path
+      // can record one without the other: the audit row is the only lasting
+      // evidence of which parcel the images inside the issued document show.
+      //
+      // mapImages === null -> MAPS_FETCH=off (CI e2e): silent stub, NOT audited
+      // as a skip — only the user's conscious "without maps" is.
+      let embedded: { maps: RenderMaps; address: string } | null = null;
+      if (!opts?.skipMaps && mapImages) {
+        if (mapsFrozenForCurrentAddress(valuation) && valuation.mapsFrozenFor) {
+          const frozenMaps = await readFrozenMaps(storage, id, "approveValuation");
+          // The address comes off the MARKER, not the row. They are equal here
+          // by construction — that is what `mapsFrozenForCurrentAddress`
+          // compares — and taking it from the marker anyway is what keeps the
+          // claim and its evidence in one place: the row says which parcel the
+          // valuation is about, the marker says which parcel these bytes show.
+          if (frozenMaps) embedded = { maps: frozenMaps, address: valuation.mapsFrozenFor };
+        }
+        if (!embedded) {
+          const mapsResult = await mapImages.fetchMaps(valuation.address);
+          if (mapsResult.kind !== "ok") {
+            return {
+              error: `Nie udało się pobrać map do operatu — ${mapsResult.message}`,
+              mapsUnavailable: true,
+            };
+          }
+          embedded = { maps: mapsResult.maps, address: valuation.address };
+          const keys = frozenMapKeys(id);
+          await storage.put(keys.ewidencyjna, embedded.maps.ewidencyjna);
+          await storage.put(keys.orto, embedded.maps.orto);
+          // Slice 14: the marker moves WITH the bytes — bytes first, marker
+          // second, the order the preview freezes in. Writing one without the
+          // other needs no concurrency to go wrong: preview at address A,
+          // correct it to B, this fetch stores B's maps and then the issue
+          // fails (photos, conversion, the drift check), revert to A — and a
+          // marker still saying A hands the next reader B's parcel under A's
+          // address.
+          const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
+          if (!frozen) {
+            // The write did NOT happen, and `null` does not say why. Whether
+            // these bytes are ours to delete is decided by a fresh read
+            // (`dropMapBytesIfStillOurDraft`) — the loser of two concurrent
+            // approves would otherwise delete the WINNER's frozen bytes, and
+            // the winner's signature would go on a document without the §8.1
+            // maps its approved copy carries.
+            //
+            // The refusal, on the other hand, is unconditional. Whatever those
+            // keys hold, this issue cannot vouch for it, and nothing has been
+            // committed yet — so refusing costs a retry and no more. A `null`
+            // here also means `repo.approve` was going to fail anyway, for the
+            // same two reasons.
+            await recordFailure({
+              event: "approveValuation.mapFreezeNotRecorded",
+              valuationId: id,
+              actorId: session.user.id,
+            });
+            await dropMapBytesIfStillOurDraft(
+              { storage, valuationRepository },
+              id,
+              session.user,
+              "approveValuation",
+            );
+            // The message promises no retry: `freezeMaps` returns null when the
+            // row is gone, when the caller is not its owner, or when it is no
+            // longer a draft — and none of those clears by trying again.
+            return {
+              error:
+                "Nie udało się zapisać stanu map operatu. Sprawdź, czy wycena jest nadal Twoim szkicem.",
+            };
+          }
+        }
+      }
+      const maps = embedded?.maps ?? null;
+
+      const model = buildDocumentModel({
+        address: valuation.address,
+        area: valuation.area,
+        purpose: valuation.purpose as OperatPurpose,
+        kwNumber: valuation.kwNumber ?? "",
+        client: valuation.client ?? "",
+        inspectionDate: valuation.inspectionDate ?? "",
+        approvedAt: now,
+        inputs: valuation.inputs,
+        kcs,
+        amountInWords,
+      });
+      // Keyed on "nothing embedded", never on "did not fetch". Today the two
+      // coincide — every branch that produces maps sets `embedded` — but only
+      // the first stays correct if a third way of obtaining them is ever added,
+      // and the failure it guards against is not recoverable: this arm reached
+      // after a REUSE would delete the very bytes the document was rendered
+      // from, and `signValuationAction` re-renders from those keys and reads
+      // their absence as "approved without maps", silently. The office would
+      // then hold an illustrated operat and send out an unillustrated signed
+      // one. (Pinned by "reuse touches neither the bytes nor the marker";
+      // verified by mutating this condition to fire on the reuse path.)
+      //
+      // A PRIOR failed approve attempt (e.g. a PDF conversion crash) may have
+      // left these keys behind; uncleaned, sign would find and embed maps this
+      // approved document does not have. delete() is idempotent, so this is a
+      // no-op on the common case where nothing was ever orphaned.
+      if (!embedded) {
+        // MARKER FIRST, bytes only if the lift took — the order `previewOperat`
+        // uses for the same act, and here it is what makes the delete safe.
+        //
+        // `freezeMaps` is owner-only and CAS's on `in_progress`: the SAME two
+        // predicates `repo.approve` applies below. So "the lift took" IS "this
+        // issue may commit", established by a locking write rather than by an
+        // unlocked read of a row that can change underneath it. Lift took ⇒ the
+        // bytes are ours and they go; lift did not ⇒ they are somebody else's
+        // and they stay, and this issue cannot commit either.
+        //
+        // Without that condition the loser of two concurrent issues deleted the
+        // WINNER's frozen bytes, and `signValuationAction` — which re-renders
+        // from those keys and reads their absence as "approved without maps",
+        // silently — would sign an operat without the §8.1 maps the approved
+        // copy carries. Task 12 sharpened that window from both ends: the
+        // winner now REUSES the frozen bytes instead of re-putting them, so
+        // nothing heals behind the delete, and it no longer waits on the WMS,
+        // so it commits sooner.
+        //
+        // What has to be true at commit time is that the BYTES are gone — sign
+        // reads the bytes and never the marker. This order guarantees exactly
+        // that; the reverse could leave bytes deleted under a marker still
+        // claiming them, which is the lying-marker state the whole design
+        // avoids.
+        const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
+        if (unfrozen) {
+          const keys = frozenMapKeys(id);
+          // Same orphan cleanup as the fetch arm above, for the same reason.
+          await storage.delete(keys.ewidencyjna);
+          await storage.delete(keys.orto);
+        } else {
+          // No refusal of our own: `repo.approve` is about to refuse on the very
+          // predicate that refused this write, with the message that fits.
+          log.warn({
+            event: "approveValuation.mapFreezeNotLifted",
+            valuationId: id,
+            actorId: session.user.id,
+          });
+        }
+      }
+
+      // Slice 10 (Task 8): the photo manifest lives in inputs.inspection —
+      // unlike maps, a manifest key that fails to resolve is a HARD integrity
+      // error (manifest + bytes are written in the same tx) and aborts the
+      // approve before repo.approve is ever called.
+      let photos: RenderPhotos | null = null;
+      try {
+        photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
+      } catch (error) {
+        await recordFailure({
+          event: "approveValuation.photosReadFailed",
+          valuationId: id,
+          actorId: session.user.id,
+          error,
+        });
+        return {
+          error: errorWithCode(
+            "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+          ),
+        };
+      }
+      const docx = renderOperatDocx(model, { maps, photos });
+      const pdf = await worker.convertToPdf(docx);
+      const docxUrl = await storage.put(`operat-${id}.docx`, docx);
+      const docUrl = await storage.put(`operat-${id}.pdf`, pdf);
+
+      const updated = await valuationRepository.approve(
+        id,
+        session.user,
+        // `amountInWords` travels with the URLs because it describes the same
+        // artifact: it is the exact string `buildDocumentModel` was handed
+        // above, so the row and the PDF cannot end up spelling different
+        // amounts.
+        { docUrl, docxUrl, amountInWords },
+        now,
+        // One of the two, never both: the appraiser's conscious "without maps",
+        // or — when maps ARE embedded — the address they were fetched for
+        // (Slice 14). Neither when the kill switch left this document mapless
+        // without anyone choosing it.
+        opts?.skipMaps
+          ? { mapsSkipped: true }
+          : embedded
+            ? { mapsFrozenFor: embedded.address }
+            : undefined,
+        valuation.inputs,
+        { requireProse },
+      );
+      if (!updated) {
+        return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+      }
+
+      // Slice 14: the preview is now spent — from here on the issued operat is
+      // the document that counts, and two PDFs differing only by their date
+      // are an invitation to send the wrong one.
+      //
+      // AFTER the commit, and in its own try/catch, for two reasons. The
+      // storage adapter holds its own db handle and `PortStorage` has no
+      // transaction-aware call, so this could not have joined `repo.approve`'s
+      // transaction even if we wanted it to. And it must not be able to fail
+      // the action: the status flip is already committed, so an error here
+      // would send the appraiser back to re-approve an operat that has been
+      // issued — an orphan blob is by far the lesser problem, and the next
+      // render of this key overwrites it anyway.
+      try {
+        await storage.delete(previewDocKey(id));
+      } catch (error) {
+        await recordFailure({
+          event: "approveValuation.previewDropFailed",
+          valuationId: id,
+          actorId: session.user.id,
+          error,
+        });
+      }
+    } catch (error) {
+      if (error instanceof InputsChangedError) {
+        return {
+          error:
+            "Dane wyceny zmieniły się w trakcie zatwierdzania — odśwież stronę i spróbuj ponownie.",
+        };
+      }
+      if (error instanceof ApprovalBlockedError) {
+        return {
+          error: `Zatwierdzenie zablokowane — ${error.blockers[0]?.label ?? "operat zawiera niezweryfikowane wartości."}`,
+          blockers: error.blockers,
+        };
+      }
+      await recordFailure({
+        event: "approveValuation.failed",
+        valuationId: id,
+        actorId: session.user.id,
+        error,
+      });
+      return {
+        error: errorWithCode(
+          "Nie udało się wygenerować operatu — worker lub magazyn dokumentów są niedostępne. Spróbuj ponownie.",
+        ),
+      };
+    }
+
+    revalidatePath(`/valuations/${id}`);
+    revalidatePath("/valuations");
+  });
 }

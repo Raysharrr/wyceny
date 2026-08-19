@@ -3,6 +3,7 @@ import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
+import { withCode } from "./fixtures/with-code";
 
 /**
  * Focused unit test of `approveValuation`'s status guard (final review,
@@ -397,7 +398,9 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
     const result = await approveValuation(draftWithPhotos.id);
 
     expect(result).toEqual({
-      error: "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+      error: withCode(
+        "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+      ),
     });
     expect(approveMock).not.toHaveBeenCalled();
   });
@@ -414,7 +417,9 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
     const result = await approveValuation(draftWithPhotos.id);
 
     expect(result).toEqual({
-      error: "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+      error: withCode(
+        "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+      ),
     });
     expect(approveMock).not.toHaveBeenCalled();
   });

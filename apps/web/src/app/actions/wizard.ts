@@ -15,6 +15,8 @@ import {
   assignSubjectProvenance,
 } from "@/lib/assign-provenance";
 import { isEmptySubject } from "@/lib/subject-form";
+import { recordFailure } from "@/app/actions/_record-failure";
+import { errorWithCode, withTrace } from "@/lib/trace";
 import { normalizeDefText, type FeatureDefinitions } from "@/domain/feature-presets";
 import { normalizeKw } from "@/domain/kw-snapshot";
 import {
@@ -178,47 +180,54 @@ export async function saveSubjectAction(
     redirect("/login");
   }
 
-  const parsed = step1Schema.safeParse(input);
-  if (!parsed.success) {
-    return { error: firstIssueMessage(parsed.error) };
-  }
-
-  const normalizedKw = parsed.data.kw ? normalizeKw(parsed.data.kw) : parsed.data.kw;
-  const subjectTouched = !isEmptySubject(parsed.data.subject);
-  const effSubject = subjectTouched ? parsed.data.subject : undefined;
-  const effSubjectMeta = subjectTouched ? parsed.data.subjectMeta : undefined;
-
-  const provenance = assignSubjectProvenance({
-    area: parsed.data.area,
-    subject: effSubject,
-    subjectMeta: effSubjectMeta,
-    kw: parsed.data.kw,
-    kwMeta: parsed.data.kwMeta,
-  });
-
-  try {
-    const updated = await valuationRepository.saveSubject(valuationId, session.user, {
-      address: parsed.data.address,
-      area: parsed.data.area,
-      purpose: parsed.data.purpose,
-      kwNumber:
-        parsed.data.kwNumber?.trim() || normalizedKw?.kwLokalu || normalizedKw?.kwGruntu || null,
-      client: parsed.data.client,
-      subject: effSubject ?? null,
-      subjectMeta: effSubjectMeta ?? null,
-      kw: normalizedKw ?? null,
-      kwMeta: parsed.data.kwMeta ?? null,
-      provenance,
-    });
-    if (!updated) {
-      return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+  return withTrace(async () => {
+    const parsed = step1Schema.safeParse(input);
+    if (!parsed.success) {
+      return { error: firstIssueMessage(parsed.error) };
     }
-  } catch (error) {
-    console.error("saveSubjectAction failed", error);
-    return { error: "Nie udało się zapisać danych — spróbuj ponownie." };
-  }
-  revalidatePath(`/valuations/${valuationId}`);
-  return { ok: true };
+
+    const normalizedKw = parsed.data.kw ? normalizeKw(parsed.data.kw) : parsed.data.kw;
+    const subjectTouched = !isEmptySubject(parsed.data.subject);
+    const effSubject = subjectTouched ? parsed.data.subject : undefined;
+    const effSubjectMeta = subjectTouched ? parsed.data.subjectMeta : undefined;
+
+    const provenance = assignSubjectProvenance({
+      area: parsed.data.area,
+      subject: effSubject,
+      subjectMeta: effSubjectMeta,
+      kw: parsed.data.kw,
+      kwMeta: parsed.data.kwMeta,
+    });
+
+    try {
+      const updated = await valuationRepository.saveSubject(valuationId, session.user, {
+        address: parsed.data.address,
+        area: parsed.data.area,
+        purpose: parsed.data.purpose,
+        kwNumber:
+          parsed.data.kwNumber?.trim() || normalizedKw?.kwLokalu || normalizedKw?.kwGruntu || null,
+        client: parsed.data.client,
+        subject: effSubject ?? null,
+        subjectMeta: effSubjectMeta ?? null,
+        kw: normalizedKw ?? null,
+        kwMeta: parsed.data.kwMeta ?? null,
+        provenance,
+      });
+      if (!updated) {
+        return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+      }
+    } catch (error) {
+      await recordFailure({
+        event: "saveSubjectAction.failed",
+        valuationId,
+        actorId: session.user.id,
+        error: error,
+      });
+      return { error: errorWithCode("Nie udało się zapisać danych — spróbuj ponownie.") };
+    }
+    revalidatePath(`/valuations/${valuationId}`);
+    return { ok: true };
+  });
 }
 
 /**
@@ -242,27 +251,34 @@ export async function saveSampleAction(
     redirect("/login");
   }
 
-  const parsed = sampleStepSchema.safeParse(input);
-  if (!parsed.success) {
-    return { error: firstIssueMessage(parsed.error) };
-  }
-
-  const comparables = assignSampleProvenance(parsed.data);
-
-  try {
-    const updated = await valuationRepository.saveSample(valuationId, session.user, {
-      comparables,
-      sampleMeta: parsed.data.sampleMeta ?? null,
-    });
-    if (!updated) {
-      return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+  return withTrace(async () => {
+    const parsed = sampleStepSchema.safeParse(input);
+    if (!parsed.success) {
+      return { error: firstIssueMessage(parsed.error) };
     }
-  } catch (error) {
-    console.error("saveSampleAction failed", error);
-    return { error: "Nie udało się zapisać próby — spróbuj ponownie." };
-  }
-  revalidatePath(`/valuations/${valuationId}`);
-  return { ok: true };
+
+    const comparables = assignSampleProvenance(parsed.data);
+
+    try {
+      const updated = await valuationRepository.saveSample(valuationId, session.user, {
+        comparables,
+        sampleMeta: parsed.data.sampleMeta ?? null,
+      });
+      if (!updated) {
+        return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+      }
+    } catch (error) {
+      await recordFailure({
+        event: "saveSampleAction.failed",
+        valuationId,
+        actorId: session.user.id,
+        error: error,
+      });
+      return { error: errorWithCode("Nie udało się zapisać próby — spróbuj ponownie.") };
+    }
+    revalidatePath(`/valuations/${valuationId}`);
+    return { ok: true };
+  });
 }
 
 /**
@@ -283,42 +299,49 @@ export async function saveFeaturesAction(
     redirect("/login");
   }
 
-  const parsed = featuresStepSchema.safeParse(input);
-  if (!parsed.success) {
-    return { error: firstIssueMessage(parsed.error) };
-  }
+  return withTrace(async () => {
+    const parsed = featuresStepSchema.safeParse(input);
+    if (!parsed.success) {
+      return { error: firstIssueMessage(parsed.error) };
+    }
 
-  const current = await valuationRepository.get(valuationId, session.user);
-  if (!current) {
-    return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
-  }
-
-  const provenance = assignFeaturesProvenance(
-    parsed.data.features,
-    (current.inputs?.comparables ?? []).map((c) => c.area),
-  );
-  const features = parsed.data.features.map((f) => ({
-    name: f.name,
-    weight: f.weightPct / 100,
-    rating: f.rating,
-    key: f.key,
-    definitions: normalizeDefinitions(f.definitions),
-  }));
-
-  try {
-    const updated = await valuationRepository.saveFeatures(valuationId, session.user, {
-      features,
-      provenance,
-    });
-    if (!updated) {
+    const current = await valuationRepository.get(valuationId, session.user);
+    if (!current) {
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
     }
-  } catch (error) {
-    console.error("saveFeaturesAction failed", error);
-    return { error: "Nie udało się zapisać cech — spróbuj ponownie." };
-  }
-  revalidatePath(`/valuations/${valuationId}`);
-  return { ok: true };
+
+    const provenance = assignFeaturesProvenance(
+      parsed.data.features,
+      (current.inputs?.comparables ?? []).map((c) => c.area),
+    );
+    const features = parsed.data.features.map((f) => ({
+      name: f.name,
+      weight: f.weightPct / 100,
+      rating: f.rating,
+      key: f.key,
+      definitions: normalizeDefinitions(f.definitions),
+    }));
+
+    try {
+      const updated = await valuationRepository.saveFeatures(valuationId, session.user, {
+        features,
+        provenance,
+      });
+      if (!updated) {
+        return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+      }
+    } catch (error) {
+      await recordFailure({
+        event: "saveFeaturesAction.failed",
+        valuationId,
+        actorId: session.user.id,
+        error: error,
+      });
+      return { error: errorWithCode("Nie udało się zapisać cech — spróbuj ponownie.") };
+    }
+    revalidatePath(`/valuations/${valuationId}`);
+    return { ok: true };
+  });
 }
 
 /** Step-5 (Kalkulacja) confirm — runs the KCS engine server-side and persists `wr`. */
@@ -330,18 +353,25 @@ export async function confirmCalculationAction(
     redirect("/login");
   }
 
-  try {
-    const updated = await valuationRepository.confirmCalculation(valuationId, session.user);
-    if (!updated) {
-      return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+  return withTrace(async () => {
+    try {
+      const updated = await valuationRepository.confirmCalculation(valuationId, session.user);
+      if (!updated) {
+        return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+      }
+    } catch (error) {
+      if (error instanceof CalculationNotReadyError) {
+        return { error: "Uzupełnij próbę (krok 3) i cechy (krok 4)." };
+      }
+      await recordFailure({
+        event: "confirmCalculationAction.failed",
+        valuationId,
+        actorId: session.user.id,
+        error: error,
+      });
+      return { error: errorWithCode("Nie udało się potwierdzić kalkulacji — spróbuj ponownie.") };
     }
-  } catch (error) {
-    if (error instanceof CalculationNotReadyError) {
-      return { error: "Uzupełnij próbę (krok 3) i cechy (krok 4)." };
-    }
-    console.error("confirmCalculationAction failed", error);
-    return { error: "Nie udało się potwierdzić kalkulacji — spróbuj ponownie." };
-  }
-  revalidatePath(`/valuations/${valuationId}`);
-  return { ok: true };
+    revalidatePath(`/valuations/${valuationId}`);
+    return { ok: true };
+  });
 }

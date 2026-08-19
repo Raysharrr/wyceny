@@ -90,10 +90,45 @@ jobs:
       - name: F-10 — dependency rule (dependency-cruiser)
         run: pnpm depcruise
 
+      # The turbo step above already runs the lint and the test, so this does
+      # NOT re-run them for coverage — it asserts the one thing nothing else
+      # would notice: that the rule making the log wrapper mandatory is still
+      # configured. Delete `no-console` and every existing test still passes
+      # while a bare console.* can put an unfiltered payload into the log.
+      - name: F-13 — no PII in logs (the allowlist gate is still wired)
+        working-directory: apps/web
+        run: |
+          grep -q '"no-console": "error"' eslint.config.mjs || {
+            echo "F-13: no-console is gone from eslint.config.mjs — the log allowlist can be bypassed"
+            exit 1
+          }
+          # The rule existing is not enough: widening `ignores` to silence a
+          # noisy directory (say `src/app/actions/**`) leaves the rule in place
+          # while letting a bare console.* put an unfiltered valuation into the
+          # log. Exactly TWO exemptions are sanctioned, both client components
+          # whose console runs in the browser and reaches no sink of ours.
+          exemptions=$(grep -c 'src/app/valuations/\*/steps/' eslint.config.mjs || true)
+          if [ "$exemptions" -ne 2 ]; then
+            echo "F-13: the no-console exemption list changed (expected 2 client components, found $exemptions)."
+            echo "      Adding one is a deliberate decision — update this check in the same commit."
+            exit 1
+          fi
+
       # Catches the deployed migration ledger drifting from the repo's. Skips
       # itself when the secret is absent (forks), so it can never block an
       # outside contribution on something the contributor cannot see.
+      #
+      # `main` only, and that is load-bearing. Drift is a statement about the
+      # deployed environment versus `main`; a feature branch that ADDS a
+      # migration is not drift, it is the normal state of such a branch. Left
+      # running on pull_request, the check fails whenever `applied < inRepo`
+      # — and since migrations are applied only by the PRODUCTION build (the
+      # `VERCEL_ENV` gate in migrate-on-deploy.mts deliberately keeps preview
+      # builds off the database), nothing inside the PR could ever make it
+      # pass. Every migration-bearing PR would be permanently red. Verified
+      # the hard way on 2026-08-19: this PR adds 0012.
       - name: Migration drift vs deployed database
+        if: github.ref == 'refs/heads/main'
         working-directory: apps/web
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
@@ -209,12 +244,31 @@ jobs:
       # which is the loudest possible check.
       - name: Ensure LibreOffice + Carlito (F-12 conversion tests)
         run: |
-          if ! command -v soffice >/dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui \
-              || sudo apt-get install -y --no-install-recommends libreoffice-writer
+          set -euo pipefail
+          if ! command -v soffice >/dev/null || ! fc-list | grep -qi carlito; then
+            # The runner picks its Ubuntu mirror from a MIRRORLIST, not from
+            # sources.list — apt's first line is
+            # `Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist`. On 2026-08-19
+            # the azure mirror there answered `Ign:` to every index and then
+            # went silent for 21 minutes, twice in a row, taking the job
+            # down with it. Rewriting sources.list changed nothing, because
+            # the address is not in that file. (Run ids are deliberately not
+            # quoted here: an 11-digit GitHub run id is indistinguishable from
+            # a PESEL to the F-9 scanner, which duly failed the build.)
+            # Point the mirrorlist at the canonical archive,
+            # and bound every apt call so a bad mirror costs a minute rather
+            # than the whole job.
+            sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' \
+              /etc/apt/apt-mirrors.txt 2>/dev/null || true
+            timeout 300 sudo apt-get update
           fi
-          if ! fc-list | grep -qi carlito; then sudo apt-get install -y --no-install-recommends fonts-crosextra-carlito; fi
+          if ! command -v soffice >/dev/null; then
+            timeout 600 sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui \
+              || timeout 600 sudo apt-get install -y --no-install-recommends libreoffice-writer
+          fi
+          if ! fc-list | grep -qi carlito; then
+            timeout 300 sudo apt-get install -y --no-install-recommends fonts-crosextra-carlito
+          fi
           soffice --version
       - name: Start worker
         working-directory: apps/worker

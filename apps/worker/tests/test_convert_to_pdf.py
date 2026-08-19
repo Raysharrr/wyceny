@@ -1,5 +1,4 @@
 import io
-import logging
 import shutil
 
 import pytest
@@ -51,20 +50,21 @@ def test_convert_to_pdf_empty_body_is_400():
     assert r.status_code == 400
 
 
-def test_convert_to_pdf_failure_is_502_and_logs_stderr(monkeypatch, caplog):
+def test_convert_to_pdf_failure_is_502_and_logs_stderr(monkeypatch, capsys):
     """A handled HTTPException is never logged by FastAPI — the handler must
     log the ConversionError (which carries soffice stderr) itself, or Railway
-    logs show nothing on conversion failures."""
+    logs show nothing on conversion failures. Captured from stdout, not from
+    caplog: the worker logs structured JSON through structlog, not stdlib."""
 
     def fake_docx_to_pdf(docx: bytes) -> bytes:
         raise ConversionError("soffice failed: exit 77; stderr: b'fake-soffice-boom'")
 
     monkeypatch.setattr(worker_main, "docx_to_pdf", fake_docx_to_pdf)
-    with caplog.at_level(logging.ERROR, logger="uvicorn.error"):
-        r = client.post("/convert-to-pdf", content=b"PK-fake", headers={"Content-Type": DOCX_MIME})
+    r = client.post("/convert-to-pdf", content=b"PK-fake", headers={"Content-Type": DOCX_MIME})
     assert r.status_code == 502
-    assert "convert-to-pdf failed" in caplog.text
-    assert "fake-soffice-boom" in caplog.text
+    out = capsys.readouterr().out
+    assert "convert_to_pdf_failed" in out
+    assert "fake-soffice-boom" in out
 
 
 def test_resolve_soffice_prefers_env(monkeypatch):

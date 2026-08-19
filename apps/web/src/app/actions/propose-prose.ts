@@ -16,6 +16,9 @@ import {
 import { currentSectionFactsHash } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import { mintWorkerToken } from "@/lib/worker-token";
+import { recordEvent, recordFailure } from "@/app/actions/_record-failure";
+import { fingerprint } from "@/lib/fingerprint";
+import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import type { ProseSection, ProseSnapshot } from "@/domain/prose-snapshot";
 
 export type ProposeProseResult = { prose: ProseSnapshot } | { error: string };
@@ -85,104 +88,130 @@ export async function proposeProse(
     redirect("/login");
   }
 
-  // The kill switch, on the layer that actually spends (T6 review, I-1). The
-  // step props and the component are gated too, but this is a Server Action:
-  // a POST endpoint any authenticated owner can call directly, with or
-  // without a browser. Checked FIRST — before the draft is even read — so a
-  // switched-off generator costs nothing at all, not even a query.
-  if (!proseEnabled()) return { error: DISABLED };
+  return withTrace(async () => {
+    // The kill switch, on the layer that actually spends (T6 review, I-1). The
+    // step props and the component are gated too, but this is a Server Action:
+    // a POST endpoint any authenticated owner can call directly, with or
+    // without a browser. Checked FIRST — before the draft is even read — so a
+    // switched-off generator costs nothing at all, not even a query.
+    if (!proseEnabled()) return { error: DISABLED };
 
-  const valuation = await valuationRepository.get(id, session.user);
-  if (!valuation) return { error: NOT_FOUND };
-  // Re-checked by the repo inside the write transaction; checked here too so a
-  // frozen operat never costs a generation.
-  if (valuation.status !== "in_progress") return { error: NOT_DRAFT };
-  if (!valuation.inputs) return { error: NO_FACTS };
+    const valuation = await valuationRepository.get(id, session.user);
+    if (!valuation) return { error: NOT_FOUND };
+    // Re-checked by the repo inside the write transaction; checked here too so a
+    // frozen operat never costs a generation.
+    if (valuation.status !== "in_progress") return { error: NOT_DRAFT };
+    if (!valuation.inputs) return { error: NO_FACTS };
 
-  const factsInput = { address: valuation.address, inputs: valuation.inputs };
-  const facts = buildProseFacts(factsInput);
-  const generatable = selectProseSections(facts);
-  if (generatable.length === 0) return { error: NO_FACTS };
+    const factsInput = { address: valuation.address, inputs: valuation.inputs };
+    const facts = buildProseFacts(factsInput);
+    const generatable = selectProseSections(facts);
+    if (generatable.length === 0) return { error: NO_FACTS };
 
-  const stale = new Set(
-    staleProseSections(valuation.inputs.prose, factsInput, currentSectionFactsHash),
-  );
-  // Sections already asked for at exactly these facts (T5 fix round 2). Left
-  // out of the AUTOMATIC batch: a section the worker refused stays stale
-  // forever — the merge keeps its old fingerprint on purpose, so the F-4 gate
-  // goes on blocking it — and would therefore ride along in every batch some
-  // OTHER section legitimately earns. Not once: every time anything at all
-  // goes stale, for as long as its own facts stay put. The step's
-  // `worthGenerating` decides WHETHER to call; this decides WHAT the call
-  // contains, and it is the same money.
-  const attempted = new Set(
-    opts?.includeAttempted
-      ? []
-      : attemptedProseSections(valuation.inputs.prose, factsInput, currentSectionFactsHash),
-  );
-  const sections = opts?.sections
-    ? opts.sections.filter((s) => generatable.includes(s))
-    : generatable.filter(
-        (s) => (!valuation.inputs?.prose?.sections[s] || stale.has(s)) && !attempted.has(s),
-      );
-  if (sections.length === 0) {
-    // Nothing left to buy. In the no-opts path that now means one of two
-    // things — every generatable section is present and fresh, OR everything
-    // that still needs work was already attempted at these exact facts —
-    // and `prose` is guaranteed to exist under both: a draft with no prose at
-    // all has recorded no attempts either, so its missing sections cannot be
-    // filtered out. But `opts.sections` can ALSO filter down to
-    // nothing (e.g. naming only a section today's facts cannot back), on a
-    // draft with no prior generation at all. Asserting non-null there would
-    // ship `{ prose: undefined }` typed as a real snapshot to a caller that
-    // only checks `"error" in result`. Returning the current snapshot (rather
-    // than calling the worker for nothing) is what makes it safe to always
-    // call this action unconditionally on mount: a no-op costs neither tokens
-    // nor a write.
-    return valuation.inputs.prose ? { prose: valuation.inputs.prose } : { error: NO_FACTS };
-  }
+    const stale = new Set(
+      staleProseSections(valuation.inputs.prose, factsInput, currentSectionFactsHash),
+    );
+    // Sections already asked for at exactly these facts (T5 fix round 2). Left
+    // out of the AUTOMATIC batch: a section the worker refused stays stale
+    // forever — the merge keeps its old fingerprint on purpose, so the F-4 gate
+    // goes on blocking it — and would therefore ride along in every batch some
+    // OTHER section legitimately earns. Not once: every time anything at all
+    // goes stale, for as long as its own facts stay put. The step's
+    // `worthGenerating` decides WHETHER to call; this decides WHAT the call
+    // contains, and it is the same money.
+    const attempted = new Set(
+      opts?.includeAttempted
+        ? []
+        : attemptedProseSections(valuation.inputs.prose, factsInput, currentSectionFactsHash),
+    );
+    const sections = opts?.sections
+      ? opts.sections.filter((s) => generatable.includes(s))
+      : generatable.filter(
+          (s) => (!valuation.inputs?.prose?.sections[s] || stale.has(s)) && !attempted.has(s),
+        );
+    if (sections.length === 0) {
+      // Nothing left to buy. In the no-opts path that now means one of two
+      // things — every generatable section is present and fresh, OR everything
+      // that still needs work was already attempted at these exact facts —
+      // and `prose` is guaranteed to exist under both: a draft with no prose at
+      // all has recorded no attempts either, so its missing sections cannot be
+      // filtered out. But `opts.sections` can ALSO filter down to
+      // nothing (e.g. naming only a section today's facts cannot back), on a
+      // draft with no prior generation at all. Asserting non-null there would
+      // ship `{ prose: undefined }` typed as a real snapshot to a caller that
+      // only checks `"error" in result`. Returning the current snapshot (rather
+      // than calling the worker for nothing) is what makes it safe to always
+      // call this action unconditionally on mount: a no-op costs neither tokens
+      // nor a write.
+      return valuation.inputs.prose ? { prose: valuation.inputs.prose } : { error: NO_FACTS };
+    }
 
-  const token = mintWorkerToken();
-  if (!token) return { error: NOT_CONFIGURED };
+    const token = mintWorkerToken();
+    if (!token) return { error: NOT_CONFIGURED };
 
-  let proposal;
-  try {
-    proposal = await proseProposal.fetchProposal({
-      token,
-      sections,
-      facts,
-      transactions: buildProseTransactions(valuation.inputs.comparables),
+    let proposal;
+    try {
+      proposal = await proseProposal.fetchProposal({
+        token,
+        sections,
+        facts,
+        transactions: buildProseTransactions(valuation.inputs.comparables),
+      });
+    } catch (error) {
+      await recordFailure({
+        event: "proposeProse.failed",
+        valuationId: id,
+        actorId: session.user.id,
+        error: error,
+      });
+      // Default-deny on error text (T5 review): ONLY the worker's own Polish
+      // `detail` — which the adapter marks with its own type — is written for a
+      // human and may be shown. Everything else is our plumbing: a dropped
+      // connection ("fetch failed"), a proxy's HTML quoted by the JSON parser
+      // (internal hostname and all), a bug in our own code. Those get the
+      // generic sentence; the details go to the server log above.
+      return {
+        error: errorWithCode(error instanceof ProseWorkerDetailError ? error.message : GENERIC),
+      };
+    }
+
+    // One fingerprint per REQUESTED section — never the whole six, since only
+    // `sections` was actually sent. A section this run never asked about must
+    // stay ABSENT from `factsHashes`: `mergeProseProposal` reads that as "not
+    // touched by this run" and carries the previous entry forward untouched.
+    const factsHashes: Partial<Record<ProseSection, string>> = {};
+    for (const section of sections)
+      factsHashes[section] = currentSectionFactsHash(section, factsInput);
+
+    const snapshot = proseSnapshotOf({
+      sections: proposal.sections,
+      rejected: proposal.rejected,
+      model: proposal.model,
+      factsHashes,
+      generatedAt: new Date(),
     });
-  } catch (error) {
-    console.error("proposeProse failed", error);
-    // Default-deny on error text (T5 review): ONLY the worker's own Polish
-    // `detail` — which the adapter marks with its own type — is written for a
-    // human and may be shown. Everything else is our plumbing: a dropped
-    // connection ("fetch failed"), a proxy's HTML quoted by the JSON parser
-    // (internal hostname and all), a bug in our own code. Those get the
-    // generic sentence; the details go to the server log above.
-    return { error: error instanceof ProseWorkerDetailError ? error.message : GENERIC };
-  }
 
-  // One fingerprint per REQUESTED section — never the whole six, since only
-  // `sections` was actually sent. A section this run never asked about must
-  // stay ABSENT from `factsHashes`: `mergeProseProposal` reads that as "not
-  // touched by this run" and carries the previous entry forward untouched.
-  const factsHashes: Partial<Record<ProseSection, string>> = {};
-  for (const section of sections)
-    factsHashes[section] = currentSectionFactsHash(section, factsInput);
+    const saved = await valuationRepository.saveProse(id, session.user, snapshot, proposal.usage);
+    if (!saved) return { error: NOT_FOUND };
 
-  const snapshot = proseSnapshotOf({
-    sections: proposal.sections,
-    rejected: proposal.rejected,
-    model: proposal.model,
-    factsHashes,
-    generatedAt: new Date(),
+    // Hashes of the generated prose, taken before the appraiser can touch it.
+    // `audit_log` deliberately records that a generation happened and what it
+    // cost, never its text; a hash keeps that promise while still allowing a
+    // later "% accepted as proposed" to tell an edited section from one taken
+    // as written.
+    await recordEvent({
+      level: "info",
+      event: "proposal.prose",
+      traceId: currentTraceId(),
+      valuationId: id,
+      actorId: session.user.id,
+      meta: {
+        fields: fingerprint(proposal.sections as Record<string, unknown>),
+        count: Object.keys(proposal.sections).length,
+      },
+    });
+
+    revalidatePath(`/valuations/${id}`);
+    return { prose: snapshot };
   });
-
-  const saved = await valuationRepository.saveProse(id, session.user, snapshot, proposal.usage);
-  if (!saved) return { error: NOT_FOUND };
-
-  revalidatePath(`/valuations/${id}`);
-  return { prose: snapshot };
 }

@@ -7,6 +7,7 @@ import { httpProseProposal } from "@/adapters/prose-http";
 import { httpMapImages } from "@/adapters/maps-http";
 import { pgStorage } from "@/adapters/storage-pg";
 import { profileRepo } from "@/adapters/profile-drizzle";
+import { eventLogRepo } from "@/adapters/event-log-drizzle";
 import type { PortMapImages } from "@/ports/maps";
 
 /**
@@ -31,3 +32,4 @@ export const mapImages: PortMapImages | null =
     : httpMapImages(process.env.WORKER_URL ?? "http://localhost:8000");
 export const storage = pgStorage(db);
 export const profileRepository = profileRepo(db);
+export const eventLog = eventLogRepo(db);

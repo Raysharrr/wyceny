@@ -1,3 +1,9 @@
+// `log` only, and never the Postgres event sink: this file lives under
+// `lib/`, which F-10 forbids from importing `adapters/**` (depcruise rule
+// `adapters-wired-only-at-app-layer`). Threading a port through a map-freeze
+// retry that already degrades gracefully would cost more than its failures
+// are worth outliving stdout.
+import { errFields, log } from "@/lib/log";
 import type { PortStorage } from "@/ports/storage";
 import type { PortValuation, SessionUser, Valuation } from "@/ports/valuation";
 
@@ -52,7 +58,11 @@ export async function readFrozenMaps(
       return { ewidencyjna, orto };
     }
   } catch (error) {
-    console.error(`${context}: reading frozen maps failed, re-fetching`, error);
+    log.error({
+      event: `${context}.frozenMaps.readFailed`,
+      valuationId: id,
+      ...errFields(error),
+    });
   }
   return null;
 }
@@ -103,16 +113,25 @@ export async function dropMapBytesIfStillOurDraft(
   try {
     still = await deps.valuationRepository.get(id, user);
   } catch (error) {
-    console.error(`${context}: could not establish why the freeze on ${id} failed`, error);
+    log.error({
+      event: `${context}.frozenMaps.freezeCheckFailed`,
+      valuationId: id,
+      actorId: user.id,
+      ...errFields(error),
+    });
     return;
   }
   if (still?.status !== "in_progress") {
-    console.error(
-      `${context}: the map freeze on ${id} failed and this is no longer our draft — bytes left for the issued operat`,
-    );
+    // Bytes left where they are: they may already belong to the issued operat.
+    log.error({
+      event: `${context}.frozenMaps.bytesKept`,
+      valuationId: id,
+      actorId: user.id,
+      status: still?.status ?? "gone",
+    });
     return;
   }
-  console.warn(`${context}: could not record the map freeze on ${id} — dropping bytes`);
+  log.warn({ event: `${context}.frozenMaps.bytesDropped`, valuationId: id, actorId: user.id });
   const keys = frozenMapKeys(id);
   await deps.storage.delete(keys.ewidencyjna);
   await deps.storage.delete(keys.orto);

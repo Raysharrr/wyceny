@@ -11,6 +11,9 @@ import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
 import { dropMapBytesIfStillOurDraft, frozenMapKeys, readFrozenMaps } from "@/lib/frozen-maps";
+import { log } from "@/lib/log";
+import { recordFailure } from "@/app/actions/_record-failure";
+import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type PreviewOperatResult =
   | { url: string }
@@ -60,130 +63,150 @@ export async function previewOperat(
     redirect("/login");
   }
 
-  const valuation = await valuationRepository.get(id, session.user);
-  if (!valuation) {
-    return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
-  }
-  // Mirrors approve's fast status guard. An issued operat already has its own
-  // document; re-rendering a preview beside it would produce a second file
-  // differing only by its date — the confusion ruling 3 exists to prevent.
-  if (valuation.status !== "in_progress") {
-    return { error: "Wycena jest już zatwierdzona — otwórz wydany operat." };
-  }
-  if (!valuation.inputs) {
-    return { error: "Brak danych wejściowych operatu — nie ma czego pokazać." };
-  }
-
-  try {
-    let maps: RenderMaps | null = null;
-    if (opts?.skipMaps) {
-      // Marker FIRST here — the mirror image of the fetch path below, and for
-      // the same reason. Lifting the freeze before dropping the bytes can only
-      // leave a cleared marker over bytes that still exist, which costs one
-      // re-fetch; the other order can leave bytes deleted under a marker that
-      // still claims them, which is the lying-marker state this whole design
-      // exists to prevent.
-      //
-      // `null` back means the write did NOT happen: `freezeMaps` is owner-only
-      // while this action authorises through `get`, which also admits an
-      // admin, and it refuses anything that is no longer a draft. The bytes
-      // then stay where they are — deleting them on the strength of a write
-      // that never took would produce exactly the state the ordering above
-      // avoids. This render still leaves the maps out, which is what was
-      // asked for.
-      const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
-      if (unfrozen) {
-        const keys = frozenMapKeys(id);
-        await storage.delete(keys.ewidencyjna);
-        await storage.delete(keys.orto);
-      } else {
-        console.warn(`previewOperat: could not lift the map freeze on ${id} — bytes left in place`);
-      }
-    } else {
-      if (mapsFrozenForCurrentAddress(valuation)) {
-        maps = await readFrozenMaps(storage, id, "previewOperat");
-      }
-      // `mapImages === null` is the MAPS_FETCH=off kill switch (CI e2e stays
-      // network-free) — the preview then renders the same honest "no maps"
-      // stub approval renders, and freezes nothing.
-      if (!maps && mapImages) {
-        const fetched = await mapImages.fetchMaps(valuation.address);
-        if (fetched.kind !== "ok") {
-          return {
-            error: `Nie udało się pobrać map do operatu — ${fetched.message}`,
-            mapsUnavailable: true,
-          };
-        }
-        maps = fetched.maps;
-        const keys = frozenMapKeys(id);
-        await storage.put(keys.ewidencyjna, maps.ewidencyjna);
-        await storage.put(keys.orto, maps.orto);
-        // Same `null` case as above — a write that did not happen — but NOT
-        // the same answer, because `null` has more than one cause and they
-        // pull in opposite directions. See `dropMapBytesIfStillOurDraft`.
-        //
-        // The render below still uses the maps held in memory; only the reuse
-        // is given up, so the next preview fetches again.
-        const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
-        if (!frozen) {
-          await dropMapBytesIfStillOurDraft(
-            { storage, valuationRepository },
-            id,
-            session.user,
-            "previewOperat",
-          );
-        }
-      }
+  return withTrace(async () => {
+    const valuation = await valuationRepository.get(id, session.user);
+    if (!valuation) {
+      return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+    }
+    // Mirrors approve's fast status guard. An issued operat already has its own
+    // document; re-rendering a preview beside it would produce a second file
+    // differing only by its date — the confusion ruling 3 exists to prevent.
+    if (valuation.status !== "in_progress") {
+      return { error: "Wycena jest już zatwierdzona — otwórz wydany operat." };
+    }
+    if (!valuation.inputs) {
+      return { error: "Brak danych wejściowych operatu — nie ma czego pokazać." };
     }
 
-    let photos: RenderPhotos | null = null;
     try {
-      photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
+      let maps: RenderMaps | null = null;
+      if (opts?.skipMaps) {
+        // Marker FIRST here — the mirror image of the fetch path below, and for
+        // the same reason. Lifting the freeze before dropping the bytes can only
+        // leave a cleared marker over bytes that still exist, which costs one
+        // re-fetch; the other order can leave bytes deleted under a marker that
+        // still claims them, which is the lying-marker state this whole design
+        // exists to prevent.
+        //
+        // `null` back means the write did NOT happen: `freezeMaps` is owner-only
+        // while this action authorises through `get`, which also admits an
+        // admin, and it refuses anything that is no longer a draft. The bytes
+        // then stay where they are — deleting them on the strength of a write
+        // that never took would produce exactly the state the ordering above
+        // avoids. This render still leaves the maps out, which is what was
+        // asked for.
+        const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
+        if (unfrozen) {
+          const keys = frozenMapKeys(id);
+          await storage.delete(keys.ewidencyjna);
+          await storage.delete(keys.orto);
+        } else {
+          log.warn({
+            event: "previewOperat.mapFreezeNotLifted",
+            valuationId: id,
+            actorId: session.user.id,
+          });
+        }
+      } else {
+        if (mapsFrozenForCurrentAddress(valuation)) {
+          maps = await readFrozenMaps(storage, id, "previewOperat");
+        }
+        // `mapImages === null` is the MAPS_FETCH=off kill switch (CI e2e stays
+        // network-free) — the preview then renders the same honest "no maps"
+        // stub approval renders, and freezes nothing.
+        if (!maps && mapImages) {
+          const fetched = await mapImages.fetchMaps(valuation.address);
+          if (fetched.kind !== "ok") {
+            return {
+              error: `Nie udało się pobrać map do operatu — ${fetched.message}`,
+              mapsUnavailable: true,
+            };
+          }
+          maps = fetched.maps;
+          const keys = frozenMapKeys(id);
+          await storage.put(keys.ewidencyjna, maps.ewidencyjna);
+          await storage.put(keys.orto, maps.orto);
+          // Same `null` case as above — a write that did not happen — but NOT
+          // the same answer, because `null` has more than one cause and they
+          // pull in opposite directions. See `dropMapBytesIfStillOurDraft`.
+          //
+          // The render below still uses the maps held in memory; only the reuse
+          // is given up, so the next preview fetches again.
+          const frozen = await valuationRepository.freezeMaps(id, session.user, valuation.address);
+          if (!frozen) {
+            await dropMapBytesIfStillOurDraft(
+              { storage, valuationRepository },
+              id,
+              session.user,
+              "previewOperat",
+            );
+          }
+        }
+      }
+
+      let photos: RenderPhotos | null = null;
+      try {
+        photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
+      } catch (error) {
+        await recordFailure({
+          event: "previewOperat.photosReadFailed",
+          valuationId: id,
+          actorId: session.user.id,
+          error: error,
+        });
+        return {
+          error: errorWithCode(
+            "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+          ),
+        };
+      }
+
+      const kcs = computeKcs(valuation.inputs);
+      const amountInWords = await worker.amountInWords(kcs.wr);
+      const model = buildDocumentModel(
+        {
+          address: valuation.address,
+          area: valuation.area,
+          purpose: valuation.purpose as OperatPurpose,
+          kwNumber: valuation.kwNumber ?? "",
+          client: valuation.client ?? "",
+          inspectionDate: valuation.inspectionDate ?? "",
+          // The preview's "data sporządzenia" is TODAY; the issued operat gets
+          // the date it was issued. That difference is why issuing re-renders
+          // rather than promoting this file (spec §C).
+          approvedAt: new Date(),
+          inputs: valuation.inputs,
+          kcs,
+          amountInWords,
+        },
+        // ...and the second half of that same §C difference: a section the
+        // appraiser has not written yet is MARKED here and passed over in
+        // silence when the operat is issued. This is the only call site that
+        // may pass the flag — approve and sign must not.
+        { preview: true },
+      );
+      const docx = renderOperatDocx(model, { maps, photos });
+      const pdf = await worker.convertToPdf(docx);
+      await storage.put(previewDocKey(id), pdf);
+
+      // The blob key is stable, so the URL must carry what changed — without
+      // this the appraiser fixes a fact, re-previews, and the reader re-serves
+      // the render they were trying to replace. Content-derived rather than a
+      // clock: an identical re-render is genuinely the same document.
+      const version = createHash("sha256").update(pdf).digest("hex").slice(0, 16);
+      return { url: `/api/podglad/${id}?v=${version}` };
     } catch (error) {
-      console.error("previewOperat: reading inspection photos failed", error);
+      await recordFailure({
+        event: "previewOperat.failed",
+        valuationId: id,
+        actorId: session.user.id,
+        error: error,
+      });
       return {
-        error: "Nie udało się odczytać zdjęć z oględzin — odśwież stronę i spróbuj ponownie.",
+        error: errorWithCode(
+          "Nie udało się złożyć podglądu operatu — sprawdź dane wyceny i spróbuj ponownie.",
+        ),
       };
     }
-
-    const kcs = computeKcs(valuation.inputs);
-    const amountInWords = await worker.amountInWords(kcs.wr);
-    const model = buildDocumentModel(
-      {
-        address: valuation.address,
-        area: valuation.area,
-        purpose: valuation.purpose as OperatPurpose,
-        kwNumber: valuation.kwNumber ?? "",
-        client: valuation.client ?? "",
-        inspectionDate: valuation.inspectionDate ?? "",
-        // The preview's "data sporządzenia" is TODAY; the issued operat gets
-        // the date it was issued. That difference is why issuing re-renders
-        // rather than promoting this file (spec §C).
-        approvedAt: new Date(),
-        inputs: valuation.inputs,
-        kcs,
-        amountInWords,
-      },
-      // ...and the second half of that same §C difference: a section the
-      // appraiser has not written yet is MARKED here and passed over in
-      // silence when the operat is issued. This is the only call site that
-      // may pass the flag — approve and sign must not.
-      { preview: true },
-    );
-    const docx = renderOperatDocx(model, { maps, photos });
-    const pdf = await worker.convertToPdf(docx);
-    await storage.put(previewDocKey(id), pdf);
-
-    // The blob key is stable, so the URL must carry what changed — without
-    // this the appraiser fixes a fact, re-previews, and the reader re-serves
-    // the render they were trying to replace. Content-derived rather than a
-    // clock: an identical re-render is genuinely the same document.
-    const version = createHash("sha256").update(pdf).digest("hex").slice(0, 16);
-    return { url: `/api/podglad/${id}?v=${version}` };
-  } catch (error) {
-    console.error("previewOperat failed", error);
-    return {
-      error: "Nie udało się złożyć podglądu operatu — sprawdź dane wyceny i spróbuj ponownie.",
-    };
-  }
+  });
 }

@@ -9,6 +9,7 @@ dependencies = [
     "pillow>=11.0",
     "python-multipart>=0.0.32",
     "shapely>=2.0",
+    "structlog>=26.1.0",
     "uvicorn[standard]>=0.49.0",
 ]
 
@@ -23,3 +24,11 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
+# T201 bans bare `print`: everything the worker says must be a structured JSON
+# line carrying the request's trace id, or it is invisible in Railway logs.
+# Ruff's defaults (E4/E7/E9 + F) plus T201; the full "E" set would turn on
+# E501 against 5 pre-existing long lines that `ruff format` does not rewrap,
+# which is a reformatting job this task has no business doing.
+select = ["E4", "E7", "E9", "F", "T201"]

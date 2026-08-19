@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import { approvableInput } from "./fixtures/valuation-inputs";
+import { withCode } from "./fixtures/with-code";
 
 // Synthetic 1x1 images (F-9: no real map data in fixtures) — same constants
 // as docx-render-maps.test.ts (repo convention: duplicate small fixture
@@ -269,7 +270,7 @@ describe("signValuationAction", () => {
     const result = await signValuationAction("v1");
 
     expect(result).toEqual({
-      error: "Nie udało się odczytać zamrożonych map operatu — spróbuj ponownie.",
+      error: withCode("Nie udało się odczytać zamrożonych map operatu — spróbuj ponownie."),
     });
     expect(signMock).not.toHaveBeenCalled();
   });
@@ -319,7 +320,7 @@ describe("signValuationAction", () => {
       const result = await signValuationAction("v1");
 
       expect(result).toEqual({
-        error: "Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie.",
+        error: withCode("Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie."),
       });
       expect(signMock).not.toHaveBeenCalled();
     });
@@ -368,7 +369,7 @@ describe("signValuationAction", () => {
       const result = await signValuationAction("v1");
 
       expect(result).toEqual({
-        error: "Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie.",
+        error: withCode("Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie."),
       });
       expect(signMock).not.toHaveBeenCalled();
     });

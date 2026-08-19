@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { valuationRepository } from "@/app/valuations/_deps";
+import { recordFailure } from "@/app/actions/_record-failure";
+import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type ConfirmKwResult = { error: string } | undefined;
 
@@ -17,15 +19,22 @@ export async function confirmKw(id: string): Promise<ConfirmKwResult> {
     redirect("/login");
   }
 
-  try {
-    const updated = await valuationRepository.confirmKw(id, session.user);
-    if (!updated) {
-      return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+  return withTrace(async () => {
+    try {
+      const updated = await valuationRepository.confirmKw(id, session.user);
+      if (!updated) {
+        return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+      }
+    } catch (error) {
+      await recordFailure({
+        event: "confirmKw.failed",
+        valuationId: id,
+        actorId: session.user.id,
+        error: error,
+      });
+      return { error: errorWithCode("Nie udało się potwierdzić danych KW — spróbuj ponownie.") };
     }
-  } catch (error) {
-    console.error("confirmKw failed", error);
-    return { error: "Nie udało się potwierdzić danych KW — spróbuj ponownie." };
-  }
 
-  revalidatePath(`/valuations/${id}`);
+    revalidatePath(`/valuations/${id}`);
+  });
 }

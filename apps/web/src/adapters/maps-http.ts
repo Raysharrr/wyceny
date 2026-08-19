@@ -1,4 +1,5 @@
 import type { MapFetchResult, PortMapImages } from "../ports/maps";
+import { traceHeaders } from "../lib/trace";
 
 const GENERIC_UNAVAILABLE = "Usługa map (Geoportal) jest chwilowo niedostępna.";
 
@@ -15,7 +16,7 @@ export function httpMapImages(baseUrl: string): PortMapImages {
       try {
         const response = await fetch(`${baseUrl}/map-proposal`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...traceHeaders() },
           body: JSON.stringify({ address }),
           // Worst case (worker retries WMS): 2 maps x 4 attempts x 30s ~= 246s,
           // far past the page's `maxDuration = 60` — Vercel would kill the

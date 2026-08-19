@@ -31,3 +31,6 @@ __pycache__/
 .vscode/*
 !.vscode/extensions.json
 .vercel
+
+# SDD per-task ledger (build-slice convention) — local bookkeeping, not history
+.superpowers/
