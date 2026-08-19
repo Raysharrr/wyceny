@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { proseProposal, valuationRepository } from "@/app/valuations/_deps";
+import { eventLog, proseProposal, valuationRepository } from "@/app/valuations/_deps";
 import { ProseWorkerDetailError } from "@/adapters/prose-http";
 import {
   attemptedProseSections,
@@ -17,7 +17,8 @@ import { currentSectionFactsHash } from "@/domain/prose-hash";
 import { proseEnabled } from "@/lib/prose-enabled";
 import { mintWorkerToken } from "@/lib/worker-token";
 import { recordFailure } from "@/app/actions/_record-failure";
-import { errorWithCode, withTrace } from "@/lib/trace";
+import { fingerprint } from "@/lib/fingerprint";
+import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import type { ProseSection, ProseSnapshot } from "@/domain/prose-snapshot";
 
 export type ProposeProseResult = { prose: ProseSnapshot } | { error: string };
@@ -192,6 +193,23 @@ export async function proposeProse(
 
     const saved = await valuationRepository.saveProse(id, session.user, snapshot, proposal.usage);
     if (!saved) return { error: NOT_FOUND };
+
+    // Hashes of the generated prose, taken before the appraiser can touch it.
+    // `audit_log` deliberately records that a generation happened and what it
+    // cost, never its text; a hash keeps that promise while still allowing a
+    // later "% accepted as proposed" to tell an edited section from one taken
+    // as written.
+    await eventLog.record({
+      level: "info",
+      event: "proposal.prose",
+      traceId: currentTraceId(),
+      valuationId: id,
+      actorId: session.user.id,
+      meta: {
+        fields: fingerprint(proposal.sections as Record<string, unknown>),
+        count: Object.keys(proposal.sections).length,
+      },
+    });
 
     revalidatePath(`/valuations/${id}`);
     return { prose: snapshot };

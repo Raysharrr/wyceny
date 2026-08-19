@@ -2,7 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { sampleProposal } from "@/app/valuations/_deps";
+import { eventLog, sampleProposal } from "@/app/valuations/_deps";
+import { recordFailure } from "@/app/actions/_record-failure";
+import { fingerprint } from "@/lib/fingerprint";
+import { currentTraceId, withTrace } from "@/lib/trace";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
 import { valuationFormObject } from "@/lib/valuation-form-schema";
 import type { SampleProposal } from "@/ports/sample";
@@ -42,14 +45,43 @@ export async function getSampleProposal(
     return { error: message ?? "Nieprawidłowe dane formularza." };
   }
 
-  try {
-    const proposal = await sampleProposal.fetchProposal(parsed.data.address, parsed.data.area);
-    return { proposal };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : undefined;
-    if (message && !message.startsWith(WORKER_RESPONDED_PREFIX)) {
-      return { error: message };
+  return withTrace(async () => {
+    try {
+      const proposal = await sampleProposal.fetchProposal(parsed.data.address, parsed.data.area);
+      // Keyed by POSITION, never by transactionId: that id is masked out of
+      // the document by F-12, so it has no business sitting in a table key
+      // in the clear. Only the three fields the appraiser can actually edit
+      // are hashed — a later "% as proposed" needs to tell an edit from an
+      // acceptance, not to re-identify a transaction.
+      await eventLog.record({
+        level: "info",
+        event: "proposal.sample",
+        traceId: currentTraceId(),
+        actorId: session.user.id,
+        meta: {
+          fields: fingerprint(
+            Object.fromEntries(
+              proposal.transactions.map((tx, i) => [
+                `tx${i}`,
+                { date: tx.date, area: tx.area, pricePerM2: tx.pricePerM2 },
+              ]),
+            ),
+          ),
+          count: proposal.transactions.length,
+        },
+      });
+      return { proposal };
+    } catch (error) {
+      await recordFailure({
+        event: "getSampleProposal.failed",
+        error,
+        actorId: session.user.id,
+      });
+      const message = error instanceof Error ? error.message : undefined;
+      if (message && !message.startsWith(WORKER_RESPONDED_PREFIX)) {
+        return { error: message };
+      }
+      return { error: GENERIC_ERROR };
     }
-    return { error: GENERIC_ERROR };
-  }
+  });
 }

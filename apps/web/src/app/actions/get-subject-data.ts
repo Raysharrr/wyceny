@@ -2,7 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { subjectData } from "@/app/valuations/_deps";
+import { eventLog, subjectData } from "@/app/valuations/_deps";
+import { recordFailure } from "@/app/actions/_record-failure";
+import { fingerprint } from "@/lib/fingerprint";
+import { currentTraceId, withTrace } from "@/lib/trace";
 import { WORKER_SUBJECT_PREFIX } from "@/adapters/subject-http";
 import { valuationFormObject } from "@/lib/valuation-form-schema";
 import type { SubjectProposal } from "@/ports/subject";
@@ -36,17 +39,46 @@ export async function getSubjectData(input: { address: string }): Promise<GetSub
     return { error: "Nieprawidłowe dane formularza." };
   }
 
-  try {
-    const result = await subjectData.fetchSubject(parsed.data.address);
-    if (result.kind === "outOfCoverage") {
-      return { outOfCoverage: result.message };
+  return withTrace(async () => {
+    try {
+      const result = await subjectData.fetchSubject(parsed.data.address);
+      if (result.kind === "outOfCoverage") {
+        // Not a failure: the worker's 422 says this address is outside the
+        // supported area, which is a legitimate answer the appraiser acts on
+        // by filling the data by hand. Worth counting, not worth alarming.
+        await eventLog.record({
+          level: "info",
+          event: "proposal.subjectOutOfCoverage",
+          traceId: currentTraceId(),
+          actorId: session.user.id,
+        });
+        return { outOfCoverage: result.message };
+      }
+      await eventLog.record({
+        level: "info",
+        event: "proposal.subject",
+        traceId: currentTraceId(),
+        actorId: session.user.id,
+        meta: {
+          fields: fingerprint({
+            parcel: result.proposal.parcel,
+            building: result.proposal.building,
+            mpzp: result.proposal.mpzp,
+          }),
+        },
+      });
+      return { proposal: result.proposal };
+    } catch (error) {
+      await recordFailure({
+        event: "getSubjectData.failed",
+        error,
+        actorId: session.user.id,
+      });
+      const message = error instanceof Error ? error.message : undefined;
+      if (message && !message.startsWith(WORKER_SUBJECT_PREFIX)) {
+        return { error: message };
+      }
+      return { error: GENERIC_ERROR };
     }
-    return { proposal: result.proposal };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : undefined;
-    if (message && !message.startsWith(WORKER_SUBJECT_PREFIX)) {
-      return { error: message };
-    }
-    return { error: GENERIC_ERROR };
-  }
+  });
 }
