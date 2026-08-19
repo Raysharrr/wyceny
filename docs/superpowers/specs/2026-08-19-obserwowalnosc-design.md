@@ -34,9 +34,9 @@ odtworzyć wstecz.
    „kod: a3f1c2d9".
 3. **structlog + middleware `X-Request-Id`** w workerze; ruff `T201` na `print`.
 4. **Migracja `event_log`** + port `PortEventLog` i adapter drizzle.
-5. **Zapis trzech rodzajów zdarzeń** (błąd akcji, nieudane wywołanie workera, snapshot
-   propozycji AI) — podpięcie w 21 istniejących miejscach `console.error` oraz w trzech
-   miejscach pobierania propozycji.
+5. **Zapis trzech rodzajów zdarzeń** (błąd akcji, nieudane wywołanie workera, odcisk
+   propozycji AI jako skróty pól) — podpięcie w 21 istniejących miejscach `console.error`
+   oraz w trzech miejscach pobierania propozycji.
 6. **Czytnik `pnpm trace <id>`** — skrypt konsolowy przyjmujący **albo** traceId, **albo**
    identyfikator wyceny; wypisuje oś czasu przebiegu (zdarzenia z `event_log` przeplecione
    z wierszami `audit_log` tej wyceny, rosnąco po czasie). Bez UI.
@@ -73,11 +73,23 @@ wierszy jest funkcją, nie naruszeniem.
 2. **Zapis zdarzenia idzie POZA transakcją mutacji.** `audit_log` pisze _wewnątrz_
    transakcji, bo ma zniknąć razem z nieudaną zmianą. Z błędem jest odwrotnie: w tej samej
    transakcji rollback skasowałby zapis o własnej porażce. Osobny insert, po `catch`.
-3. **Snapshot propozycji AI zapisujemy od razu, mimo że metryki nie budujemy.** Metrykę
-   „% pól as proposed" (PRD §10) da się policzyć kiedykolwiek, ale wyłącznie z danych
-   zebranych wcześniej: propozycja z RCN/EGiB ląduje w `inputs`, a gdy rzeczoznawca ją
-   poprawi, wartość pierwotna znika bezpowrotnie (write-once dotyczy snapshotu, nie historii
-   pola). Bez tego kroku slice zamyka drogę do tej metryki na zawsze.
+3. **Odcisk propozycji AI zapisujemy od razu, mimo że metryki nie budujemy — ale jako
+   skróty, nie wartości.** Metrykę „% pól as proposed" (PRD §10) da się policzyć
+   kiedykolwiek, ale wyłącznie z danych zebranych wcześniej: propozycja z RCN/EGiB ląduje
+   w `inputs`, a gdy rzeczoznawca ją poprawi, wartość pierwotna znika bezpowrotnie
+   (write-once dotyczy snapshotu, nie historii pola). Bez tego kroku slice zamyka drogę
+   do tej metryki na zawsze.
+
+   Zapisujemy jednak `{pole: sha256(wartość)}` plus liczniki, **nigdy tekst jawny**.
+   Powód jest twardy: przechowywanie propozycji wprost oznaczałoby wpisanie do `event_log`
+   działki i budynku z EGiB, transakcji porównawczych z RCN i zgeokodowanego adresu —
+   czyli dokładnie tych danych, które F-12 maskuje do `RRRR-MM`, zanim trafią do dokumentu.
+   Byłaby to obwodnica własnej allowlisty z sekcji niżej. Metryka tego nie potrzebuje:
+   „przyjęte bez zmian vs nadpisane" to czyste porównanie równości, więc skrót propozycji
+   zestawiony ze skrótem końcowej wartości z `inputs` odpowiada na nie w całości.
+
+   `ponytail:` skróty odpowiadają „czy zmieniono", nie „o ile zmieniono". Gdyby kiedyś
+   potrzebna była skala rozbieżności, to osobna decyzja — z osobnym uzasadnieniem RODO.
 
 **traceId — jeden identyfikator na całe życie żądania.**
 
@@ -143,14 +155,54 @@ w połowie implementacji kosztuje dużo. Ryzyko edge runtime **zweryfikowane i o
 wszystko na Node runtime). Pino nie występuje na domyślnej liście `serverExternalPackages`
 Next-a, więc może wymagać wpisu w `next.config.ts`.
 
-Zakres spike'a: najcieńsza server action logująca przez pino → `pnpm build` → deploy na
-staging → sprawdzenie logów Vercela.
+Drugie, poważniejsze założenie tego designu to jednak **nie pino, tylko
+`AsyncLocalStorage`**: że kontekst przeżywa łańcuch server action → adapter → `fetch`.
+Twierdzę to, ale tego nie sprawdziłem. Gdyby nie przeżywał, wariantem zapasowym jest
+przepchnięcie traceId przez pięć interfejsów portów — czyli dokładnie ten duży diff,
+którego ALS miał uniknąć, odkryty po przerobieniu 21 miejsc wywołań. Dlatego spike
+sprawdza oba ryzyka jednym wdrożeniem.
 
-**Kryterium PASS ustalone przed uruchomieniem:** build przechodzi bez ostrzeżeń bundlera
-**i** wpis pojawia się w logach Vercela jako JSON.
+Zakres spike'a: najcieńsza server action, która loguje przez pino **i** wywołuje workera
+z nagłówkiem `X-Request-Id` pobranym z ALS → `pnpm build` → deploy na staging (web
+automatycznie, **worker ręcznie** — serwis `worker-v2` na Railway nie ma podpiętego `source`)
+→ odczyt logów po obu stronach.
+
+**Kryterium PASS ustalone przed uruchomieniem** (wszystkie trzy naraz): build przechodzi
+bez ostrzeżeń bundlera; wpis pojawia się w logach Vercela jako JSON; **te same osiem znaków
+traceId widać w linii logu workera**.
 **FAIL → decyzja użytkownika:** `serverExternalPackages` jako obejście albo zejście na
 własny cienki logger (~30 linii, ta sama allowlista, ten sam interfejs wrappera).
 `structlog` w workerze zostaje niezależnie od wyniku.
+
+## Zależność: migracja `0012` i gałąź `chore/migracje-automatyczne`
+
+Nasza migracja to **`0012`** (na `origin/main` ostatnia jest `0011_maps_freeze.sql`).
+
+W locie jest gałąź `chore/migracje-automatyczne` (dd986d0), która dokłada dwie rzeczy:
+`migrate-on-deploy.mts` (migracje w buildzie **produkcyjnym**, z jawną bramką
+`VERCEL_ENV` — buildy preview celowo NIE migrują) oraz krok CI `check-migration-drift.mts`,
+porównujący liczbę migracji w repo z liczbą zastosowanych na bazie stagingu.
+
+**Te dwie rzeczy razem zatrzasną każdy PR wprowadzający migrację — także nasz.** Skrypt
+dryfu kończy się błędem, gdy `applied < inRepo`, a jedyne miejsce stosujące migracje to
+build produkcyjny, czyli **po** merge'u. PR z migracją `0012` ma więc w repo 12, na stagingu
+11, CI na czerwono i żadnej ścieżki do zieleni w obrębie samego PR-a. Obie połowy tamtej
+gałęzi są z osobna dobrze uzasadnione — dopiero ich złożenie tworzy zakleszczenie.
+
+Rozstrzygnięcie kolejności **do decyzji użytkownika** (poza zakresem tego slice'a, ale
+blokujące go):
+
+- **(a) Nasz slice wchodzi pierwszy** — kontrola dryfu jeszcze nie istnieje, problem nas
+  nie dotyczy, a tamta gałąź rozwiązuje go u siebie.
+- **(b) Tamta gałąź wchodzi pierwsza, z poprawką** — kontrola dryfu odpala się wyłącznie
+  przy pushu na `main`, nie na gałęziach PR (`if: github.ref == 'refs/heads/main'`). Dryf
+  z definicji dotyczy relacji „wdrożone środowisko ↔ `main`", nie gałęzi tematycznej.
+  Jedna linia w `ci.yml`.
+- **(c) Migracja stosowana ręcznie na stagingu przed merge'em** — działa, ale znosi cel
+  tamtej gałęzi i wraca do procesu, który miała zastąpić.
+
+Rekomendacja: **(b)**. Niezależnie od naszego slice'u tamta gałąź w obecnej postaci
+zatrzasnęłaby każdą przyszłą migrację.
 
 ## Poza zakresem tego slice'a
 
