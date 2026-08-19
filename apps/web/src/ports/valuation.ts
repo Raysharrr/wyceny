@@ -239,7 +239,7 @@ export interface PortValuation {
   approve(
     id: string,
     user: SessionUser,
-    docs?: { docUrl: string; docxUrl: string },
+    docs?: { docUrl: string; docxUrl: string; amountInWords?: string },
     now?: Date,
     audit?: { mapsSkipped?: boolean; mapsFrozenFor?: string },
     expectedInputs?: KcsInput | null,

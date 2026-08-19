@@ -647,7 +647,7 @@ export function applyCalculationConfirm(v: Valuation): Valuation {
 export function approveValuation(
   v: Valuation,
   now: Date,
-  docs?: { docUrl: string; docxUrl: string },
+  docs?: { docUrl: string; docxUrl: string; amountInWords?: string },
   gateOptions?: GateOptions,
 ): Valuation {
   assertDraft(v);
@@ -664,6 +664,14 @@ export function approveValuation(
     status: "approved",
     approvedAt: now,
     ...(docs ? { docUrl: docs.docUrl, docxUrl: docs.docxUrl } : {}),
+    // The words the ISSUED document actually carries, kept beside the files
+    // that carry them. The column has existed since the first schema and was
+    // never once written — `amount_in_words` was NULL on every row, approved
+    // and signed alike — so the flat view's "Kwota słownie" was a permanent
+    // dash next to an operat that spells the amount out in full. It is not
+    // recomputed on read because it must not be able to disagree with the
+    // PDF: this is the string the render was given.
+    ...(docs?.amountInWords ? { amountInWords: docs.amountInWords } : {}),
   };
 }
 

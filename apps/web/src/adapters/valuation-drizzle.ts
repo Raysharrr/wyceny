@@ -621,7 +621,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
     async approve(
       id: string,
       user: SessionUser,
-      docs?: { docUrl: string; docxUrl: string },
+      docs?: { docUrl: string; docxUrl: string; amountInWords?: string },
       now: Date = new Date(),
       audit?: { mapsSkipped?: boolean; mapsFrozenFor?: string },
       expectedInputs?: KcsInput | null,
@@ -681,6 +681,10 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
             approvedAt: updated.approvedAt,
             docUrl: updated.docUrl,
             docxUrl: updated.docxUrl,
+            // Written with the document, from the same string the render was
+            // given — see `approveValuation`. The column had never been
+            // written by anything before this line existed.
+            amountInWords: updated.amountInWords,
           })
           .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
           .returning();

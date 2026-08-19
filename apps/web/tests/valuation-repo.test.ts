@@ -244,6 +244,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     const updated = await repo.approve(created.id, appraiserA, {
       docUrl: "/api/docs/operat-x.pdf",
       docxUrl: "/api/docs/operat-x.docx",
+      amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
     });
     expect(updated?.docUrl).toBe("/api/docs/operat-x.pdf");
     expect(updated?.docxUrl).toBe("/api/docs/operat-x.docx");
@@ -252,6 +253,28 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     const reread = await repo.get(created.id, appraiserA);
     expect(reread?.docUrl).toBe("/api/docs/operat-x.pdf");
     expect(reread?.docxUrl).toBe("/api/docs/operat-x.docx");
+    // `amount_in_words` had never been written by anything: NULL on every row,
+    // approved and signed alike, while the flat view showed a dash beside an
+    // operat that spells the amount out in full. It is written with the
+    // document, from the same string the render was handed.
+    expect(reread?.amountInWords).toBe("czterysta osiemdziesiąt tysięcy złotych zero groszy");
+  });
+
+  it("approve without amountInWords leaves the column alone (older callers, and sign)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Gating 8b"),
+      inputs: withConfirmedProse("ul. Gating 8b", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+
+    const updated = await repo.approve(created.id, appraiserA, {
+      docUrl: "/api/docs/operat-x2.pdf",
+      docxUrl: "/api/docs/operat-x2.docx",
+    });
+
+    expect(updated?.status).toBe("approved");
+    expect(updated?.amountInWords).toBeNull();
   });
 
   it("approve with audit.mapsSkipped writes an 'approved' audit row whose meta contains mapsSkipped: true (Slice 9)", async () => {

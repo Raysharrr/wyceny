@@ -283,7 +283,11 @@ export async function approveValuation(
     const updated = await valuationRepository.approve(
       id,
       session.user,
-      { docUrl, docxUrl },
+      // `amountInWords` travels with the URLs because it describes the same
+      // artifact: it is the exact string `buildDocumentModel` was handed
+      // above, so the row and the PDF cannot end up spelling different
+      // amounts.
+      { docUrl, docxUrl, amountInWords },
       now,
       // One of the two, never both: the appraiser's conscious "without maps",
       // or — when maps ARE embedded — the address they were fetched for
