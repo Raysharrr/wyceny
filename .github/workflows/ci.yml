@@ -191,10 +191,21 @@ jobs:
       - name: Migrate + seed
         working-directory: apps/web
         run: pnpm exec drizzle-kit migrate && pnpm seed
+      # `--no-install-recommends`, and the -nogui package where it exists: the
+      # recommends of `libreoffice-writer` drag in Java, dictionaries and GUI
+      # libraries this job never touches — it converts one DOCX headlessly.
+      # The plain install outlasted a 15-minute budget twice on 2026-08-19.
+      # Nothing here is taken on faith: if the trimmed install were missing a
+      # PDF-export dependency, the smoke below fails at the approval step,
+      # which is the loudest possible check.
       - name: Ensure LibreOffice + Carlito (F-12 conversion tests)
         run: |
-          if ! command -v soffice >/dev/null; then sudo apt-get update && sudo apt-get install -y libreoffice-writer; fi
-          if ! fc-list | grep -qi carlito; then sudo apt-get install -y fonts-crosextra-carlito; fi
+          if ! command -v soffice >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui \
+              || sudo apt-get install -y --no-install-recommends libreoffice-writer
+          fi
+          if ! fc-list | grep -qi carlito; then sudo apt-get install -y --no-install-recommends fonts-crosextra-carlito; fi
           soffice --version
       - name: Start worker
         working-directory: apps/worker
