@@ -172,6 +172,37 @@ Note for serverless: pino runs with `pino.destination({ sync: true })`. Vercel f
 AWS Lambda, which freezes the process right after the response — i.e. right after a failure is
 logged — and an async buffer would lose exactly those lines.
 
+### Reaching a protected preview deployment
+
+Preview deployments sit behind Vercel Authentication, so `curl` gets a 302 to an SSO page
+and any automated check — a smoke test, a log inspection, an agent verifying a PR — is blind.
+Vercel's supported answer is **Protection Bypass for Automation**: one project-level secret,
+sent as a header.
+
+Generate it once (needs an account with rights on the project's Vercel team):
+
+```bash
+vercel project protection enable wyceny --protection-bypass --scope <team>
+```
+
+Put the printed secret in `apps/web/.env.local` (gitignored — F-9 keeps secrets out of the
+repo) and, for CI, in the repository's GitHub secrets under the same name:
+
+```
+VERCEL_AUTOMATION_BYPASS_SECRET=...
+```
+
+Then any preview is reachable:
+
+```bash
+./scripts/preview.sh /login                  # current branch's preview
+PREVIEW_URL=https://... ./scripts/preview.sh /api/health -i
+```
+
+Playwright against a preview needs the same two headers in `use.extraHTTPHeaders`
+(`x-vercel-protection-bypass` and `x-vercel-set-bypass-cookie: true`) — not wired here,
+because nothing runs e2e against previews yet.
+
 ## Monorepo layout
 
 ```
