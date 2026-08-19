@@ -123,15 +123,54 @@ sequenceDiagram
 
 ## Fitness functions active in CI
 
-Five architectural invariants are enforced automatically on every push/PR (`.github/workflows/ci.yml`). Full table (all 12, active + deferred) in [`docs/architecture/README.md`](docs/architecture/README.md#fitness-functions-f-1f-12).
+Six architectural invariants are enforced automatically on every push/PR (`.github/workflows/ci.yml`). Full table (all 12, active + deferred) in [`docs/architecture/README.md`](docs/architecture/README.md#fitness-functions-f-1f-12).
 
-| #    | What                                                                            | Where                                                                                 |
-| ---- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| F-1  | Golden WR harness (pins the create→worker→save pipeline shape)                  | `apps/web/tests/golden-wr.test.ts`                                                    |
-| F-8  | Owner isolation (appraiser sees own, admin sees all) — app-layer + Postgres RLS | `apps/web/tests/rls-isolation.test.ts`, `docs-route.test.ts`                          |
-| F-9  | No PII/secrets committed (PESEL, land-register numbers, signed PDFs)            | `scripts/check-no-pii.sh`                                                             |
-| F-10 | Hexagonal dependency rule (`domain/`/`packages/shared` never import adapters)   | `.dependency-cruiser.cjs`                                                             |
-| F-11 | Worker never returns a valuation-result field — words/data only                 | `apps/web/tests/worker-contract.test.ts`, `apps/worker/tests/test_amount_in_words.py` |
+| #    | What                                                                                                    | Where                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| F-1  | Golden WR harness (pins the create→worker→save pipeline shape)                                          | `apps/web/tests/golden-wr.test.ts`                                                    |
+| F-8  | Owner isolation (appraiser sees own, admin sees all) — app-layer + Postgres RLS                         | `apps/web/tests/rls-isolation.test.ts`, `docs-route.test.ts`                          |
+| F-9  | No PII/secrets committed (PESEL, land-register numbers, signed PDFs)                                    | `scripts/check-no-pii.sh`                                                             |
+| F-10 | Hexagonal dependency rule (`domain/`/`packages/shared` never import adapters)                           | `.dependency-cruiser.cjs`                                                             |
+| F-11 | Worker never returns a valuation-result field — words/data only                                         | `apps/web/tests/worker-contract.test.ts`, `apps/worker/tests/test_amount_in_words.py` |
+| F-13 | No PII in logs — the allowlist gate is still wired (a deleted rule is the failure nothing else catches) | `apps/web/tests/log.test.ts`, `apps/web/eslint.config.mjs`                            |
+
+## Observability — reconstructing what an appraiser did
+
+Every request carries an **8-character trace id**. It is minted in the Server Action, travels to
+the worker as `X-Request-Id`, and is shown to the appraiser when something fails:
+
+> Nie udało się potwierdzić próby — spróbuj ponownie. (kod: `a3f1c2d9`)
+
+That code is the whole diagnostic loop. Read it over the phone, then:
+
+```bash
+cd apps/web && pnpm trace a3f1c2d9          # one run
+cd apps/web && pnpm trace <valuation-uuid>  # everything ever recorded for one valuation
+```
+
+The reader interleaves two trails that answer different questions — `audit_log` (what the
+appraiser committed to; legal, append-only, closed action list) and `event_log` (what broke;
+operational, prunable) — into one timeline.
+
+**Two sinks, on purpose.** Structured JSON goes to stdout for everything (pino in web,
+structlog in the worker), where the hosting provider keeps it for hours to days. Only what has
+to outlive that retention is written to `event_log`: failures, failed worker calls, and
+fingerprints of AI proposals.
+
+**Logs cannot carry personal data.** Every field passes an allowlist in
+[`apps/web/src/lib/log.ts`](apps/web/src/lib/log.ts) — addresses, land-register data and prose
+text are simply not on it, so they cannot leak through an oversight. `no-console` in eslint makes
+the wrapper impossible to bypass (client components are exempt: their console runs in the browser,
+which is not a log sink of ours). AI proposals are stored as **`sha256` hashes, never values** —
+enough to tell an edited field from one accepted as proposed, and nothing more.
+
+**Failures are recorded outside the transaction that failed.** `audit_log` writes inside it, so a
+rolled-back mutation leaves no audit row — correct for a legal record. A failure record must do
+the opposite, or a rollback would erase the evidence of its own cause.
+
+Note for serverless: pino runs with `pino.destination({ sync: true })`. Vercel functions run on
+AWS Lambda, which freezes the process right after the response — i.e. right after a failure is
+logged — and an async buffer would lose exactly those lines.
 
 ## Monorepo layout
 
