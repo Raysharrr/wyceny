@@ -250,10 +250,7 @@ export async function approveValuation(
       const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
       if (unfrozen) {
         const keys = frozenMapKeys(id);
-        // A PRIOR failed attempt (e.g. a PDF conversion crash) may have left
-        // these keys behind; uncleaned, sign would find and embed maps this
-        // approved document does not have. delete() is idempotent, so this is
-        // a no-op on the common case where nothing was ever orphaned.
+        // Same orphan cleanup as the fetch arm above, for the same reason.
         await storage.delete(keys.ewidencyjna);
         await storage.delete(keys.orto);
       } else {

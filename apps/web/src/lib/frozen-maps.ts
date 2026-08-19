@@ -86,9 +86,12 @@ export async function readFrozenMaps(
  * from under an issued operat cost a signed document that silently differs
  * from the approved one.
  *
- * Whether the bytes go is ALL this decides. Both callers refuse to go on
- * regardless: a freeze that did not take means the caller cannot vouch for
- * what those keys hold.
+ * Whether the bytes go is ALL this decides — what the caller does next is
+ * its own business, and the two callers differ on purpose. `approveValuation`
+ * refuses: a freeze it cannot vouch for must not become a signature.
+ * `previewOperat` falls through and renders: a preview claims nothing, and
+ * withholding the screen over a marker the appraiser never sees would cost
+ * them the one thing this whole slice exists to give them.
  */
 export async function dropMapBytesIfStillOurDraft(
   deps: { storage: PortStorage; valuationRepository: PortValuation },
