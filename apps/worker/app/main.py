@@ -7,7 +7,6 @@ Local run:
 """
 
 import base64
-import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -26,10 +25,13 @@ from app import photo as photo_core
 from app import prose as prose_core
 from app.amount_in_words import to_amount_in_words
 from app.convert import ConversionError, docx_to_pdf
+from app.logging_setup import RequestIdMiddleware, configure_logging
+from app.logging_setup import log as logger
 
-logger = logging.getLogger("uvicorn.error")
+configure_logging()
 
 app = FastAPI(title="wyceny-worker")
+app.add_middleware(RequestIdMiddleware)
 
 # CORS: the KW upload posts directly from the browser (Vercel 4.5 MB body
 # limit forces the web bypass — spec §Architektura). Scoped by origin, not
@@ -66,7 +68,7 @@ def convert_to_pdf(docx: bytes = Body(default=b"")) -> Response:
         # Handled HTTPExceptions are never logged by FastAPI — without this
         # line a conversion failure (incl. the soffice stderr the
         # ConversionError carries) leaves no trace in Railway logs.
-        logging.getLogger("uvicorn.error").error("convert-to-pdf failed: %s", exc)
+        logger.error("convert_to_pdf_failed", err=str(exc))
         raise HTTPException(
             status_code=502,
             detail="Konwersja DOCX do PDF nie powiodła się — spróbuj ponownie.",
@@ -399,7 +401,7 @@ def kw_extract(
     try:
         payload = _extract_kw_payload(base64.standard_b64encode(data).decode())
     except Exception as exc:
-        logger.error("kw extraction failed: %s", exc)
+        logger.error("kw_extraction_failed", err=str(exc))
         raise HTTPException(
             status_code=502,
             detail="Nie udało się odczytać dokumentu — spróbuj ponownie albo wpisz dane ręcznie.",
@@ -560,7 +562,7 @@ def _prose_section(section: str, facts: dict) -> _SectionOutcome:
         violations = prose_core.validate_numbers(text, facts)
 
         if violations:
-            logger.warning("prose section %s: retry after violations %s", section, violations)
+            logger.warning("prose_section_retry", section=section, violations=violations)
             # The validated prompt goes back unchanged — the correction rides
             # along as a separate content block.
             retry = _generate_prose_section(
@@ -571,12 +573,12 @@ def _prose_section(section: str, facts: dict) -> _SectionOutcome:
             text = retry.text.strip()
             violations = prose_core.validate_numbers(text, facts)
             if violations:
-                logger.warning("prose section %s rejected, violations %s", section, violations)
+                logger.warning("prose_section_rejected", section=section, violations=violations)
                 text = ""
     except Exception as exc:
         # Tokens already spent are still reported: the cost audit must not lose
         # them just because the section did not finish.
-        logger.error("prose section %s failed: %s", section, exc)
+        logger.error("prose_section_failed", section=section, err=str(exc))
         return _SectionOutcome("", [], input_tokens, output_tokens, failed=True)
     # Only section names and offending numbers are logged — never the facts
     # (they carry the address) and never the generated text.
@@ -678,13 +680,13 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
     # again. A batch where nothing landed stays an error, so the web side's
     # automatic retry still covers an ordinary network blip.
     if not sekcje and not any(odrzucone.values()):
-        logger.error("prose: no call landed for %s", list(odrzucone))
+        logger.error("prose_no_call_landed", sections=list(odrzucone))
         raise HTTPException(status_code=502, detail=PROSE_FAILED_DETAIL)
     if not sekcje:
         # Not an error — the appraiser gets the reasons and writes by hand —
         # but a whole batch refused is worth seeing without reading the
         # per-section lines above.
-        logger.warning("prose: no section survived the number guard, %s", odrzucone)
+        logger.warning("prose_all_sections_rejected", rejected=odrzucone)
 
     return ProseProposalResponse(
         sekcje=sekcje,
@@ -721,7 +723,7 @@ def photo_process(
     try:
         jpeg, width, height = photo_core.process_photo(data)
     except Exception as exc:  # unreadable image / decompression bomb — same user answer
-        logger.error("photo processing failed: %s", exc)
+        logger.error("photo_processing_failed", err=str(exc))
         raise HTTPException(
             status_code=415,
             detail="Nie udało się odczytać zdjęcia — wgraj plik JPEG lub PNG.",
