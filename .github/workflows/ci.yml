@@ -19,7 +19,15 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 25, not 15: "Ensure LibreOffice + Carlito" installs ~400 MB from apt on
+    # every run, and on 2026-08-19 it alone outlasted the 15-minute budget
+    # twice in a row — cancelling a job whose every other step had already
+    # passed, which reads like a code failure and is not one. Everything Node
+    # finishes inside 6 minutes; the rest of this number is apt's.
+    # The structural fix is caching the packages (or splitting the worker
+    # tests into their own job) so the fast checks stop being hostage to a
+    # download. Until then, the budget has to cover the slow day.
+    timeout-minutes: 25
 
     services:
       postgres:
@@ -104,7 +112,8 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Same apt install, same reason — see the `ci` job's note above.
+    timeout-minutes: 25
     needs: ci
     env:
       # NEXT_PUBLIC_* is inlined at `next build` time, so this must be set
