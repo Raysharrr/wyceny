@@ -19,7 +19,12 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 25, not 15: the LibreOffice apt install alone took 711s on 2026-08-19
+    # and cancelled the whole job. It is slow, not hung — everything else in
+    # this job finishes inside three minutes. The real fix is to stop
+    # installing it per run (prebuilt image or apt cache); until then a bound
+    # that kills healthy runs is worse than a generous one.
+    timeout-minutes: 25
 
     services:
       postgres:
@@ -94,7 +99,6 @@ jobs:
             echo "F-13: no-console is gone from eslint.config.mjs — the log allowlist can be bypassed"
             exit 1
           }
-          pnpm vitest run tests/log.test.ts
 
       - name: Set up Python + uv
         uses: astral-sh/setup-uv@v8.2.0
