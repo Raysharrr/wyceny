@@ -70,7 +70,7 @@ Pole „Lokal bez własnej KW (zakup deweloperski)” pojawia się wyłącznie w
 
 Przycisk „Dane się zgadzają — dalej” zapisuje krok. Zapis nie przejdzie bez adresu, powierzchni większej od zera, celu wyceny i zamawiającego — brakujące pole dostaje komunikat przy sobie.
 
-Zapis kroku **kasuje zatwierdzoną wartość rynkową**. Po każdym powrocie tutaj kwotę trzeba potwierdzić w kroku 5 jeszcze raz, a do tego czasu kroki 6 i 7 są z powrotem niedostępne — dzieje się tak również wtedy, gdy poprawiłeś tylko zamawiającego albo cel wyceny.
+Zapis kroku kasuje zatwierdzoną wartość rynkową **tylko wtedy, gdy zmieniłeś powierzchnię**. Powierzchnia to jedyne pole tego kroku, które wchodzi do wzoru (`WR = Cśr × ΣUi × P`), więc tylko jej zmiana każe wrócić do kroku 5 — a do tego czasu kroki 6 i 7 są z powrotem niedostępne. Poprawka adresu, zamawiającego, celu wyceny, numeru księgi albo danych przedmiotu zostawia kwotę nietkniętą.
 
 Numer księgi wieczystej jest wymagany tylko wtedy, gdy nie wgrałeś dokumentu. W trybie wgrywania pusty formularz kończy się komunikatem „Wgraj dokument albo przełącz na wpis ręczny”.
 
@@ -78,4 +78,4 @@ Plik inny niż PDF albo większy niż 32 MB jest odrzucany od razu, bez wysyłan
 
 Dane ewidencyjne, plan miejscowy i dane odczytane z dokumentu KW wchodzą do wyceny ze [statusem „do weryfikacji”](/pomoc/zasady-zatwierdzania). Potwierdza je zapis tego kroku: przycisk „Dane się zgadzają — dalej” w pasku na dole ekranu zapisuje je i potwierdza zbiorczo, razem z geokodowaniem adresu. To jedyne miejsce, w którym te dane potwierdzasz — krok 7 o nie nie zapyta, bo ich nie pokazuje. To, co wpisałeś sam, jest potwierdzone z definicji.
 
-Jeśli wracasz tutaj do wyceny z zatwierdzoną już kalkulacją, kreator uprzedza o tym nad formularzem: zapis tego kroku kasuje wartość rynkową, więc trzeba będzie ponownie przejść [krok 5](/pomoc/krok-5-kalkulacja). Poprawka adresu, powierzchni albo danych przedmiotu wymaga dodatkowo ponownego zatwierdzenia opisów w [kroku 6](/pomoc/krok-6-opisy); poprawka samego zamawiającego, celu wyceny albo numeru księgi opisów nie rusza.
+Jeśli wracasz tutaj do wyceny z zatwierdzoną już kalkulacją, kreator uprzedza nad formularzem, co ile kosztuje: zmiana powierzchni kasuje wartość rynkową i każe ponownie przejść [krok 5](/pomoc/krok-5-kalkulacja). Poprawka adresu, powierzchni albo danych przedmiotu wymaga ponownego zatwierdzenia opisów w [kroku 6](/pomoc/krok-6-opisy); poprawka samego zamawiającego, celu wyceny albo numeru księgi nie rusza ani kwoty, ani opisów.

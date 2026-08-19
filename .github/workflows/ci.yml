@@ -19,10 +19,15 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    # 20: a healthy run is ~12 min, almost all of it the LibreOffice install.
-    # The apt step now bounds itself (see below), so this is a backstop, not
-    # the thing standing between a hung mirror and a wasted half hour.
-    timeout-minutes: 20
+    # 25, not 15: "Ensure LibreOffice + Carlito" installs ~400 MB from apt on
+    # every run, and on 2026-08-19 it alone outlasted the 15-minute budget
+    # twice in a row — cancelling a job whose every other step had already
+    # passed, which reads like a code failure and is not one. Everything Node
+    # finishes inside 6 minutes; the rest of this number is apt's.
+    # The structural fix is caching the packages (or splitting the worker
+    # tests into their own job) so the fast checks stop being hostage to a
+    # download. Until then, the budget has to cover the slow day.
+    timeout-minutes: 25
 
     services:
       postgres:
@@ -128,46 +133,26 @@ jobs:
         working-directory: apps/worker
         run: uv run ruff check . && uv run ruff format --check .
 
-      # The runner's default mirror (azure.archive.ubuntu.com) answered `Ign:`
-      # to every index on 2026-08-19 and then went silent — apt hung for 21
-      # minutes and took the whole job down with it, twice, at both a 15- and a
-      # 25-minute limit. Two changes, both about failing fast rather than
-      # waiting: point apt at the canonical mirror, and bound every apt call so
-      # a bad mirror costs a minute instead of the entire run.
+      # NO LibreOffice here, on purpose. This job used to install ~400 MB from
+      # apt to serve ONE assertion — `test_convert_to_pdf_returns_pdf_bytes`
+      # checking that five bytes are `%PDF-`. The other conversion tests (400
+      # on an empty body, 502 on failure, SOFFICE env resolution) need no
+      # binary at all, and nothing anywhere asserts the Carlito font. On
+      # 2026-08-19 that download outlasted the whole job budget twice, killing
+      # runs whose every other step had passed.
       #
-      # The real fix is to stop installing a 400 MB office suite per run — a
-      # prebuilt image or an apt cache — but that is a change to how CI is
-      # built, not to this slice.
-      - name: Ensure LibreOffice + Carlito (F-12 conversion tests)
-        run: |
-          set -euo pipefail
-          if ! command -v soffice >/dev/null || ! fc-list | grep -qi carlito; then
-            # The mirror lives in a MIRRORLIST, not in sources.list: apt's
-            # first line is `Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist`.
-            # Rewriting sources.list therefore changed nothing (verified on
-            # run 32228351491 — azure kept answering `Ign:` afterwards). This
-            # is the file that actually decides.
-            sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' \
-              /etc/apt/apt-mirrors.txt 2>/dev/null || true
-            sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' \
-              /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
-            timeout 300 sudo apt-get update
-          fi
-          if ! command -v soffice >/dev/null; then
-            timeout 900 sudo apt-get install -y --no-install-recommends libreoffice-writer
-          fi
-          if ! fc-list | grep -qi carlito; then
-            timeout 300 sudo apt-get install -y fonts-crosextra-carlito
-          fi
-          soffice --version
-
-      - name: Worker tests (F-5, F-11, F-12)
+      # The conversion is NOT left unverified: the `e2e` job below runs the
+      # real worker through a real approval, which converts a real operat —
+      # a stronger check than this one, in the job that has to pay for
+      # LibreOffice anyway.
+      - name: Worker tests (F-5, F-11, F-12 — conversion covered by e2e)
         working-directory: apps/worker
         run: uv run pytest -q
 
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Same apt install, same reason — see the `ci` job's note above.
+    timeout-minutes: 25
     needs: ci
     env:
       # NEXT_PUBLIC_* is inlined at `next build` time, so this must be set
@@ -239,10 +224,37 @@ jobs:
       - name: Migrate + seed
         working-directory: apps/web
         run: pnpm exec drizzle-kit migrate && pnpm seed
+      # `--no-install-recommends`, and the -nogui package where it exists: the
+      # recommends of `libreoffice-writer` drag in Java, dictionaries and GUI
+      # libraries this job never touches — it converts one DOCX headlessly.
+      # The plain install outlasted a 15-minute budget twice on 2026-08-19.
+      # Nothing here is taken on faith: if the trimmed install were missing a
+      # PDF-export dependency, the smoke below fails at the approval step,
+      # which is the loudest possible check.
       - name: Ensure LibreOffice + Carlito (F-12 conversion tests)
         run: |
-          if ! command -v soffice >/dev/null; then sudo apt-get update && sudo apt-get install -y libreoffice-writer; fi
-          if ! fc-list | grep -qi carlito; then sudo apt-get install -y fonts-crosextra-carlito; fi
+          set -euo pipefail
+          if ! command -v soffice >/dev/null || ! fc-list | grep -qi carlito; then
+            # The runner picks its Ubuntu mirror from a MIRRORLIST, not from
+            # sources.list — apt's first line is
+            # `Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist`. On 2026-08-19
+            # the azure mirror there answered `Ign:` to every index and then
+            # went silent for 21 minutes (runs 32224533637, 32226287339);
+            # rewriting sources.list changed nothing, because the address is
+            # not in that file. Point the mirrorlist at the canonical archive,
+            # and bound every apt call so a bad mirror costs a minute rather
+            # than the whole job.
+            sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' \
+              /etc/apt/apt-mirrors.txt 2>/dev/null || true
+            timeout 300 sudo apt-get update
+          fi
+          if ! command -v soffice >/dev/null; then
+            timeout 600 sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui \
+              || timeout 600 sudo apt-get install -y --no-install-recommends libreoffice-writer
+          fi
+          if ! fc-list | grep -qi carlito; then
+            timeout 300 sudo apt-get install -y --no-install-recommends fonts-crosextra-carlito
+          fi
           soffice --version
       - name: Start worker
         working-directory: apps/worker

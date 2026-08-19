@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
+import { recordFailure } from "@/app/actions/_record-failure";
+import { log } from "@/lib/log";
+import { errorWithCode, withTrace } from "@/lib/trace";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import {
   ApprovalBlockedError,
@@ -22,9 +25,6 @@ import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
 import { dropMapBytesIfStillOurDraft, frozenMapKeys, readFrozenMaps } from "@/lib/frozen-maps";
-import { log } from "@/lib/log";
-import { recordFailure } from "@/app/actions/_record-failure";
-import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type ApproveValuationResult =
   | {
@@ -68,6 +68,9 @@ export async function approveValuation(
     redirect("/login");
   }
 
+  // The session guard stays OUTSIDE the traced block: Next implements
+  // `redirect()` by throwing, and that control-flow throw has no business
+  // travelling through a scope whose whole job is to record failures.
   return withTrace(async () => {
     const valuation = await valuationRepository.get(id, session.user);
     if (!valuation) {
@@ -195,14 +198,14 @@ export async function approveValuation(
             // row is gone, when the caller is not its owner, or when it is no
             // longer a draft — and none of those clears by trying again.
             return {
-              error: errorWithCode(
+              error:
                 "Nie udało się zapisać stanu map operatu. Sprawdź, czy wycena jest nadal Twoim szkicem.",
-              ),
             };
           }
         }
       }
       const maps = embedded?.maps ?? null;
+
       const model = buildDocumentModel({
         address: valuation.address,
         area: valuation.area,
@@ -271,6 +274,7 @@ export async function approveValuation(
           });
         }
       }
+
       // Slice 10 (Task 8): the photo manifest lives in inputs.inspection —
       // unlike maps, a manifest key that fails to resolve is a HARD integrity
       // error (manifest + bytes are written in the same tx) and aborts the
@@ -299,7 +303,11 @@ export async function approveValuation(
       const updated = await valuationRepository.approve(
         id,
         session.user,
-        { docUrl, docxUrl },
+        // `amountInWords` travels with the URLs because it describes the same
+        // artifact: it is the exact string `buildDocumentModel` was handed
+        // above, so the row and the PDF cannot end up spelling different
+        // amounts.
+        { docUrl, docxUrl, amountInWords },
         now,
         // One of the two, never both: the appraiser's conscious "without maps",
         // or — when maps ARE embedded — the address they were fetched for
@@ -333,10 +341,10 @@ export async function approveValuation(
         await storage.delete(previewDocKey(id));
       } catch (error) {
         await recordFailure({
-          event: "approveValuation.previewBlobDropFailed",
+          event: "approveValuation.previewDropFailed",
           valuationId: id,
           actorId: session.user.id,
-          error: error,
+          error,
         });
       }
     } catch (error) {
@@ -356,7 +364,7 @@ export async function approveValuation(
         event: "approveValuation.failed",
         valuationId: id,
         actorId: session.user.id,
-        error: error,
+        error,
       });
       return {
         error: errorWithCode(

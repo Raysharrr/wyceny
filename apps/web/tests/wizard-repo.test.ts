@@ -329,6 +329,45 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
     expect(updated!.wr).toBeNull();
   });
 
+  // The adapter used to write a literal `wr: null` here, overruling whatever
+  // the domain decided. This is the end-to-end half of that fix: the amount
+  // has to survive a real step-1 save through a real transaction, not only in
+  // `applySubjectUpdate`'s return value.
+  it("saveSubject keeps a confirmed wr when the area does not move", async () => {
+    const created = await repo.create(partialDraft("Wizard Keep WR 1"));
+    await repo.saveSample(created.id, appraiserA, {
+      comparables: [
+        { pricePerM2: 9_000, source: "manual", status: "confirmed" },
+        { pricePerM2: 9_500, source: "manual", status: "confirmed" },
+        { pricePerM2: 10_500, source: "manual", status: "confirmed" },
+      ],
+      sampleMeta: null,
+    });
+    await repo.saveFeatures(created.id, appraiserA, {
+      features: [{ name: "standard", weight: 1, rating: "przecietna" }],
+      provenance: {
+        weights: { source: "rzeczoznawca", status: "confirmed" },
+        ratings: { source: "rzeczoznawca", status: "confirmed" },
+      },
+    });
+    const confirmed = await repo.confirmCalculation(created.id, appraiserA);
+    expect(confirmed!.wr).toBeGreaterThan(0);
+
+    // Everything but the area moves — address, purpose, KW number, client.
+    const sameArea = await repo.saveSubject(created.id, appraiserA, {
+      ...subjectUpdate,
+      area: confirmed!.inputs!.area,
+    });
+    expect(sameArea!.wr).toBe(confirmed!.wr);
+
+    // ...and moving the area still costs it, from that same state.
+    const movedArea = await repo.saveSubject(created.id, appraiserA, {
+      ...subjectUpdate,
+      area: confirmed!.inputs!.area + 1,
+    });
+    expect(movedArea!.wr).toBeNull();
+  });
+
   it("confirmCalculation on a partial draft (no comparables/features) rejects CalculationNotReadyError", async () => {
     const created = await repo.create(partialDraft("Wizard Partial 1"));
 

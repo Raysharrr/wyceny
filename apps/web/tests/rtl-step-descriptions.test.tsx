@@ -750,6 +750,58 @@ describe("entering the step must not re-buy an answer already given (T5)", () =>
   });
 });
 
+describe("a proposal the merge refused to overwrite is offered, not binned", () => {
+  const OFFER = "Lokal obejmuje trzy pokoje, kuchnię, przedpokój i łazienkę z WC.";
+
+  const withOffer = snapshot({
+    sections: {
+      opis_lokalu: {
+        value: HUMAN_TEXT,
+        provenance: { source: "rzeczoznawca", status: "to_verify" },
+      },
+    },
+    proposals: {
+      opis_lokalu: { value: OFFER, provenance: { source: "ai", status: "to_verify" } },
+    },
+  });
+
+  it("shows the offered text with both answers, next to the appraiser's own", () => {
+    renderStep({ prose: withOffer, upToDate: true });
+
+    const offer = screen.getByTestId("prose-offer-opis_lokalu");
+    expect(offer).toHaveTextContent(OFFER);
+    // The appraiser's text is untouched underneath it — the offer is an
+    // option, not a replacement that already happened.
+    expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue(HUMAN_TEXT);
+    expect(screen.getByRole("button", { name: "Wstaw zamiast mojego tekstu" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Zostaw mój tekst" })).toBeInTheDocument();
+  });
+
+  it("'Wstaw' puts the offered text in the box and retires the offer", () => {
+    renderStep({ prose: withOffer, upToDate: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Wstaw zamiast mojego tekstu" }));
+
+    expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue(OFFER);
+    expect(screen.queryByTestId("prose-offer-opis_lokalu")).not.toBeInTheDocument();
+  });
+
+  it("'Zostaw mój tekst' retires the offer and changes nothing else", () => {
+    renderStep({ prose: withOffer, upToDate: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Zostaw mój tekst" }));
+
+    expect(screen.queryByTestId("prose-offer-opis_lokalu")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Opis lokalu/)).toHaveValue(HUMAN_TEXT);
+  });
+
+  it("no offer, no block — the common case stays quiet", () => {
+    renderStep({ prose: allSixFresh(), upToDate: true });
+
+    expect(screen.queryByTestId("prose-offer-opis_lokalu")).not.toBeInTheDocument();
+  });
+});
+
 describe("kill-switch NEXT_PUBLIC_PROSE=off", () => {
   beforeEach(() => vi.stubEnv("NEXT_PUBLIC_PROSE", "off"));
 

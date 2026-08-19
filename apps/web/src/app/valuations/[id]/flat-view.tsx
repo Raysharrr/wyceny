@@ -152,116 +152,119 @@ export function FlatView({
         ) : null}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <div className="flex flex-col gap-4">
-          {isPdf ? (
-            <SectionCard icon={FileCheck2} title="Operat szacunkowy">
-              <iframe
-                title="Operat szacunkowy (PDF)"
-                src={valuation.docUrl!}
-                className="h-[75vh] w-full rounded-md border"
-              />
-            </SectionCard>
-          ) : valuation.docUrl ? (
-            <SectionCard icon={FileCheck2} title="Operat szacunkowy">
-              <Button asChild variant="outline" className="w-fit">
-                <a href={valuation.docUrl} target="_blank" rel="noreferrer">
-                  Otwórz dokument operatu
-                </a>
-              </Button>
-            </SectionCard>
-          ) : (
-            <div className="flex flex-col gap-4">{dataCards}</div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-4 lg:sticky lg:top-[76px] lg:self-start">
-          {hasDoc ? (
-            <>
-              <SectionCard icon={Banknote} title="Wynik">
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Powierzchnia</p>
-                    <p className="num text-base font-medium text-foreground">
-                      {valuation.area.toLocaleString("pl-PL")} m²
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Wartość rynkowa (WR)</p>
-                    <p
-                      className="num text-2xl font-semibold text-foreground"
-                      data-testid="wr-value"
-                    >
-                      {valuation.wr == null ? "—" : currencyFormatter.format(valuation.wr)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Kwota słownie</p>
-                    <p className="text-sm font-medium text-primary">
-                      {valuation.amountInWords ?? "—"}
-                    </p>
-                  </div>
+      {/* The summary/actions cards sit ABOVE the document, in a row, rather
+       * than in a sidebar beside it. The sidebar cost the reader ~38% of the
+       * column (1.6fr of 2.6fr ≈ 740px of the 1240px shell) for three cards
+       * that are a dozen short lines each — so the issued operat rendered
+       * NARROWER than the step-7 preview of the same document, which is
+       * backwards: the version you are responsible for should be the one you
+       * can read best. Stacked, both readers get the full shell width. */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {hasDoc ? (
+          <>
+            <SectionCard icon={Banknote} title="Wynik">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Powierzchnia</p>
+                  <p className="num text-base font-medium text-foreground">
+                    {valuation.area.toLocaleString("pl-PL")} m²
+                  </p>
                 </div>
-              </SectionCard>
-              <SectionCard icon={MapPin} title="Przedmiot">
-                <dl className="flex flex-col gap-2 text-sm">
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Adres</dt>
-                    <dd>{valuation.address}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Cel wyceny</dt>
-                    <dd>{valuation.purpose ? PURPOSE_LABEL[valuation.purpose] : "—"}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Nr KW</dt>
-                    <dd>{valuation.kwNumber ?? "—"}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-muted-foreground">Klient</dt>
-                    <dd>{valuation.client ?? "—"}</dd>
-                  </div>
-                </dl>
-              </SectionCard>
-            </>
-          ) : null}
-
-          {/* Plain labels, NOT the step-linked `BlockerList` step 7 renders:
-           * this list is only ever seen on a draft by a non-owner admin, and
-           * page.tsx routes them to this view for every `?step=` — a link back
-           * into the wizard would be a link they cannot follow. */}
-          {allBlockers.length > 0 ? (
-            <SectionCard icon={AlertTriangle} title="Status">
-              <div data-testid="gate-blockers" className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground">
-                  Zatwierdzenie zablokowane — do wyjaśnienia:
-                </p>
-                <ul className="list-disc pl-5 text-sm text-amber-600 dark:text-amber-500">
-                  {allBlockers.map((b) => (
-                    <li key={b.path}>{b.label}</li>
-                  ))}
-                </ul>
+                <div>
+                  <p className="text-xs text-muted-foreground">Wartość rynkowa (WR)</p>
+                  <p className="num text-2xl font-semibold text-foreground" data-testid="wr-value">
+                    {valuation.wr == null ? "—" : currencyFormatter.format(valuation.wr)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Kwota słownie</p>
+                  <p className="text-sm font-medium text-primary">
+                    {valuation.amountInWords ?? "—"}
+                  </p>
+                </div>
               </div>
             </SectionCard>
-          ) : null}
-
-          {showActions ? (
-            <SectionCard icon={ClipboardCheck} title="Akcje">
-              <ValuationActions
-                id={valuation.id}
-                gateOk={gateOk}
-                canApprove={valuation.status === "in_progress"}
-                canSign={canSign}
-                canCreateNewVersion={canCreateNewVersion}
-              />
+            <SectionCard icon={MapPin} title="Przedmiot">
+              <dl className="flex flex-col gap-2 text-sm">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Adres</dt>
+                  <dd>{valuation.address}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Cel wyceny</dt>
+                  <dd>{valuation.purpose ? PURPOSE_LABEL[valuation.purpose] : "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Nr KW</dt>
+                  <dd>{valuation.kwNumber ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Klient</dt>
+                  <dd>{valuation.client ?? "—"}</dd>
+                </div>
+              </dl>
             </SectionCard>
-          ) : null}
-        </div>
+          </>
+        ) : null}
+
+        {/* Plain labels, NOT the step-linked `BlockerList` step 7 renders:
+         * this list is only ever seen on a draft by a non-owner admin, and
+         * page.tsx routes them to this view for every `?step=` — a link back
+         * into the wizard would be a link they cannot follow. */}
+        {allBlockers.length > 0 ? (
+          <SectionCard icon={AlertTriangle} title="Status">
+            <div data-testid="gate-blockers" className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-foreground">
+                Zatwierdzenie zablokowane — do wyjaśnienia:
+              </p>
+              <ul className="list-disc pl-5 text-sm text-amber-600 dark:text-amber-500">
+                {allBlockers.map((b) => (
+                  <li key={b.path}>{b.label}</li>
+                ))}
+              </ul>
+            </div>
+          </SectionCard>
+        ) : null}
+
+        {showActions ? (
+          <SectionCard icon={ClipboardCheck} title="Akcje">
+            <ValuationActions
+              id={valuation.id}
+              gateOk={gateOk}
+              canApprove={valuation.status === "in_progress"}
+              canSign={canSign}
+              canCreateNewVersion={canCreateNewVersion}
+            />
+          </SectionCard>
+        ) : null}
       </div>
 
-      {hasDoc && valuation.inputs ? (
-        <div className="grid gap-4 md:grid-cols-2">{dataCards}</div>
+      {isPdf ? (
+        <SectionCard icon={FileCheck2} title="Operat szacunkowy">
+          {/* Same height as the step-7 reader (`operat-preview.tsx`): the
+           * document the appraiser signed off on and the document they are
+           * looking at now are the same one, so they should not be framed
+           * differently. */}
+          <iframe
+            title="Operat szacunkowy (PDF)"
+            src={valuation.docUrl!}
+            className="h-[85vh] w-full rounded-md border"
+          />
+        </SectionCard>
+      ) : valuation.docUrl ? (
+        <SectionCard icon={FileCheck2} title="Operat szacunkowy">
+          <Button asChild variant="outline" className="w-fit">
+            <a href={valuation.docUrl} target="_blank" rel="noreferrer">
+              Otwórz dokument operatu
+            </a>
+          </Button>
+        </SectionCard>
       ) : null}
+
+      {/* Below the document in every variant — including the no-PDF one (an
+       * admin looking at someone else's draft), which used to render these in
+       * the left column instead. */}
+      {valuation.inputs ? <div className="grid gap-4 md:grid-cols-2">{dataCards}</div> : null}
     </div>
   );
 }

@@ -1,5 +1,4 @@
 import io
-import os
 import shutil
 
 import pytest
@@ -23,9 +22,17 @@ def _sample_docx() -> bytes:
     return buf.getvalue()
 
 
-# CI always has LibreOffice (asserted by a dedicated workflow step) — the skip
-# is for local machines without soffice on PATH/SOFFICE only. Never skip in CI.
-soffice_missing = resolve_soffice() is None and not os.environ.get("CI")
+# Skip wherever soffice is genuinely absent: a local machine, and now the `ci`
+# job too, which stopped installing LibreOffice for this single assertion (see
+# the workflow's note — ~400 MB of apt to check five bytes, and it outlasted
+# the whole job budget twice). The `e2e` job still has the binary and drives
+# the conversion for real, through an actual approval.
+#
+# This used to read `and not os.environ.get("CI")` — hence the dropped `os`
+# import — forcing the test to run in CI so a missing binary failed loudly
+# instead of skipping unnoticed. That was right while the workflow promised
+# the binary; kept now, it would turn a deliberate removal into a red build.
+soffice_missing = resolve_soffice() is None
 
 
 @pytest.mark.skipif(soffice_missing, reason="soffice not installed locally")

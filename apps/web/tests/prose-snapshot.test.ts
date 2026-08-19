@@ -75,6 +75,37 @@ describe("mergeProseProposal — regeneration keeps the appraiser's text", () =>
     expect(merged.sections.opis_lokalu?.provenance.source).toBe("rzeczoznawca");
   });
 
+  // ...and the text it refused to overwrite with is NOT thrown away. It used
+  // to be: "Wygeneruj ponownie N nieaktualnych sekcji" asked the model for
+  // exactly these sections, spent the tokens, and the only visible effect was
+  // the staleness warning going quiet over text not one character of which
+  // had changed. Observed on staging 2026-08-19: `attempts` moved for two
+  // sections, their text stayed byte-identical, and the operat went on naming
+  // a parcel that no longer belonged to the valuation.
+  it("keeps the refused proposal as an offer instead of discarding it", () => {
+    const merged = mergeProseProposal(previous, incoming);
+
+    expect(merged.proposals?.opis_lokalu?.value).toBe(AI_TEXT);
+    expect(merged.proposals?.opis_lokalu?.provenance.source).toBe("ai");
+    // Only for text the appraiser owns — an `ai` section was simply replaced,
+    // so there is nothing to offer beside it.
+    expect(merged.proposals?.otoczenie).toBeUndefined();
+  });
+
+  it("carries an unanswered offer forward through a run that did not ask about the section", () => {
+    const withOffer = mergeProseProposal(previous, incoming);
+    // A later run that touches nothing: no sections, no hashes, no rejections.
+    const untouched = mergeProseProposal(withOffer, {
+      sections: {},
+      rejected: {},
+      factsHashes: {},
+      model: "claude-sonnet-5",
+      generatedAt: "2026-08-19T06:00:00.000Z",
+    });
+
+    expect(untouched.proposals?.opis_lokalu?.value).toBe(AI_TEXT);
+  });
+
   // Review finding I-A. The merge adopts the INCOMING per-section fingerprint
   // (see the test below for why it must), so a preserved text would inherit a
   // claim of being current that it has not earned: every character of it
@@ -351,6 +382,19 @@ describe("confirmProseSnapshot — the appraiser takes responsibility", () => {
     },
     now: new Date("2026-08-18T10:15:00.000Z"),
   };
+
+  // The confirm IS the decision about any pending offer: the appraiser either
+  // took the text into the box (it is then their own, confirmed, and arrives
+  // here in `texts`) or left it. An offer that outlived the confirmation would
+  // reappear on a screen already settled.
+  it("clears any pending proposal — confirming answers it either way", () => {
+    const withOffer = mergeProseProposal(previous, incoming);
+    expect(withOffer.proposals?.opis_lokalu).toBeDefined();
+
+    const confirmed = confirmProseSnapshot(withOffer, { opis_lokalu: HUMAN_TEXT }, meta);
+
+    expect(confirmed.proposals?.opis_lokalu).toBeUndefined();
+  });
 
   it("every non-blank field becomes rzeczoznawca/confirmed", () => {
     const confirmed = confirmProseSnapshot(previous, { opis_lokalu: AI_TEXT }, meta);
