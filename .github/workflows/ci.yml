@@ -142,8 +142,13 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v soffice >/dev/null || ! fc-list | grep -qi carlito; then
-            # noble keeps sources in deb822 (`.sources`); older images use
-            # sources.list. Rewrite whichever exists.
+            # The mirror lives in a MIRRORLIST, not in sources.list: apt's
+            # first line is `Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist`.
+            # Rewriting sources.list therefore changed nothing (verified on
+            # run 32228351491 — azure kept answering `Ign:` afterwards). This
+            # is the file that actually decides.
+            sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' \
+              /etc/apt/apt-mirrors.txt 2>/dev/null || true
             sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' \
               /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
             timeout 300 sudo apt-get update
