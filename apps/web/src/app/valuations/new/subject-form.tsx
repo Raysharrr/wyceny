@@ -360,19 +360,23 @@ export function SubjectForm({
        *
        * The second clause is the part worth keeping, and it is equally
        * measured: `purpose`, `client` and `kwNumber` are not in `KcsInput` at
-       * all and reach no prompt, so correcting a client name really does cost
-       * the calculation and nothing else. Widen this sentence and it stops
-       * being read. */}
+       * all and reach no prompt. Widen this sentence and it stops being read.
+       *
+       * What CHANGED: those three fields used to cost the calculation anyway,
+       * because `applySubjectUpdate` nulled `wr` on every save. It now nulls
+       * it only when the AREA moves — the one thing this step writes that
+       * `computeKcs` reads — so a client-name correction costs nothing at all,
+       * and the sentence has to stop claiming otherwise. */}
       {calculationConfirmed ? (
         <p
           data-testid="step1-recalc-warning"
           role="status"
           className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-500"
         >
-          Zapis tego kroku kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie
-          wyliczyć w kroku 5. Jeśli poprawisz przy tym adres, powierzchnię albo dane przedmiotu,
-          trzeba będzie też ponownie zatwierdzić opisy w kroku 6 — sama zmiana zamawiającego, celu
-          wyceny albo numeru księgi opisów nie rusza.
+          Zmiana powierzchni kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie
+          wyliczyć w kroku 5. Poprawka adresu, powierzchni albo danych przedmiotu wymaga też
+          ponownego zatwierdzenia opisów w kroku 6 — sama zmiana zamawiającego, celu wyceny albo
+          numeru księgi nie rusza ani kwoty, ani opisów.
         </p>
       ) : null}
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">

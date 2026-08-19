@@ -75,11 +75,14 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
                 {valuation.wr == null ? "—" : currencyFormatter.format(valuation.wr)}
               </p>
             </div>
-            <div className="flex flex-col gap-0.5 sm:col-span-2">
-              <p className="text-xs text-muted-foreground">Kwota słownie</p>
-              <p className="text-base font-medium text-primary">{valuation.amountInWords ?? "—"}</p>
-            </div>
           </div>
+          {/* No "Kwota słownie" row here. This step only ever renders a DRAFT
+           * — an issued operat routes to the flat view — and the words are
+           * produced together with the document, so the row was a dash on
+           * every single visit. The reader below spells the amount out in
+           * full, inside the document, which is this step's whole point. The
+           * flat view keeps the field: there it is filled, from the string
+           * the render was given. */}
         </SectionCard>
 
         <SectionCard icon={ClipboardCheck} title="Zatwierdzenie">

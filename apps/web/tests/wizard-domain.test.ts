@@ -209,6 +209,63 @@ describe("applySubjectUpdate", () => {
     expect(updated.inputs!.provenance!.weights).toEqual(v.inputs!.provenance!.weights);
   });
 
+  // The counterpart of the test above, and the reason `wr` is no longer nulled
+  // unconditionally: the F-4 gate can send an appraiser back to this step for
+  // a reason that has nothing to do with the amount — a draft geocoded by the
+  // step-3 RCN fetch has to return here for its `geocode` entry — and the
+  // detour used to cost them the confirmed calculation, plus a paid prose
+  // regeneration when the facts hash moved with it.
+  it("keeps a confirmed wr when the area did not move, even as everything else changes", () => {
+    const v = draft({ wr: 500_000 });
+    const update: SubjectUpdate = {
+      address: "ul. Testowa 1, Poznań",
+      // Whatever the fixture holds — the ONE field of this step `computeKcs`
+      // reads, so leaving it alone is what the amount's survival hangs on.
+      area: v.inputs!.area,
+      purpose: "zabezpieczenie_kredytu",
+      kwNumber: "PO1P/9/9",
+      client: "Anna Testowa",
+      subject: v.inputs!.subject,
+      subjectMeta: v.inputs!.subjectMeta,
+      kw: v.inputs!.kw,
+      kwMeta: v.inputs!.kwMeta,
+      provenance: {
+        address: { source: "rzeczoznawca", status: "confirmed" },
+        area: { source: "rzeczoznawca", status: "confirmed" },
+      },
+    };
+
+    const updated = applySubjectUpdate(v, update);
+
+    expect(updated.wr).toBe(500_000);
+    // The fields that DID change still land — the amount surviving is not the
+    // save quietly doing nothing.
+    expect(updated.purpose).toBe("zabezpieczenie_kredytu");
+    expect(updated.client).toBe("Anna Testowa");
+    expect(updated.kwNumber).toBe("PO1P/9/9");
+  });
+
+  it("nulls wr as soon as the area moves, however small the move", () => {
+    const v = draft({ wr: 500_000 });
+    const update: SubjectUpdate = {
+      address: "ul. Testowa 1, Poznań",
+      area: v.inputs!.area + 0.01,
+      purpose: "sprzedaz",
+      kwNumber: "PO1P/1/6",
+      client: "Jan Testowy",
+      subject: v.inputs!.subject,
+      subjectMeta: v.inputs!.subjectMeta,
+      kw: v.inputs!.kw,
+      kwMeta: v.inputs!.kwMeta,
+      provenance: {
+        address: { source: "rzeczoznawca", status: "confirmed" },
+        area: { source: "rzeczoznawca", status: "confirmed" },
+      },
+    };
+
+    expect(applySubjectUpdate(v, update).wr).toBeNull();
+  });
+
   it("drops stale ewidencja/mpzp/kw provenance when the fragment carries none of them (subject detached)", () => {
     const v = draft();
     const update: SubjectUpdate = {

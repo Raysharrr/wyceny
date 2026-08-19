@@ -83,6 +83,23 @@ export type ProseSnapshot = {
    * next visit to step 6, the same migration `factsHashes` had.
    */
   attempts?: Partial<Record<ProseSection, string>>;
+  /**
+   * A fresh proposal for a section whose stored text belongs to the APPRAISER
+   * — kept as an offer instead of being thrown away.
+   *
+   * The merge below will not overwrite accepted text, and it should not: that
+   * loss would be silent and irreversible on a document with legal effects.
+   * But the DISCARD was silent too, and it was paid for. "Wygeneruj ponownie
+   * N nieaktualnych sekcji" asks the model for exactly these sections, the
+   * tokens are spent, and the only thing the appraiser saw was the staleness
+   * warning going quiet — over text not one character of which had changed.
+   * The generation they bought is now something they can read beside their
+   * own version, take, or dismiss.
+   *
+   * OPTIONAL, like `attempts`: rows persisted before this field carry none,
+   * and absent means "nothing on offer".
+   */
+  proposals?: Partial<Record<ProseSection, Sourced<string>>>;
   model: string;
   /** ISO timestamp — passed in by the caller, never read from the clock here (F-2). */
   generatedAt: string;
@@ -195,6 +212,7 @@ export function mergeProseProposal(
   const sections: ProseSnapshot["sections"] = {};
   const rejected: ProseSnapshot["rejected"] = {};
   const factsHashes: ProseSnapshot["factsHashes"] = {};
+  const proposals: ProseSnapshot["proposals"] = {};
   for (const section of PROSE_SECTIONS) {
     const kept = previous.sections[section];
     const incomingHash = incoming.factsHashes?.[section];
@@ -209,6 +227,13 @@ export function mergeProseProposal(
         ? sourced(kept.value, kept.provenance.source, "to_verify")
         : kept;
       factsHashes[section] = incomingHash ?? previousHash;
+      // The fresh text is KEPT, as an offer (see `proposals`). Dropping it is
+      // what turned "Wygeneruj ponownie" into a click that spent tokens and
+      // moved nothing the appraiser could see. An offer from THIS run wins;
+      // otherwise an unanswered offer from an earlier one survives, because a
+      // run that did not ask about this section has not withdrawn it.
+      const offered = incoming.sections[section] ?? previous.proposals?.[section];
+      if (offered) proposals[section] = offered;
       // No rejection reason next to a text the appraiser wrote — `sections`
       // and `rejected` stay disjoint.
       continue;
@@ -259,6 +284,9 @@ export function mergeProseProposal(
     sections,
     rejected,
     factsHashes,
+    // Only the appraiser branch above fills this. A section whose stored text
+    // is the automat's own needs no offer — the fresh text simply replaced it.
+    proposals,
     // Attempts are folded WHOLESALE, outside the per-section logic above:
     // this run's entry wins for every section it asked about — whatever came
     // back — and the previous entry survives for every section it did not.
@@ -318,6 +346,11 @@ export function confirmProseSnapshot(
     sections,
     rejected,
     factsHashes,
+    // No `proposals`: a confirm IS the decision about them. The appraiser
+    // either took the offered text into the box (so it is now their own, and
+    // confirmed) or left it, and an offer outliving that decision would
+    // reappear on a screen already settled.
+    //
     // A confirm asks the automat for nothing, so it records no attempt and
     // erases none. The consequence is deliberate: a section the appraiser
     // BLANKED keeps the attempt made for it, so returning to step 6 does not
