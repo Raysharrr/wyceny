@@ -100,6 +100,26 @@ jobs:
             exit 1
           }
 
+      # Catches the deployed migration ledger drifting from the repo's. Skips
+      # itself when the secret is absent (forks), so it can never block an
+      # outside contribution on something the contributor cannot see.
+      #
+      # `main` only, and that is load-bearing. Drift is a statement about the
+      # deployed environment versus `main`; a feature branch that ADDS a
+      # migration is not drift, it is the normal state of such a branch. Left
+      # running on pull_request, the check fails whenever `applied < inRepo`
+      # — and since migrations are applied only by the PRODUCTION build (the
+      # `VERCEL_ENV` gate in migrate-on-deploy.mts deliberately keeps preview
+      # builds off the database), nothing inside the PR could ever make it
+      # pass. Every migration-bearing PR would be permanently red. Verified
+      # the hard way on 2026-08-19: this PR adds 0012.
+      - name: Migration drift vs deployed database
+        if: github.ref == 'refs/heads/main'
+        working-directory: apps/web
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: pnpm exec tsx scripts/check-migration-drift.mts
+
       - name: Set up Python + uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
