@@ -19,12 +19,10 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    # 25, not 15: the LibreOffice apt install alone took 711s on 2026-08-19
-    # and cancelled the whole job. It is slow, not hung — everything else in
-    # this job finishes inside three minutes. The real fix is to stop
-    # installing it per run (prebuilt image or apt cache); until then a bound
-    # that kills healthy runs is worse than a generous one.
-    timeout-minutes: 25
+    # 20: a healthy run is ~12 min, almost all of it the LibreOffice install.
+    # The apt step now bounds itself (see below), so this is a backstop, not
+    # the thing standing between a hung mirror and a wasted half hour.
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -130,10 +128,32 @@ jobs:
         working-directory: apps/worker
         run: uv run ruff check . && uv run ruff format --check .
 
+      # The runner's default mirror (azure.archive.ubuntu.com) answered `Ign:`
+      # to every index on 2026-08-19 and then went silent — apt hung for 21
+      # minutes and took the whole job down with it, twice, at both a 15- and a
+      # 25-minute limit. Two changes, both about failing fast rather than
+      # waiting: point apt at the canonical mirror, and bound every apt call so
+      # a bad mirror costs a minute instead of the entire run.
+      #
+      # The real fix is to stop installing a 400 MB office suite per run — a
+      # prebuilt image or an apt cache — but that is a change to how CI is
+      # built, not to this slice.
       - name: Ensure LibreOffice + Carlito (F-12 conversion tests)
         run: |
-          if ! command -v soffice >/dev/null; then sudo apt-get update && sudo apt-get install -y libreoffice-writer; fi
-          if ! fc-list | grep -qi carlito; then sudo apt-get install -y fonts-crosextra-carlito; fi
+          set -euo pipefail
+          if ! command -v soffice >/dev/null || ! fc-list | grep -qi carlito; then
+            # noble keeps sources in deb822 (`.sources`); older images use
+            # sources.list. Rewrite whichever exists.
+            sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' \
+              /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+            timeout 300 sudo apt-get update
+          fi
+          if ! command -v soffice >/dev/null; then
+            timeout 900 sudo apt-get install -y --no-install-recommends libreoffice-writer
+          fi
+          if ! fc-list | grep -qi carlito; then
+            timeout 300 sudo apt-get install -y fonts-crosextra-carlito
+          fi
           soffice --version
 
       - name: Worker tests (F-5, F-11, F-12)
