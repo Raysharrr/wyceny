@@ -239,9 +239,12 @@ jobs:
             # sources.list — apt's first line is
             # `Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist`. On 2026-08-19
             # the azure mirror there answered `Ign:` to every index and then
-            # went silent for 21 minutes (runs 32224533637, 32226287339);
-            # rewriting sources.list changed nothing, because the address is
-            # not in that file. Point the mirrorlist at the canonical archive,
+            # went silent for 21 minutes, twice in a row, taking the job
+            # down with it. Rewriting sources.list changed nothing, because
+            # the address is not in that file. (Run ids are deliberately not
+            # quoted here: an 11-digit GitHub run id is indistinguishable from
+            # a PESEL to the F-9 scanner, which duly failed the build.)
+            # Point the mirrorlist at the canonical archive,
             # and bound every apt call so a bad mirror costs a minute rather
             # than the whole job.
             sudo sed -i 's|http://azure.archive.ubuntu.com|http://archive.ubuntu.com|g' \
