@@ -2,7 +2,7 @@
 
 Status: DRAFT po brainstormie (2026-08-19) · Zamyka: otwarty punkt ADR-009 (trace-id web↔worker) · Poprzedza: metrykę „% pól as proposed" z NEXT roadmapy
 
-## Sekcja produktowa
+## Opis produktowy — co budujemy z perspektywy użytkownika
 
 Dziś, gdy rzeczoznawca mówi „coś nie poszło", nie ma czym tego sprawdzić. Aplikacja
 prowadzi wzorowy dziennik prawny (`audit_log`: kto, co, kiedy zatwierdził — append-only,
@@ -26,6 +26,15 @@ Slice nie zmienia niczego, co użytkownik widzi w normalnej pracy — poza kodem
 w komunikacie. Nie liczy też jeszcze metryk produktowych; zbiera pod nie dane, bo
 części z nich (jak wyglądała propozycja AI, zanim rzeczoznawca ją poprawił) nie da się
 odtworzyć wstecz.
+
+**Pod maską:** każde żądanie dostaje ośmioznakowy identyfikator trzymany w kontekście
+asynchronicznym (`AsyncLocalStorage` w web, `contextvars` w workerze), więc równoległe
+żądania nie mieszają sobie śladów; jedzie on nagłówkiem `X-Request-Id` do workera, dzięki
+czemu logi z dwóch osobnych hostingów dają się zestawić. Logi lecą jako JSON na standardowe
+wyjście (pino w web, structlog w workerze), a to, co ma przeżyć tydzień, ląduje dodatkowo
+w nowej tabeli `event_log` — świadomie osobnej od `audit_log`, który zostaje czystym
+dziennikiem prawnym. Wpisy przechodzą przez allowlistę pól, więc dane osobowe nie mogą
+do nich trafić przez przeoczenie, a propozycje AI zapisujemy jako skróty, nie treść.
 
 ## Zakres (co wchodzi)
 
