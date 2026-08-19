@@ -106,3 +106,21 @@ export const appraiserProfile = pgTable("appraiser_profile", {
   signatureMime: text("signature_mime").notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
+
+/**
+ * Operational trail: what failed, and the fingerprints of AI proposals.
+ * Deliberately NOT `audit_log` — that one is the legal record with a closed
+ * action enum and an append-only trigger (FR-12). This one is prunable by
+ * design, carries no such trigger, and never holds plaintext proposals.
+ */
+export const eventLog = pgTable("event_log", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  at: timestamp("at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  level: text("level").notNull(),
+  event: text("event").notNull(),
+  traceId: text("trace_id"),
+  // No FK, same reason as audit_log: these rows must outlive data surgery.
+  valuationId: uuid("valuation_id"),
+  actorId: text("actor_id"),
+  meta: jsonb("meta"),
+});
