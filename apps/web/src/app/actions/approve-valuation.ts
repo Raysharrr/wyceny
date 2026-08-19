@@ -223,15 +223,46 @@ export async function approveValuation(
     // approved document does not have. delete() is idempotent, so this is a
     // no-op on the common case where nothing was ever orphaned.
     if (!embedded) {
-      const keys = frozenMapKeys(id);
-      await storage.delete(keys.ewidencyjna);
-      await storage.delete(keys.orto);
-      // ...and the freeze marker with them, while this is still a draft
-      // (`freezeMaps` refuses anything else). A marker left standing over
-      // deleted bytes would tell the next reader — the step-7 preview, and
-      // now the issue itself — that this valuation has maps frozen for its
-      // address when it has none.
-      await valuationRepository.freezeMaps(id, session.user, null);
+      // MARKER FIRST, bytes only if the lift took — the order `previewOperat`
+      // uses for the same act, and here it is what makes the delete safe.
+      //
+      // `freezeMaps` is owner-only and CAS's on `in_progress`: the SAME two
+      // predicates `repo.approve` applies below. So "the lift took" IS "this
+      // issue may commit", established by a locking write rather than by an
+      // unlocked read of a row that can change underneath it. Lift took ⇒ the
+      // bytes are ours and they go; lift did not ⇒ they are somebody else's
+      // and they stay, and this issue cannot commit either.
+      //
+      // Without that condition the loser of two concurrent issues deleted the
+      // WINNER's frozen bytes, and `signValuationAction` — which re-renders
+      // from those keys and reads their absence as "approved without maps",
+      // silently — would sign an operat without the §8.1 maps the approved
+      // copy carries. Task 12 sharpened that window from both ends: the
+      // winner now REUSES the frozen bytes instead of re-putting them, so
+      // nothing heals behind the delete, and it no longer waits on the WMS,
+      // so it commits sooner.
+      //
+      // What has to be true at commit time is that the BYTES are gone — sign
+      // reads the bytes and never the marker. This order guarantees exactly
+      // that; the reverse could leave bytes deleted under a marker still
+      // claiming them, which is the lying-marker state the whole design
+      // avoids.
+      const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
+      if (unfrozen) {
+        const keys = frozenMapKeys(id);
+        // A PRIOR failed attempt (e.g. a PDF conversion crash) may have left
+        // these keys behind; uncleaned, sign would find and embed maps this
+        // approved document does not have. delete() is idempotent, so this is
+        // a no-op on the common case where nothing was ever orphaned.
+        await storage.delete(keys.ewidencyjna);
+        await storage.delete(keys.orto);
+      } else {
+        // No refusal of our own: `repo.approve` is about to refuse on the very
+        // predicate that refused this write, with the message that fits.
+        console.warn(
+          `approveValuation: could not lift the map freeze on ${id} — bytes left in place`,
+        );
+      }
     }
 
     // Slice 10 (Task 8): the photo manifest lives in inputs.inspection —

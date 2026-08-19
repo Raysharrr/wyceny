@@ -147,19 +147,20 @@ export function ValuationActions({
       {canApprove ? (
         <FootNav
           back={{ href: "?step=6", label: "Wstecz" }}
-          // The bar's middle slot carries STATE in the shape every other step
-          // uses (`Etykieta wartość`, "—" when there is none), never an
-          // instruction: this one used to spell out the WR blocker, which is
-          // already on the list above it, with a link to the step that clears
-          // it. Same fallback as steps 4 and 5.
+          // The bar's middle slot carries STATE — a stable label whose value
+          // changes, never an instruction. This one used to spell out the WR
+          // blocker, which is already on the list above it, with a link to
+          // the step that clears it.
+          //
+          // The empty state is NAMED, and named with the word the parallel
+          // bottom-bar branch gives the same state on step 5: a missing WR
+          // here is not an absence of information, it is the information —
+          // the calculation was never confirmed.
           mid={
-            wrFormatted ? (
-              <span>
-                Wartość rynkowa <b className="num">{wrFormatted}</b>
-              </span>
-            ) : (
-              "—"
-            )
+            <span>
+              Wartość rynkowa{" "}
+              {wrFormatted ? <b className="num">{wrFormatted}</b> : <b>niezatwierdzona</b>}
+            </span>
           }
         >
           <Button

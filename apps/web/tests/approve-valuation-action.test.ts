@@ -891,7 +891,13 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
     blobs.clear();
 
     getMock.mockImplementation(async () => current);
-    freezeMapsMock.mockImplementation(async (_id, _user, address) => {
+    // Faithful to the adapter (`valuation-drizzle.ts:592-613`): owner-only,
+    // and a CAS on `in_progress` — the SAME two predicates `approve` applies
+    // (`:615+`). That equivalence is what the skipMaps arm now rests on, so a
+    // fake that answered unconditionally would make these tests agree with a
+    // production adapter that does not.
+    freezeMapsMock.mockImplementation(async (_id, user, address) => {
+      if (current.ownerId !== user.id || current.status !== "in_progress") return null;
       current = { ...current, mapsFrozenFor: address };
       return current;
     });
@@ -909,7 +915,12 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
     });
     amountInWordsMock.mockResolvedValue("milion czterdzieści cztery tysiące czterysta złotych");
     convertToPdfMock.mockResolvedValue(Buffer.from("%PDF-fake"));
-    approveMock.mockImplementation(async () => ({ ...current, status: "approved" as const }));
+    // Same two predicates again — a caller who may not freeze may not approve.
+    approveMock.mockImplementation(async (_id, user) =>
+      current.ownerId !== user.id || current.status !== "in_progress"
+        ? null
+        : { ...current, status: "approved" as const },
+    );
     fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
   });
 
@@ -1046,5 +1057,69 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
     expect(result).toEqual({ error: expect.stringContaining("stanu map operatu") });
     expect(approveMock).not.toHaveBeenCalled();
     expect(deletedKeys()).toEqual(expect.arrayContaining(mapKeys));
+  });
+
+  /**
+   * The OTHER arm's version of the same loss, found in review.
+   *
+   * The mapless arm deletes both keys, and until now it did so with no
+   * evidence that they were still this draft's to delete — the defect the
+   * fetch arm had fixed. Task 12 made it worse from both ends: the winner now
+   * REUSES the frozen bytes and never re-puts them, so there is no healing
+   * write behind the loser's delete, and the winner no longer waits on the
+   * WMS, so it commits sooner. The chain is the same one this task closed on
+   * the other side — bytes deleted, `signValuationAction` reads their absence
+   * as "approved without maps", and a signed operat silently loses §8.1 that
+   * the approved copy has.
+   *
+   * The fix is an ordering, not a second read: lift the marker FIRST and
+   * delete only if the lift took. `freezeMaps` is owner-only and CAS's on
+   * `in_progress` — the same two predicates as `approve` — so "the lift took"
+   * IS "this approve may commit", established by a locking write rather than
+   * an unlocked read. What matters at commit time is that the BYTES are gone,
+   * because sign reads the bytes and never the marker.
+   */
+  it("a skipMaps issue that lost the race leaves the winner's frozen bytes alone", async () => {
+    await previewOperat(draftT12.id);
+    storageDeleteMock.mockClear();
+    // This call's own read still found the draft it set out to issue — a
+    // SNAPSHOT, not a live reference, or the fast status guard at the top of
+    // the action would see the winner's row and refuse before reaching the
+    // arm under test. The winner commits during the seconds that follow.
+    const asItWasRead = current;
+    getMock.mockImplementationOnce(async () => asItWasRead);
+    current = { ...current, status: "approved" as const };
+
+    const result = await approveValuation(draftT12.id, { skipMaps: true });
+
+    expect(deletedKeys().filter((key) => key.startsWith("mapa-"))).toEqual([]);
+    for (const key of mapKeys) expect(blobs.has(key)).toBe(true);
+    // And it does not issue anything either — `repo.approve` refuses on the
+    // same predicate that refused the lift.
+    expect(result).toEqual({ error: "Nie znaleziono wyceny albo nie masz do niej dostępu." });
+  });
+
+  /**
+   * The case that tells the two candidate fixes apart.
+   *
+   * `get` admits an admin (F-8) while `freezeMaps` and `approve` are both
+   * owner-only, so an admin's skipMaps attempt is refused — but a cleanup
+   * conditioned on a fresh READ would see a perfectly ordinary draft and
+   * delete the OWNER's frozen bytes on the way out of an issue that never
+   * happens. Conditioning on the WRITE cannot: the same guard that refuses
+   * the approve refuses the lift.
+   */
+  it("an admin's refused skipMaps attempt does not take the owner's bytes with it", async () => {
+    await previewOperat(draftT12.id);
+    storageDeleteMock.mockClear();
+    // Same session, different owner: visible through `get`, untouchable
+    // through `freezeMaps`/`approve`.
+    current = { ...current, ownerId: "some-other-appraiser" };
+
+    const result = await approveValuation(draftT12.id, { skipMaps: true });
+
+    expect(deletedKeys().filter((key) => key.startsWith("mapa-"))).toEqual([]);
+    for (const key of mapKeys) expect(blobs.has(key)).toBe(true);
+    expect(result).toEqual({ error: "Nie znaleziono wyceny albo nie masz do niej dostępu." });
   });
 });
