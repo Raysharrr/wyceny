@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { valuationRepository } from "@/app/valuations/_deps";
+import { errFields, log } from "@/lib/log";
+import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type ConfirmSubjectResult = { error: string } | undefined;
 
@@ -20,15 +22,24 @@ export async function confirmSubject(id: string): Promise<ConfirmSubjectResult> 
     redirect("/login");
   }
 
-  try {
-    const updated = await valuationRepository.confirmSubject(id, session.user);
-    if (!updated) {
-      return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+  return withTrace(async () => {
+    try {
+      const updated = await valuationRepository.confirmSubject(id, session.user);
+      if (!updated) {
+        return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
+      }
+    } catch (error) {
+      log.error({
+        event: "confirmSubject.failed",
+        valuationId: id,
+        actorId: session.user.id,
+        ...errFields(error),
+      });
+      return {
+        error: errorWithCode("Nie udało się potwierdzić danych przedmiotu — spróbuj ponownie."),
+      };
     }
-  } catch (error) {
-    console.error("confirmSubject failed", error);
-    return { error: "Nie udało się potwierdzić danych przedmiotu — spróbuj ponownie." };
-  }
 
-  revalidatePath(`/valuations/${id}`);
+    revalidatePath(`/valuations/${id}`);
+  });
 }

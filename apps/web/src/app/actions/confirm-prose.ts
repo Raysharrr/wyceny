@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { valuationRepository } from "@/app/valuations/_deps";
 import { PROSE_SECTIONS, type ProseSection } from "@/domain/prose-snapshot";
+import { errFields, log } from "@/lib/log";
+import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type ConfirmProseResult = { error: string } | undefined;
 
@@ -32,20 +34,27 @@ export async function confirmProse(
     redirect("/login");
   }
 
-  const payload = Object.fromEntries(
-    PROSE_SECTIONS.map((section) => {
-      const value = texts?.[section];
-      return [section, typeof value === "string" ? value : ""];
-    }),
-  ) as Record<ProseSection, string>;
+  return withTrace(async () => {
+    const payload = Object.fromEntries(
+      PROSE_SECTIONS.map((section) => {
+        const value = texts?.[section];
+        return [section, typeof value === "string" ? value : ""];
+      }),
+    ) as Record<ProseSection, string>;
 
-  try {
-    const updated = await valuationRepository.confirmProse(id, session.user, payload);
-    if (!updated) return { error: NOT_FOUND };
-  } catch (error) {
-    console.error("confirmProse failed", error);
-    return { error: GENERIC };
-  }
+    try {
+      const updated = await valuationRepository.confirmProse(id, session.user, payload);
+      if (!updated) return { error: NOT_FOUND };
+    } catch (error) {
+      log.error({
+        event: "confirmProse.failed",
+        valuationId: id,
+        actorId: session.user.id,
+        ...errFields(error),
+      });
+      return { error: errorWithCode(GENERIC) };
+    }
 
-  revalidatePath(`/valuations/${id}`);
+    revalidatePath(`/valuations/${id}`);
+  });
 }

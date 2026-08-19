@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { profileRepository } from "@/app/valuations/_deps";
+import { errFields, log } from "@/lib/log";
+import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type SaveSignatureResult = { error: string } | undefined;
 
@@ -18,22 +20,28 @@ export async function saveSignature(formData: FormData): Promise<SaveSignatureRe
   if (!session) {
     redirect("/login");
   }
-  const file = formData.get("signature");
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: "Wybierz plik ze skanem podpisu (PNG lub JPEG)." };
-  }
-  if (!ALLOWED_MIME.has(file.type)) {
-    return { error: "Dozwolone formaty: PNG lub JPEG." };
-  }
-  if (file.size > MAX_BYTES) {
-    return { error: "Plik jest za duży — maksymalnie 1 MB." };
-  }
-  const bytes = Buffer.from(await file.arrayBuffer());
-  try {
-    await profileRepository.saveSignature(session.user.id, bytes, file.type);
-  } catch (error) {
-    console.error("saveSignature failed", error);
-    return { error: "Nie udało się zapisać podpisu — spróbuj ponownie." };
-  }
-  revalidatePath("/profile");
+  return withTrace(async () => {
+    const file = formData.get("signature");
+    if (!(file instanceof File) || file.size === 0) {
+      return { error: "Wybierz plik ze skanem podpisu (PNG lub JPEG)." };
+    }
+    if (!ALLOWED_MIME.has(file.type)) {
+      return { error: "Dozwolone formaty: PNG lub JPEG." };
+    }
+    if (file.size > MAX_BYTES) {
+      return { error: "Plik jest za duży — maksymalnie 1 MB." };
+    }
+    const bytes = Buffer.from(await file.arrayBuffer());
+    try {
+      await profileRepository.saveSignature(session.user.id, bytes, file.type);
+    } catch (error) {
+      log.error({
+        event: "saveSignature.failed",
+        actorId: session.user.id,
+        ...errFields(error),
+      });
+      return { error: errorWithCode("Nie udało się zapisać podpisu — spróbuj ponownie.") };
+    }
+    revalidatePath("/profile");
+  });
 }

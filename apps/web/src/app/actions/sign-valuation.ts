@@ -12,6 +12,8 @@ import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters
 import { StorageNotFoundError } from "@/ports/storage";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { frozenMapKeys } from "@/lib/frozen-maps";
+import { errFields, log } from "@/lib/log";
+import { errorWithCode, withTrace } from "@/lib/trace";
 
 export type SignValuationResult = { error: string } | undefined;
 
@@ -32,116 +34,138 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
     redirect("/login");
   }
 
-  const valuation = await valuationRepository.get(id, session.user);
-  if (!valuation) {
-    return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
-  }
-  // `get` lets an admin see any owner's valuation (F-8), but only the owner
-  // may sign (spec decision #5) — an admin must be refused here, before the
-  // owner's signature scan is read or any -signed file is written.
-  if (valuation.ownerId !== session.user.id) {
-    return { error: "Tylko właściciel wyceny może ją podpisać." };
-  }
-  if (valuation.status === "signed") {
-    return { error: "Wycena jest już podpisana." };
-  }
-  if (valuation.status !== "approved") {
-    return { error: "Podpisać można tylko zatwierdzoną wycenę." };
-  }
-  if (!valuation.inputs || !valuation.docxUrl || !valuation.approvedAt) {
-    return { error: "Wyceny starego typu nie można podpisać — utwórz ją ponownie." };
-  }
-
-  const signature = await profileRepository.getSignature(session.user.id);
-  if (!signature) {
-    return { error: "Brak skanu podpisu — wgraj go w profilu, a potem podpisz operat." };
-  }
-
-  try {
-    const kcs = computeKcs(valuation.inputs);
-    const amountInWords = await worker.amountInWords(kcs.wr);
-    const model = buildDocumentModel({
-      address: valuation.address,
-      area: valuation.area,
-      purpose: valuation.purpose as OperatPurpose,
-      kwNumber: valuation.kwNumber ?? "",
-      client: valuation.client ?? "",
-      inspectionDate: valuation.inspectionDate ?? "",
-      approvedAt: valuation.approvedAt,
-      inputs: valuation.inputs,
-      kcs,
-      amountInWords,
-    });
-    // Slice 9: sign NEVER contacts WMS — it re-renders the maps frozen at
-    // approve (spec decision 1). A StorageNotFoundError means "approved
-    // without maps" — the only case map absence is silent. Any OTHER error
-    // (e.g. a transient dead pooled connection) must NOT be treated as "no
-    // maps" — spec decision 4 says map absence is never silent — so it is
-    // returned as an error WITHOUT signing (final review, Important #2).
-    // The Buffer.isBuffer guard also covers PortStorage fakes that resolve
-    // undefined instead of throwing (advisor B2).
-    let maps: RenderMaps | null = null;
-    try {
-      // The keys come from the one place that spells them (`frozenMapKeys`),
-      // shared with the preview that freezes them and the issue that reuses
-      // them. This is the call site where a typo costs the most: a key that
-      // misses reads as StorageNotFoundError, which this branch treats as the
-      // legal "approved without maps" — silently.
-      const keys = frozenMapKeys(id);
-      const ewidencyjna = await storage.get(keys.ewidencyjna);
-      const orto = await storage.get(keys.orto);
-      if (Buffer.isBuffer(ewidencyjna) && Buffer.isBuffer(orto)) {
-        maps = { ewidencyjna, orto };
-      }
-    } catch (error) {
-      if (!(error instanceof StorageNotFoundError)) {
-        console.error("signValuationAction: reading frozen maps failed", error);
-        return {
-          error: "Nie udało się odczytać zamrożonych map operatu — spróbuj ponownie.",
-        };
-      }
+  return withTrace(async () => {
+    const valuation = await valuationRepository.get(id, session.user);
+    if (!valuation) {
+      return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
     }
-
-    // Slice 10 (Task 8): sign reads the photo manifest from the FROZEN
-    // inputs, same as maps — but unlike maps, StorageNotFoundError here is
-    // NOT swallowed. The manifest is written in the same tx as the bytes, so
-    // a missing key is a hard integrity error: every failure aborts the sign
-    // rather than being treated as a legal absence (final review, contrast
-    // with the maps try/catch above).
-    let photos: RenderPhotos | null = null;
-    try {
-      photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
-    } catch (error) {
-      console.error("signValuationAction: reading frozen inspection photos failed", error);
-      return {
-        error: "Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie.",
-      };
+    // `get` lets an admin see any owner's valuation (F-8), but only the owner
+    // may sign (spec decision #5) — an admin must be refused here, before the
+    // owner's signature scan is read or any -signed file is written.
+    if (valuation.ownerId !== session.user.id) {
+      return { error: "Tylko właściciel wyceny może ją podpisać." };
     }
-    const docx = renderOperatDocx(model, { signature: signature.bytes, maps, photos });
-    const pdf = await worker.convertToPdf(docx);
-    const docxUrl = await storage.put(`operat-${id}-signed.docx`, docx);
-    const docUrl = await storage.put(`operat-${id}-signed.pdf`, pdf);
-
-    const updated = await valuationRepository.sign(id, session.user, {
-      docUrl,
-      docxUrl,
-      sha256Docx: sha256(docx),
-      sha256Pdf: sha256(pdf),
-    });
-    if (!updated) {
-      return { error: "Nie udało się podpisać wyceny — spróbuj ponownie." };
+    if (valuation.status === "signed") {
+      return { error: "Wycena jest już podpisana." };
     }
-  } catch (error) {
-    if (error instanceof NotSignableError) {
+    if (valuation.status !== "approved") {
       return { error: "Podpisać można tylko zatwierdzoną wycenę." };
     }
-    console.error("signValuationAction failed", error);
-    return {
-      error:
-        "Nie udało się wygenerować podpisanego operatu — worker lub magazyn dokumentów są niedostępne. Spróbuj ponownie.",
-    };
-  }
+    if (!valuation.inputs || !valuation.docxUrl || !valuation.approvedAt) {
+      return { error: "Wyceny starego typu nie można podpisać — utwórz ją ponownie." };
+    }
 
-  revalidatePath(`/valuations/${id}`);
-  revalidatePath("/valuations");
+    const signature = await profileRepository.getSignature(session.user.id);
+    if (!signature) {
+      return { error: "Brak skanu podpisu — wgraj go w profilu, a potem podpisz operat." };
+    }
+
+    try {
+      const kcs = computeKcs(valuation.inputs);
+      const amountInWords = await worker.amountInWords(kcs.wr);
+      const model = buildDocumentModel({
+        address: valuation.address,
+        area: valuation.area,
+        purpose: valuation.purpose as OperatPurpose,
+        kwNumber: valuation.kwNumber ?? "",
+        client: valuation.client ?? "",
+        inspectionDate: valuation.inspectionDate ?? "",
+        approvedAt: valuation.approvedAt,
+        inputs: valuation.inputs,
+        kcs,
+        amountInWords,
+      });
+      // Slice 9: sign NEVER contacts WMS — it re-renders the maps frozen at
+      // approve (spec decision 1). A StorageNotFoundError means "approved
+      // without maps" — the only case map absence is silent. Any OTHER error
+      // (e.g. a transient dead pooled connection) must NOT be treated as "no
+      // maps" — spec decision 4 says map absence is never silent — so it is
+      // returned as an error WITHOUT signing (final review, Important #2).
+      // The Buffer.isBuffer guard also covers PortStorage fakes that resolve
+      // undefined instead of throwing (advisor B2).
+      let maps: RenderMaps | null = null;
+      try {
+        // The keys come from the one place that spells them (`frozenMapKeys`),
+        // shared with the preview that freezes them and the issue that reuses
+        // them. This is the call site where a typo costs the most: a key that
+        // misses reads as StorageNotFoundError, which this branch treats as the
+        // legal "approved without maps" — silently.
+        const keys = frozenMapKeys(id);
+        const ewidencyjna = await storage.get(keys.ewidencyjna);
+        const orto = await storage.get(keys.orto);
+        if (Buffer.isBuffer(ewidencyjna) && Buffer.isBuffer(orto)) {
+          maps = { ewidencyjna, orto };
+        }
+      } catch (error) {
+        if (!(error instanceof StorageNotFoundError)) {
+          log.error({
+            event: "signValuationAction.frozenMapsReadFailed",
+            valuationId: id,
+            actorId: session.user.id,
+            ...errFields(error),
+          });
+          return {
+            error: errorWithCode(
+              "Nie udało się odczytać zamrożonych map operatu — spróbuj ponownie.",
+            ),
+          };
+        }
+      }
+
+      // Slice 10 (Task 8): sign reads the photo manifest from the FROZEN
+      // inputs, same as maps — but unlike maps, StorageNotFoundError here is
+      // NOT swallowed. The manifest is written in the same tx as the bytes, so
+      // a missing key is a hard integrity error: every failure aborts the sign
+      // rather than being treated as a legal absence (final review, contrast
+      // with the maps try/catch above).
+      let photos: RenderPhotos | null = null;
+      try {
+        photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
+      } catch (error) {
+        log.error({
+          event: "signValuationAction.frozenPhotosReadFailed",
+          valuationId: id,
+          actorId: session.user.id,
+          ...errFields(error),
+        });
+        return {
+          error: errorWithCode(
+            "Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie.",
+          ),
+        };
+      }
+      const docx = renderOperatDocx(model, { signature: signature.bytes, maps, photos });
+      const pdf = await worker.convertToPdf(docx);
+      const docxUrl = await storage.put(`operat-${id}-signed.docx`, docx);
+      const docUrl = await storage.put(`operat-${id}-signed.pdf`, pdf);
+
+      const updated = await valuationRepository.sign(id, session.user, {
+        docUrl,
+        docxUrl,
+        sha256Docx: sha256(docx),
+        sha256Pdf: sha256(pdf),
+      });
+      if (!updated) {
+        return { error: "Nie udało się podpisać wyceny — spróbuj ponownie." };
+      }
+    } catch (error) {
+      if (error instanceof NotSignableError) {
+        return { error: "Podpisać można tylko zatwierdzoną wycenę." };
+      }
+      log.error({
+        event: "signValuationAction.failed",
+        valuationId: id,
+        actorId: session.user.id,
+        ...errFields(error),
+      });
+      return {
+        error: errorWithCode(
+          "Nie udało się wygenerować podpisanego operatu — worker lub magazyn dokumentów są niedostępne. Spróbuj ponownie.",
+        ),
+      };
+    }
+
+    revalidatePath(`/valuations/${id}`);
+    revalidatePath("/valuations");
+  });
 }

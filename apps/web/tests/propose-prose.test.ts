@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { withCode } from "./fixtures/with-code";
 
 /**
  * Server Action `proposeProse` (ADR-014, T5) — the same mock shape as
@@ -355,7 +356,7 @@ describe("proposeProse — failures after the call", () => {
     );
 
     expect(await proposeProse(VALUATION_ID)).toEqual({
-      error: "Nieprawidłowy lub wygasły token — odśwież stronę i spróbuj ponownie.",
+      error: withCode("Nieprawidłowy lub wygasły token — odśwież stronę i spróbuj ponownie."),
     });
     expect(saveProseMock).not.toHaveBeenCalled();
   });
@@ -366,7 +367,7 @@ describe("proposeProse — failures after the call", () => {
       new Error(`${PROSE_WORKER_RESPONDED_PREFIX} 422 Unprocessable Entity`),
     );
 
-    expect(await proposeProse(VALUATION_ID)).toEqual({ error: GENERIC });
+    expect(await proposeProse(VALUATION_ID)).toEqual({ error: withCode(GENERIC) });
     expect(saveProseMock).not.toHaveBeenCalled();
   });
 
@@ -380,7 +381,7 @@ describe("proposeProse — failures after the call", () => {
     // What undici throws when the host cannot be reached at all.
     fetchProposalMock.mockRejectedValue(new TypeError("fetch failed"));
 
-    expect(await proposeProse(VALUATION_ID)).toEqual({ error: GENERIC });
+    expect(await proposeProse(VALUATION_ID)).toEqual({ error: withCode(GENERIC) });
   });
 
   it("a proxy's HTML error page never reaches the appraiser — no internal address leaks", async () => {
@@ -395,7 +396,7 @@ describe("proposeProse — failures after the call", () => {
 
     const result = await proposeProse(VALUATION_ID);
 
-    expect(result).toEqual({ error: GENERIC });
+    expect(result).toEqual({ error: withCode(GENERIC) });
     expect(JSON.stringify(result)).not.toContain("worker-internal");
   });
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { withCode } from "./fixtures/with-code";
 
 /**
  * Server Action `confirmProse` (ADR-014, FR-6, T6) — the appraiser's step-6
@@ -103,7 +104,7 @@ describe("confirmProse", () => {
     confirmProseMock.mockRejectedValue(new Error("Valuation vid is not a draft"));
 
     expect(await confirmProse(VALUATION_ID, { opis_lokalu: TEXT })).toEqual({
-      error: "Nie udało się zapisać opisów — spróbuj ponownie.",
+      error: withCode("Nie udało się zapisać opisów — spróbuj ponownie."),
     });
   });
 });
