@@ -82,6 +82,15 @@ jobs:
       - name: F-10 — dependency rule (dependency-cruiser)
         run: pnpm depcruise
 
+      # Catches the deployed migration ledger drifting from the repo's. Skips
+      # itself when the secret is absent (forks), so it can never block an
+      # outside contribution on something the contributor cannot see.
+      - name: Migration drift vs deployed database
+        working-directory: apps/web
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: pnpm exec tsx scripts/check-migration-drift.mts
+
       - name: Set up Python + uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
