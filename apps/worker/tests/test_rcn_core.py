@@ -127,3 +127,25 @@ def test_parse_address_no_comma_defaults_to_poznan():
     from app.rcn import parse_address
 
     assert parse_address("ul. Kościelna 33A") == ("Poznań", "Kościelna 33A")
+
+
+def test_parse_address_postal_code_does_not_flip_the_city():
+    """Incydent 3d23717d: digits in "61-619 Poznań" made looks_like_street
+    treat the city part as a street, so the halves never swapped and both
+    geocoders got an inverted query. The postal code carries nothing either
+    geocoder needs — parse_address must drop it before the heuristic."""
+    from app.rcn import parse_address
+
+    assert parse_address("ul. Sielawy 21F/17, 61-619 Poznań") == ("Poznań", "Sielawy 21F/17")
+
+
+def test_parse_address_postal_code_city_first():
+    from app.rcn import parse_address
+
+    assert parse_address("61-619 Poznań, ul. Sielawy 21F") == ("Poznań", "Sielawy 21F")
+
+
+def test_parse_address_building_range_is_not_a_postal_code():
+    from app.rcn import parse_address
+
+    assert parse_address("ul. Półwiejska 21-23, Poznań") == ("Poznań", "Półwiejska 21-23")
