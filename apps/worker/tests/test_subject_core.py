@@ -4,10 +4,12 @@ import pytest
 
 from app.subject import (
     building_from_xml,
+    building_ids_from_xml,
     is_poznan,
     normalize_uug_address,
     parcel_from_xml,
     parse_geopoz_fields,
+    pick_building_id,
     pick_mpzp_function,
     pick_plan,
 )
@@ -271,3 +273,24 @@ def test_nominatim_to_2180_uldk_miss_raises_address_not_found(monkeypatch):
     monkeypatch.setattr(subject_module, "_get", lambda url, timeout=30: "-1\nBlad zapytania")
     with pytest.raises(subject_module.AddressNotFound):
         subject_module.nominatim_to_2180(52.4, 16.9)
+
+
+TWO_BUILDINGS_XML = """<FeatureInfoResponse>
+<FIELDS><ID_BUDYNKU>306401_1.0039.AR_22.13/82.3_BUD</ID_BUDYNKU><RODZAJ>m</RODZAJ></FIELDS>
+<FIELDS><ID_BUDYNKU>306401_1.0039.AR_22.13/24.1_BUD</ID_BUDYNKU><RODZAJ>m</RODZAJ></FIELDS>
+</FeatureInfoResponse>"""
+
+
+def test_building_ids_from_xml_lists_all_in_order():
+    assert building_ids_from_xml(TWO_BUILDINGS_XML) == [
+        "306401_1.0039.AR_22.13/82.3_BUD",
+        "306401_1.0039.AR_22.13/24.1_BUD",
+    ]
+    assert building_ids_from_xml("<x/>") == []
+
+
+def test_pick_building_id_prefers_the_building_on_the_uldk_parcel_else_first():
+    ids = building_ids_from_xml(TWO_BUILDINGS_XML)
+    assert pick_building_id(ids, "306401_1.0039.AR_22.13/24") == "306401_1.0039.AR_22.13/24.1_BUD"
+    assert pick_building_id(ids, "306401_1.0039.AR_22.999") == "306401_1.0039.AR_22.13/82.3_BUD"
+    assert pick_building_id([], "x") is None

@@ -125,6 +125,38 @@ def building_from_xml(xml: str) -> dict | None:
     }
 
 
+_BUILDING_ID_RX = re.compile(r"<ID_BUDYNKU>([^<]+)</ID_BUDYNKU>")
+
+
+def building_ids_from_xml(xml: str) -> list[str]:
+    """Every ID_BUDYNKU in the GetFeatureInfo response, in document order.
+
+    `building_from_xml` above reads only the single FIELDS block a naive
+    GetFeatureInfo response carries; a real response within the ±50 m query
+    box can list up to FEATURE_COUNT=10 buildings (`fetch_egib_xml`), so
+    ranking the subject's building needs all of them, not just the first.
+    """
+    return [m.strip() for m in _BUILDING_ID_RX.findall(xml)]
+
+
+def pick_building_id(ids: list[str], parcel_id: str | None) -> str | None:
+    """Pick the building on the subject's own ULDK parcel, else the first hit.
+
+    ID_BUDYNKU is prefixed with the parcel id it sits on (e.g.
+    "306401_1.0021.AR_10.161.1_BUD" on parcel "306401_1.0021.AR_10.161"), so
+    a "startswith(parcel_id + '.')" match identifies the subject's building
+    among neighbours returned by the ±50 m query box. Spike A found the UUG
+    geocoded point lands on a neighbouring parcel for ~40% of addresses, so
+    that match is not guaranteed — falling back to the first hit still gives
+    web step 3 a usable ranking signal instead of silently returning nothing.
+    """
+    if parcel_id:
+        for building_id in ids:
+            if building_id.startswith(f"{parcel_id}."):
+                return building_id
+    return ids[0] if ids else None
+
+
 def pick_mpzp_function(parcel_wkt_2180: str, functions_geojson: dict) -> dict | None:
     """Pick the plan function with max area overlap with the parcel (spike-proven)."""
     parcel = shapely_wkt.loads(parcel_wkt_2180)

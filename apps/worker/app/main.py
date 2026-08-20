@@ -281,6 +281,7 @@ class SubjectMeta(BaseModel):
     fetchedAt: str
     source: str
     mpzpAbsent: bool
+    buildingId: str | None = None
 
 
 class SubjectProposalResponse(BaseModel):
@@ -310,7 +311,11 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
         parcel = subject.parcel_from_xml(subject.fetch_egib_xml("dzialki", x, y))
         if parcel is None:
             raise RuntimeError("EGiB nie zwróciło działki")
-        building = subject.building_from_xml(subject.fetch_egib_xml("budynki", x, y))
+        building_xml = subject.fetch_egib_xml("budynki", x, y)
+        building = subject.building_from_xml(building_xml)
+        building_id = subject.pick_building_id(
+            subject.building_ids_from_xml(building_xml), parcel_ref["parcel_id"]
+        )
         wkt_2180 = subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 2180)
         function = subject.pick_mpzp_function(wkt_2180, subject.fetch_mpzp_functions(wkt_2180))
         lon, lat = subject.centroid_4326(subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 4326))
@@ -352,6 +357,7 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
             fetchedAt=datetime.now(UTC).isoformat(),
             source="geopoz-gugik",
             mpzpAbsent=mpzp is None,
+            buildingId=building_id,
         ),
     )
 

@@ -58,6 +58,9 @@ def test_happy_path_returns_parcel_building_mpzp_and_never_wr(happy_io):
     assert body["mpzp"]["uchwala"] == "VII/84/VIII/2019"
     assert body["meta"]["mpzpAbsent"] is False
     assert body["meta"]["source"] == "geopoz-gugik"
+    # happy_io's ULDK parcel is "...AR_10.161"; BUDYNEK_XML's building sits on
+    # "...AR_10.162" (a neighbouring parcel), so this falls back to the first hit.
+    assert body["meta"]["buildingId"] == "306401_1.0021.AR_10.162.1_BUD"
     assert '"wr"' not in r.text.lower()
 
 
@@ -79,6 +82,7 @@ def test_missing_building_returns_null_building(happy_io, monkeypatch):
     r = client.post("/subject-proposal", json={"address": "Poznan, Koscielna 33"})
     assert r.status_code == 200
     assert r.json()["building"] is None
+    assert r.json()["meta"]["buildingId"] is None
 
 
 def test_outside_poznan_is_422_non_retryable(monkeypatch):
