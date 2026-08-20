@@ -170,3 +170,9 @@ def test_normalize_uug_address_no_comma_defaults_city_to_poznan():
     # no city given -> falls back to rcn.parse_address's Poznań default (documented,
     # matches the app's Poznań-only MVP coverage gate, see is_poznan)
     assert normalize_uug_address("Kościelna 33") == "Poznań, Kościelna 33"
+
+
+def test_normalize_uug_address_drops_postal_code():
+    # incydent 3d23717d: "61-619 Poznań" read as a street (digits!), the halves
+    # never swapped, and UUG answered the inverted query with "Blad zapytania."
+    assert normalize_uug_address("ul. Sielawy 21F/17, 61-619 Poznań") == "Poznań, Sielawy 21F"

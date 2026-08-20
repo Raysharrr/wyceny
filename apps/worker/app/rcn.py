@@ -149,6 +149,9 @@ def fetch_rcn(
 
 _STREET_PREFIXES = ("ul.", "pl.", "al.", "os.")
 
+# "NN-NNN" only — a building range like "21-23" is \d{2}-\d{2} and stays intact.
+_POSTAL_CODE_RX = re.compile(r"\b\d{2}-\d{3}\b")
+
 
 def parse_address(address: str) -> tuple[str, str]:
     """Split an address into (city, street), accepting both comma orders.
@@ -157,7 +160,14 @@ def parse_address(address: str) -> tuple[str, str]:
     (and real users) use "ul. Nazwa nr, Miasto" — 2026-07-14 prod QA caught
     street-first input geocoding to nothing. A part that carries a street
     prefix or a house number is treated as the street regardless of order.
+
+    Postal codes are dropped first: staging incident 3d23717d had digits in
+    "61-619 Poznań" read as a house number, so the halves never swapped and
+    both geocoders got an inverted query. Neither Nominatim nor UUG needs
+    the code to resolve a street address.
     """
+    address = _POSTAL_CODE_RX.sub(" ", address)
+    address = re.sub(r"\s{2,}", " ", address).strip()
     match = re.match(r"^([^,]+),\s*(.+)$", address)
     if not match:
         return "Poznań", re.sub(r"^(ul\.|pl\.|al\.|os\.)\s*", "", address.strip())
