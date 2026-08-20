@@ -1,6 +1,9 @@
 /**
  * Port for the worker's address-suggestion lookup: street/address candidates
- * from the UUG geocoder feeding the step-1 address combobox.
+ * from the UUG geocoder feeding the step-1 address combobox. The worker already
+ * filters them to the app's coverage (`COVERAGE_TERYT_PREFIX` in the worker), so
+ * the UI has no coverage flag to render — every suggestion is inside the area the
+ * app's subject-data sources attempt to serve.
  *
  * Pure interface — no imports, no I/O. Application code depends on this
  * abstraction, never on a concrete adapter (F-10).
@@ -13,8 +16,6 @@ export interface AddressSuggestion {
   /** Present only for exact-address results (UUG "only exact numbers"). */
   number: string | null;
   teryt: string | null;
-  /** MVP coverage gate (TERYT 3064*) — lets the UI flag out-of-coverage hits. */
-  inCoverage: boolean;
 }
 
 export interface PortAddressSuggest {

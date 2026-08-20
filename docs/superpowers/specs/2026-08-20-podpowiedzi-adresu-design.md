@@ -1,5 +1,7 @@
 # Spec: Podpowiedzi adresu z UUG (krok 1)
 
+> **Aktualizacja 2026-08-20 (wieczór), decyzja usera:** podpowiedzi obejmują wyłącznie zakres pokrycia (TERYT `3064*`, stała `COVERAGE_TERYT_PREFIX` w `apps/worker/app/subject.py`); worker filtruje kandydatów przed obcięciem do 8, pole `inCoverage` i dopisek „Adres spoza Poznania…” zostały usunięte z kontraktu, portu i komponentu. Docelowo adres w kroku 1 wybiera się wyłącznie z listy (ulica z listy + numer walidowany w UUG) — Slice 4 bloku „Próba v3” (wiki: `docs/superpowers/specs/2026-08-20-dobor-proby-v3-design.md`). Fragmenty poniżej o `inCoverage` i dopisku są historyczne.
+
 **Data**: 2026-08-20 · **Status**: do review · **Slice**: roadmapa 🟢 NOW (wiki PR #25)
 **Poprzedzają**: incydent `3d23717d` (diagnoza 2026-08-20), hotfixy PR #15 (logowanie przyczyn
 w gołych `except`) i PR #16 (`parse_address` wycina kod pocztowy), spike

@@ -32,7 +32,6 @@ const suggestions: AddressSuggestion[] = [
     street: "Sielawy",
     number: null,
     teryt: "306401",
-    inCoverage: true,
   },
 ];
 

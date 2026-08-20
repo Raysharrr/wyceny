@@ -157,9 +157,14 @@ def pick_plan(lon: float, lat: float, plans_geojson: dict) -> dict | None:
     return None
 
 
+# The ONE place that says how far the app reaches. Widening coverage later means
+# changing this prefix (or turning it into a list) — nothing else (decision 2026-08-20).
+COVERAGE_TERYT_PREFIX = "3064"  # powiat Poznań (gmina 306401)
+
+
 def is_poznan(teryt: str | None) -> bool:
-    """Poznan city TERYT prefix (gmina 306401 -> powiat 3064). MVP coverage gate."""
-    return bool(teryt) and teryt.startswith("3064")
+    """Coverage gate: subject data, address suggestions and operat maps stop at this TERYT prefix."""
+    return bool(teryt) and teryt.startswith(COVERAGE_TERYT_PREFIX)
 
 
 # --- I/O boundary (verbatim endpoints from the 2026-07-17 spike) ------------

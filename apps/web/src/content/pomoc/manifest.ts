@@ -227,21 +227,22 @@ export const HELP_PAGES: HelpPage[] = [
    *
    * Źródła do sprawdzenia przy każdej zmianie pobrania danych przedmiotu:
    *   apps/worker/app/subject.py:34   normalize_uug_address (miasto pierwsze, obcięcie nr lokalu)
-   *   apps/worker/app/subject.py:100  pick_mpzp_function — symbol przez MAX przecięcia
-   *   apps/worker/app/subject.py:116  pick_plan — metryka planu przez punkt w wielokącie
-   *   apps/worker/app/subject.py:132  is_poznan — zasięg MVP, prefiks TERYT 3064
-   *   apps/worker/app/subject.py:156  AddressNotFound — adres nierozpoznany, NIEPONAWIALNY (422)
-   *   apps/worker/app/subject.py:139  GEOKODER_URL (UUG GUGiK)
-   *   apps/worker/app/subject.py:140  ULDK_URL (identyfikator + geometria działki)
-   *   apps/worker/app/subject.py:141  GEOPOZ_WMS_URL (EGiB: dzialki, budynki)
-   *   apps/worker/app/subject.py:142  GEOPOZ_WFS_URL (mpzp_poznan:mpzp_funkcje)
-   *   apps/worker/app/subject.py:143  PLANS_URL (miejska warstwa metryk planów)
-   *   apps/worker/app/subject.py:145  PLANS_CACHE_TTL_S = 3600 s
-   *   apps/worker/app/subject.py:197  half = 50.0 — kwadrat zapytania GetFeatureInfo
-   *   apps/worker/app/subject.py:212  FEATURE_COUNT = 10
+   *   apps/worker/app/subject.py:128  pick_mpzp_function — symbol przez MAX przecięcia
+   *   apps/worker/app/subject.py:144  pick_plan — metryka planu przez punkt w wielokącie
+   *   apps/worker/app/subject.py:162  COVERAGE_TERYT_PREFIX — JEDYNA definicja zasięgu (prefiks TERYT)
+   *   apps/worker/app/subject.py:165  is_poznan — bramka zasięgu (dane przedmiotu, podpowiedzi, mapy)
+   *   apps/worker/app/subject.py:189  AddressNotFound — adres nierozpoznany, NIEPONAWIALNY (422)
+   *   apps/worker/app/subject.py:172  GEOKODER_URL (UUG GUGiK)
+   *   apps/worker/app/subject.py:173  ULDK_URL (identyfikator + geometria działki)
+   *   apps/worker/app/subject.py:174  GEOPOZ_WMS_URL (EGiB: dzialki, budynki)
+   *   apps/worker/app/subject.py:175  GEOPOZ_WFS_URL (mpzp_poznan:mpzp_funkcje)
+   *   apps/worker/app/subject.py:176  PLANS_URL (miejska warstwa metryk planów)
+   *   apps/worker/app/subject.py:178  PLANS_CACHE_TTL_S = 3600 s
+   *   apps/worker/app/subject.py:260  half = 50.0 — kwadrat zapytania GetFeatureInfo
+   *   apps/worker/app/subject.py:275  FEATURE_COUNT = 10
    *   apps/worker/app/subject.py:227  count = 50 (limit obiektów WFS funkcji)
-   *   apps/worker/app/subject.py:75   parcel_from_xml — lista pól EGiB działki
-   *   apps/worker/app/subject.py:89   building_from_xml — lista pól EGiB budynku
+   *   apps/worker/app/subject.py:103  parcel_from_xml — lista pól EGiB działki
+   *   apps/worker/app/subject.py:117  building_from_xml — lista pól EGiB budynku
    *   apps/worker/app/main.py:212     ADDRESS_NOT_FOUND_DETAIL — komunikat cytowany na stronach
    *   apps/worker/app/main.py:216     OUT_OF_COVERAGE_DETAIL — drugi z dwóch nieponawialnych 422
    *   apps/worker/app/main.py:239     mpzp niepuste, gdy zadziała funkcja LUB plan

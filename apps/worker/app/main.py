@@ -301,7 +301,6 @@ class AddressSuggestion(BaseModel):
     street: str
     number: str | None = None
     teryt: str | None = None
-    inCoverage: bool
 
 
 class AddressSuggestResponse(BaseModel):
@@ -314,7 +313,17 @@ MAX_SUGGESTIONS = 8
 @app.post("/address-suggest")
 def address_suggest(request: AddressSuggestRequest) -> AddressSuggestResponse:
     try:
-        candidates = subject.suggest_addresses(request.query)
+        # Coverage is a filter, not a flag: the list offers only addresses the
+        # app can serve end-to-end (decision 2026-08-20), filtered BEFORE the cap
+        # so out-of-coverage hits never crowd out in-coverage ones.
+        raw = subject.suggest_addresses(request.query)
+        candidates = [c for c in raw if subject.is_poznan(c.get("teryt"))]
+        if len(candidates) != len(raw):
+            # Counts only (no query — F-13): tells "everything fell outside coverage"
+            # apart from "UUG found nothing" when the UI shows an empty list.
+            logger.info(
+                "address_suggest_filtered", kept=len(candidates), dropped=len(raw) - len(candidates)
+            )
     except Exception as exc:
         # Suggestions are an enhancement — a broken geocoder must never break
         # the form, so this answers 200 with an empty list. The cause is still
@@ -330,7 +339,6 @@ def address_suggest(request: AddressSuggestRequest) -> AddressSuggestResponse:
                 street=c["street"],
                 number=c.get("number"),
                 teryt=c.get("teryt"),
-                inCoverage=subject.is_poznan(c.get("teryt")),
             )
             for c in candidates[:MAX_SUGGESTIONS]
         ]
