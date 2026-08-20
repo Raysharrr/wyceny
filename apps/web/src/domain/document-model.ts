@@ -129,10 +129,44 @@ function maskMonth(date: string | undefined): string {
   return date && /^\d{4}-\d{2}/.test(date) ? date.slice(0, 7) : DASH;
 }
 
-/** Best-effort city from the subject address ("ul. X 1, Poznań" → "Poznań"). */
+const STREET_PREFIX_RX = /^(ul\.|pl\.|al\.|os\.)\s*/i;
+/** "NN-NNN" only — a building range like "21-23" is \d{2}-\d{2} and stays intact. Global flag for `replace` only — never `.test()` this one. */
+const POSTAL_CODE_RX = /\b\d{2}-\d{3}\b/g;
+/** The worker's `parse_address` (apps/worker/app/rcn.py) assumes this city when none is given — keep the two in step. */
+const DEFAULT_CITY = "Poznań";
+
+/** A part with a street prefix or any digit is the street half, whichever side of the comma it sits on. */
+function looksLikeStreet(part: string): boolean {
+  return STREET_PREFIX_RX.test(part) || /\d/.test(part);
+}
+
+/**
+ * City from the subject address, accepting both comma orders — mirrors the
+ * worker's `parse_address` (rcn.py) so the document agrees with the geocoder.
+ * "ul. X 1, Poznań" → "Poznań"; "Poznań, X 1" (the form the address combobox
+ * inserts) → "Poznań"; postal code dropped first ("61-619 Poznań" → "Poznań");
+ * a trailing country never reaches the column ("…, Poznań, Polska" → "Poznań").
+ * Staging 2026-08-20: the old last-comma rule put the subject's street into
+ * every row of the operat's Table 1 and into the prose `rynek` fact.
+ */
 export function cityFromAddress(address: string): string {
-  const afterComma = address.split(",").pop()?.trim();
-  return afterComma && afterComma.length > 0 ? afterComma : DASH;
+  const cleaned = address
+    .replace(POSTAL_CODE_RX, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (!cleaned) return DASH;
+  const comma = cleaned.indexOf(",");
+  if (comma === -1) {
+    // ponytail: no city given — the worker geocodes a street-like input as
+    // DEFAULT_CITY, so the sample (and this column) is that city too. A bare name
+    // without digits is returned as written: the document does not guess.
+    return looksLikeStreet(cleaned) ? DEFAULT_CITY : cleaned;
+  }
+  const first = cleaned.slice(0, comma).trim();
+  const rest = cleaned.slice(comma + 1).trim();
+  const cityHalf = looksLikeStreet(first) && !looksLikeStreet(rest) ? rest : first;
+  // The worker keeps the whole half for geocoding; the document prints only its first segment.
+  return cityHalf.split(",")[0].trim();
 }
 
 /**

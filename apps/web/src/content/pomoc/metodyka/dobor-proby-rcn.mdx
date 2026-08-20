@@ -6,7 +6,7 @@ Próba porównawcza pochodzi z rejestru cen nieruchomości (RCN) — publicznego
 
 Pobranie przebiega w czterech krokach:
 
-- **Geokodowanie adresu** — adres wyceny zamieniany jest na współrzędne przez Nominatim (OpenStreetMap). Zapytanie idzie najpierw w formie ustrukturyzowanej (ulica, miasto, kraj), a gdy nie zwróci wyniku — jako zapytanie swobodne ograniczone do Polski. Adres nierozpoznany oznacza brak pobrania.
+- **Geokodowanie adresu** — adres wyceny zamieniany jest na współrzędne przez Nominatim (OpenStreetMap). Zapytanie idzie najpierw w formie ustrukturyzowanej (ulica, miasto, kraj), a gdy nie zwróci wyniku — jako zapytanie swobodne ograniczone do Polski. Adres nierozpoznany oznacza brak pobrania. Jest to **inne narzędzie niż w kroku 1** (tam państwowy geokoder GUGiK), więc środek prostokąta może leżeć gdzie indziej niż działka ustalona w kroku 1.
 - **Prostokąt wyszukiwania** — wokół uzyskanego punktu budowany jest prostokąt ±0,018° szerokości i ±0,029° długości geograficznej (`apps/worker/app/main.py`). W szerokościach geograficznych Polski to około 4 km na 4 km, ze środkiem w geokodowanym adresie.
 - **Zapytanie do rejestru** — usługa WFS pytana jest o warstwę lokali z limitem 5000 rekordów i sortowaniem po dacie dokumentu malejąco. Ta kombinacja jest wynikiem spike'u, nie preferencją: mniejsze limity zwracają quasi-losowy podzbiór zdominowany przez rekordy sprzed lat.
 - **Odczyt rekordów** — z każdego rekordu bierzemy cenę brutto lokalu (pole `lok_cena_brutto`), powierzchnię użytkową lokalu (`lok_pow_uzyt`), datę dokumentu, funkcję lokalu i identyfikator transakcji. Cena jednostkowa to iloraz ceny brutto i powierzchni użytkowej. Rekordy bez ceny lub bez powierzchni, a także z wartością niedodatnią, są pomijane w całości.
@@ -60,4 +60,7 @@ Ograniczenia metody warto znać, zanim zapyta o nie ktoś inny:
 - **Nie koryguje samych cen.** Do rachunku wchodzi cena brutto z rejestru podzielona przez powierzchnię użytkową — bez korekt o warunki transakcji, udział w gruncie czy stan lokalu.
 - **Nie sięga poza funkcję `mieszkalna`.** Rekord z inną albo pustą wartością funkcji nie wejdzie do puli, nawet jeśli w rzeczywistości dotyczy lokalu mieszkalnego.
 - **Nie waliduje adresu poza geokodowaniem.** Punkt zwrócony przez Nominatim wyznacza środek prostokąta; błędny albo zbyt ogólny adres da próbę z niewłaściwej okolicy, a nie komunikat o błędzie.
+- **Nie sprawdza rodzaju transakcji.** Rejestr rozróżnia sprzedaż wolnorynkową od sprzedaży egzekucyjnej, przetargowej i bezprzetargowej, ale dobór tego pola nie czyta.
+- **Nie odróżnia rynku pierwotnego od wtórnego.** Sprzedaż od dewelopera wchodzi do próby na równi z odsprzedażą, choć analiza rynku w operacie mówi o rynku wtórnym; pole rynku w rejestrze jest wypełnione tylko w części rekordów.
+- **Nie odróżnia sprzedaży całego lokalu od sprzedaży udziału** i nie sprawdza, czy ta sama transakcja nie występuje w rejestrze dwukrotnie.
 - **Nie ocenia jakości transakcji.** Rejestr nie zawiera cech jakościowych lokali, więc dobór operuje wyłącznie na metrażu, dacie i cenie. Wszystko, co odróżnia wyceniany lokal od średniej z próby, musi zostać wyrażone w ocenach cech.
