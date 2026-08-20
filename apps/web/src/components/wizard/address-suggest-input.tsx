@@ -45,6 +45,11 @@ export function AddressSuggestInput({
 }: AddressSuggestInputProps) {
   const listId = useId();
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  // The query the current `suggestions` answer. The list is DERIVED visible
+  // only while the input still matches it — no synchronous state resets in
+  // the effect (lint: cascading renders), and a stale list can never flash
+  // for a query it does not belong to.
+  const [queryFor, setQueryFor] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   // Stale-response guard — same idiom as subject-form's `fetchSeq`: a late
@@ -54,6 +59,10 @@ export function AddressSuggestInput({
   // immediately re-query and re-open the list the user just closed.
   const suppressNextFetch = useRef(false);
 
+  const trimmed = value.trim();
+  const visible =
+    open && trimmed.length >= MIN_QUERY_LENGTH && queryFor === trimmed && suggestions.length > 0;
+
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_ADDRESS_SUGGEST === "off") return;
     if (suppressNextFetch.current) {
@@ -61,16 +70,13 @@ export function AddressSuggestInput({
       return;
     }
     const query = value.trim();
-    if (query.length < MIN_QUERY_LENGTH) {
-      setSuggestions([]);
-      setOpen(false);
-      return;
-    }
+    if (query.length < MIN_QUERY_LENGTH) return;
     const seq = ++fetchSeq.current;
     const timer = setTimeout(() => {
       void fetchSuggestions(query).then(({ suggestions: next }) => {
         if (seq !== fetchSeq.current) return; // stale response — a newer query owns the list
         setSuggestions(next);
+        setQueryFor(query);
         setActiveIndex(-1);
         setOpen(next.length > 0);
       });
@@ -82,13 +88,12 @@ export function AddressSuggestInput({
     suppressNextFetch.current = true;
     fetchSeq.current++; // invalidate any in-flight query from before the pick
     onValueChange(suggestion.label);
-    setSuggestions([]);
     setOpen(false);
     setActiveIndex(-1);
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!open) return;
+    if (!visible) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setActiveIndex((i) => (i + 1) % suggestions.length);
@@ -116,7 +121,7 @@ export function AddressSuggestInput({
         placeholder={placeholder}
         autoComplete="off"
         role="combobox"
-        aria-expanded={open}
+        aria-expanded={visible}
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined}
@@ -129,7 +134,7 @@ export function AddressSuggestInput({
           onBlur();
         }}
       />
-      {open ? (
+      {visible ? (
         <ul
           id={listId}
           role="listbox"
