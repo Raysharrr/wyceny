@@ -108,6 +108,25 @@ def test_both_geocoders_miss_is_422(monkeypatch):
     assert r.status_code == 422
 
 
+def test_uug_generic_failure_is_502_and_logs_cause(monkeypatch, capsys):
+    """Incydent 3d23717d class: UUG answering plain text (or any other non-
+    AddressNotFound failure, e.g. an ULDK/Nominatim outage) must not escape as
+    an unlogged 500 — resolve_point only swallows AddressNotFound, so anything
+    else is a 502 with the cause logged, mirroring subject_proposal."""
+
+    def boom(a):
+        raise RuntimeError("UUG plain text")
+
+    monkeypatch.setattr(subject, "geocode_address", boom)
+    r = client.post("/sample-proposal", json={"address": "x", "area": 50})
+    assert r.status_code == 502
+    lines = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+    failed = [ln for ln in lines if ln.get("event") == "sample_proposal_failed"]
+    assert failed, lines
+    assert "UUG plain text" in failed[0]["err"]
+    assert failed[0]["err_type"] == "RuntimeError"
+
+
 def test_radius_m_overrides_bbox_and_max_radius(monkeypatch):
     seen = {}
 
@@ -165,5 +184,13 @@ def test_invalid_body_is_422():
             "/sample-proposal",
             json={"address": "x", "area": 1, "point": {"x": 1, "y": 2, "srid": 4326}},
         ).status_code
+        == 422
+    )
+    assert (
+        client.post("/sample-proposal", json={"address": "x", "area": 1, "radiusM": 0}).status_code
+        == 422
+    )
+    assert (
+        client.post("/sample-proposal", json={"address": "x", "area": 1, "radiusM": -5}).status_code
         == 422
     )

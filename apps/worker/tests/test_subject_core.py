@@ -1,5 +1,7 @@
 """Pure-core tests for subject.py — in-code fixtures, zero network (F-9: no PESEL/KW shapes)."""
 
+import pytest
+
 from app.subject import (
     building_from_xml,
     is_poznan,
@@ -239,3 +241,33 @@ def test_suggest_addresses_normalizes_query_and_uses_short_timeout(monkeypatch):
     assert subject_module.suggest_addresses("ul. Siel") == []
     assert calls["timeout"] == 5
     assert "Pozna%C5%84%2C+Siel" in calls["url"]
+
+
+def test_nominatim_to_2180_queries_uldk_lon_first_and_returns_parcel_centroid(monkeypatch):
+    # Nominatim speaks (lat, lon); ULDK's xy= wants lon,lat — mixing these up
+    # silently returns the wrong parcel, so pin the URL order alongside the result.
+    from app import subject as subject_module
+
+    calls = {}
+
+    def fake_get(url, timeout=30):
+        calls["url"] = url
+        return "0\n123456"
+
+    monkeypatch.setattr(subject_module, "_get", fake_get)
+    monkeypatch.setattr(
+        subject_module,
+        "fetch_parcel_wkt",
+        lambda parcel_id, srid: "POLYGON((0 0,10 0,10 10,0 10,0 0))",
+    )
+    x, y = subject_module.nominatim_to_2180(52.4, 16.9)
+    assert (x, y) == (5.0, 5.0)
+    assert "xy=16.9,52.4,4326" in calls["url"] and "result=id" in calls["url"]
+
+
+def test_nominatim_to_2180_uldk_miss_raises_address_not_found(monkeypatch):
+    from app import subject as subject_module
+
+    monkeypatch.setattr(subject_module, "_get", lambda url, timeout=30: "-1\nBlad zapytania")
+    with pytest.raises(subject_module.AddressNotFound):
+        subject_module.nominatim_to_2180(52.4, 16.9)

@@ -111,7 +111,7 @@ class SampleProposalRequest(BaseModel):
     address: str
     area: float
     point: SamplePoint | None = None
-    radiusM: float | None = None
+    radiusM: float | None = Field(default=None, gt=0, le=5000)
 
 
 class CandidateEgib(BaseModel):
@@ -196,6 +196,7 @@ def resolve_point(address: str, point: SamplePoint | None) -> tuple[float, float
         lat, lon = rcn.geocode(address)
         x, y = subject.nominatim_to_2180(lat, lon)
     except Exception as exc:
+        logger.warning("sample_proposal_geocoder_miss", err_type=type(exc).__name__)
         raise subject.AddressNotFound(str(exc)) from exc
     logger.warning("sample_proposal_geocoder_fallback", geocoder="nominatim")
     return x, y, "nominatim"
@@ -207,8 +208,11 @@ def sample_proposal(request: SampleProposalRequest) -> CandidatePoolResponse:
     radius_m = request.radiusM or DEFAULT_RADIUS_M
     try:
         x, y, source = resolve_point(request.address, request.point)
-    except subject.AddressNotFound:
-        raise HTTPException(status_code=422, detail=ADDRESS_NOT_FOUND_DETAIL)
+    except subject.AddressNotFound as exc:
+        raise HTTPException(status_code=422, detail=ADDRESS_NOT_FOUND_DETAIL) from exc
+    except Exception as exc:
+        logger.error("sample_proposal_failed", err=str(exc), err_type=type(exc).__name__)
+        raise HTTPException(status_code=502, detail=SAMPLE_FAILED_DETAIL) from exc
     try:
         pool = rcn.fetch_pool(x, y, radius_m, today_month)
     except Exception as exc:
