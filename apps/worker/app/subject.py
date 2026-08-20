@@ -297,6 +297,18 @@ def centroid_4326(parcel_wkt_4326: str) -> tuple[float, float]:
     return centroid.x, centroid.y
 
 
+def nominatim_to_2180(lat: float, lon: float) -> tuple[float, float]:
+    """Nominatim speaks WGS84; everything downstream is EPSG:2180. ULDK converts for free:
+    parcel under the WGS84 point -> its geometry in 2180 -> centroid. No pyproj dependency.
+    """
+    body = _get(f"{ULDK_URL}?request=GetParcelByXY&xy={lon},{lat},4326&result=id")
+    lines = body.strip().splitlines()
+    if not lines or lines[0].strip() != "0" or len(lines) < 2:
+        raise AddressNotFound(f"ULDK nie zna działki pod punktem Nominatim: {body[:80]}")
+    pt = shapely_wkt.loads(fetch_parcel_wkt(lines[1].strip(), 2180)).centroid
+    return (pt.x, pt.y)
+
+
 def fetch_plans() -> dict:
     global _plans_cache
     now = time.monotonic()

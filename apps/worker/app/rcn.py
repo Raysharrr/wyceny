@@ -1,22 +1,15 @@
-"""RCN (Rejestr Cen Nieruchomości) pure core: GML parsing + comparable-sample selection.
+"""RCN (Rejestr Cen Nieruchomości): GML parsing/pool assembly (pure) + WFS/Nominatim I/O.
 
-Zero I/O — no network, no clock. Ported from two empirically-verified spikes in
-the wyceny wiki repo (`~/Development/wyceny`):
+Ported from tools/spike/2026-05-14-kcs/spike.py (wyceny wiki repo). Price field is
+`lok_cena_brutto`, NOT `tran_cena_brutto` — a spike-pinned trap (the latter looks
+plausible but is empty in this dataset).
 
-- `tools/spike/2026-05-14-kcs/spike.py::parse_gml` (lines 184-217) — GUGiK WFS
-  GML parsing. Price field is `lok_cena_brutto`, NOT `tran_cena_brutto` — a
-  spike-pinned trap (the latter looks plausible but is empty in this dataset).
-- `tools/spike/2026-07-14-rcn-live-revalidation/spike.py::production_selection`
-  (lines 39-67) — "selection v2", proven against a live GUGiK re-run.
-
-Selection v2 exists because of a spike discovery: RCN contains garbage
-transaction dates from the future or elsewhere (e.g. `5201-07`, `2913-04`) —
-apparent typos in the source registry. Fetching with `sortBy=dok_data D`
-(newest first, needed to avoid ancient records dominating the pool) pulls
-these garbage rows to the very top. Without a date-sanity filter, the
-"newest N" selection would be poisoned by them. Callers of `select_sample`
-MUST pass a real `today_month` — never trust the caller to have pre-filtered
-dates.
+RCN contains garbage transaction dates from the future or elsewhere (e.g. `5201-07`,
+`2913-04`) — apparent typos in the source registry. `fetch_pool` (ADR-015) pages with
+`sortBy=dok_data D,tran_lokalny_id_iip D` (newest first) and stops once a page's
+oldest *sane* date falls before the 24-month window floor; garbage dates are ignored
+for that stop rule so they never end the pool early. Callers pass a real
+`today_month` — the core never reads the clock.
 """
 
 import json
@@ -25,21 +18,14 @@ import re
 import urllib.parse
 import urllib.request
 
-POOL_N = 19
-AREA_BAND_PCT = 0.30
 DATE_WINDOW_MONTHS = 24
-
-# I/O constants — copied verbatim from tools/spike/2026-05-14-kcs/spike.py (lines 24-26).
-WFS_URL = "https://mapy.geoportal.gov.pl/wss/service/rcn"
-NOMINATIM = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "wyceny-spike/1.0 (contact: czekala.michal@gmail.com)"
-
-# --- v3 pure core (ADR-015) — additive; the v2 parser/selection above are
-# replaced (not deleted) in Task 4. PAGE_SIZE/SORT_BY are the v3 fetch params;
-# WFS_URL/NOMINATIM/USER_AGENT/DATE_WINDOW_MONTHS above are reused as-is.
-
 PAGE_SIZE = 5000
 SORT_BY = "dok_data D,tran_lokalny_id_iip D"
+
+# GUGiK RCN WFS + Nominatim geocoder endpoints.
+WFS_URL = "https://mapy.geoportal.gov.pl/wss/service/rcn"
+NOMINATIM = "https://nominatim.openstreetmap.org/search"
+USER_AGENT = "wyceny-worker/1.0 (contact: czekala.michal@gmail.com)"
 
 _MEMBER_RX = re.compile(r"<wfs:member>(.*?)</wfs:member>", re.DOTALL)
 _POS_RX = re.compile(r"<gml:pos>([\d.]+)\s+([\d.]+)</gml:pos>")
@@ -152,111 +138,28 @@ def number_returned(gml: str) -> int:
 
 
 def floor_month(today_month: str, window_months: int) -> str:
-    """The earliest "YYYY-MM" still inside the date-sanity window.
-
-    Public v3 twin of `_floor_month`.
-    """
+    """The earliest "YYYY-MM" still inside the date-sanity window."""
     year, month = int(today_month[:4]), int(today_month[5:7])
     total = year * 12 + (month - 1) - window_months
     return f"{total // 12:04d}-{total % 12 + 1:02d}"
 
 
-def parse_gml(gml: str) -> list[dict]:
-    """Parse GUGiK WFS GML into transaction dicts.
-
-    Skips records with missing or non-positive price/area, same as the spike.
-    """
-    members = re.findall(r"<wfs:member>(.*?)</wfs:member>", gml, re.DOTALL)
-    out = []
-    for member in members:
-
-        def get(field: str) -> str | None:
-            match = re.search(rf"<ms:{field}>([^<]*)</ms:{field}>", member)
-            return (match.group(1).strip() if match else "") or None
-
-        def get_float(field: str) -> float | None:
-            value = get(field)
-            try:
-                return float(value) if value else None
-            except ValueError:
-                return None
-
-        price = get_float("lok_cena_brutto")
-        area = get_float("lok_pow_uzyt")
-        if price is None or area is None or price <= 0 or area <= 0:
-            continue
-
-        pos = re.search(r"<gml:pos>([\d.]+)\s+([\d.]+)</gml:pos>", member)
-        x, y = (float(pos.group(1)), float(pos.group(2))) if pos else (None, None)
-
-        date = get("dok_data") or ""
-        out.append(
-            {
-                "transaction_id": get("tran_lokalny_id_iip") or "",
-                "price_total": price,
-                "area": area,
-                "price_per_m2": price / area,
-                "date": date[:10],
-                "date_month": date[:7],
-                "function": get("lok_funkcja") or "",
-                "x": x,
-                "y": y,
-            }
-        )
-    return out
-
-
-def _floor_month(today_month: str, window_months: int) -> str:
-    """The earliest "YYYY-MM" still inside the date-sanity window."""
-    year, month = int(today_month[:4]), int(today_month[5:7])
-    total_months = year * 12 + (month - 1) - window_months
-    floor_year, floor_month = divmod(total_months, 12)
-    return f"{floor_year}-{floor_month + 1:02d}"
-
-
-def select_sample(transactions: list[dict], subject_area: float, today_month: str) -> list[dict]:
-    """Selection v2: residential + date-sane + area-banded + IQR-trimmed, newest first.
-
-    `today_month` (e.g. "2026-07") is a parameter — the core never reads the
-    clock, so results are deterministic and testable offline.
-    """
-    lo_area = subject_area * (1 - AREA_BAND_PCT)
-    hi_area = subject_area * (1 + AREA_BAND_PCT)
-    floor_month = _floor_month(today_month, DATE_WINDOW_MONTHS)
-
-    pool = [
-        t
-        for t in transactions
-        if t["function"] == "mieszkalna"
-        and t["price_per_m2"] > 0
-        and floor_month <= t["date_month"] <= today_month
-        and lo_area <= t["area"] <= hi_area
-    ]
-
-    if len(pool) >= 8:  # IQR only makes sense from a dozen-ish points
-        prices = sorted(t["price_per_m2"] for t in pool)
-        q1 = prices[len(prices) // 4]
-        q3 = prices[(3 * len(prices)) // 4]
-        iqr = q3 - q1
-        lo_price, hi_price = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-        pool = [t for t in pool if lo_price <= t["price_per_m2"] <= hi_price]
-
-    pool.sort(key=lambda t: t["date"], reverse=True)
-    return pool[:POOL_N]
+def bbox_for(x: float, y: float, radius_m: float) -> tuple[float, float, float, float]:
+    """EPSG:2180 bbox around (easting x, northing y) — the WFS wants northing,easting order."""
+    return (y - radius_m, x - radius_m, y + radius_m, x + radius_m)
 
 
 def fetch_rcn(
-    bbox: tuple[float, float, float, float], count: int = 5000, sort: str = "dok_data D"
+    bbox: tuple[float, float, float, float],
+    count: int = PAGE_SIZE,
+    sort: str = SORT_BY,
+    start_index: int = 0,
 ) -> str:
-    """Fetch raw GML from the GUGiK RCN WFS endpoint for a lat/lon bbox.
+    """Fetch one page of raw GML from the GUGiK RCN WFS for an EPSG:2180 bbox.
 
-    Port of the spike's `fetch_rcn_wgs84` (tools/spike/2026-05-14-kcs/spike.py,
-    lines 159-181). `count=5000` + `sortBy=dok_data D` (newest first) is the
-    spike-proven combination — smaller counts return a quasi-random subset
-    dominated by ancient records. Timeout is 30s (the plan's override of the
-    spike's 180s — spike-measured p95 is far below that).
+    `bbox` is (y_min, x_min, y_max, x_max) — see `bbox_for`. `start_index` supports
+    ADR-015 pagination.
     """
-    lat_min, lon_min, lat_max, lon_max = bbox
     params = {
         "service": "WFS",
         "version": "2.0.0",
@@ -264,14 +167,54 @@ def fetch_rcn(
         "typenames": "ms:lokale",
         "count": str(count),
         "srsName": "EPSG:2180",
-        "bbox": f"{lat_min},{lon_min},{lat_max},{lon_max},EPSG:4326",
+        "bbox": f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},EPSG:2180",
+        "sortBy": sort,
     }
-    if sort:
-        params["sortBy"] = sort
+    if start_index:
+        params["startIndex"] = str(start_index)
     url = f"{WFS_URL}?{urllib.parse.urlencode(params)}"
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=20) as resp:
         return resp.read().decode("utf-8")
+
+
+def _oldest_sane_month(records: list[dict]) -> str | None:
+    """The earliest "YYYY-MM" among dates in a plausible (1990-2100) range."""
+    months = [r["date"][:7] for r in records if "1990-01" <= r["date"][:7] <= "2100-12"]
+    return min(months) if months else None
+
+
+def fetch_pool(
+    x: float,
+    y: float,
+    radius_m: float,
+    today_month: str,
+    *,
+    fetch=None,
+    max_pages: int = 8,
+) -> dict:
+    """ADR-015 rule 1: page with startIndex until the 24-month window is covered.
+
+    `truncated` = the last page was full and the window floor was not yet reached —
+    the pool may be incomplete (page cap or no sane dates on that final page).
+    """
+    fetch = fetch or fetch_rcn
+    bbox = bbox_for(x, y, radius_m)
+    floor = floor_month(today_month, DATE_WINDOW_MONTHS)
+    raw: list[dict] = []
+    pages = 0
+    covered = False
+    for page in range(max_pages):
+        gml = fetch(bbox, PAGE_SIZE, SORT_BY, page * PAGE_SIZE)
+        records = parse_candidates(gml, (x, y))
+        returned = number_returned(gml)
+        raw.extend(records)
+        pages += 1
+        oldest = _oldest_sane_month(records)
+        covered = returned < PAGE_SIZE or (oldest is not None and oldest < floor)
+        if covered:
+            break
+    return {"raw": raw, "pages": pages, "truncated": not covered, "bbox": list(bbox)}
 
 
 _STREET_PREFIXES = ("ul.", "pl.", "al.", "os.")
