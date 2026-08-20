@@ -8,7 +8,6 @@ const suggestions = [
     street: "Sielawy",
     number: null,
     teryt: "306401",
-    inCoverage: true,
   },
   {
     label: "Poznań, Sielska",
@@ -16,7 +15,6 @@ const suggestions = [
     street: "Sielska",
     number: null,
     teryt: "306401",
-    inCoverage: true,
   },
 ];
 

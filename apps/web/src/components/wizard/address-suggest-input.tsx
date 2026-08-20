@@ -181,7 +181,7 @@ export function AddressSuggestInput({
               role="option"
               aria-selected={index === activeIndex}
               className={cn(
-                "flex cursor-pointer flex-col gap-0.5 px-3 py-2 text-sm",
+                "cursor-pointer px-3 py-2 text-sm",
                 index === activeIndex && "bg-accent text-accent-foreground",
               )}
               // preventDefault keeps focus in the input, so the field's blur
@@ -191,11 +191,6 @@ export function AddressSuggestInput({
               onClick={() => select(suggestion)}
             >
               <span>{suggestion.label}</span>
-              {suggestion.inCoverage ? null : (
-                <span className="text-muted-foreground text-xs">
-                  Adres spoza Poznania — dane przedmiotu i mapy trzeba będzie wpisać ręcznie
-                </span>
-              )}
             </li>
           ))}
         </ul>

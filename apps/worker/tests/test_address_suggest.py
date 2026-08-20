@@ -17,12 +17,13 @@ def streets_io(monkeypatch):
     monkeypatch.setattr(subject, "suggest_addresses", lambda query: list(STREETS))
 
 
-def test_street_suggestions_have_canonical_label_and_coverage(streets_io):
+def test_street_suggestions_have_canonical_label(streets_io):
     r = client.post("/address-suggest", json={"query": "Poznań, Siel"})
     assert r.status_code == 200
     suggestions = r.json()["suggestions"]
     assert [s["label"] for s in suggestions] == ["Poznań, Sielawy", "Poznań, Sielska"]
-    assert all(s["inCoverage"] for s in suggestions)
+    # Coverage is a filter now, not a flag — the field is gone from the contract.
+    assert all("inCoverage" not in s for s in suggestions)
 
 
 def test_address_suggestion_appends_number_to_label(monkeypatch):
@@ -36,17 +37,34 @@ def test_address_suggestion_appends_number_to_label(monkeypatch):
     assert r.json()["suggestions"][0]["label"] == "Poznań, Sielawy 21F"
 
 
-def test_out_of_coverage_teryt_is_flagged(monkeypatch):
+def test_out_of_coverage_candidates_are_dropped(monkeypatch):
+    """Decision 2026-08-20: the list offers only addresses inside coverage (TERYT 3064*)."""
     monkeypatch.setattr(
         subject,
         "suggest_addresses",
         lambda query: [
-            {"city": "Warszawa", "street": "Marszałkowska", "number": None, "teryt": "146501"}
+            {"city": "Warszawa", "street": "Marszałkowska", "number": None, "teryt": "146501"},
+            {"city": "Kórnik", "street": "Poznańska", "number": None, "teryt": "302109"},
+            {"city": "Poznań", "street": "Poznańska", "number": None, "teryt": "306401"},
         ],
     )
-    r = client.post("/address-suggest", json={"query": "Warszawa, Marsz"})
+    r = client.post("/address-suggest", json={"query": "Pozna"})
     assert r.status_code == 200
-    assert r.json()["suggestions"][0]["inCoverage"] is False
+    assert [s["label"] for s in r.json()["suggestions"]] == ["Poznań, Poznańska"]
+
+
+def test_coverage_filter_runs_before_the_cap(monkeypatch):
+    outside = [
+        {"city": "Kórnik", "street": f"Ulica{i}", "number": None, "teryt": "302109"}
+        for i in range(8)
+    ]
+    inside = [
+        {"city": "Poznań", "street": f"Ulica{i}", "number": None, "teryt": "306401"}
+        for i in range(4)
+    ]
+    monkeypatch.setattr(subject, "suggest_addresses", lambda query: outside + inside)
+    r = client.post("/address-suggest", json={"query": "Uli"})
+    assert [s["city"] for s in r.json()["suggestions"]] == ["Poznań"] * 4
 
 
 def test_suggestions_are_capped_at_eight(monkeypatch):

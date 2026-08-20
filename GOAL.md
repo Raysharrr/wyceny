@@ -1,5 +1,7 @@
 # GOAL: Podpowiedzi adresu z UUG (krok 1 kreatora wyceny)
 
+> **Aktualizacja 2026-08-20 (wieczór), decyzja usera:** podpowiedzi obejmują wyłącznie zakres pokrycia (`COVERAGE_TERYT_PREFIX` w `apps/worker/app/subject.py`); kandydaci spoza zakresu są odfiltrowywani w workerze przed obcięciem do 8, pole `inCoverage` i dopisek „poza pokryciem” nie istnieją. Fragmenty niżej, które o nich mówią, są historyczne; aktualny opis: wiki `docs/superpowers/specs/2026-08-20-dobor-proby-v3-design.md` (Slice 4).
+
 Pełny projekt: `docs/superpowers/specs/2026-08-20-podpowiedzi-adresu-design.md` (ten sam branch).
 Spec jest źródłem prawdy — GOAL.md to jego operacyjna kondensacja. Konflikt → wygrywa spec.
 
@@ -9,7 +11,7 @@ Pole „Adres" w kroku 1 (`apps/web/src/app/valuations/new/subject-form.tsx`, po
 podpowiada w trakcie pisania ulice z państwowego rejestru PRG (geokoder UUG GUGiK), przez nowy
 endpoint workera `POST /address-suggest`. Wybór podpowiedzi (mysz albo ↑/↓/Enter/Escape)
 wstawia kanoniczną formę `Miasto, Ulica`; numer budynku użytkowniczka dopisuje sama. Pozycje z
-`teryt` spoza `3064*` mają dopisek „poza pokryciem MVP". Wolny wpis i dzisiejszy autofetch
+`teryt` spoza zakresu pokrycia nie są podpowiadane (od 2026-08-20 wieczorem; wcześniej: dopisek „poza pokryciem MVP"). Wolny wpis i dzisiejszy autofetch
 on-blur (`onAddressBlur`) działają bez zmian. Awaria UUG = brak podpowiedzi, nigdy błąd
 formularza. Motywacja: incydent `3d23717d` — naturalny format adresu (kod pocztowy) wywracał
 trzy endpointy; podpowiedzi eliminują całą klasę „wpisałam dobrze, aplikacja nie rozumie".
@@ -18,7 +20,7 @@ trzy endpointy; podpowiedzi eliminują całą klasę „wpisałam dobrze, aplika
 
 - TDD: test RED przed implementacją, per warstwa. Worker: `tests/test_address_suggest.py`
   (happy street/address, pusto, nie-JSON „Blad zapytania.", wyjątek → **200 z pustą listą** +
-  log `address_suggest_failed`, limit 8, `inCoverage` dla teryt spoza 3064). Web: kontraktowy
+  log `address_suggest_failed`, limit 8 po odfiltrowaniu do zakresu pokrycia). Web: kontraktowy
   `suggest-contract.test.ts` (stub fetch, timeout → `[]`), akcyjny
   `get-address-suggestions-action.test.ts`, RTL `rtl-address-suggest.test.tsx` (fake timers na
   debounce 300 ms, wybór klawiaturą, `NEXT_PUBLIC_ADDRESS_SUGGEST=off` ⇒ zero fetchy).
@@ -81,7 +83,7 @@ brak adresu w logach, montaż przez `Controller` pola `address` działający w o
    `pnpm turbo lint typecheck test build`.
 3. Żywy dowód endpointu: uruchom worker lokalnie (`uv run uvicorn app.main:app`) i `curl -X
 POST localhost:8000/address-suggest -d '{"query":"Poznań, Siel"}' -H 'Content-Type:
-application/json'` — oczekuj listy z „Sielawy" i `inCoverage: true`.
+application/json'` — oczekuj wyłącznie pozycji poznańskich i braku pola `inCoverage`.
 4. Żywy dowód UI: `pnpm dev`, wpisz „Siel" w polu adresu kroku 1 — lista pod polem, wybór
    Enterem wstawia `Poznań, Sielawy`, dopisanie ` 21F` + blur odpala istniejący autofetch ✓.
 5. Sprawdź `NEXT_PUBLIC_ADDRESS_SUGGEST=off` ⇒ zero requestów (network tab / RTL).

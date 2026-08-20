@@ -12,15 +12,13 @@ const SUGGESTIONS: AddressSuggestion[] = [
     street: "Sielawy",
     number: null,
     teryt: "306401",
-    inCoverage: true,
   },
   {
-    label: "Kórnik, Sielska",
-    city: "Kórnik",
+    label: "Poznań, Sielska",
+    city: "Poznań",
     street: "Sielska",
     number: null,
-    teryt: "302109",
-    inCoverage: false,
+    teryt: "306401",
   },
 ];
 
@@ -67,7 +65,7 @@ afterEach(() => {
 });
 
 describe("AddressSuggestInput", () => {
-  it("shows suggestions after typing 3+ chars and marks out-of-coverage ones", async () => {
+  it("shows suggestions after typing 3+ chars, with no coverage caveat", async () => {
     const fetchMock = vi.fn(async () => ({ suggestions: SUGGESTIONS }));
     render(<Harness fetchSuggestions={fetchMock} />);
 
@@ -79,9 +77,22 @@ describe("AddressSuggestInput", () => {
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(2);
     expect(options[0].textContent).toContain("Poznań, Sielawy");
-    expect(options[1].textContent).toContain("Adres spoza Poznania");
-    expect(options[1].textContent).toContain("wpisać ręcznie");
-    expect(options[0].textContent).not.toContain("Adres spoza Poznania");
+    expect(options[1].textContent).toContain("Poznań, Sielska");
+    // Coverage is filtered on the worker — the list never carries a caveat.
+    for (const option of options) expect(option.textContent).not.toContain("spoza Poznania");
+  });
+
+  it("keeps the listbox closed when the worker returns no suggestions", async () => {
+    // Out-of-coverage input is filtered on the worker, so an empty list is now the
+    // normal path for non-Poznań addresses — it must look like a plain text field.
+    const fetchMock = vi.fn(async () => ({ suggestions: [] }));
+    render(<Harness fetchSuggestions={fetchMock} />);
+
+    focusAndType(screen.getByRole("combobox"), "Kórnik, Pozn");
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("Kórnik, Pozn"));
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.getByRole("combobox").getAttribute("aria-expanded")).toBe("false");
   });
 
   it("does not fetch below 3 characters", async () => {
