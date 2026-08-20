@@ -123,7 +123,7 @@ sequenceDiagram
 
 ## Fitness functions active in CI
 
-Six architectural invariants are enforced automatically on every push/PR (`.github/workflows/ci.yml`). Full table (all 12, active + deferred) in [`docs/architecture/README.md`](docs/architecture/README.md#fitness-functions-f-1f-12).
+Seven architectural invariants are enforced automatically on every push/PR (`.github/workflows/ci.yml`). Full table (all 12, active + deferred) in [`docs/architecture/README.md`](docs/architecture/README.md#fitness-functions-f-1f-12).
 
 | #    | What                                                                                                                                       | Where                                                                                 |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |

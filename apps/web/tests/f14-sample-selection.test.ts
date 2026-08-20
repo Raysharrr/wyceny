@@ -4,7 +4,7 @@
  * appraiser's WR for ≥4/5 reference operaty and within ±5% for ≥2/5.
  * Regression below either bar = red CI. Snapshots: tests/fixtures/rcn-snapshots (spike A, 2026-08-20).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { computeKcs } from "../src/domain/kcs";
 import {
   selectSample,
@@ -27,23 +27,27 @@ function run(slug: string, area: number, todayMonth: string): Selection {
 const pct = (a: number, b: number) => Math.round(((a - b) / b) * 10000) / 100;
 
 describe("F-14 — WR from the proposed sample vs the appraiser's operat", () => {
-  const rows = OPERATY.map((op) => {
-    const sel = run(op.slug, op.area, op.todayMonth);
-    const { wr } = computeKcs({
-      comparables: sel.proposed.map((c) => ({ pricePerM2: c.pricePerM2 })),
-      area: op.area,
-      features: op.features,
+  let rows: { slug: string; n: number; radius: number; wr: number; delta: number }[];
+
+  beforeAll(() => {
+    rows = OPERATY.map((op) => {
+      const sel = run(op.slug, op.area, op.todayMonth);
+      const { wr } = computeKcs({
+        comparables: sel.proposed.map((c) => ({ pricePerM2: c.pricePerM2 })),
+        area: op.area,
+        features: op.features,
+      });
+      return {
+        slug: op.slug,
+        n: sel.proposed.length,
+        radius: sel.radiusUsedM,
+        wr,
+        delta: pct(wr, op.pdfWrRounded!),
+      };
     });
-    return {
-      slug: op.slug,
-      n: sel.proposed.length,
-      radius: sel.radiusUsedM,
-      wr,
-      delta: pct(wr, op.pdfWrRounded!),
-    };
+    // eslint-disable-next-line no-console
+    console.table(rows);
   });
-  // eslint-disable-next-line no-console
-  console.table(rows);
 
   it("≥4/5 within ±10% and ≥2/5 within ±5%", () => {
     expect(rows.filter((r) => Math.abs(r.delta) <= 10).length).toBeGreaterThanOrEqual(4);
@@ -97,6 +101,7 @@ describe("F-14 — invariants on every snapshot (ADR-015 rules 5–9)", () => {
       perBuilding.set(k, (perBuilding.get(k) ?? 0) + 1);
     }
     expect(Math.max(0, ...perBuilding.values())).toBeLessThanOrEqual(3);
+    expect(sel.proposed.length).toBeGreaterThan(0);
     expect(sel.proposed.length).toBeLessThanOrEqual(12);
     expect(sel.alternates.length).toBeLessThanOrEqual(40);
   });
@@ -109,6 +114,7 @@ describe("F-14 — invariants on every snapshot (ADR-015 rules 5–9)", () => {
   it("Sielawy 21F (92,34 m²) — no pierwotny in proposed, 12 rows", () => {
     const sel = run("sielawy", 92.34, "2026-08");
     expect(sel.proposed).toHaveLength(12);
+    expect(sel.proposed.every((c) => c.market !== "pierwotny")).toBe(true);
   });
   it("snapshots carry real pagination and pair-duplicates (what the worker must reproduce)", () => {
     const k = loadSnapshot("koscielna");
