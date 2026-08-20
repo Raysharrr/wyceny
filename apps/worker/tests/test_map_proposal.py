@@ -46,7 +46,7 @@ def test_map_proposal_out_of_coverage(monkeypatch):
     assert "Pozna" in resp.json()["detail"]
 
 
-def test_map_proposal_wms_failure_is_502(monkeypatch):
+def test_map_proposal_wms_failure_is_502_and_logs_cause(monkeypatch, capsys):
     _patch_happy(monkeypatch)
 
     def boom(url, attempts=4):
@@ -56,6 +56,9 @@ def test_map_proposal_wms_failure_is_502(monkeypatch):
     resp = client.post("/map-proposal", json={"address": "Poznań, Testowa 1"})
     assert resp.status_code == 502
     assert resp.json()["detail"] == main.MAPS_FAILED_DETAIL
+    out = capsys.readouterr().out
+    assert "map_proposal_failed" in out
+    assert "WMS down" in out
 
 
 def test_unrecognised_address_is_422_not_a_retry_loop(monkeypatch):
@@ -79,7 +82,7 @@ def test_unrecognised_address_is_422_not_a_retry_loop(monkeypatch):
         assert "spróbuj ponownie" not in detail.lower(), path
 
 
-def test_service_failure_stays_502_and_retryable(monkeypatch):
+def test_service_failure_stays_502_and_retryable(monkeypatch, capsys):
     def padlo(address):
         raise RuntimeError("connection reset")
 
@@ -87,3 +90,6 @@ def test_service_failure_stays_502_and_retryable(monkeypatch):
     resp = client.post("/map-proposal", json={"address": "ul. Główna 12, Poznań"})
     assert resp.status_code == 502
     assert "spróbuj ponownie" in resp.json()["detail"].lower()
+    out = capsys.readouterr().out
+    assert "map_proposal_failed" in out
+    assert "connection reset" in out

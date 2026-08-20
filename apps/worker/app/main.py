@@ -131,6 +131,9 @@ def sample_proposal(request: SampleProposalRequest) -> SampleProposalResponse:
         gml = rcn.fetch_rcn(bbox)
         transactions = rcn.parse_gml(gml)
     except Exception as exc:
+        # A handled HTTPException is never logged by FastAPI — without this line
+        # the traceId shown to the user leads to a log with status=502 and nothing else.
+        logger.error("sample_proposal_failed", err=str(exc), err_type=type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail="Nie udało się pobrać próby z RCN — spróbuj ponownie albo wpisz transakcje ręcznie.",
@@ -228,6 +231,7 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
     except subject.AddressNotFound as exc:
         raise HTTPException(status_code=422, detail=ADDRESS_NOT_FOUND_DETAIL) from exc
     except Exception as exc:
+        logger.error("subject_proposal_failed", err=str(exc), err_type=type(exc).__name__)
         raise HTTPException(status_code=502, detail=SUBJECT_FAILED_DETAIL) from exc
 
     # 422 = out of MVP coverage (decision 9: non-retryable, distinct from 502)
@@ -246,6 +250,7 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
         lon, lat = subject.centroid_4326(subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 4326))
         plan = subject.pick_plan(lon, lat, subject.fetch_plans())
     except Exception as exc:
+        logger.error("subject_proposal_failed", err=str(exc), err_type=type(exc).__name__)
         raise HTTPException(status_code=502, detail=SUBJECT_FAILED_DETAIL) from exc
 
     mpzp = None
@@ -307,6 +312,7 @@ def map_proposal(request: MapProposalRequest) -> MapProposalResponse:
     except subject.AddressNotFound as exc:
         raise HTTPException(status_code=422, detail=ADDRESS_NOT_FOUND_DETAIL) from exc
     except Exception as exc:
+        logger.error("map_proposal_failed", err=str(exc), err_type=type(exc).__name__)
         raise HTTPException(status_code=502, detail=MAPS_FAILED_DETAIL) from exc
 
     # 422 = out of MVP coverage (same non-retryable contract as /subject-proposal)
@@ -322,6 +328,7 @@ def map_proposal(request: MapProposalRequest) -> MapProposalResponse:
         )
         orto = maps.fetch_map(maps.getmap_url(maps.ORTO_URL, "Raster", bbox_orto, "image/jpeg"))
     except Exception as exc:
+        logger.error("map_proposal_failed", err=str(exc), err_type=type(exc).__name__)
         raise HTTPException(status_code=502, detail=MAPS_FAILED_DETAIL) from exc
 
     return MapProposalResponse(

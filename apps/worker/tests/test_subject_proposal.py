@@ -90,7 +90,7 @@ def test_outside_poznan_is_422_non_retryable(monkeypatch):
     assert "dla Poznania" in r.json()["detail"]
 
 
-def test_upstream_failure_is_502_polish_detail(monkeypatch):
+def test_upstream_failure_is_502_polish_detail_and_logs_cause(monkeypatch, capsys):
     def boom(address):
         raise RuntimeError("connection reset")
 
@@ -98,6 +98,9 @@ def test_upstream_failure_is_502_polish_detail(monkeypatch):
     r = client.post("/subject-proposal", json={"address": "x"})
     assert r.status_code == 502
     assert "Nie udało się pobrać danych przedmiotu" in r.json()["detail"]
+    out = capsys.readouterr().out
+    assert "subject_proposal_failed" in out
+    assert "connection reset" in out
 
 
 def test_mpzp_function_without_plan_has_symbol_and_empty_plan_fields(happy_io, monkeypatch):
@@ -124,7 +127,7 @@ def test_plan_without_mpzp_function_has_empty_symbol_and_plan_fields(happy_io, m
     assert r.json()["meta"]["mpzpAbsent"] is False
 
 
-def test_egib_fetch_failure_mid_pipeline_is_502(monkeypatch):
+def test_egib_fetch_failure_mid_pipeline_is_502(monkeypatch, capsys):
     monkeypatch.setattr(
         subject,
         "geocode_address",
@@ -141,6 +144,9 @@ def test_egib_fetch_failure_mid_pipeline_is_502(monkeypatch):
     r = client.post("/subject-proposal", json={"address": "Poznan, Koscielna 33"})
     assert r.status_code == 502
     assert "Nie udało się pobrać danych przedmiotu" in r.json()["detail"]
+    out = capsys.readouterr().out
+    assert "subject_proposal_failed" in out
+    assert "connection reset" in out
 
 
 def test_missing_parcel_from_egib_is_502(monkeypatch):
