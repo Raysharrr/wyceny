@@ -290,6 +290,52 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
     )
 
 
+class AddressSuggestRequest(BaseModel):
+    query: str
+
+
+class AddressSuggestion(BaseModel):
+    label: str
+    city: str
+    street: str
+    number: str | None = None
+    teryt: str | None = None
+    inCoverage: bool
+
+
+class AddressSuggestResponse(BaseModel):
+    suggestions: list[AddressSuggestion]
+
+
+MAX_SUGGESTIONS = 8
+
+
+@app.post("/address-suggest")
+def address_suggest(request: AddressSuggestRequest) -> AddressSuggestResponse:
+    try:
+        candidates = subject.suggest_addresses(request.query)
+    except Exception as exc:
+        # Suggestions are an enhancement — a broken geocoder must never break
+        # the form, so this answers 200 with an empty list. The cause is still
+        # logged (incident 3d23717d: a swallowed exception is a dead end).
+        logger.error("address_suggest_failed", err=str(exc), err_type=type(exc).__name__)
+        return AddressSuggestResponse(suggestions=[])
+    return AddressSuggestResponse(
+        suggestions=[
+            AddressSuggestion(
+                label=f"{c['city']}, {c['street']}"
+                + (f" {c['number']}" if c.get("number") else ""),
+                city=c["city"],
+                street=c["street"],
+                number=c.get("number"),
+                teryt=c.get("teryt"),
+                inCoverage=subject.is_poznan(c.get("teryt")),
+            )
+            for c in candidates[:MAX_SUGGESTIONS]
+        ]
+    )
+
+
 class MapProposalRequest(BaseModel):
     address: str
 
