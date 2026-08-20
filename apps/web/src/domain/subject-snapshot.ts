@@ -35,4 +35,6 @@ export type SubjectMetaSnapshot = {
   fetchedAt: string;
   source: string;
   mpzpAbsent: boolean;
+  /** GEOPOZ ID_BUDYNKU (ULDK parcel id as fallback); optional/nullable — older snapshots predate it. */
+  buildingId?: string | null;
 };

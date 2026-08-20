@@ -39,6 +39,8 @@ export interface SubjectMeta {
   fetchedAt: string;
   source: string;
   mpzpAbsent: boolean;
+  /** GEOPOZ ID_BUDYNKU (ULDK parcel id as fallback); null when neither resolved. */
+  buildingId: string | null;
 }
 
 export interface SubjectProposal {

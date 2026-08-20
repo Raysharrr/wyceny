@@ -25,6 +25,7 @@ const proposal = {
     fetchedAt: "2026-07-17T10:00:00Z",
     source: "geopoz-gugik",
     mpzpAbsent: false,
+    buildingId: null,
   },
 };
 

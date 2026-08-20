@@ -48,6 +48,41 @@ export const sampleMetaSchema = z.object({
   }),
 });
 
+/** Mirrors `Egib` from `@/domain/egib-id` — parsed EGiB identity on an RCN candidate transaction. */
+export const egibSchema = z.object({
+  teryt: z.string(),
+  obreb: z.string(),
+  arkusz: z.string(),
+  dzialka: z.string(),
+  budynek: z.string(),
+  lokal: z.string(),
+});
+
+/**
+ * Mirrors `Candidate` from `@/domain/sample-selection` — one RCN transaction
+ * in the sample pool fetched via `PortSampleProposal` (ADR-015). Exported
+ * separately from `candidatePoolSchema` (adapters/sample-http.ts) so the
+ * subject-snapshot schema can reuse it without importing an adapter (F-10).
+ */
+export const candidateSchema = z.object({
+  transactionId: z.string(),
+  date: z.string(),
+  area: z.number(),
+  pricePerM2: z.number(),
+  priceTotal: z.number(),
+  egib: egibSchema.nullable(),
+  lokalId: z.string(),
+  distanceM: z.number(),
+  floor: z.number().nullable(),
+  rooms: z.number().nullable(),
+  market: z.enum(["wtorny", "pierwotny"]).nullable(),
+  share: z.string(),
+  transType: z.string(),
+  function: z.string(),
+  seller: z.string().nullable(),
+  pos: z.object({ x: z.number(), y: z.number() }).nullable(),
+});
+
 /** Mirrors `SubjectSnapshot` from `@/domain/subject-snapshot` — the auto-fetched EGiB/MPZP subject data. */
 export const subjectSchema = z.object({
   parcelId: z.string().optional(),
@@ -88,6 +123,9 @@ export const subjectMetaSchema = z.object({
   fetchedAt: z.string(),
   source: z.string(),
   mpzpAbsent: z.boolean(),
+  // GEOPOZ ID_BUDYNKU (ULDK parcel id as fallback) — feeds `subjectEgib` for
+  // the sample-selection scoring (ADR-015 "same building" bonus).
+  buildingId: z.string().nullable().optional(),
 });
 
 /** Mirrors `KwDzialSnapshot`/`KwSnapshot` from `@/domain/kw-snapshot` (Slice 6). */
