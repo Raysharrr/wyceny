@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -42,7 +44,7 @@ def test_too_few_candidates_returns_polish_502(monkeypatch):
     assert "5" in r.json()["detail"]
 
 
-def test_wfs_failure_returns_polish_502(monkeypatch):
+def test_wfs_failure_returns_polish_502_and_logs_cause(monkeypatch, capsys):
     monkeypatch.setattr(rcn, "geocode", lambda address: (52.4, 16.9))
 
     def boom(bbox):
@@ -52,6 +54,30 @@ def test_wfs_failure_returns_polish_502(monkeypatch):
     r = client.post("/sample-proposal", json={"address": "x", "area": 70.0})
     assert r.status_code == 502
     assert "Nie udało się pobrać próby z RCN" in r.json()["detail"]
+    out = capsys.readouterr().out
+    assert "sample_proposal_failed" in out
+    assert "connection reset" in out
+
+
+def test_geocode_failure_is_502_and_logs_cause(monkeypatch, capsys):
+    """Production (kod: 3d23717d): an address with a postal code geocoded to
+    nothing and the bare except swallowed the cause — Railway showed only
+    status=502. The handler must log what it swallows, or the traceId on the
+    user's screen leads to a log line that says nothing."""
+
+    def boom(address):
+        raise RuntimeError(f"Nominatim nic nie znalazł (struct ani q): {address}")
+
+    monkeypatch.setattr(rcn, "geocode", boom)
+    r = client.post(
+        "/sample-proposal", json={"address": "ul. Sielawy 21F/17, 61-619 Poznań", "area": 92.34}
+    )
+    assert r.status_code == 502
+    lines = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+    failed = [ln for ln in lines if ln.get("event") == "sample_proposal_failed"]
+    assert failed, lines
+    assert "Nominatim nic nie znalazł" in failed[0]["err"]
+    assert failed[0]["err_type"] == "RuntimeError"
 
 
 def test_invalid_body_is_422():
