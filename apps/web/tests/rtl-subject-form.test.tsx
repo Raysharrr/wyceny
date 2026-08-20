@@ -42,6 +42,9 @@ vi.mock("@/app/actions/wizard", () => ({
   saveSubjectAction: vi.fn(async () => ({ ok: true })),
 }));
 vi.mock("@/app/actions/get-subject-data", () => ({ getSubjectData: vi.fn() }));
+vi.mock("@/app/actions/get-address-suggestions", () => ({
+  getAddressSuggestions: vi.fn(async () => ({ suggestions: [] })),
+}));
 vi.mock("@/app/actions/get-map-preview", () => ({ getMapPreview: vi.fn() }));
 vi.mock("@/app/actions/mint-kw-token", () => ({
   mintKwUploadToken: vi.fn(async () => ({ token: "exp.nonce.sig" })),

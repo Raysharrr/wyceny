@@ -171,6 +171,10 @@ jobs:
       # the address-blur EGiB/MPZP auto-fetch off so the e2e job stays
       # network-free (see subject-section.tsx's `onAddressBlur` guard).
       NEXT_PUBLIC_SUBJECT_AUTOFETCH: "off"
+      # Same rationale, for the step-1 address combobox: keeps the debounced
+      # UUG suggestion fetches off so typing an address in the smoke stays
+      # network-free (see address-suggest-input.tsx's env guard).
+      NEXT_PUBLIC_ADDRESS_SUGGEST: "off"
       # Same rationale, for the KW upload/extract flow: keeps the upload
       # buttons hidden so the manual-entry smoke path stays network-free
       # (see kw-section.tsx's `uploadEnabled` guard).

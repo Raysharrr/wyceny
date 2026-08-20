@@ -10,11 +10,13 @@ import type { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { AddressSuggestInput } from "@/components/wizard/address-suggest-input";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { SectionCard } from "@/components/wizard/section-card";
 import { createDraft, saveSubjectAction } from "@/app/actions/wizard";
 import { step1Schema } from "@/app/actions/wizard-schemas";
 import { getMapPreview } from "@/app/actions/get-map-preview";
+import { getAddressSuggestions } from "@/app/actions/get-address-suggestions";
 import { getSubjectData } from "@/app/actions/get-subject-data";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { PURPOSE_LABEL } from "@/domain/document-model";
@@ -389,15 +391,18 @@ export function SubjectForm({
                 render={({ field, fieldState }) => (
                   <Field data-invalid={!!fieldState.error}>
                     <FieldLabel htmlFor="address">Adres</FieldLabel>
-                    <Input
+                    <AddressSuggestInput
                       id="address"
+                      name={field.name}
+                      value={(field.value as string | undefined) ?? ""}
                       placeholder="np. ul. Wierzbięcice 12/4, Poznań"
-                      autoComplete="off"
-                      {...field}
+                      inputRef={field.ref}
+                      onValueChange={field.onChange}
                       onBlur={() => {
                         field.onBlur();
                         void onAddressBlur();
                       }}
+                      fetchSuggestions={(query) => getAddressSuggestions({ query })}
                     />
                     <FieldError errors={[fieldState.error]} />
                   </Field>

@@ -45,6 +45,34 @@ def normalize_uug_address(address: str) -> str:
     return f"{city}, {street}"
 
 
+def suggestions_from_uug(payload: dict) -> list[dict]:
+    """Map a UUG GetAddress payload to suggestion dicts, in UUG rank order.
+
+    Only "street" and "address" result types feed the address combobox;
+    "city" results are deliberately skipped (suggesting bare cities does not
+    help the appraiser build a geocodable address). Shape pinned live in the
+    2026-08-20 spike (tools/spike/2026-08-20-uug-podpowiedzi, wiki repo).
+    """
+    if payload.get("type") not in ("street", "address"):
+        return []
+    results = payload.get("results") or {}
+    suggestions = []
+    for key in sorted(results, key=int):
+        entry = results[key]
+        city, street = entry.get("city"), entry.get("street")
+        if not city or not street:
+            continue
+        suggestions.append(
+            {
+                "city": city,
+                "street": street,
+                "number": entry.get("number"),
+                "teryt": entry.get("teryt"),
+            }
+        )
+    return suggestions
+
+
 GEOPOZ_FIELD_RX = re.compile(r"<([A-Z_][A-Z0-9_]*)>([^<]*)</\1>")
 
 
@@ -147,9 +175,9 @@ PLANS_CACHE_TTL_S = 3600.0  # ponytail: module-level cache; plans layer ~1 s and
 _plans_cache: tuple[float, dict] | None = None
 
 
-def _get(url: str) -> str:
+def _get(url: str, timeout: int = 30) -> str:
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", "replace")
 
 
@@ -160,6 +188,27 @@ class AddressNotFound(RuntimeError):
     retryable, and telling the appraiser to "try again" sends them into a loop
     that cannot end. Only correcting the address can.
     """
+
+
+def suggest_addresses(query: str) -> list[dict]:
+    """Ask UUG for street/address candidates matching a partial user input.
+
+    Timeout is 5 s, not 30 — this feeds a debounced combobox, a hanging
+    geocoder must not hold the field hostage. UUG answers plain text
+    ("Blad zapytania.") for queries it dislikes; that is an empty list here,
+    not an error (incident 3d23717d turned exactly that into a 502).
+    """
+    normalized = normalize_uug_address(query)
+    url = (
+        GEOKODER_URL
+        + "?"
+        + urllib.parse.urlencode({"request": "GetAddress", "address": normalized})
+    )
+    try:
+        payload = json.loads(_get(url, timeout=5))
+    except json.JSONDecodeError:
+        return []
+    return suggestions_from_uug(payload)
 
 
 def geocode_address(address: str) -> dict:

@@ -176,3 +176,66 @@ def test_normalize_uug_address_drops_postal_code():
     # incydent 3d23717d: "61-619 Poznań" read as a street (digits!), the halves
     # never swapped, and UUG answered the inverted query with "Blad zapytania."
     assert normalize_uug_address("ul. Sielawy 21F/17, 61-619 Poznań") == "Poznań, Sielawy 21F"
+
+
+def test_suggestions_from_uug_maps_street_results_in_rank_order():
+    payload = {
+        "type": "street",
+        "results": {
+            "2": {"city": "Poznań", "street": "Sielska", "teryt": "306401"},
+            "1": {"city": "Poznań", "street": "Sielawy", "teryt": "306401"},
+        },
+    }
+    from app.subject import suggestions_from_uug
+
+    assert suggestions_from_uug(payload) == [
+        {"city": "Poznań", "street": "Sielawy", "number": None, "teryt": "306401"},
+        {"city": "Poznań", "street": "Sielska", "number": None, "teryt": "306401"},
+    ]
+
+
+def test_suggestions_from_uug_keeps_number_for_address_results():
+    payload = {
+        "type": "address",
+        "results": {
+            "1": {"city": "Poznań", "street": "Sielawy", "number": "21F", "teryt": "306401"}
+        },
+    }
+    from app.subject import suggestions_from_uug
+
+    assert suggestions_from_uug(payload)[0]["number"] == "21F"
+
+
+def test_suggestions_from_uug_skips_city_type_and_empty():
+    from app.subject import suggestions_from_uug
+
+    assert suggestions_from_uug({"type": "city", "results": {"1": {"city": "Poznań"}}}) == []
+    assert suggestions_from_uug({"type": "street", "results": {}}) == []
+    assert suggestions_from_uug({"type": "street"}) == []
+
+
+def test_suggest_addresses_plain_text_error_yields_empty_list(monkeypatch):
+    # UUG answers "Blad zapytania." (plain text, not JSON) for queries it
+    # dislikes — incident 3d23717d turned that into a 502; suggestions must not.
+    from app import subject as subject_module
+
+    monkeypatch.setattr(subject_module, "_get", lambda url, timeout=30: "Blad zapytania.")
+    assert subject_module.suggest_addresses("cokolwiek") == []
+
+
+def test_suggest_addresses_normalizes_query_and_uses_short_timeout(monkeypatch):
+    # Load-bearing for the product story: "Siel" without a city works ONLY
+    # because parse_address defaults the city to Poznań, and the combobox
+    # must never hold the field hostage on a slow geocoder (5 s, not 30).
+    from app import subject as subject_module
+
+    calls = {}
+
+    def fake_get(url, timeout=30):
+        calls["url"], calls["timeout"] = url, timeout
+        return '{"type": "street", "results": {}}'
+
+    monkeypatch.setattr(subject_module, "_get", fake_get)
+    assert subject_module.suggest_addresses("ul. Siel") == []
+    assert calls["timeout"] == 5
+    assert "Pozna%C5%84%2C+Siel" in calls["url"]

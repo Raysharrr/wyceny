@@ -3,6 +3,7 @@ import { valuationRepo } from "@/adapters/valuation-drizzle";
 import { httpWorker } from "@/adapters/worker-http";
 import { httpSampleProposal } from "@/adapters/sample-http";
 import { httpSubjectProposal } from "@/adapters/subject-http";
+import { httpAddressSuggest } from "@/adapters/suggest-http";
 import { httpProseProposal } from "@/adapters/prose-http";
 import { httpMapImages } from "@/adapters/maps-http";
 import { pgStorage } from "@/adapters/storage-pg";
@@ -24,6 +25,7 @@ export const valuationRepository = valuationRepo(db);
 export const worker = httpWorker(process.env.WORKER_URL ?? "http://localhost:8000");
 export const sampleProposal = httpSampleProposal(process.env.WORKER_URL ?? "http://localhost:8000");
 export const subjectData = httpSubjectProposal(process.env.WORKER_URL ?? "http://localhost:8000");
+export const addressSuggest = httpAddressSuggest(process.env.WORKER_URL ?? "http://localhost:8000");
 export const proseProposal = httpProseProposal(process.env.WORKER_URL ?? "http://localhost:8000");
 /** Slice 9: null when MAPS_FETCH=off (CI e2e stays network-free) — approve then renders the honest stub. */
 export const mapImages: PortMapImages | null =
