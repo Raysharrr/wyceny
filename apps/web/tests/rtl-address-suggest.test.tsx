@@ -79,8 +79,9 @@ describe("AddressSuggestInput", () => {
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(2);
     expect(options[0].textContent).toContain("Poznań, Sielawy");
-    expect(options[1].textContent).toContain("poza pokryciem MVP");
-    expect(options[0].textContent).not.toContain("poza pokryciem MVP");
+    expect(options[1].textContent).toContain("Adres spoza Poznania");
+    expect(options[1].textContent).toContain("wpisać ręcznie");
+    expect(options[0].textContent).not.toContain("Adres spoza Poznania");
   });
 
   it("does not fetch below 3 characters", async () => {
