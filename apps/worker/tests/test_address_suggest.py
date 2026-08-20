@@ -79,3 +79,8 @@ def test_failure_returns_empty_list_with_200_and_logs_cause(monkeypatch, capsys)
 def test_invalid_body_is_422():
     r = client.post("/address-suggest", json={})
     assert r.status_code == 422
+
+
+def test_query_longer_than_200_chars_is_422():
+    r = client.post("/address-suggest", json={"query": "x" * 201})
+    assert r.status_code == 422

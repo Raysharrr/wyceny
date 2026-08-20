@@ -53,11 +53,25 @@ export function AddressSuggestInput({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   // Stale-response guard — same idiom as subject-form's `fetchSeq`: a late
-  // response for an older query must not overwrite a newer list.
+  // response for an older query must not overwrite a newer list. Blur bumps
+  // it too, so a response landing after the user left the field can never
+  // open a "ghost" list over it (review I-1).
   const fetchSeq = useRef(0);
   // Set when a suggestion is picked: the resulting value change must not
   // immediately re-query and re-open the list the user just closed.
   const suppressNextFetch = useRef(false);
+  // The parent recreates `fetchSuggestions` on every render (inline closure in
+  // subject-form.tsx). Kept in a ref so the debounce effect depends only on
+  // `value` — otherwise unrelated parent re-renders restart the debounce and
+  // resurrect the list after blur/selection (review I-3).
+  const fetchRef = useRef(fetchSuggestions);
+  useEffect(() => {
+    fetchRef.current = fetchSuggestions;
+  }, [fetchSuggestions]);
+  // Fetches are scheduled only while the field is focused — a mount with a
+  // prefilled address (edit mode) or a programmatic value change must not
+  // pop the list unprompted.
+  const focusRef = useRef(false);
 
   const trimmed = value.trim();
   const visible =
@@ -65,6 +79,7 @@ export function AddressSuggestInput({
 
   useEffect(() => {
     if (process.env.NEXT_PUBLIC_ADDRESS_SUGGEST === "off") return;
+    if (!focusRef.current) return;
     if (suppressNextFetch.current) {
       suppressNextFetch.current = false;
       return;
@@ -73,16 +88,27 @@ export function AddressSuggestInput({
     if (query.length < MIN_QUERY_LENGTH) return;
     const seq = ++fetchSeq.current;
     const timer = setTimeout(() => {
-      void fetchSuggestions(query).then(({ suggestions: next }) => {
-        if (seq !== fetchSeq.current) return; // stale response — a newer query owns the list
-        setSuggestions(next);
-        setQueryFor(query);
-        setActiveIndex(-1);
-        setOpen(next.length > 0);
-      });
+      // Blur (or a newer query) between scheduling and firing: skip the
+      // request entirely — no pointless call to the geocoder for a field
+      // the user already left.
+      if (seq !== fetchSeq.current || !focusRef.current) return;
+      void fetchRef
+        .current(query)
+        .then(({ suggestions: next }) => {
+          if (seq !== fetchSeq.current) return; // stale — a newer query or a blur owns the list
+          if (!focusRef.current) return;
+          setSuggestions(next);
+          setQueryFor(query);
+          setActiveIndex(-1);
+          setOpen(next.length > 0);
+        })
+        // The action and adapter are total, but the Server Action TRANSPORT
+        // is not (offline, client/server skew after a deploy) — a rejection
+        // must degrade to "no suggestions", never to an unhandled error.
+        .catch(() => {});
     }, debounceMs);
     return () => clearTimeout(timer);
-  }, [value, debounceMs, fetchSuggestions]);
+  }, [value, debounceMs]);
 
   const select = (suggestion: AddressSuggestion) => {
     suppressNextFetch.current = true;
@@ -122,13 +148,20 @@ export function AddressSuggestInput({
         autoComplete="off"
         role="combobox"
         aria-expanded={visible}
-        aria-controls={listId}
+        aria-controls={visible ? listId : undefined}
         aria-autocomplete="list"
-        aria-activedescendant={activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined}
+        aria-activedescendant={
+          visible && activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined
+        }
         ref={inputRef}
         onChange={(event) => onValueChange(event.target.value)}
         onKeyDown={onKeyDown}
+        onFocus={() => {
+          focusRef.current = true;
+        }}
         onBlur={() => {
+          focusRef.current = false;
+          fetchSeq.current++; // cancel the pending debounce and any in-flight response
           setOpen(false);
           setActiveIndex(-1);
           onBlur();
@@ -143,7 +176,7 @@ export function AddressSuggestInput({
         >
           {suggestions.map((suggestion, index) => (
             <li
-              key={suggestion.label}
+              key={`${suggestion.teryt ?? ""}-${suggestion.label}`}
               id={`${listId}-opt-${index}`}
               role="option"
               aria-selected={index === activeIndex}

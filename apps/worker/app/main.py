@@ -291,7 +291,8 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
 
 
 class AddressSuggestRequest(BaseModel):
-    query: str
+    # Mirrors the web action's zod ceiling — the worker keeps its own gate.
+    query: str = Field(max_length=200)
 
 
 class AddressSuggestion(BaseModel):

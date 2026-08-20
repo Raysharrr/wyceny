@@ -221,3 +221,21 @@ def test_suggest_addresses_plain_text_error_yields_empty_list(monkeypatch):
 
     monkeypatch.setattr(subject_module, "_get", lambda url, timeout=30: "Blad zapytania.")
     assert subject_module.suggest_addresses("cokolwiek") == []
+
+
+def test_suggest_addresses_normalizes_query_and_uses_short_timeout(monkeypatch):
+    # Load-bearing for the product story: "Siel" without a city works ONLY
+    # because parse_address defaults the city to Poznań, and the combobox
+    # must never hold the field hostage on a slow geocoder (5 s, not 30).
+    from app import subject as subject_module
+
+    calls = {}
+
+    def fake_get(url, timeout=30):
+        calls["url"], calls["timeout"] = url, timeout
+        return '{"type": "street", "results": {}}'
+
+    monkeypatch.setattr(subject_module, "_get", fake_get)
+    assert subject_module.suggest_addresses("ul. Siel") == []
+    assert calls["timeout"] == 5
+    assert "Pozna%C5%84%2C+Siel" in calls["url"]
