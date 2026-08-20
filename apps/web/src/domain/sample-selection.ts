@@ -1,7 +1,8 @@
 /**
- * sample-selection — pure domain module for "dobór próby v3" (ADR-015:
- * `docs/superpowers/sdd/2026-08-20-proba-v3-slice2/` and the wiki decision
- * it implements). ZERO I/O, ZERO clock: the valuation month is a parameter
+ * sample-selection — pure domain module for "dobór próby v3" (wiki repo:
+ * `wiki/decisions/ADR-015-dobor-proby-v3-ranking-podobienstwa.md` and
+ * `docs/superpowers/specs/2026-08-20-dobor-proby-v3-design.md`).
+ * ZERO I/O, ZERO clock: the valuation month is a parameter
  * (`todayMonth`), the pool comes from the caller. Deterministic by
  * construction — same pool + same params ⇒ same selection.
  *
@@ -22,6 +23,7 @@
  */
 import { padObreb } from "./egib-id";
 import type { Egib, SubjectEgib } from "./egib-id";
+export { padObreb } from "./egib-id";
 export type { Egib, SubjectEgib };
 
 export type Market = "wtorny" | "pierwotny" | null;
@@ -76,7 +78,7 @@ export type SelectionParams = {
   todayMonth: string;
   windowMonths?: number;
   areaBandPct?: number;
-  radiusStepsM?: number[];
+  radiusStepsM?: readonly number[];
   minPoolAfterBand?: number;
   /** Appraiser's slider — replaces the step walk. */
   radiusOverrideM?: number;
@@ -104,7 +106,7 @@ export const DEFAULTS = {
   maxPerBuilding: 3,
   iqrMinN: 8,
   iqrFactor: 1.5,
-};
+} as const;
 
 export type RejectReason =
   | "share_not_whole"
@@ -214,7 +216,13 @@ export function scoreCandidate(c: Candidate, s: SubjectEgib | undefined, w: Scor
 function compareScored(a: Scored, b: Scored): number {
   if (b.score !== a.score) return b.score - a.score;
   if (a.candidate.date !== b.candidate.date) return a.candidate.date < b.candidate.date ? 1 : -1;
-  return a.candidate.transactionId < b.candidate.transactionId ? -1 : 1;
+  // Total order: transactionId, then lokalId (candidateKey) — two lokale of one
+  // notarial act can otherwise tie on score+date+transactionId, leaving input
+  // order to decide (breaks determinism).
+  const ak = candidateKey(a.candidate);
+  const bk = candidateKey(b.candidate);
+  if (ak === bk) return 0;
+  return ak < bk ? -1 : 1;
 }
 
 export function iqrBounds(prices: number[], factor: number): { lo: number; hi: number } {
@@ -316,7 +324,7 @@ export function selectSample(candidates: Candidate[], params: SelectionParams): 
   const perBuilding = new Map<string, number>();
   for (const s of ranking) {
     const c = s.candidate;
-    const bk = buildingKey(c) ?? `?${c.transactionId}`;
+    const bk = buildingKey(c) ?? candidateKey(c);
     const used = perBuilding.get(bk) ?? 0;
     const fl = flags[candidateKey(c)] ?? [];
     const eligible =

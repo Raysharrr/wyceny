@@ -124,6 +124,30 @@ describe("selectSample — ADR-015 defaults", () => {
       [bldNew, bldOld, parcel, obreb, far].map((c) => c.transactionId),
     );
   });
+  it("ranking has a total order: ties on score+date+transactionId break on lokalId asc", () => {
+    // Same transactionId, date, distance and egib — only lokalId differs, so
+    // score and every earlier tie-break are equal; the final tie-break
+    // (lokalId asc) must still produce a deterministic, order-independent result.
+    const egib = {
+      teryt: "306401_1",
+      obreb: "0021",
+      arkusz: "10",
+      dzialka: "27",
+      budynek: "5",
+      lokal: "5",
+    };
+    const b = mk({ transactionId: "TIE", lokalId: "L-B", date: "2026-05-10", distanceM: 50, egib });
+    const a = mk({ transactionId: "TIE", lokalId: "L-A", date: "2026-05-10", distanceM: 50, egib });
+    const filler = [...Array(5)].map(() => mk({ distanceM: 800 }));
+    const pool = [a, b, ...filler];
+    const keyOrder = (s: ReturnType<typeof selectSample>) =>
+      s.ranking.map((r) => candidateKey(r.candidate));
+    const s1 = selectSample(pool, P);
+    const s2 = selectSample([...pool].reverse(), P);
+    expect(keyOrder(s1)).toEqual(keyOrder(s2));
+    const tieRank = keyOrder(s1).filter((k) => k.startsWith("TIE|"));
+    expect(tieRank).toEqual([candidateKey(a), candidateKey(b)]); // "L-A" < "L-B"
+  });
   it("flags price_outlier (IQR 1.5×, n ≥ 8) and keeps it out of proposed but in alternates", () => {
     const pool = [...Array(11)]
       .map(() => mk({ pricePerM2: 12000 }))
@@ -134,6 +158,36 @@ describe("selectSample — ADR-015 defaults", () => {
     expect(s.proposed).not.toContain(outlier);
     expect(s.alternates).toContain(outlier);
     expect(s.proposed).toHaveLength(11);
+  });
+  it("IQR non-degenerate: only the candidate beyond hi gets price_outlier, a near-boundary one does not", () => {
+    const prices = [10000, 10500, 11000, 11500, 12000, 12500, 13000, 13500, 16500, 18000];
+    const pool = prices.map((p) => mk({ pricePerM2: p }));
+    // Same positional-quartile definition as iqrBounds: sorted[floor(n/4)], sorted[floor(3n/4)].
+    const sorted = [...prices].sort((x, y) => x - y);
+    const total = sorted.length;
+    const q1 = sorted[Math.floor(total / 4)];
+    const q3 = sorted[Math.floor((3 * total) / 4)];
+    const hi = q3 + 1.5 * (q3 - q1);
+    expect(hi).toBe(17250); // sanity: pins the arithmetic this test relies on
+    const nearMiss = pool.find((c) => c.pricePerM2 === 16500)!; // between q3+1.0·IQR (16000) and hi
+    const outlier = pool.find((c) => c.pricePerM2 === 18000)!; // beyond hi
+    const s = selectSample(pool, P);
+    expect(s.flags[candidateKey(outlier)]).toContain("price_outlier");
+    expect(s.flags[candidateKey(nearMiss)] ?? []).not.toContain("price_outlier");
+  });
+  it("below iqrMinN (n < 8): no price_outlier flags regardless of spread", () => {
+    const prices = [10000, 10500, 11000, 11500, 12000, 12500, 999999];
+    const pool = prices.map((p) => mk({ pricePerM2: p }));
+    const s = selectSample(pool, P);
+    for (const c of pool) {
+      expect(s.flags[candidateKey(c)] ?? []).not.toContain("price_outlier");
+    }
+  });
+  it("primary_suspect requires market === null (wtorny + legal seller is not flagged)", () => {
+    const c = mk({ market: "wtorny", seller: "osobaPrawna" });
+    const s = selectSample([c], P);
+    expect(s.flags[candidateKey(c)] ?? []).not.toContain("primary_suspect");
+    expect(s.proposed).toContain(c);
   });
   it("flags primary_suspect (market null ∧ seller osobaPrawna) and demotes; market null alone → market_unknown only", () => {
     const suspect = mk({ market: null, seller: "osobaPrawna" });
@@ -162,8 +216,11 @@ describe("selectSample — ADR-015 defaults", () => {
     expect(s.proposed).toHaveLength(3);
     expect(s.alternates).toHaveLength(2);
   });
-  it("candidates without parsable egib count as their own building (no cap collision)", () => {
-    const pool = [...Array(5)].map(() => mk({ egib: null }));
+  it("candidates without parsable egib count as their own building (no cap collision), even when two share a transactionId", () => {
+    const shared = mk({ egib: null });
+    const sibling = mk({ egib: null, transactionId: shared.transactionId }); // same act, different lokal
+    const rest = [...Array(3)].map(() => mk({ egib: null }));
+    const pool = [shared, sibling, ...rest];
     expect(selectSample(pool, P).proposed).toHaveLength(5);
   });
   it("flags are keyed by transactionId|lokalId — two lokale of one act do not bleed", () => {
