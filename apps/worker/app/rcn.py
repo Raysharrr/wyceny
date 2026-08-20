@@ -20,6 +20,7 @@ dates.
 """
 
 import json
+import math
 import re
 import urllib.parse
 import urllib.request
@@ -32,6 +33,123 @@ DATE_WINDOW_MONTHS = 24
 WFS_URL = "https://mapy.geoportal.gov.pl/wss/service/rcn"
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "wyceny-spike/1.0 (contact: czekala.michal@gmail.com)"
+
+# --- v3 pure core (ADR-015) — additive; the v2 parser/selection above are
+# replaced (not deleted) in Task 4. PAGE_SIZE/SORT_BY are the v3 fetch params;
+# WFS_URL/NOMINATIM/USER_AGENT/DATE_WINDOW_MONTHS above are reused as-is.
+
+PAGE_SIZE = 5000
+SORT_BY = "dok_data D,tran_lokalny_id_iip D"
+
+_MEMBER_RX = re.compile(r"<wfs:member>(.*?)</wfs:member>", re.DOTALL)
+_POS_RX = re.compile(r"<gml:pos>([\d.]+)\s+([\d.]+)</gml:pos>")
+_RETURNED_RX = re.compile(r'numberReturned="(\d+)"')
+# TERYT.OBREB[.AR_ARKUSZ].DZIALKA.BUDYNEK_BUD.LOKAL_LOK — Poznań has AR_, neighbouring
+# gminas don't (ADR-015 rule 3).
+_LOKAL_ID_RX = re.compile(r"^(\d{6}_\d)\.(\d+)\.(?:AR_(\d+)\.)?([^.]+)\.(\d+)_BUD\.(.+)_LOK$")
+
+
+def parse_lokal_id(lokal_id: str) -> dict | None:
+    """Parse a lok_id_lokalu EGIB identifier (see egib-id.ts for the TS twin)."""
+    m = _LOKAL_ID_RX.match(lokal_id.strip())
+    if not m:
+        return None
+    teryt, obreb, arkusz, dzialka, budynek, lokal = m.groups()
+    return {
+        "teryt": teryt,
+        "obreb": obreb.lstrip("0").rjust(4, "0"),
+        "arkusz": (arkusz or "").lstrip("0"),
+        "dzialka": dzialka,
+        "budynek": budynek,
+        "lokal": lokal,
+    }
+
+
+def _float(s: str) -> float:
+    try:
+        return float(s) if s else 0.0
+    except ValueError:
+        return 0.0
+
+
+def _int(s: str) -> int | None:
+    try:
+        return int(float(s)) if s else None
+    except ValueError:
+        return None
+
+
+def parse_candidates(gml: str, subject_xy: tuple[float, float]) -> list[dict]:
+    """Every member becomes a candidate — hygiene is the web domain's job (spec: worker rejects nothing)."""
+    sx, sy = subject_xy
+    out: list[dict] = []
+    for member in _MEMBER_RX.findall(gml):
+
+        def get(field: str) -> str:
+            m = re.search(rf"<ms:{field}>([^<]*)</ms:{field}>", member)
+            return m.group(1).strip() if m else ""
+
+        price, area = _float(get("lok_cena_brutto")), _float(get("lok_pow_uzyt"))
+        pos_m = _POS_RX.search(member)
+        pos = None
+        distance = float("inf")
+        if pos_m:
+            northing, easting = float(pos_m.group(1)), float(pos_m.group(2))
+            pos = {"x": easting, "y": northing}
+            distance = math.hypot(easting - sx, northing - sy)
+        market = get("tran_rodzaj_rynku")
+        lokal_id = get("lok_id_lokalu")
+        out.append(
+            {
+                "transactionId": get("tran_lokalny_id_iip"),
+                "versionId": get("tran_wersja_id"),
+                "lokalId": lokal_id,
+                "date": get("dok_data")[:10],
+                "area": area,
+                "pricePerM2": price / area if price > 0 and area > 0 else 0.0,
+                "priceTotal": price,
+                "egib": parse_lokal_id(lokal_id),
+                "distanceM": distance,
+                "floor": _int(get("lok_nr_kond")),
+                "rooms": _int(get("lok_liczba_izb")),
+                "market": market if market in ("wtorny", "pierwotny") else None,
+                "share": get("nier_udzial"),
+                "transType": get("tran_rodzaj_trans"),
+                "function": get("lok_funkcja"),
+                "seller": get("tran_sprzedajacy") or None,
+                "pos": pos,
+            }
+        )
+    return out
+
+
+def dedupe_pair(records: list[dict]) -> tuple[list[dict], int]:
+    """ADR-015 rule 2: key = (tran_lokalny_id_iip, lok_id_lokalu), keep the highest tran_wersja_id."""
+    best: dict[tuple[str, str], dict] = {}
+    dropped = 0
+    for r in records:
+        k = (r["transactionId"], r["lokalId"])
+        prev = best.get(k)
+        if prev is None:
+            best[k] = r
+        else:
+            dropped += 1
+            if r["versionId"] > prev["versionId"]:
+                best[k] = r
+    return list(best.values()), dropped
+
+
+def number_returned(gml: str) -> int:
+    """numberReturned="N" from the collection root, 0 when absent."""
+    m = _RETURNED_RX.search(gml)
+    return int(m.group(1)) if m else 0
+
+
+def floor_month(today_month: str, window_months: int) -> str:
+    """The earliest "YYYY-MM" still inside the date-sanity window (public v3 twin of `_floor_month`)."""
+    year, month = int(today_month[:4]), int(today_month[5:7])
+    total = year * 12 + (month - 1) - window_months
+    return f"{total // 12:04d}-{total % 12 + 1:02d}"
 
 
 def parse_gml(gml: str) -> list[dict]:
