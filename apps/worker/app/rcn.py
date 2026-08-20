@@ -67,20 +67,24 @@ def parse_lokal_id(lokal_id: str) -> dict | None:
 
 def _float(s: str) -> float:
     try:
-        return float(s) if s else 0.0
+        value = float(s) if s else 0.0
     except ValueError:
         return 0.0
+    return value if math.isfinite(value) else 0.0
 
 
 def _int(s: str) -> int | None:
     try:
         return int(float(s)) if s else None
-    except ValueError:
+    except (ValueError, OverflowError):
         return None
 
 
 def parse_candidates(gml: str, subject_xy: tuple[float, float]) -> list[dict]:
-    """Every member becomes a candidate — hygiene is the web domain's job (spec: worker rejects nothing)."""
+    """Every member becomes a candidate — hygiene is the web domain's job.
+
+    Spec: the worker rejects nothing.
+    """
     sx, sy = subject_xy
     out: list[dict] = []
     for member in _MEMBER_RX.findall(gml):
@@ -124,7 +128,9 @@ def parse_candidates(gml: str, subject_xy: tuple[float, float]) -> list[dict]:
 
 
 def dedupe_pair(records: list[dict]) -> tuple[list[dict], int]:
-    """ADR-015 rule 2: key = (tran_lokalny_id_iip, lok_id_lokalu), keep the highest tran_wersja_id."""
+    """ADR-015 rule 2: key = (tran_lokalny_id_iip, lok_id_lokalu), keep the highest
+    tran_wersja_id.
+    """
     best: dict[tuple[str, str], dict] = {}
     dropped = 0
     for r in records:
@@ -146,7 +152,10 @@ def number_returned(gml: str) -> int:
 
 
 def floor_month(today_month: str, window_months: int) -> str:
-    """The earliest "YYYY-MM" still inside the date-sanity window (public v3 twin of `_floor_month`)."""
+    """The earliest "YYYY-MM" still inside the date-sanity window.
+
+    Public v3 twin of `_floor_month`.
+    """
     year, month = int(today_month[:4]), int(today_month[5:7])
     total = year * 12 + (month - 1) - window_months
     return f"{total // 12:04d}-{total % 12 + 1:02d}"

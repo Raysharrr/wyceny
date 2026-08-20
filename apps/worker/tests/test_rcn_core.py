@@ -121,18 +121,22 @@ def test_parse_candidates_egib_is_none_for_unparsable_id_and_missing_fields_are_
 
 
 def test_dedupe_pair_keeps_highest_version_per_transaction_and_lokal():
+    # A fourth L1 record with an OLDER version arrives last — a "last record wins"
+    # implementation would wrongly keep it (300000.0). Correct behaviour keeps the
+    # highest tran_wersja_id (2016, 200000.0) regardless of arrival order.
     recs = parse_candidates(
         wrap(
             [
                 make_member(tid="A", lokal_id="L1", version="2015-01-01T00:00:00", price="100000"),
                 make_member(tid="A", lokal_id="L1", version="2016-01-01T00:00:00", price="200000"),
                 make_member(tid="A", lokal_id="L2", version="2015-01-01T00:00:00"),
+                make_member(tid="A", lokal_id="L1", version="2014-01-01T00:00:00", price="300000"),
             ]
         ),
         SUBJECT,
     )
     kept, dropped = dedupe_pair(recs)
-    assert dropped == 1
+    assert dropped == 2
     assert sorted((k["lokalId"], k["priceTotal"]) for k in kept) == [
         ("L1", 200000.0),
         ("L2", 700000.0),
@@ -144,6 +148,12 @@ def test_number_returned_and_floor_month():
     assert number_returned("<x/>") == 0
     assert floor_month("2026-03", 24) == "2024-03"
     assert floor_month("2026-01", 1) == "2025-12"
+
+
+def test_parse_candidates_treats_non_finite_numeric_strings_as_missing():
+    t = parse_candidates(wrap([make_member(floor="inf", price="nan")]), SUBJECT)[0]
+    assert t["floor"] is None
+    assert t["priceTotal"] == 0.0 and t["pricePerM2"] == 0.0
 
 
 def test_parse_gml_extracts_fields_and_skips_invalid():
