@@ -49,7 +49,7 @@ Dwie decyzje kończą przegląd propozycji:
   ))}
 </ul>
 
-Odrzucenie niczego nie kasuje — zapamiętuje decyzję. Odrzucona propozycja wypada z próby, a pierwsza pasująca alternatywa wchodzi na jej miejsce: nigdy propozycja z flagą „cena odstająca” ani „prawdopodobnie deweloperska”, i nigdy więcej niż {DEFAULTS.maxPerBuilding} propozycji z jednego budynku. Sekcja „Odrzucone” niżej ma przy każdym ręcznym odrzuceniu przycisk „Przywróć” — propozycja wraca do puli tak, jakby jej nigdy nie odrzucono.
+Odrzucenie niczego nie kasuje — zapamiętuje decyzję. Odrzucona propozycja wypada z próby, a pierwsza pasująca alternatywa wchodzi na jej miejsce: nigdy propozycja z flagą „cena odstająca” ani „prawdopodobnie deweloperska”, i nigdy więcej niż {DEFAULTS.maxPerBuilding} propozycje z jednego budynku. Sekcja „Odrzucone” niżej ma przy każdym ręcznym odrzuceniu przycisk „Przywróć” — propozycja wraca do puli tak, jakby jej nigdy nie odrzucono.
 
 ## Promień
 
@@ -61,13 +61,13 @@ Nagłówek sekcji „Odrzucone (N)” liczy wszystkie odrzucenia — automatyczn
 
 ## Próba do kalkulacji
 
-Pod tabelą propozycji jest zwijana sekcja „Próba do kalkulacji (N) — edytuj wartości lub dopisz ręcznie”. Jest zwinięta, gdy wycena ma już propozycję z RCN, i rozwinięta, gdy próby jeszcze nie pobrano. W tej tabeli:
+Pod tabelą propozycji jest zwijana sekcja „Próba do kalkulacji (N) — edytuj wartości lub dopisz ręcznie”. Jest zwinięta, gdy wycena ma już próbę z RCN, i rozwinięta, gdy próby jeszcze nie pobrano. W tej tabeli:
 
 - **Cena (zł/m²)** w każdym wierszu — bez niej zapis nie przejdzie.
 - **Data transakcji** i **powierzchnia (m²)** — przy pobraniu z RCN wypełniają się same; przy wpisie ręcznym są opcjonalne przy zapisie, ale powierzchnie z próby są używane w kroku 4 przy definicjach cech.
 - Przycisk „Dodaj transakcję” dokłada pusty wiersz. „Usuń” kasuje wiersz, ale tabela nie zejdzie poniżej trzech wierszy — przy trzech przycisk jest nieaktywny.
 
-Wiersze z RCN są po każdym odrzuceniu, przywróceniu i zmianie promienia przeliczane z propozycji, ale Twoje poprawki wartości w istniejących wierszach RCN zostają; wiersze dopisane ręcznie też zostają.
+Wiersze z RCN są po każdym odrzuceniu, przywróceniu i zmianie promienia przeliczane z próby, ale Twoje poprawki wartości w istniejących wierszach RCN zostają; wiersze dopisane ręcznie też zostają.
 
 ## Co blokuje przejście dalej
 

@@ -9,7 +9,7 @@ Próba porównawcza pochodzi z rejestru cen nieruchomości (RCN) — publicznego
 
 **Automatycznie:** pula z rejestru, higiena, pasmo metrażu, wybór promienia, ranking podobieństwa, flagi (cena odstająca, rynek nieznany, prawdopodobnie deweloperska) i miniaturki budynków ze Street View.
 
-**Ręcznie, w [kroku 3](/pomoc/krok-3-proba):** przegląd fasad propozycji, odrzucenie z powodem (wiek lub typ budynku, standard, odległość), zmiana promienia i dopisanie własnej transakcji.
+**Ręcznie, w [kroku 3](/pomoc/krok-3-proba):** przegląd fasad z propozycji, odrzucenie z powodem (wiek lub typ budynku, standard, odległość), zmiana promienia i dopisanie własnej transakcji.
 
 ## Skąd bierze się pula transakcji
 
@@ -69,17 +69,17 @@ Trzy obserwacje przyczepiane są do transakcji, która przeszła higienę i pasm
 - **rynek nieznany** — pole rodzaju rynku w rejestrze jest puste; w danych ze spike'u ADR-015 dotyczyło to około 72% rekordów,
 - **prawdopodobnie deweloperska** — rynek nieznany **i** sprzedający to osoba prawna naraz; to najsilniejsza dostępna poszlaka sprzedaży pierwotnej tam, gdzie samo pole rynku milczy.
 
-Skutek dla rankingu nie jest jednakowy: **cena odstająca** i **prawdopodobnie deweloperska** wypychają transakcję z listy proponowanej do alternatyw, niezależnie od punktacji. Sam **rynek nieznany**, bez towarzyszącego sprzedającego-osoby-prawnej, nic nie zmienia — transakcja zostaje na miejscu wyznaczonym przez ranking. Krok 3 pokazuje propozycję, a pod nią alternatywy z odznakami; flagi widać jako odznaki w wierszu.
+Skutek dla rankingu nie jest jednakowy: **cena odstająca** i **prawdopodobnie deweloperska** wypychają transakcję z listy proponowanej do alternatyw, niezależnie od punktacji. Sam **rynek nieznany**, bez towarzyszącego sprzedającego-osoby-prawnej, nic nie zmienia — transakcja zostaje na miejscu wyznaczonym przez ranking. Krok 3 pokazuje próbę, a pod nią alternatywy z odznakami; flagi widać jako odznaki w wierszu.
 
 ## Ile transakcji trafia do próby
 
-Z posortowanej listy dobór bierze **{DEFAULTS.proposedN}** transakcji jako propozycję — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku, nadmiar z tego samego budynku spada do alternatyw z zachowaniem rankingu — a kolejne do {DEFAULTS.alternatesN} jako alternatywy.
+Z posortowanej listy dobór bierze **{DEFAULTS.proposedN}** transakcji jako próbę — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku, nadmiar z tego samego budynku spada do alternatyw z zachowaniem rankingu — a kolejne do {DEFAULTS.alternatesN} jako alternatywy.
 
 Gdy pula po higienie, paśmie i promieniu jest mniejsza niż {DEFAULTS.proposedN}, aplikacja pokazuje tyle, ile znalazła — nie ma progu, poniżej którego dobór odmawia zwrotu wyniku. Zatwierdzenie operatu zostaje mimo to zablokowane, dopóki cała próba (transakcje z RCN plus ewentualne wiersze wpisane ręcznie) nie osiągnie {REQUIRED_SAMPLE_SIZE} transakcji. To dwie niezależne stałe zapisane w dwóch miejscach — `DEFAULTS.proposedN` w domenie doboru i `REQUIRED_SAMPLE_SIZE` w progu zatwierdzenia — dziś równe, ale zmiana jednej nie rusza drugiej.
 
 ## Skąd zdjęcia budynków
 
-Miniaturka i podgląd w panelu kroku 3 nie są ręcznym uzupełnieniem — powstają z automatycznego wzbogacenia propozycji i alternatyw o widok budynku (`apps/web/src/app/actions/_street-view-enrich.ts`, `apps/web/src/adapters/street-view-google.ts`):
+Miniaturka i podgląd w panelu kroku 3 nie są ręcznym uzupełnieniem — powstają z automatycznego wzbogacenia próby i alternatyw o widok budynku (`apps/web/src/app/actions/_street-view-enrich.ts`, `apps/web/src/adapters/street-view-google.ts`):
 
 1. **Street View Metadata** (Google, bezpłatne, bez limitu) sprawdza, czy w pobliżu współrzędnych budynku istnieje panorama zewnętrzna, i jeśli tak — zwraca jej identyfikator oraz datę przejazdu. Brak panoramy jest informacją, nie błędem — zwykle znaczy to, że budynek jest nowszy niż ostatni przejazd Google w tej okolicy.
 2. **Street View Static** pobiera z tej panoramy jedną klatkę 160×100 px, z kamerą skierowaną na budynek.
