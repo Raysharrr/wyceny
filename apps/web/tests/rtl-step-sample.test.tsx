@@ -554,7 +554,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
     expect(container.querySelector('[data-kind="info"]')).toBeNull();
   });
 
-  it("shows the RCN AutoBanner with a fallback (comparablesCount/'?') when sampleMeta is present without a matching sampleSelection", () => {
+  it("asks for a re-fetch (no question marks) when sampleMeta is present without a matching sampleSelection", () => {
     const { container } = render(
       <StepSample
         valuationId={VID}
@@ -566,9 +566,12 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
       />,
     );
 
-    // No matching `sampleSelection` → falls back to `comparablesCount` (12) and "?".
-    expect(bannerText(container)).toMatch(/Dobrano 12 z \? pasujących w promieniu \? m/);
-    expect(bannerText(container)).toMatch(/przebadano \? transakcji z RCN/);
+    // No matching `sampleSelection` (hand-edited sample, test data) → no counts to
+    // show, so the banner says so instead of printing question marks.
+    const text = bannerText(container);
+    expect(text).not.toContain("?");
+    expect(text).toMatch(/pobierz próbę z RCN ponownie/i);
+    expect(text).toMatch(/23\.07\.2026/);
   });
 
   it("shows the FootNav mid slot with the valid-price count and Cśr once stats are available", () => {

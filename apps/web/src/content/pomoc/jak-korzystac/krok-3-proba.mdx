@@ -22,7 +22,7 @@ Przycisk „Pobierz próbę z RCN” pobiera transakcje dobrane rankingiem podob
 - **Pobranie zastępuje całą dotychczasową zawartość tabeli**, również wiersze wpisane ręcznie.
 - Gdy pobranie się nie uda, zobaczysz komunikat z powodem, a próbę wpisujesz ręcznie.
 
-Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebadano N transakcji z RCN, data)”: N to cała pula z rejestru w kwadracie ±3 km wokół przedmiotu, po złożeniu duplikatów i odrzuceniu rekordów bez współrzędnych; Y — ile z tej puli przeszło higienę i pasmo metrażu w promieniu R; R — promień, na którym dobór się zatrzymał. Gdy pobieranie osiągnie nasz limit stron pobierania (8 × 5000 rekordów), zanim pula sięgnie pełnego okna czasowego, pasek dokłada ostrzeżenie, że pula może być niepełna.
+Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebadano N transakcji z RCN, data)”: N to cała pula z rejestru w kwadracie ±3 km wokół przedmiotu, po złożeniu duplikatów i odrzuceniu rekordów bez współrzędnych; Y — ile z tej puli przeszło higienę i pasmo metrażu w promieniu R; R — promień, na którym dobór się zatrzymał. Gdy pobieranie przerwie się, zanim pula sięgnie pełnego okna czasowego — przez limit stron pobierania (8 × 5000 rekordów) albo budżet czasu (ok. 25 s) — pasek dokłada ostrzeżenie, że pula może być niepełna. Jeśli w zapisanym szkicu jest próba z RCN, ale bez szczegółów doboru (np. wiersze edytowane ręcznie), pasek prosi o ponowne pobranie zamiast pokazywać liczniki.
 
 Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty; [jak dobieramy próbę](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
 

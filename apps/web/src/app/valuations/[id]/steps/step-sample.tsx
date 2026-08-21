@@ -155,8 +155,8 @@ export function StepSample({
   const comparablesCount = (comparables ?? []).length;
   const comparablesError = errors.comparables?.root?.message ?? errors.comparables?.message;
   // The v3 selection snapshot (ADR-015) — the banner reads counts/radius from
-  // here (falling back to `comparablesCount`/"?" for a persisted `sampleMeta`
-  // with no matching `sampleSelection`, e.g. an old draft or a hand-edited sample).
+  // here; a persisted `sampleMeta` with no matching `sampleSelection` (a
+  // hand-edited sample, test data) gets a "re-fetch to see details" banner.
   const sel = useWatch({ control, name: "sampleSelection" });
   // Watched (not the raw `sampleMeta` prop) so the banner reacts live to a
   // fetch in this session, not only to whatever the page rendered with.
@@ -219,18 +219,26 @@ export function StepSample({
           sub={`${comparablesCount} ${plural(comparablesCount, "transakcja", "transakcje", "transakcji")}`}
         >
           <div className="flex flex-col gap-3">
-            {liveSampleMeta ? (
+            {liveSampleMeta && sel ? (
               <AutoBanner>
                 Dobrano{" "}
                 <b>
-                  {sel?.counts.proposed ?? comparablesCount} z {sel?.counts.afterBand ?? "?"}{" "}
-                  pasujących
+                  {sel.counts.proposed} z {sel.counts.afterBand} pasujących
                 </b>{" "}
-                w promieniu <b>{sel?.radiusUsedM ?? "?"} m</b> (przebadano {sel?.counts.pool ?? "?"}{" "}
-                transakcji z RCN, {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
+                w promieniu <b>{sel.radiusUsedM} m</b> (przebadano {sel.counts.pool} transakcji z
+                RCN, {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
                 {liveSampleMeta.query.truncated
-                  ? " — osiągnięto limit stron pobierania, pula może być niepełna"
+                  ? " — pobieranie przerwano przed pokryciem 24 miesięcy (limit stron lub czasu), pula może być niepełna"
                   : null}
+              </AutoBanner>
+            ) : liveSampleMeta ? (
+              // A persisted `sampleMeta` without its v3 selection snapshot (a
+              // hand-edited sample, test data) — no counts to show, so say that
+              // instead of printing question marks.
+              <AutoBanner>
+                Próba z RCN z {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")}{" "}
+                zapisana bez szczegółów doboru — pobierz próbę z RCN ponownie, żeby zobaczyć promień
+                i liczniki.
               </AutoBanner>
             ) : null}
 

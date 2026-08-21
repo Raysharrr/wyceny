@@ -15,6 +15,7 @@ for that stop rule so they never end the pool early. Callers pass a real
 import json
 import math
 import re
+import time
 import urllib.parse
 import urllib.request
 
@@ -192,11 +193,17 @@ def fetch_pool(
     *,
     fetch=None,
     max_pages: int = 8,
+    time_budget_s: float = 25.0,
+    clock=time.monotonic,
 ) -> dict:
     """ADR-015 rule 1: page with startIndex until the 24-month window is covered.
 
     `truncated` = the last page was full and the window floor was not yet reached —
-    the pool may be incomplete (page cap or no sane dates on that final page).
+    the pool may be incomplete (page cap, time budget, or no sane dates on that
+    final page). `time_budget_s` stops STARTING new pages once exceeded: the web
+    adapter gives up at 50 s and Vercel at 60 s, and one WFS page can take ~20 s,
+    so 25 s + one page stays inside both. A page without `numberReturned` counts
+    its own records — otherwise a missing attribute would silently end paging.
     """
     fetch = fetch or fetch_rcn
     bbox = bbox_for(x, y, radius_m)
@@ -204,15 +211,16 @@ def fetch_pool(
     raw: list[dict] = []
     pages = 0
     covered = False
+    started = clock()
     for page in range(max_pages):
         gml = fetch(bbox, PAGE_SIZE, SORT_BY, page * PAGE_SIZE)
         records = parse_candidates(gml, (x, y))
-        returned = number_returned(gml)
+        returned = number_returned(gml) or len(records)
         raw.extend(records)
         pages += 1
         oldest = _oldest_sane_month(records)
         covered = returned < PAGE_SIZE or (oldest is not None and oldest < floor)
-        if covered:
+        if covered or clock() - started > time_budget_s:
             break
     return {"raw": raw, "pages": pages, "truncated": not covered, "bbox": list(bbox)}
 

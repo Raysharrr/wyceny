@@ -25,7 +25,8 @@ export const candidatePoolSchema = sampleMetaSchema.extend({
   candidates: z.array(candidateSchema),
 }) satisfies z.ZodType<CandidatePool>;
 
-// Worker can page the WFS up to 8 x 20 s in the worst case — a deep pool can exceed this, and the user then gets the generic error.
+// Worker stops starting new WFS pages after 25 s (`fetch_pool` time budget) and one page takes up to 20 s,
+// so ~45 s is its worst case — inside this timeout and Vercel's 60 s. Deeper pools come back `truncated`.
 const TIMEOUT_MS = 50_000;
 
 /**

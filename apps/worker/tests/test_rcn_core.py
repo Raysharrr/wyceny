@@ -253,3 +253,55 @@ def test_parse_address_building_range_is_not_a_postal_code():
     from app.rcn import parse_address
 
     assert parse_address("ul. Półwiejska 21-23, Poznań") == ("Poznań", "Półwiejska 21-23")
+
+
+def _wrap_without_count(members):
+    """A page whose root lacks `numberReturned` — some WFS deployments omit it."""
+    return f"<wfs:FeatureCollection>{''.join(members)}</wfs:FeatureCollection>"
+
+
+def test_fetch_pool_counts_records_when_number_returned_attribute_is_missing(monkeypatch):
+    """ADR-015 rule 1 must not be silently disabled by a missing `numberReturned`.
+
+    With the attribute absent the old code read `returned = 0 < PAGE_SIZE`, called
+    the first page "covered" and stopped — one page, `truncated: False`, no alarm.
+    """
+    import app.rcn as rcn_mod
+
+    monkeypatch.setattr(rcn_mod, "PAGE_SIZE", 3)
+    calls = []
+
+    def fake(bbox, count=3, sort=None, start_index=0):
+        calls.append(start_index)
+        if start_index == 0:
+            return _wrap_without_count(
+                [make_member(tid=f"A{i}", date="2026-02-01T00:00:00") for i in range(3)]
+            )
+        return _wrap_without_count([make_member(tid="B", date="2026-01-01T00:00:00")])
+
+    pool = fetch_pool(355300.0, 505330.0, 3000, "2026-03", fetch=fake)
+    assert calls == [0, 3]
+    assert pool["pages"] == 2 and pool["truncated"] is False
+    assert len(pool["raw"]) == 4
+
+
+def test_fetch_pool_stops_on_time_budget_and_marks_truncated():
+    """A deep pool must not outlive the web adapter's timeout — stop paging, say so."""
+    ticks = iter([0.0, 30.0, 30.0, 30.0])
+
+    def fake(bbox, count=PAGE_SIZE, sort=None, start_index=0):
+        return _page(
+            [make_member(tid=f"T{start_index}", date="2026-02-01T00:00:00")],
+            returned=PAGE_SIZE,
+        )
+
+    pool = fetch_pool(
+        355300.0,
+        505330.0,
+        3000,
+        "2026-03",
+        fetch=fake,
+        time_budget_s=25.0,
+        clock=lambda: next(ticks),
+    )
+    assert pool["pages"] == 1 and pool["truncated"] is True
