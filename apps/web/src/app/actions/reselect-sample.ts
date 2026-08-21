@@ -8,19 +8,29 @@ import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 import { loadPool } from "@/app/actions/_pool-cache";
 import { buildProposal } from "@/app/actions/_build-proposal";
-import { manualRejectionSchema } from "@/lib/valuation-form-schema";
-import type { ManualRejection } from "@/domain/sample-manual";
+import {
+  manualInclusionSchema,
+  manualRejectionSchema,
+  reviewedMarkSchema,
+} from "@/lib/valuation-form-schema";
+import type { ManualInclusion, ManualRejection, ReviewedMark } from "@/domain/sample-manual";
 
 const inputSchema = z.object({
   valuationId: z.uuid("Nieprawidłowe dane formularza."),
   radiusOverrideM: z.union([z.literal(500), z.literal(1000), z.literal(2000), z.literal(3000)]),
   manualRejections: z.array(manualRejectionSchema),
+  // Optional (Slice 3c, Task 5) — an older caller shape (pre-Task-5) omits
+  // them; `buildProposal` treats a missing value the same as `[]`.
+  manualInclusions: z.array(manualInclusionSchema).optional(),
+  reviewed: z.array(reviewedMarkSchema).optional(),
 });
 
 export type ReselectSampleInput = {
   valuationId: string;
   radiusOverrideM: 500 | 1000 | 2000 | 3000;
   manualRejections: ManualRejection[];
+  manualInclusions?: ManualInclusion[];
+  reviewed?: ReviewedMark[];
 };
 export type ReselectSampleResult =
   | { proposal: Awaited<ReturnType<typeof buildProposal>> }
@@ -60,7 +70,8 @@ export async function reselectSample(input: ReselectSampleInput): Promise<Resele
     const firstIssue = parsed.error.issues[0];
     return { error: firstIssue?.message ?? "Nieprawidłowe dane formularza." };
   }
-  const { valuationId, radiusOverrideM, manualRejections } = parsed.data;
+  const { valuationId, radiusOverrideM, manualRejections, manualInclusions, reviewed } =
+    parsed.data;
 
   return withTrace(async () => {
     const startedAt = Date.now();
@@ -83,6 +94,8 @@ export async function reselectSample(input: ReselectSampleInput): Promise<Resele
         area: valuation.area,
         radiusOverrideM,
         manualRejections,
+        manualInclusions,
+        reviewed,
         session,
         valuationId,
         event: "proposal.reselect",

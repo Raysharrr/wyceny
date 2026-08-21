@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ManualRejection } from "../src/domain/sample-manual";
+import type { ManualInclusion, ManualRejection, ReviewedMark } from "../src/domain/sample-manual";
 import type { CandidatePool } from "../src/ports/sample";
 
 /**
@@ -175,6 +175,54 @@ describe("reselectSample", () => {
       Object.values(meta.fields as Record<string, unknown>).every((v) => typeof v === "string"),
     ).toBe(true);
     expect(JSON.stringify(meta)).not.toMatch(/Heweliusza|306401|X\|Y/);
+  });
+
+  it("(d2) carries manualInclusions and reviewed 1:1 into the new snapshot (Slice 3c, Task 5) — exactly like manualRejections", async () => {
+    getMock.mockResolvedValue(valuation);
+    await savePool(storage, VALUATION_ID, pool, SAVED_FOR);
+    const included = candidates[0];
+    const manualInclusions: ManualInclusion[] = [
+      {
+        transactionId: "OUT-OF-RADIUS-TX",
+        lokalId: "OUT-OF-RADIUS-LOKAL",
+        at: "2026-08-21T09:00:00Z",
+        candidate: {
+          ...included,
+          transactionId: "OUT-OF-RADIUS-TX",
+          lokalId: "OUT-OF-RADIUS-LOKAL",
+        },
+      },
+    ];
+    const reviewed: ReviewedMark[] = [
+      { transactionId: "X", lokalId: "Y", at: "2026-08-21T09:00:00Z" },
+    ];
+
+    const r = await reselectSample({
+      valuationId: VALUATION_ID,
+      radiusOverrideM: 1000,
+      manualRejections: [],
+      manualInclusions,
+      reviewed,
+    });
+    if ("error" in r) throw new Error(r.error);
+
+    expect(r.proposal.sampleSelection.manualInclusions).toEqual(manualInclusions);
+    expect(r.proposal.sampleSelection.reviewed).toEqual(reviewed);
+  });
+
+  it("(d3) omitting manualInclusions/reviewed (older caller shape) still succeeds — both default to []", async () => {
+    getMock.mockResolvedValue(valuation);
+    await savePool(storage, VALUATION_ID, pool, SAVED_FOR);
+
+    const r = await reselectSample({
+      valuationId: VALUATION_ID,
+      radiusOverrideM: 1000,
+      manualRejections: [],
+    });
+    if ("error" in r) throw new Error(r.error);
+
+    expect(r.proposal.sampleSelection.manualInclusions).toEqual([]);
+    expect(r.proposal.sampleSelection.reviewed).toEqual([]);
   });
 
   it("(e) determinism: same pool + radius + manualRejections ⇒ identical `proposed` across two calls", async () => {
