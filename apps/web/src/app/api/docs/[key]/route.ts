@@ -19,6 +19,9 @@ const PHOTO_HEADERS = { "Content-Type": "image/jpeg", "Content-Disposition": "in
 const PHOTO_KEY_RX =
   /^ogledziny-(?:otoczenie|budynek|wnetrza)-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jpg$/;
 
+/** Slice 3: Street View thumbnails are keyed by EGiB building id (public register data, no valuation link) — session is the gate. */
+const STREETVIEW_KEY_RX = /^streetview\/[0-9A-Za-z._/-]+\.jpg$/;
+
 /**
  * Success-path Content-Type/-Disposition, derived from the key's file
  * extension (Slice 4 adds real PDF/DOCX artifacts alongside legacy text
@@ -53,6 +56,10 @@ function successHeaders(key: string): Record<string, string> {
  * Valuation (doesn't exist, or exists but isn't theirs) → 404 in both
  * cases, deliberately — distinguishing them would leak existence of other
  * users' docs.
+ *
+ * Street View thumbnails (Slice 3) are a THIRD branch, gated by session
+ * only (like the photo branch) but with no ownership check — the key is
+ * derived from a public EGiB building id, carries no valuation data.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
@@ -73,6 +80,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ key
     try {
       const data = await storage.get(key);
       return new NextResponse(new Uint8Array(data), { status: 200, headers: PHOTO_HEADERS });
+    } catch {
+      return new NextResponse("Nie znaleziono dokumentu.", { status: 404, headers: TEXT_HEADERS });
+    }
+  }
+
+  if (STREETVIEW_KEY_RX.test(key)) {
+    try {
+      const data = await storage.get(key);
+      return new NextResponse(new Uint8Array(data), {
+        status: 200,
+        headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400" },
+      });
     } catch {
       return new NextResponse("Nie znaleziono dokumentu.", { status: 404, headers: TEXT_HEADERS });
     }

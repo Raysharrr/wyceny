@@ -9,7 +9,9 @@ import { httpMapImages } from "@/adapters/maps-http";
 import { pgStorage } from "@/adapters/storage-pg";
 import { profileRepo } from "@/adapters/profile-drizzle";
 import { eventLogRepo } from "@/adapters/event-log-drizzle";
+import { googleStreetView } from "@/adapters/street-view-google";
 import type { PortMapImages } from "@/ports/maps";
+import type { PortStreetView } from "@/ports/street-view";
 
 /**
  * Adapters wired once at the app layer (F-10: domain/ports stay pure — only
@@ -35,3 +37,8 @@ export const mapImages: PortMapImages | null =
 export const storage = pgStorage(db);
 export const profileRepository = profileRepo(db);
 export const eventLog = eventLogRepo(db);
+/** Slice 3: null without GOOGLE_STREET_VIEW_KEY or with NEXT_PUBLIC_STREET_VIEW=off (CI e2e) — step 3 then renders placeholders. */
+export const streetView: PortStreetView | null =
+  process.env.NEXT_PUBLIC_STREET_VIEW === "off" || !process.env.GOOGLE_STREET_VIEW_KEY
+    ? null
+    : googleStreetView(process.env.GOOGLE_STREET_VIEW_KEY);

@@ -239,3 +239,43 @@ describe("/api/docs/[key] — inspection photo thumbnails (Slice 10 FR-2, Task 8
     expect(res.headers.get("content-type")).toBe("image/jpeg");
   });
 });
+
+describe("/api/docs/[key] — Street View thumbnails (Slice 3, session-gated only)", () => {
+  const jpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+
+  it("no session -> 401", async () => {
+    getSessionMock.mockResolvedValue(null);
+    const key = "streetview/0039.22.13/82.1.jpg";
+
+    const res = await GET(
+      new Request(`http://test/api/docs/${encodeURIComponent(key)}`),
+      paramsFor(key),
+    );
+
+    expect(res.status).toBe(401);
+  });
+
+  it("session present, key not in storage -> 404 (no valuation link to check — storage presence is the only gate)", async () => {
+    getSessionMock.mockResolvedValue({ user: appraiserA });
+    const key = "streetview/0039.22.13/82.never-stored.jpg";
+
+    const res = await GET(
+      new Request(`http://test/api/docs/${encodeURIComponent(key)}`),
+      paramsFor(key),
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  it("session present, key present -> 200 image/jpeg, correct bytes", async () => {
+    const key = "streetview/0039.22.13/82.9.jpg";
+    const docUrl = await storage.put(key, jpegBytes);
+
+    getSessionMock.mockResolvedValue({ user: appraiserA });
+    const res = await GET(new Request(`http://test${docUrl}`), paramsFor(key));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(Buffer.from(await res.arrayBuffer()).equals(jpegBytes)).toBe(true);
+  });
+});

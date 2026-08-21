@@ -3,8 +3,9 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSession } from "@/auth/session";
-import { sampleProposal, valuationRepository } from "@/app/valuations/_deps";
+import { sampleProposal, storage, streetView, valuationRepository } from "@/app/valuations/_deps";
 import { recordEvent, recordFailure } from "@/app/actions/_record-failure";
+import { enrichStreetView } from "@/app/actions/_street-view-enrich";
 import { fingerprint } from "@/lib/fingerprint";
 import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
@@ -13,6 +14,7 @@ import { selectSample } from "@/domain/sample-selection";
 import { toSampleSelectionSnapshot, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import { deriveSubjectEgib } from "@/domain/egib-id";
 import type { SampleMeta } from "@/domain/kcs";
+import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 
 const inputSchema = valuationFormObject
   .pick({ address: true, area: true })
@@ -28,6 +30,7 @@ export type GetSampleProposalResult =
         comparables: { date: string; area: number; pricePerM2: number; transactionId: string }[];
         sampleSelection: SampleSelectionSnapshot;
         sampleMeta: SampleMeta;
+        streetView: StreetViewSnapshot;
       };
     }
   | { error: string };
@@ -46,6 +49,12 @@ const GENERIC_ERROR =
  * failure, e.g. too few nearby transactions) is passed through verbatim; a
  * zod validation failure at the trust boundary, or the adapter's own English
  * status-text fallback, is replaced with a generic Polish message instead.
+ *
+ * Slice 3: after the sample telemetry is recorded, `streetView` (null
+ * without GOOGLE_STREET_VIEW_KEY) enriches every unique building among
+ * proposed+alternates with a Street View preview (`enrichStreetView`) —
+ * frozen entries reused, storage-cached, Google failures counted but never
+ * thrown (a hiccup there must not cost the appraiser the sample).
  */
 export async function getSampleProposal(
   input: GetSampleProposalInput,
@@ -124,7 +133,29 @@ export async function getSampleProposal(
           },
         },
       });
-      return { proposal: { comparables, sampleSelection, sampleMeta } };
+
+      let streetViewSnapshot: StreetViewSnapshot = valuation.inputs?.streetView ?? {};
+      if (streetView) {
+        const enriched = await enrichStreetView([...selection.proposed, ...selection.alternates], {
+          streetView,
+          storage,
+          now: () => new Date(),
+          existing: valuation.inputs?.streetView ?? null,
+        });
+        streetViewSnapshot = { ...streetViewSnapshot, ...enriched.snapshot };
+        await recordEvent({
+          level: "info",
+          event: "proposal.streetview",
+          traceId: currentTraceId(),
+          actorId: session.user.id,
+          valuationId,
+          meta: enriched.meta,
+        });
+      }
+
+      return {
+        proposal: { comparables, sampleSelection, sampleMeta, streetView: streetViewSnapshot },
+      };
     } catch (error) {
       await recordFailure({
         event: "getSampleProposal.failed",
