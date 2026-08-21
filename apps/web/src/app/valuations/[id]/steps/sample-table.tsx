@@ -116,13 +116,21 @@ export function SampleTable({
             e.preventDefault();
             onSelect(key);
           }
+          // Anchor on the CURRENT selection, not the row the keydown fired
+          // on — a row can hold DOM focus without being `selectedKey` (e.g.
+          // after Tab), and repeated arrow presses on a row whose selection
+          // never changed (a controlled prop, updated by the parent) must
+          // still walk forward from where the selection actually is. Move
+          // DOM focus along with it — a `<tr>` never receives it on its own.
           if (e.key === "ArrowDown") {
             e.preventDefault();
-            move(key, 1);
+            move(selectedKey ?? key, 1);
+            (e.currentTarget.nextElementSibling as HTMLElement | null)?.focus();
           }
           if (e.key === "ArrowUp") {
             e.preventDefault();
-            move(key, -1);
+            move(selectedKey ?? key, -1);
+            (e.currentTarget.previousElementSibling as HTMLElement | null)?.focus();
           }
         }}
       >

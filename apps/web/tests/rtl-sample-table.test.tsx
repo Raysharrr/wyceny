@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { FormEvent } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -38,6 +39,11 @@ function cand(over: Partial<Candidate> = {}): Candidate {
     ...over,
   };
 }
+// Real shape from `thumbnailKey()` (app/actions/_street-view-enrich.ts):
+// `streetview-${buildingKey.replaceAll("/", "~")}.jpg` — slash-free because
+// `buildingKey` itself contains "/" (the `dzialka` component, e.g. "13/82").
+const thumbKey = (buildingKey: string) => `streetview-${buildingKey.replaceAll("/", "~")}.jpg`;
+
 function snap(
   proposed: Candidate[],
   alternates: Candidate[],
@@ -82,6 +88,7 @@ describe("SampleTable", () => {
     // "never promotes a flagged alternate" case in sample-manual.test.ts,
     // so they stay alternates instead of being silently promoted.
     const flags = Object.fromEntries(a.map((c) => [candidateKey(c), ["price_outlier" as const]]));
+    const key1 = thumbKey(key);
     render(
       <SampleTable
         selection={snap(p, a, { flags })}
@@ -89,7 +96,7 @@ describe("SampleTable", () => {
           [key]: {
             panoId: "P",
             captureDate: "2023-07",
-            thumbnailKey: `streetview/${key}.jpg`,
+            thumbnailKey: key1,
             heading: 10,
             lat: 1,
             lng: 2,
@@ -104,7 +111,7 @@ describe("SampleTable", () => {
     expect(rows).toHaveLength(2);
     expect(within(rows[0]).getByRole("img")).toHaveAttribute(
       "src",
-      `/api/docs/${encodeURIComponent(`streetview/${key}.jpg`)}`,
+      `/api/docs/${encodeURIComponent(key1)}`,
     );
     expect(within(rows[0]).getByText("0039")).toBeInTheDocument();
     expect(within(rows[0]).getByText("ten sam budynek")).toBeInTheDocument();
@@ -146,7 +153,7 @@ describe("SampleTable", () => {
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.queryByText(/brak zdjęcia ulicy/)).toBeNull();
   });
-  it("click / Enter / arrows select rows; selected row carries data-state=selected", async () => {
+  it("click selects a row; the parent re-rendering with the new selectedKey marks it data-state=selected", async () => {
     const onSelect = vi.fn();
     const p = [cand(), cand(), cand()];
     const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
@@ -172,11 +179,112 @@ describe("SampleTable", () => {
       />,
     );
     expect(screen.getAllByRole("row").slice(1)[1]).toHaveAttribute("data-state", "selected");
-    screen.getAllByRole("row").slice(1)[1].focus();
+  });
+
+  it("arrow keys walk from the CURRENT selection, not the row the keydown fired on, and move DOM focus with them", async () => {
+    const onSelect = vi.fn();
+    const p = [cand(), cand(), cand(), cand()];
+    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
+    const rowsAfterHeader = () => screen.getAllByRole("row").slice(1);
+    const { rerender } = render(
+      <SampleTable
+        selection={snap(p, [])}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={keyOf(p[1])}
+        onSelect={onSelect}
+      />,
+    );
+
+    rowsAfterHeader()[1].focus();
     await userEvent.keyboard("{ArrowDown}");
     expect(onSelect).toHaveBeenLastCalledWith(keyOf(p[2]));
+    expect(rowsAfterHeader()[2]).toHaveFocus();
+
+    // The parent updates `selectedKey` from the onSelect call above (this is
+    // what step-sample.tsx's own `setSelectedKey` does) — a second ArrowDown
+    // must walk on from p[2], not repeat p[2] again by re-anchoring on the
+    // row that received the FIRST keydown (the regression this locks in).
+    rerender(
+      <SampleTable
+        selection={snap(p, [])}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={keyOf(p[2])}
+        onSelect={onSelect}
+      />,
+    );
+    await userEvent.keyboard("{ArrowDown}");
+    expect(onSelect).toHaveBeenLastCalledWith(keyOf(p[3]));
+
+    rerender(
+      <SampleTable
+        selection={snap(p, [])}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={keyOf(p[3])}
+        onSelect={onSelect}
+      />,
+    );
     await userEvent.keyboard("{ArrowUp}");
+    expect(onSelect).toHaveBeenLastCalledWith(keyOf(p[2]));
+  });
+
+  it("arrow down at the end of the visible list is a no-op until alternates are expanded, then selects the first alternate", async () => {
+    const onSelect = vi.fn();
+    const p = [cand(), cand()];
+    const a = [cand()];
+    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
+    // Same fixpoint quirk as the first test above: with proposed.length(2)
+    // under proposedN(12), an unflagged alternate is silently promoted into
+    // `proposed` by the domain overlay — flag it demoted so it stays an
+    // alternate and the "Alternatywy" button actually renders.
+    const flags = { [candidateKey(a[0])]: ["price_outlier" as const] };
+    render(
+      <SampleTable
+        selection={snap(p, a, { flags })}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={null}
+        onSelect={onSelect}
+      />,
+    );
+    const lastProposedRow = screen.getAllByRole("row").slice(1).at(-1)!;
+    lastProposedRow.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(onSelect).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
+    // Expanding moved DOM focus to the button — the last proposed row is
+    // still the same DOM node (stable `candidateKey`), refocus it directly.
+    screen.getAllByRole("row").slice(1)[1].focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(onSelect).toHaveBeenLastCalledWith(keyOf(a[0]));
+  });
+
+  it("Enter and Space select the focused row without submitting the enclosing form", async () => {
+    const onSelect = vi.fn();
+    const submitSpy = vi.fn((e: FormEvent) => e.preventDefault());
+    const p = [cand(), cand()];
+    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
+    render(
+      <form onSubmit={submitSpy}>
+        <SampleTable
+          selection={snap(p, [])}
+          streetView={null}
+          streetViewEnabled={false}
+          selectedKey={null}
+          onSelect={onSelect}
+        />
+      </form>,
+    );
+    const rows = screen.getAllByRole("row").slice(1);
+    rows[0].focus();
+    await userEvent.keyboard("{Enter}");
     expect(onSelect).toHaveBeenLastCalledWith(keyOf(p[0]));
+    await userEvent.keyboard("[Space]");
+    expect(onSelect).toHaveBeenLastCalledWith(keyOf(p[0]));
+    expect(submitSpy).not.toHaveBeenCalled();
   });
   it("manual rejections are applied: a rejected proposed row disappears and the first alternate takes its place", () => {
     const p = [cand(), cand()];

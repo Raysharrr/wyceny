@@ -94,7 +94,7 @@ export function StepSample({
   comparables: initialComparables,
   sampleMeta,
   sampleSelection,
-  streetView = null,
+  streetView,
 }: {
   valuationId: string;
   address: string;
@@ -102,7 +102,7 @@ export function StepSample({
   comparables: Comparable[];
   sampleMeta: KcsInput["sampleMeta"];
   sampleSelection: KcsInput["sampleSelection"];
-  streetView?: KcsInput["streetView"];
+  streetView: KcsInput["streetView"];
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -302,7 +302,10 @@ export function StepSample({
               Próba do kalkulacji ({comparablesCount}) — edytuj wartości lub dopisz ręcznie
             </Button>
 
-            {showEditable ? (
+            {/* A validation error on `comparables` must never be hidden behind
+                a collapsed section — the appraiser needs to see it to fix it,
+                even when they collapsed the section themselves. */}
+            {showEditable || !!errors.comparables ? (
               <>
                 <Table>
                   <TableHeader>

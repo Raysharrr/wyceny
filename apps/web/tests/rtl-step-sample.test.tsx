@@ -169,6 +169,7 @@ describe("StepSample — defaults", () => {
         comparables={twelveComparables()}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -201,6 +202,7 @@ describe("StepSample — RCN fetch", () => {
         comparables={[]}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -276,6 +278,7 @@ describe("StepSample — RCN fetch", () => {
         comparables={[]}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -309,6 +312,7 @@ describe("StepSample — RCN fetch", () => {
         comparables={[]}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -337,6 +341,7 @@ describe("StepSample — submit", () => {
         comparables={twelveComparables()}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -366,6 +371,7 @@ describe("StepSample — submit", () => {
         comparables={twelveComparables()}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -454,6 +460,7 @@ describe("StepSample — a hand-typed row carries no transactionId", () => {
         comparables={fetched}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -511,6 +518,7 @@ describe("StepSample — legacy v2 sampleMeta draft (item A)", () => {
           } as any
         }
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -538,6 +546,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         ]}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -557,6 +566,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         comparables={[]}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -573,6 +583,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         comparables={twelveComparables()}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -588,6 +599,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         comparables={twelveComparables()}
         sampleMeta={makeSampleMeta()}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -611,6 +623,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         ]}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -633,6 +646,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         comparables={twelveComparables()}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -663,6 +677,7 @@ describe("StepSample — validation", () => {
         ]}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -688,6 +703,7 @@ describe("StepSample — validation", () => {
         ]}
         sampleMeta={null}
         sampleSelection={null}
+        streetView={null}
       />,
     );
 
@@ -707,6 +723,7 @@ describe("StepSample — candidate table (Slice 3)", () => {
         comparables={twelveComparables()}
         sampleMeta={makeSampleMeta()}
         sampleSelection={makeSampleSelection({ proposed: [makeCandidate()] })}
+        streetView={null}
       />,
     );
 
@@ -734,6 +751,7 @@ describe("StepSample — candidate table (Slice 3)", () => {
         comparables={twelveComparables()}
         sampleMeta={makeSampleMeta()}
         sampleSelection={makeSampleSelection({ proposed: [makeCandidate()] })}
+        streetView={null}
       />,
     );
 
