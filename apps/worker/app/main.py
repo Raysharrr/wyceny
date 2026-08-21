@@ -7,6 +7,7 @@ Local run:
 """
 
 import base64
+import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -190,7 +191,7 @@ def resolve_point(address: str, point: SamplePoint | None) -> tuple[float, float
     try:
         geo = subject.geocode_address(address)
         return geo["x"], geo["y"], "uug"
-    except subject.AddressNotFound:
+    except (subject.AddressNotFound, json.JSONDecodeError):
         pass
     try:
         lat, lon = rcn.geocode(address)
@@ -312,10 +313,10 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
         if parcel is None:
             raise RuntimeError("EGiB nie zwróciło działki")
         building_xml = subject.fetch_egib_xml("budynki", x, y)
-        building = subject.building_from_xml(building_xml)
         building_id = subject.pick_building_id(
             subject.building_ids_from_xml(building_xml), parcel_ref["parcel_id"]
         )
+        building = subject.building_from_xml(building_xml, building_id)
         wkt_2180 = subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 2180)
         function = subject.pick_mpzp_function(wkt_2180, subject.fetch_mpzp_functions(wkt_2180))
         lon, lat = subject.centroid_4326(subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 4326))

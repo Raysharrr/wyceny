@@ -96,6 +96,25 @@ def test_uug_miss_falls_back_to_nominatim_and_logs_geocoder(wfs_ok, monkeypatch,
     assert any(ln.get("event") == "sample_proposal_geocoder_fallback" for ln in lines)
 
 
+def test_uug_plain_text_answer_falls_back_to_nominatim(wfs_ok, monkeypatch, capsys):
+    """Incydent 3d23717d class: UUG answers plain text ("Blad zapytania.") for
+    some addresses instead of JSON, so `json.loads` inside `geocode_address`
+    raises JSONDecodeError. That must fall through the ADR-015 ladder to
+    Nominatim like AddressNotFound does, not escape as an unlogged 502."""
+
+    def bad_json(a):
+        raise json.JSONDecodeError("Expecting value", "Blad zapytania.", 0)
+
+    monkeypatch.setattr(subject, "geocode_address", bad_json)
+    monkeypatch.setattr(rcn, "geocode", lambda a: (52.41, 16.90))
+    monkeypatch.setattr(subject, "nominatim_to_2180", lambda lat, lon: (3.0, 4.0))
+    r = client.post("/sample-proposal", json={"address": "ul. Dziwna 1, Poznań", "area": 50})
+    assert r.status_code == 200
+    assert r.json()["point"] == {"x": 3.0, "y": 4.0, "source": "nominatim"}
+    lines = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+    assert any(ln.get("event") == "sample_proposal_geocoder_fallback" for ln in lines)
+
+
 def test_both_geocoders_miss_is_422(monkeypatch):
     def miss(a):
         raise subject.AddressNotFound("brak")

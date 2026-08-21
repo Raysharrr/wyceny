@@ -64,6 +64,29 @@ def test_happy_path_returns_parcel_building_mpzp_and_never_wr(happy_io):
     assert '"wr"' not in r.text.lower()
 
 
+TWO_BUILDINGS_ON_SUBJECT_XML = """<FeatureInfoResponse>
+<FIELDS><ID_BUDYNKU>306401_1.0021.AR_10.161.1_BUD</ID_BUDYNKU><RODZAJ>budynki mieszkalne</RODZAJ><KONDYGNACJE_NADZIEMNE>3</KONDYGNACJE_NADZIEMNE></FIELDS>
+<FIELDS><ID_BUDYNKU>306401_1.0021.AR_10.999.1_BUD</ID_BUDYNKU><RODZAJ>budynki mieszkalne</RODZAJ><KONDYGNACJE_NADZIEMNE>8</KONDYGNACJE_NADZIEMNE></FIELDS>
+</FeatureInfoResponse>"""
+
+
+def test_happy_path_building_matches_meta_building_id_with_two_buildings(happy_io, monkeypatch):
+    """ADR-015 regression: with two buildings in the query box, `building`
+    must describe the SAME building as `meta.buildingId` (the one on the
+    subject's own ULDK parcel "...AR_10.161"), not whichever block happened
+    to come last in the response (which would wrongly give 8 here)."""
+    monkeypatch.setattr(
+        subject,
+        "fetch_egib_xml",
+        lambda layer, x, y: DZIALKA_XML if layer == "dzialki" else TWO_BUILDINGS_ON_SUBJECT_XML,
+    )
+    r = client.post("/subject-proposal", json={"address": "Poznan, Koscielna 33"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["meta"]["buildingId"] == "306401_1.0021.AR_10.161.1_BUD"
+    assert body["building"]["kondygnacjeNadziemne"] == 3
+
+
 def test_no_plan_returns_null_mpzp_and_absent_flag(happy_io, monkeypatch):
     monkeypatch.setattr(subject, "pick_mpzp_function", lambda wkt, fns: None)
     monkeypatch.setattr(subject, "pick_plan", lambda lon, lat, plans: None)

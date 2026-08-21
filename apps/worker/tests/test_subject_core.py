@@ -276,8 +276,8 @@ def test_nominatim_to_2180_uldk_miss_raises_address_not_found(monkeypatch):
 
 
 TWO_BUILDINGS_XML = """<FeatureInfoResponse>
-<FIELDS><ID_BUDYNKU>306401_1.0039.AR_22.13/82.3_BUD</ID_BUDYNKU><RODZAJ>m</RODZAJ></FIELDS>
-<FIELDS><ID_BUDYNKU>306401_1.0039.AR_22.13/24.1_BUD</ID_BUDYNKU><RODZAJ>m</RODZAJ></FIELDS>
+<FIELDS><ID_BUDYNKU>306401_1.0039.AR_22.13/82.3_BUD</ID_BUDYNKU><RODZAJ>m</RODZAJ><KONDYGNACJE_NADZIEMNE>3</KONDYGNACJE_NADZIEMNE></FIELDS>
+<FIELDS><ID_BUDYNKU>306401_1.0039.AR_22.13/24.1_BUD</ID_BUDYNKU><RODZAJ>m</RODZAJ><KONDYGNACJE_NADZIEMNE>6</KONDYGNACJE_NADZIEMNE></FIELDS>
 </FeatureInfoResponse>"""
 
 
@@ -294,3 +294,15 @@ def test_pick_building_id_prefers_the_building_on_the_uldk_parcel_else_first():
     assert pick_building_id(ids, "306401_1.0039.AR_22.13/24") == "306401_1.0039.AR_22.13/24.1_BUD"
     assert pick_building_id(ids, "306401_1.0039.AR_22.999") == "306401_1.0039.AR_22.13/82.3_BUD"
     assert pick_building_id([], "x") is None
+
+
+def test_building_from_xml_with_building_id_selects_the_matching_block():
+    ids = building_ids_from_xml(TWO_BUILDINGS_XML)
+    assert building_from_xml(TWO_BUILDINGS_XML, ids[0])["kondygnacje_nadziemne"] == 3
+    assert building_from_xml(TWO_BUILDINGS_XML, ids[1])["kondygnacje_nadziemne"] == 6
+
+
+def test_building_from_xml_without_building_id_flattens_whole_xml_last_wins():
+    # Documented today's behaviour: no building_id -> every <FIELDS> block's
+    # tags are parsed as one flat dict, so the last block's value wins.
+    assert building_from_xml(TWO_BUILDINGS_XML)["kondygnacje_nadziemne"] == 6
