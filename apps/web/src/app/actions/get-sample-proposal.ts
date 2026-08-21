@@ -16,9 +16,12 @@ import type { SampleMeta } from "@/domain/kcs";
 
 const inputSchema = valuationFormObject
   .pick({ address: true, area: true })
-  .extend({ valuationId: z.uuid() });
+  .extend({ valuationId: z.uuid("Nieprawidłowe dane formularza.") });
 
-export type GetSampleProposalInput = z.input<typeof inputSchema>;
+// Declared explicitly rather than `z.input<typeof inputSchema>`: `area` is
+// `z.coerce.number()`, whose input type is `unknown`, not `number` — callers
+// (the step-3 UI) always have a real number in hand by this point.
+export type GetSampleProposalInput = { valuationId: string; address: string; area: number };
 export type GetSampleProposalResult =
   | {
       proposal: {
@@ -67,7 +70,7 @@ export async function getSampleProposal(
       if (!valuation) return { error: "Nie znaleziono wyceny." };
 
       const meta = valuation.inputs?.subjectMeta ?? null;
-      const point = meta ? ({ x: meta.x, y: meta.y, srid: 2180 as const } as const) : undefined;
+      const point = meta ? { x: meta.x, y: meta.y, srid: 2180 as const } : undefined;
       const pool = await sampleProposal.fetchPool({ address, area, ...(point ? { point } : {}) });
 
       const selectionParams = {
@@ -117,6 +120,7 @@ export async function getSampleProposal(
             ...selection.counts,
             fetched: pool.counts.fetched,
             deduped: pool.counts.deduped,
+            noPos: pool.counts.noPos,
           },
         },
       });

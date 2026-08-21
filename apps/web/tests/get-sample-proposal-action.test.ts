@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 vi.mock("@/auth/session", () => ({
   getSession: vi.fn(async () => ({ user: { id: "test-user", role: "appraiser" } })),
@@ -124,14 +125,53 @@ describe("getSampleProposal (v3)", () => {
 
   it("adapter throw with the worker's Polish detail → { error } with that message + code", async () => {
     getMock.mockResolvedValue(valuation);
+    // Deliberately a DIFFERENT Polish message than GENERIC_ERROR — proves the
+    // detail is passed through verbatim, not just re-derived from the fallback.
     fetchPoolMock.mockRejectedValue(
       new Error(
-        "Nie udało się pobrać próby z RCN — spróbuj ponownie albo wpisz transakcje ręcznie.",
+        "Za mało transakcji w okolicy (znaleziono 5) — zawęź adres albo uzupełnij próbę ręcznie.",
       ),
+    );
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
+    expect(r).toEqual({
+      error: expect.stringMatching(
+        /^Za mało transakcji w okolicy \(znaleziono 5\).*\(kod: [0-9a-f]{8}\)$/,
+      ),
+    });
+  });
+
+  it("adapter throw of its own English status-text fallback → generic Polish message + code", async () => {
+    getMock.mockResolvedValue(valuation);
+    fetchPoolMock.mockRejectedValue(
+      new Error("worker /sample-proposal responded 500 Internal Server Error"),
     );
     const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
     expect(r).toEqual({
       error: expect.stringMatching(/^Nie udało się pobrać próby z RCN.*\(kod: [0-9a-f]{8}\)$/),
     });
+  });
+
+  it("adapter throws a real ZodError (trust-boundary parse failure) → generic Polish message + code, no JSON blob", async () => {
+    getMock.mockResolvedValue(valuation);
+    const zodError = z.object({ a: z.string() }).safeParse({}).error!;
+    fetchPoolMock.mockRejectedValue(zodError);
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
+    expect(r).toEqual({
+      error: expect.stringMatching(/^Nie udało się pobrać próby z RCN.*\(kod: [0-9a-f]{8}\)$/),
+    });
+  });
+
+  it("empty address → { error }, no repo or worker call", async () => {
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "", area: 50 });
+    expect(r).toEqual({ error: expect.any(String) });
+    expect(getMock).not.toHaveBeenCalled();
+    expect(fetchPoolMock).not.toHaveBeenCalled();
+  });
+
+  it("area: 0 → { error }, no repo or worker call", async () => {
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 0 });
+    expect(r).toEqual({ error: expect.any(String) });
+    expect(getMock).not.toHaveBeenCalled();
+    expect(fetchPoolMock).not.toHaveBeenCalled();
   });
 });
