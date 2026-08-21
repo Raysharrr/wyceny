@@ -627,7 +627,19 @@ export function StepSample({
               // tests (which never pass it) keep their plain title.
               reviewedCount={reviewStats.reviewed}
               onKeep={keep}
-              onReject={reject}
+              // Confirming the rejection also clears `panelInitialRejecting`
+              // (local UI state, not a `sampleSelection` write — safe to sit
+              // next to `reject(...)`). Without this, a stale
+              // `panelInitialRejecting` pointed at THIS row's key can survive
+              // the confirm (reject() moves `selectedKey` to whoever
+              // backfills the rank slot, not to this row) and later reopen
+              // the reasons block unbidden if the selection ever lands back
+              // on this exact key without going through `selectCandidate`
+              // (Task 6, folded code item, post-T5 re-review).
+              onReject={(r) => {
+                reject(r);
+                setPanelInitialRejecting(null);
+              }}
               // Uncheck path (checkbox on a proposed row) pre-opens the
               // reasons block for THAT candidate only — comparing against
               // `selectedKey` (not a bare boolean) means switching the panel
