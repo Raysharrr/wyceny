@@ -8,7 +8,8 @@ import {
 } from "../src/app/actions/_street-view-enrich";
 import { StorageNotFoundError, type PortStorage } from "../src/ports/storage";
 import type { PortStreetView } from "../src/ports/street-view";
-import type { Candidate } from "../src/domain/sample-selection";
+import { buildingKey, type Candidate } from "../src/domain/sample-selection";
+import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
 
 function memStorage(
   seed: Record<string, Buffer | string> = {},
@@ -258,6 +259,35 @@ describe("enrichStreetView", () => {
 describe("isThumbnailKey", () => {
   it("accepts a key produced by thumbnailKey()", () => {
     expect(isThumbnailKey(thumbnailKey("0039.22.13/82.1"))).toBe(true);
+  });
+  it("round-trips for every buildingKey the real RCN fixtures produce (not just a hand-picked example)", () => {
+    // thumbnailKey passes any buildingKey through untouched except / -> ~;
+    // isThumbnailKey requires [0-9A-Za-z._~-]+. buildingKey's dzialka
+    // component comes from parseLokalId's `([^.]+)` — anything but a dot —
+    // so a stray space/diacritic/punctuation there would silently produce a
+    // key the route then refuses to serve. Checked against every unique
+    // buildingKey across all real snapshot fixtures, not just one example.
+    const slugs = [
+      "heweliusza",
+      "koscielna",
+      "meissnera",
+      "olga",
+      "sielawy",
+      "starolecka",
+      "wojska-polskiego",
+    ];
+    let checked = 0;
+    for (const slug of slugs) {
+      const { candidates } = loadSnapshot(slug);
+      for (const c of candidates) {
+        const b = buildingKey(c);
+        if (b) {
+          expect(isThumbnailKey(thumbnailKey(b))).toBe(true);
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
   it("rejects a .json sidecar key, a slash-containing key, an inspection-photo key, and a key with a space", () => {
     expect(isThumbnailKey("streetview-x.json")).toBe(false);
