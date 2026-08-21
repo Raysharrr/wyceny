@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./sample-map-leaflet.css";
+import { plural } from "@/components/wizard/plural";
 import { puwg92ToWgs84 } from "@/domain/geo";
 import { DEFAULTS, candidateKey } from "@/domain/sample-selection";
 import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
@@ -45,6 +46,8 @@ type Dot = {
   date: string;
   pricePerM2: number;
   distanceM: number;
+  /** Unknown for `RejectedRow`s (the compact shape carries no floor). */
+  floor: number | null;
 };
 
 const DOT_SIZE: Record<DotKind, number> = { proposed: 14, alternate: 11, rejected: 9 };
@@ -55,8 +58,6 @@ const FILL: Record<DotKind, string> = {
   alternate: "#9a978f",
   rejected: "#e7000b",
 };
-/** Ring radius (px) a duplicate dot is nudged onto — mirrors `map-dots.ts`. */
-const OVERLAP_RING_PX = 8;
 const M_PER_DEG_LAT = 111_320;
 
 const priceFmt = new Intl.NumberFormat("pl-PL");
@@ -81,6 +82,7 @@ function buildDots(snap: SampleSelectionSnapshot): Dot[] {
       date: string;
       pricePerM2: number;
       distanceM: number;
+      floor?: number | null;
     },
     key: string,
     kind: DotKind,
@@ -93,6 +95,7 @@ function buildDots(snap: SampleSelectionSnapshot): Dot[] {
       date: row.date,
       pricePerM2: row.pricePerM2,
       distanceM: row.distanceM,
+      floor: row.floor ?? null,
     });
   };
   for (const r of snap.rejected ?? []) push(r, candidateKey(r), "rejected");
@@ -103,32 +106,57 @@ function buildDots(snap: SampleSelectionSnapshot): Dot[] {
 }
 
 /**
- * Pixel offsets for dots sharing the EXACT same `pos` (several lokale of one
- * building): first stays on the coordinate, the k-th after it goes onto a
- * ring of 8 — the `spreadOverlaps` rule from `map-dots.ts`, but applied as a
- * screen-space `iconAnchor` shift so the spread is zoom-independent.
+ * Dots grouped by EXACT `pos` (several lokale of one building share the
+ * building's centroid from EGiB), insertion order kept. A group of one is a
+ * plain dot; a bigger group becomes one BUILDING marker that spiderfies on
+ * click (team-lead feedback 2026-08-21: a fixed pixel ring, as `map-dots.ts`
+ * does, still leaves lokale unclickable at max zoom).
  */
-function overlapOffsets(dots: Dot[]): Map<string, [number, number]> {
-  const totalAt = new Map<string, number>();
+function groupByPos(dots: Dot[]): Map<string, Dot[]> {
+  const groups = new Map<string, Dot[]>();
   for (const d of dots) {
     const posKey = `${d.pos.x},${d.pos.y}`;
-    totalAt.set(posKey, (totalAt.get(posKey) ?? 0) + 1);
+    const g = groups.get(posKey);
+    if (g) g.push(d);
+    else groups.set(posKey, [d]);
   }
-  const seenAt = new Map<string, number>();
-  const out = new Map<string, [number, number]>();
-  for (const d of dots) {
-    const posKey = `${d.pos.x},${d.pos.y}`;
-    if ((totalAt.get(posKey) ?? 0) <= 1) continue;
-    const k = seenAt.get(posKey) ?? 0;
-    seenAt.set(posKey, k + 1);
-    if (k === 0) continue;
-    const ring = Math.ceil(k / 8);
-    const angle = ((k - 1) % 8) * ((2 * Math.PI) / 8);
-    const radius = ring * OVERLAP_RING_PX;
-    out.set(d.key, [radius * Math.cos(angle), radius * Math.sin(angle)]);
-  }
-  return out;
+  return groups;
 }
+
+/** Best status of a building: any proposed → proposed, else any alternate → alternate, else rejected. */
+function bestKind(dots: Dot[]): DotKind {
+  if (dots.some((d) => d.kind === "proposed")) return "proposed";
+  if (dots.some((d) => d.kind === "alternate")) return "alternate";
+  return "rejected";
+}
+
+/** "5 propozycji: 3 w próbie · 1 alternatywa · 1 odrzucona" */
+function buildingSummary(dots: Dot[]): string {
+  const n = dots.length;
+  const a = dots.filter((d) => d.kind === "proposed").length;
+  const b = dots.filter((d) => d.kind === "alternate").length;
+  const c = n - a - b;
+  return `${n} ${plural(n, "propozycja", "propozycje", "propozycji")}: ${a} w próbie · ${b} ${plural(b, "alternatywa", "alternatywy", "alternatyw")} · ${c} ${plural(c, "odrzucona", "odrzucone", "odrzuconych")}`;
+}
+
+/** "2026-05 · 7505 zł/m² · p. 2" for a lokal on a spider leg — month, not day, the building is the context. */
+function spiderTooltip(d: Dot): string {
+  const floor = d.floor == null ? "" : ` · p. ${d.floor}`;
+  return `${d.date.slice(0, 7)} · ${priceFmt.format(Math.round(d.pricePerM2))} zł/m²${floor}`;
+}
+
+/** Spider leg length (px): base + per-lokal growth so 12 legs still leave the dots apart. */
+const SPIDER_BASE_PX = 26;
+const SPIDER_STEP_PX = 3;
+
+type Building = { marker: L.Marker; latlng: L.LatLng; dots: Dot[]; keys: string[] };
+type SpiderState = {
+  posKey: string | null;
+  layer: L.LayerGroup;
+  open: (posKey: string) => void;
+  close: () => void;
+  relayout: () => void;
+};
 
 function toLatLng(pos: { x: number; y: number }): L.LatLng {
   const { lat, lng } = puwg92ToWgs84(pos.x, pos.y);
@@ -151,6 +179,15 @@ export function SampleMapLeaflet({
   const ringsRef = useRef<L.LayerGroup | null>(null);
   const dotsRef = useRef<L.LayerGroup | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const buildingsRef = useRef<Map<string, Building>>(new Map());
+  const spiderRef = useRef<SpiderState>({
+    posKey: null,
+    layer: L.layerGroup(),
+    open: () => {},
+    close: () => {},
+    relayout: () => {},
+  });
+  const applyHighlightRef = useRef<() => void>(() => {});
   const ortoRef = useRef<L.Layer | null>(null);
   // Latest `onSelect` without re-wiring every marker on each render.
   const onSelectRef = useRef(onSelect);
@@ -219,6 +256,17 @@ export function SampleMapLeaflet({
     const rings = L.layerGroup().addTo(map);
     const dots = L.layerGroup().addTo(map);
     const markers = markersRef.current;
+    const buildings = buildingsRef.current;
+    const spider = spiderRef.current;
+    spider.layer.addTo(map);
+    // A click on the map background folds an open spider; a zoom re-lays it
+    // out (legs are pixel-length, so their lat/lng ends move with the zoom).
+    map.on("click", () => spider.close());
+    map.on("zoomend", () => spider.relayout());
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") spider.close();
+    };
+    el.addEventListener("keydown", onKeyDown);
     // Spike-only debugging hook (read from the browser console / devtools).
     Object.assign(el, { _spikeMap: map });
     mapRef.current = map;
@@ -232,11 +280,15 @@ export function SampleMapLeaflet({
 
     return () => {
       ro?.disconnect();
+      el.removeEventListener("keydown", onKeyDown);
       map.remove();
       mapRef.current = null;
       ringsRef.current = null;
       dotsRef.current = null;
       markers.clear();
+      buildings.clear();
+      spider.posKey = null;
+      spider.layer = L.layerGroup();
     };
   }, []);
 
@@ -287,32 +339,39 @@ export function SampleMapLeaflet({
     else map.setView(c, 15, { animate: false });
   }, [centerLat, centerLng, halfM, selection.radiusUsedM]);
 
-  // Candidate markers follow the selection snapshot.
+  // Candidate markers follow the selection snapshot: a plain dot for a lokal
+  // alone at its coordinate, ONE building marker (badge = count, colour =
+  // best status) for several lokale sharing it; click/Enter on the building
+  // spiderfies them onto legs, each lokal its own clickable dot.
   useEffect(() => {
     const map = mapRef.current;
     const group = dotsRef.current;
     if (!map || !group) return;
-    group.clearLayers();
-    markersRef.current.clear();
-    const dots = buildDots(selection);
-    const offsets = overlapOffsets(dots);
-    for (const d of dots) {
+    const markers = markersRef.current;
+    const buildings = buildingsRef.current;
+    const spider = spiderRef.current;
+
+    const addDotMarker = (
+      d: Dot,
+      latlng: L.LatLng,
+      target: L.LayerGroup,
+      tooltip: string,
+      onSpider: boolean,
+    ): L.Marker => {
       const clickable = d.kind !== "rejected";
       const size = DOT_SIZE[d.kind];
-      const [dx, dy] = offsets.get(d.key) ?? [0, 0];
-      const marker = L.marker(toLatLng(d.pos), {
+      const marker = L.marker(latlng, {
         icon: L.divIcon({
-          className: `smap-dot smap-dot--${d.kind}`,
+          className: `smap-dot smap-dot--${d.kind}${onSpider ? " smap-dot--spider" : ""}`,
           iconSize: [size, size],
-          iconAnchor: [size / 2 - dx, size / 2 - dy],
+          iconAnchor: [size / 2, size / 2],
           html: "",
         }),
         interactive: clickable,
         keyboard: clickable,
-        zIndexOffset: DOT_Z[d.kind],
+        zIndexOffset: DOT_Z[d.kind] + (onSpider ? 1000 : 0),
         bubblingMouseEvents: false,
-      });
-      marker.addTo(group);
+      }).addTo(target);
       const el = marker.getElement();
       if (el) {
         el.dataset.testid = `dot-${d.kind}`;
@@ -332,22 +391,141 @@ export function SampleMapLeaflet({
           // Rejected dots carry no interaction — hidden from assistive tech
           // entirely (as `sample-map.tsx`), native title only.
           el.setAttribute("aria-hidden", "true");
-          el.title = dotTooltip(d);
+          el.title = tooltip;
         }
       }
       if (clickable) {
-        marker.bindTooltip(dotTooltip(d), { direction: "top", offset: [0, -size / 2] });
+        marker.bindTooltip(tooltip, { direction: "top", offset: [0, -size / 2] });
         marker.on("click", () => onSelectRef.current(d.key));
       }
-      markersRef.current.set(d.key, marker);
+      return marker;
+    };
+
+    const unspiderfy = () => {
+      const open = spider.posKey ? buildings.get(spider.posKey) : null;
+      spider.layer.clearLayers();
+      if (open) {
+        for (const k of open.keys) markers.delete(k);
+        const el = open.marker.getElement();
+        el?.classList.remove("smap-bld--open");
+        if (el?.getAttribute("role") === "button") el.setAttribute("aria-expanded", "false");
+      }
+      spider.posKey = null;
+    };
+
+    const spiderfy = (posKey: string) => {
+      const b = buildings.get(posKey);
+      if (!b) return;
+      unspiderfy();
+      spider.posKey = posKey;
+      const el = b.marker.getElement();
+      el?.classList.add("smap-bld--open");
+      if (el?.getAttribute("role") === "button") el.setAttribute("aria-expanded", "true");
+      const center = map.latLngToLayerPoint(b.latlng);
+      const n = b.dots.length;
+      const r = SPIDER_BASE_PX + SPIDER_STEP_PX * n;
+      b.dots.forEach((d, i) => {
+        // Start at 12 o'clock, clockwise — the table's order is the ranking,
+        // so the first lokal sits on top.
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        const ll = map.layerPointToLatLng(
+          center.add(L.point(r * Math.cos(angle), r * Math.sin(angle))),
+        );
+        L.polyline([b.latlng, ll], {
+          className: "smap-leg",
+          weight: 1.5,
+          interactive: false,
+        }).addTo(spider.layer);
+        markers.set(d.key, addDotMarker(d, ll, spider.layer, spiderTooltip(d), true));
+      });
+      applyHighlightRef.current();
+    };
+
+    const addBuildingMarker = (dots: Dot[]) => {
+      const d0 = dots[0];
+      const posKey = `${d0.pos.x},${d0.pos.y}`;
+      const kind = bestKind(dots);
+      const clickable = kind !== "rejected";
+      const latlng = toLatLng(d0.pos);
+      const summary = buildingSummary(dots);
+      const toggle = () => (spider.posKey === posKey ? unspiderfy() : spiderfy(posKey));
+      const marker = L.marker(latlng, {
+        icon: L.divIcon({
+          className: `smap-bld smap-bld--${kind}`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+          html: `<span class="smap-bld-badge">${dots.length}</span>`,
+        }),
+        interactive: clickable,
+        keyboard: clickable,
+        zIndexOffset: DOT_Z[kind] + 50,
+        bubblingMouseEvents: false,
+      }).addTo(group);
+      const el = marker.getElement();
+      if (el) {
+        el.dataset.testid = `building-${kind}`;
+        el.dataset.posKey = posKey;
+        if (clickable) {
+          el.setAttribute("role", "button");
+          el.setAttribute("aria-label", `budynek: ${summary}`);
+          el.setAttribute("aria-expanded", "false");
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggle();
+            }
+          });
+        } else {
+          el.setAttribute("aria-hidden", "true");
+          el.title = summary;
+        }
+      }
+      if (clickable) {
+        marker.bindTooltip(summary, { direction: "top", offset: [0, -12] });
+        marker.on("click", toggle);
+      }
+      buildings.set(posKey, { marker, latlng, dots, keys: dots.map((d) => d.key) });
+    };
+
+    unspiderfy();
+    group.clearLayers();
+    markers.clear();
+    buildings.clear();
+    spider.open = spiderfy;
+    spider.close = unspiderfy;
+    spider.relayout = () => {
+      if (spider.posKey) spiderfy(spider.posKey);
+    };
+    for (const dots of groupByPos(buildDots(selection)).values()) {
+      if (dots.length === 1) {
+        const d = dots[0];
+        markers.set(d.key, addDotMarker(d, toLatLng(d.pos), group, dotTooltip(d), false));
+      } else {
+        addBuildingMarker(dots);
+      }
     }
   }, [selection]);
 
-  // Selected-row highlight.
+  // Selected-row highlight: the dot itself, its building (and the building
+  // auto-spiderfies so the lokal is visible), and its siblings as "kin".
   useEffect(() => {
-    for (const [key, marker] of markersRef.current) {
-      marker.getElement()?.classList.toggle("smap-dot--selected", key === selectedKey);
-    }
+    const apply = () => {
+      for (const [key, marker] of markersRef.current) {
+        marker.getElement()?.classList.toggle("smap-dot--selected", key === selectedKey);
+      }
+      for (const [posKey, b] of buildingsRef.current) {
+        const hit = selectedKey !== null && b.keys.includes(selectedKey);
+        b.marker.getElement()?.classList.toggle("smap-dot--selected", hit);
+        for (const k of b.keys) {
+          if (k !== selectedKey) {
+            markersRef.current.get(k)?.getElement()?.classList.toggle("smap-dot--kin", hit);
+          }
+        }
+        if (hit && spiderRef.current.posKey !== posKey) spiderRef.current.open(posKey);
+      }
+    };
+    applyHighlightRef.current = apply;
+    apply();
   }, [selectedKey, selection]);
 
   const eff = effectiveSelection(selection);

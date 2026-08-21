@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // SPIKE 2026-08-21 (`spike/leaflet-map`): the Leaflet prototype must mount,
-// expose the same dots/labels as `sample-map.tsx`, and never throw without a
-// network (no tile ever loads in jsdom — that is the point of the test).
+// expose the same dots/labels as `sample-map.tsx`, fold lokale sharing one
+// coordinate into a building marker that spiderfies, and never throw without
+// a network (no tile ever loads in jsdom — that is the point of the test).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -41,15 +42,13 @@ const c = (
 
 // Heweliusza 3, Poznań — real EPSG:2180 {x: easting, y: northing}.
 const CENTER = { x: 355300.15, y: 505330.31 };
+// One building (identical pos) holding P1, P2 and the rejected R1.
+const BUILDING = { x: 355320.9, y: 505342.7 };
 
 function makeSelection(overrides: Partial<SampleSelectionSnapshot> = {}): SampleSelectionSnapshot {
   return {
     version: 3,
-    proposed: [
-      c("P1", { x: 355320.9, y: 505342.7 }),
-      // Same building as P1 (identical pos) — must still be its own marker.
-      c("P2", { x: 355320.9, y: 505342.7 }),
-    ],
+    proposed: [c("P1", BUILDING), c("P2", BUILDING, { floor: 3 })],
     alternates: [c("A1", { x: 355326, y: 505289.3 })],
     flags: { "A1|LA1": ["price_outlier"] },
     rejectedCounts: { no_price: 3 },
@@ -63,7 +62,7 @@ function makeSelection(overrides: Partial<SampleSelectionSnapshot> = {}): Sample
         area: 40,
         pricePerM2: 0,
         distanceM: 300,
-        pos: { x: 355301.9, y: 505250 },
+        pos: BUILDING,
       },
     ],
     manualRejections: [],
@@ -76,7 +75,40 @@ function makeSelection(overrides: Partial<SampleSelectionSnapshot> = {}): Sample
 }
 
 describe("SampleMapLeaflet (spike)", () => {
-  it("mounts a Leaflet map with one marker per dot, labelled like the SVG map, without network", () => {
+  it("mounts a Leaflet map without network: a lone lokal is a dot, lokale sharing a coordinate are ONE building marker", () => {
+    const { container } = render(
+      <SampleMapLeaflet
+        selection={makeSelection()}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(container.querySelector(".leaflet-container")).not.toBeNull();
+
+    const building = screen.getByTestId("building-proposed");
+    expect(building).toHaveTextContent("3");
+    expect(building).toHaveAttribute(
+      "aria-label",
+      "budynek: 3 propozycje: 2 w próbie · 0 alternatyw · 1 odrzucona",
+    );
+    expect(building).toHaveAttribute("aria-expanded", "false");
+    expect(building).toHaveAttribute("tabindex", "0");
+    // Folded: no per-lokal dots for the building yet, just the lone alternate.
+    expect(screen.queryAllByTestId("dot-proposed")).toHaveLength(0);
+    expect(screen.queryAllByTestId("dot-rejected")).toHaveLength(0);
+    const alt = screen.getByTestId("dot-alternate");
+    expect(alt).toHaveAttribute(
+      "aria-label",
+      `kandydatka 2026-05-01 · ${PRICE_12000} zł/m² · 100 m · alternatywa`,
+    );
+
+    // Legend counts are the census, not the drawn markers.
+    expect(screen.getByText(/odrzucone 3/)).toBeInTheDocument();
+    expect(screen.getByText(/propozycja 2/)).toBeInTheDocument();
+  });
+
+  it("click on the building spiderfies every lokal onto its own leg; a leg dot selects; click again folds", () => {
     const onSelect = vi.fn();
     const { container } = render(
       <SampleMapLeaflet
@@ -86,27 +118,29 @@ describe("SampleMapLeaflet (spike)", () => {
         onSelect={onSelect}
       />,
     );
-    expect(container.querySelector(".leaflet-container")).not.toBeNull();
-    expect(screen.getAllByTestId("dot-proposed")).toHaveLength(2);
-    expect(screen.getAllByTestId("dot-alternate")).toHaveLength(1);
-    expect(screen.getAllByTestId("dot-rejected")).toHaveLength(1);
-
-    const proposed = screen.getAllByRole("button", {
-      name: `kandydatka 2026-05-01 · ${PRICE_12000} zł/m² · 100 m · propozycja`,
-    });
+    const building = screen.getByTestId("building-proposed");
+    fireEvent.click(building);
+    expect(building).toHaveAttribute("aria-expanded", "true");
+    expect(container.querySelectorAll(".smap-leg")).toHaveLength(3);
+    const proposed = screen.getAllByTestId("dot-proposed");
     expect(proposed).toHaveLength(2);
+    expect(proposed[0]).toHaveAttribute("role", "button");
     expect(proposed[0]).toHaveAttribute("tabindex", "0");
-
-    const rejected = screen.getAllByTestId("dot-rejected")[0];
+    const rejected = screen.getByTestId("dot-rejected");
     expect(rejected).toHaveAttribute("aria-hidden", "true");
     expect(rejected).not.toHaveAttribute("tabindex");
+    expect(onSelect).not.toHaveBeenCalled();
 
-    // Legend counts are the census, not the sampled dots.
-    expect(screen.getByText(/odrzucone 3/)).toBeInTheDocument();
-    expect(screen.getByText(/propozycja 2/)).toBeInTheDocument();
+    fireEvent.click(proposed[1]);
+    expect(onSelect).toHaveBeenCalledWith("P2|LP2");
+
+    fireEvent.click(building);
+    expect(building).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryAllByTestId("dot-proposed")).toHaveLength(0);
+    expect(container.querySelectorAll(".smap-leg")).toHaveLength(0);
   });
 
-  it("click and Enter/Space on a marker call onSelect with the candidate key (once per key)", () => {
+  it("Enter/Space on a lone dot select once per key; Enter on the building toggles the spider", () => {
     const onSelect = vi.fn();
     render(
       <SampleMapLeaflet
@@ -117,20 +151,34 @@ describe("SampleMapLeaflet (spike)", () => {
       />,
     );
     const alt = screen.getByRole("button", { name: /alternatywa$/ });
-    fireEvent.click(alt);
-    expect(onSelect).toHaveBeenCalledWith("A1|LA1");
-    onSelect.mockClear();
     fireEvent.keyDown(alt, { key: "Enter" });
     fireEvent.keyDown(alt, { key: " " });
     expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenCalledWith("A1|LA1");
+
+    const building = screen.getByTestId("building-proposed");
+    fireEvent.keyDown(building, { key: "Enter" });
+    expect(building).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByTestId("dot-proposed")).toHaveLength(2);
   });
 
-  it("highlights the selected marker and survives a selection change + unmount", () => {
-    const sel = makeSelection();
+  it("a selected lokal inside a building opens the spider and marks the building, the lokal and its kin", () => {
     const { rerender, unmount } = render(
-      <SampleMapLeaflet selection={sel} center={CENTER} selectedKey="A1|LA1" onSelect={vi.fn()} />,
+      <SampleMapLeaflet
+        selection={makeSelection()}
+        center={CENTER}
+        selectedKey="P2|LP2"
+        onSelect={vi.fn()}
+      />,
     );
-    expect(screen.getByTestId("dot-alternate")).toHaveClass("smap-dot--selected");
+    const building = screen.getByTestId("building-proposed");
+    expect(building).toHaveClass("smap-dot--selected");
+    expect(building).toHaveAttribute("aria-expanded", "true");
+    const [p1, p2] = screen.getAllByTestId("dot-proposed");
+    expect(p2).toHaveClass("smap-dot--selected");
+    expect(p1).toHaveClass("smap-dot--kin");
+    expect(p1).not.toHaveClass("smap-dot--selected");
+
     rerender(
       <SampleMapLeaflet
         selection={makeSelection({ radiusUsedM: 1000 })}
@@ -139,7 +187,9 @@ describe("SampleMapLeaflet (spike)", () => {
         onSelect={vi.fn()}
       />,
     );
-    expect(screen.getByTestId("dot-alternate")).not.toHaveClass("smap-dot--selected");
+    // A new snapshot rebuilds the markers folded; nothing stays highlighted.
+    expect(screen.getByTestId("building-proposed")).not.toHaveClass("smap-dot--selected");
+    expect(screen.queryAllByTestId("dot-proposed")).toHaveLength(0);
     expect(() => unmount()).not.toThrow();
   });
 });
