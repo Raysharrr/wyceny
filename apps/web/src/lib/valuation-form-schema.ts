@@ -166,6 +166,21 @@ export const manualRejectionSchema = z.object({
   at: z.string(),
 });
 
+/** Mirrors `ManualInclusion` from `@/domain/sample-manual` — the appraiser's manual inclusion overlay (Slice 3c); carries the full candidate so it survives a radius change. */
+export const manualInclusionSchema = z.object({
+  transactionId: z.string(),
+  lokalId: z.string(),
+  at: z.string(),
+  candidate: candidateSchema,
+});
+
+/** Mirrors `ReviewedMark` from `@/domain/sample-manual` — review trail, informational only (Slice 3c). */
+export const reviewedMarkSchema = z.object({
+  transactionId: z.string(),
+  lokalId: z.string(),
+  at: z.string(),
+});
+
 /** Mirrors `StreetViewSnapshot` from `@/domain/street-view-snapshot` — frozen Street View per building (Slice 3, ADR-011). */
 export const streetViewSchema = z.record(
   z.string(),
@@ -199,6 +214,10 @@ export const sampleSelectionSchema = z.object({
   rejected: z.array(rejectedRowSchema).optional(),
   /** Appraiser's overlay (Slice 3). Optional for the same reason. */
   manualRejections: z.array(manualRejectionSchema).optional(),
+  /** Appraiser's explicit additions (Slice 3c). Optional: pre-Slice-3c snapshots lack it. */
+  manualInclusions: z.array(manualInclusionSchema).optional(),
+  /** Review trail (Slice 3c). Optional: pre-Slice-3c snapshots lack it. */
+  reviewed: z.array(reviewedMarkSchema).optional(),
   radiusUsedM: z.number(),
   radiusWalk: z.array(
     z.object({

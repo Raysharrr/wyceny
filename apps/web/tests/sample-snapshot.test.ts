@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { selectSample, candidateKey, type Candidate } from "../src/domain/sample-selection";
-import { toSampleSelectionSnapshot, effectiveSelection } from "../src/domain/sample-snapshot";
+import {
+  toSampleSelectionSnapshot,
+  effectiveSelection,
+  reviewStats,
+} from "../src/domain/sample-snapshot";
 import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
 import { deriveSubjectEgib } from "../src/domain/egib-id";
 
@@ -69,6 +73,8 @@ describe("toSampleSelectionSnapshot", () => {
     ]);
     expect(first.reason).toBe(sel.rejected[0].reason);
     expect(snap.manualRejections).toEqual([]);
+    expect(snap.manualInclusions).toEqual([]);
+    expect(snap.reviewed).toEqual([]);
   });
   it("flags only for proposed ∪ alternates; rejectedCounts sums to the rejected list", () => {
     const keep = new Set([...sel.proposed, ...sel.alternates].map(candidateKey));
@@ -162,6 +168,53 @@ describe("toSampleSelectionSnapshot", () => {
     expect(eff.proposed.map(candidateKey)).not.toContain(candidateKey(victim));
     expect(eff.removed).toEqual([victim]);
     expect(effectiveSelection(snap).proposed).toEqual(snap.proposed);
+  });
+  it("effectiveSelection applies manualInclusions as an overlay on top of rejections (Slice 3c)", () => {
+    const added = snap.alternates[0];
+    const withInclusion = {
+      ...snap,
+      manualInclusions: [
+        {
+          transactionId: added.transactionId,
+          lokalId: added.lokalId,
+          at: "2026-08-21T10:00:00Z",
+          candidate: added,
+        },
+      ],
+    };
+    const eff = effectiveSelection(withInclusion);
+    expect(eff.proposed).toHaveLength(snap.proposed.length + 1);
+    expect(eff.proposed[eff.proposed.length - 1]).toEqual(added);
+    expect(eff.alternates.map(candidateKey)).not.toContain(candidateKey(added));
+    expect(eff.included).toEqual([added]);
+  });
+  it("reviewStats counts only reviewed keys that still exist in the effective (proposed+alternates+removed) lists", () => {
+    const victim = snap.proposed[0];
+    const surviving = snap.proposed[1];
+    const withReview = {
+      ...snap,
+      manualRejections: [
+        {
+          transactionId: victim.transactionId,
+          lokalId: victim.lokalId,
+          reason: "building_older" as const,
+          at: "2026-08-21T10:00:00Z",
+        },
+      ],
+      reviewed: [
+        {
+          transactionId: surviving.transactionId,
+          lokalId: surviving.lokalId,
+          at: "2026-08-21T10:00:00Z",
+        },
+        { transactionId: "stale", lokalId: "nope", at: "2026-08-21T10:00:00Z" },
+      ],
+    };
+    const stats = reviewStats(withReview);
+    const eff = effectiveSelection(withReview);
+    expect(stats.total).toBe(eff.proposed.length + eff.alternates.length + eff.removed.length);
+    expect(stats.reviewed).toBe(1);
+    expect(stats.reviewedKeys).toEqual(new Set([candidateKey(surviving)]));
   });
 });
 

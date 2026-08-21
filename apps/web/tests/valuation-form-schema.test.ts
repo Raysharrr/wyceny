@@ -309,6 +309,43 @@ describe("sampleSelectionSchema — v3 additive fields (Slice 3)", () => {
     });
     expect(bad.success).toBe(false);
   });
+  it("accepts manualInclusions and reviewed (Slice 3c); parses back without stripping them", () => {
+    const candidate = {
+      transactionId: "T3",
+      date: "2026-05-10",
+      area: 50,
+      pricePerM2: 12000,
+      priceTotal: 600000,
+      egib: null,
+      lokalId: "L3",
+      distanceM: 500,
+      floor: null,
+      rooms: null,
+      market: null,
+      share: "1/1",
+      transType: "wolnyRynek",
+      function: "mieszkalna",
+      seller: null,
+      pos: null,
+    };
+    const parsed = sampleSelectionSchema.safeParse({
+      ...base,
+      manualInclusions: [
+        { transactionId: "T3", lokalId: "L3", at: "2026-08-21T10:00:00Z", candidate },
+      ],
+      reviewed: [{ transactionId: "T1", lokalId: "L1", at: "2026-08-21T10:00:00Z" }],
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) throw parsed.error;
+    expect(parsed.data.manualInclusions).toHaveLength(1);
+    expect(parsed.data.reviewed).toHaveLength(1);
+
+    const bad = sampleSelectionSchema.safeParse({
+      ...base,
+      manualInclusions: [{ transactionId: "T3", lokalId: "L3", at: "x" }], // missing candidate
+    });
+    expect(bad.success).toBe(false);
+  });
   it("still pins version 3", () => {
     expect(sampleSelectionSchema.safeParse({ ...base, version: 2 }).success).toBe(false);
   });
