@@ -255,11 +255,23 @@ export function StepSample({
 
   // Which candidate the "w próbie" checkbox's uncheck path pre-opens the
   // rejection-reasons block for (Task 5) — compared against `selectedKey`
-  // rather than stored as a boolean, so switching the panel to a DIFFERENT
-  // row (click, ↑/↓, "Odrzucone") naturally stops pre-opening it without any
-  // extra bookkeeping. Cleared explicitly on "Anuluj" (the panel's own
-  // cancel button) so reopening the SAME row later doesn't resurrect it.
+  // rather than stored as a boolean. Cleared explicitly on "Anuluj" (the
+  // panel's own cancel button) AND on every ordinary selection (see
+  // `selectCandidate` below) — comparing against `selectedKey` alone only
+  // covers "a DIFFERENT row is now selected"; re-selecting the SAME row
+  // later (a click, an arrow key, "Przywróć" from Odrzucone) would otherwise
+  // still satisfy `panelInitialRejecting === selectedKey` and reopen the
+  // reasons block even though the appraiser never unchecked it again.
   const [panelInitialRejecting, setPanelInitialRejecting] = useState<string | null>(null);
+
+  // Every ordinary "select this row" path (row click, ↑/↓, a map dot, an
+  // "Odrzucone" row) goes through this — NOT the checkbox's uncheck path,
+  // which sets `panelInitialRejecting` itself right after calling
+  // `setSelectedKey` directly.
+  const selectCandidate = (key: string | null) => {
+    setSelectedKey(key);
+    setPanelInitialRejecting(null);
+  };
 
   // "Dodana ręcznie" badge (Task 5) — keys the appraiser added BEYOND the
   // ranked list (`eff.included`, never `sel.manualInclusions` — an inclusion
@@ -403,7 +415,7 @@ export function StepSample({
                     selection={sel}
                     center={{ x: liveSampleMeta.point.x, y: liveSampleMeta.point.y }}
                     selectedKey={selectedKey}
-                    onSelect={setSelectedKey}
+                    onSelect={selectCandidate}
                   />
                 ) : null}
                 <SampleSections
@@ -411,7 +423,7 @@ export function StepSample({
                   streetView={liveStreetView ?? null}
                   streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
                   selectedKey={selectedKey}
-                  onSelect={setSelectedKey}
+                  onSelect={selectCandidate}
                   reviewedKeys={reviewStats.reviewedKeys}
                   includedKeys={includedKeys}
                   defaultAlternatesOpen={reviewStats.reviewed === 0}
@@ -430,7 +442,7 @@ export function StepSample({
                     }
                   }}
                 />
-                <SampleRejected selection={sel} onRestore={restore} onSelect={setSelectedKey} />
+                <SampleRejected selection={sel} onRestore={restore} onSelect={selectCandidate} />
               </>
             ) : null}
 
@@ -628,7 +640,7 @@ export function StepSample({
                 next();
               }}
               onRestore={() => selectedRejection && restore(selectedRejection)}
-              onClose={() => setSelectedKey(null)}
+              onClose={() => selectCandidate(null)}
             />
           ) : null}
 

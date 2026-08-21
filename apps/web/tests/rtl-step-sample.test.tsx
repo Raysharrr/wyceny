@@ -2186,7 +2186,9 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
 
-    // p1 left "W próbie" — alt1 backfills the slot, so the section still has 3 rows.
+    // p1 left "W próbie" — alt1 (unflagged, a free slot at mount already
+    // promoted it there — see the flagged fixtures elsewhere in this file)
+    // stays, so the section drops from 4 to 3, not further.
     await waitFor(() => expect(screen.getByText("W próbie (3)")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /Odrzucone \(1\)/ })).toBeInTheDocument();
 
@@ -2545,5 +2547,45 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
     await user.click(screen.getByRole("button", { name: "Anuluj" }));
     expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull();
     expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument();
+  });
+
+  it("re-selecting the SAME row after unchecking it does NOT reopen the rejection-reasons block (advisor finding, 2026-08-22)", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const p2 = makeCandidate({ transactionId: "T-P2", lokalId: "L-P2" });
+    const sel = makeSampleSelection({ proposed: [p1, p2], alternates: [] });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, p2].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const proposedTable = screen.getByRole("table", { name: "W próbie" });
+    const checkboxes = within(proposedTable).getAllByRole("checkbox");
+
+    // Uncheck row A (p1) — panel pre-opens the reasons block for it.
+    await user.click(checkboxes[0]);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Potwierdź odrzucenie/i })).toBeInTheDocument(),
+    );
+
+    // Select row B (p2) — the block closes (no reason to reject B).
+    await user.click(screen.getAllByTestId("proposed-row")[1]);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull(),
+    );
+
+    // Back to row A, via an ordinary row click (not the checkbox) — must
+    // NOT reopen the reasons block; the appraiser never unchecked it again.
+    await user.click(screen.getAllByTestId("proposed-row")[0]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull();
   });
 });
