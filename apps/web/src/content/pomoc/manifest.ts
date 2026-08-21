@@ -126,6 +126,8 @@ export const HELP_PAGES: HelpPage[] = [
       "alternatywy",
       "odrzucone",
       "mapa",
+      "dodaj do próby",
+      "przejrzane",
     ],
     summary:
       "Przegląd propozycji z RCN z podglądem budynku, odrzucanie z powodem, promień i odrzucone.",

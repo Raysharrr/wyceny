@@ -101,7 +101,7 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
  * przeniesieniu komponentu, a oba historyczne rozjazdy polegaly na tym, ze
  * przycisk PRZESTAL istniec.
  *
- * Zakres na dzis: 30 wystapien, 15 unikalnych etykiet. To siec bezpieczenstwa
+ * Zakres na dzis: 34 wystapien, 17 unikalnych etykiet. To siec bezpieczenstwa
  * na jedna, najczestsza klase bledu — nie dowod zgodnosci Pomocy z aplikacja.
  *
  * T12 potwierdzil to empirycznie po raz trzeci: skasowanie przycisku
@@ -144,9 +144,9 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
   // zakres straznika, a to jest dokladnie ten rodzaj cichej utraty pokrycia,
   // przed ktorym ten plik ma bronic. Rosna, gdy Pomoc cytuje nowy przycisk —
   // wtedy zaktualizuj tez liczby w komentarzu wyzej.
-  it("zna dokladny zakres: 30 wystapien, 15 unikalnych etykiet", () => {
-    expect(cytaty.length).toBe(30);
-    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(15);
+  it("zna dokladny zakres: 34 wystapien, 17 unikalnych etykiet", () => {
+    expect(cytaty.length).toBe(34);
+    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(17);
   });
 
   it("kazda cytowana etykieta wystepuje w zrodlach aplikacji", () => {
