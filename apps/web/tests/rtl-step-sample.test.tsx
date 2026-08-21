@@ -40,6 +40,12 @@ vi.mock("@/app/actions/reselect-sample", () => ({
 
 import { StepSample } from "@/app/valuations/[id]/steps/step-sample";
 
+// The overview map has its own RTL suite (rtl-sample-map-leaflet.test.tsx);
+// here only its presence/absence matters, and Leaflet is client-only.
+vi.mock("@/app/valuations/[id]/steps/sample-map", () => ({
+  SampleMap: () => <figure data-testid="sample-map" />,
+}));
+
 const VID = "11111111-2222-3333-4444-555555555555";
 const ADDRESS = "ul. Kościelna 33, Poznań";
 const AREA = 71.63;
@@ -788,7 +794,7 @@ describe("StepSample — overview map (Task 9)", () => {
       />,
     );
 
-    expect(screen.getByAltText("Ortofotomapa GUGiK z propozycjami")).toBeInTheDocument();
+    expect(screen.getByTestId("sample-map")).toBeInTheDocument();
   });
 
   it("is absent without a persisted sampleMeta (no subject point to centre it on)", () => {
@@ -804,7 +810,7 @@ describe("StepSample — overview map (Task 9)", () => {
       />,
     );
 
-    expect(screen.queryByAltText("Ortofotomapa GUGiK z propozycjami")).toBeNull();
+    expect(screen.queryByTestId("sample-map")).toBeNull();
   });
 });
 
