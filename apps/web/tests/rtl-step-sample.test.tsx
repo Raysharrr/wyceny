@@ -2680,4 +2680,52 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
       expect(screen.getByRole("button", { name: /Potwierdź odrzucenie/i })).toBeInTheDocument(),
     );
   });
+
+  it("uncheck A → confirm the rejection → Przywróć A from Odrzucone → re-selecting A shows the normal panel, not a re-opened reasons block (Task 6, folded code item)", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const p2 = makeCandidate({ transactionId: "T-P2", lokalId: "L-P2" });
+    const p3 = makeCandidate({ transactionId: "T-P3", lokalId: "L-P3" });
+    const sel = makeSampleSelection({ proposed: [p1, p2, p3], alternates: [] });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, p2, p3].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    // Uncheck p1 (A) — pre-opens the reasons block.
+    const proposedTable = screen.getByRole("table", { name: "W próbie" });
+    await user.click(within(proposedTable).getAllByRole("checkbox")[0]);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Potwierdź odrzucenie/i })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    // Confirming moved the panel to whoever backfilled A's slot (p2) — NOT
+    // A itself. Without the fix, `panelInitialRejecting` stays pointed at
+    // A's key here — invisible for now, since the panel is on a different
+    // candidate.
+    await waitFor(() => expect(screen.getByText("W próbie (2)")).toBeInTheDocument());
+
+    // Przywróć A from the still-manual "Odrzucone" list (its OWN inline
+    // button — not the panel's) — this does not touch the selection at all.
+    await user.click(screen.getByRole("button", { name: /Odrzucone \(1\)/ }));
+    await user.click(screen.getByRole("button", { name: "Przywróć" }));
+    await waitFor(() => expect(screen.getByText("W próbie (3)")).toBeInTheDocument());
+
+    // Re-select A via an ordinary row click, now that it's back in "W
+    // próbie" — must show the normal Zostaw/Odrzuć panel, never a
+    // re-opened reasons block for a rejection nobody asked for this time.
+    await user.click(screen.getAllByTestId("proposed-row")[0]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull();
+  });
 });
