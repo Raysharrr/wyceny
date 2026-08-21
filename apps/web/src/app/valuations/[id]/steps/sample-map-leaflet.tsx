@@ -9,11 +9,17 @@ import { DEFAULTS } from "@/domain/sample-selection";
 import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import { KIEG_WMS, ORTO_WMS } from "./embed-urls";
 import {
+  bestKind,
   buildDots,
+  buildingSummary,
   dotAriaLabel,
   dotTooltip,
+  groupByPos,
+  posKey,
   rejectedCensus,
   ringStyle,
+  spiderOffsets,
+  spiderTooltip,
   viewHalfM,
   type Dot,
   type DotKind,
@@ -53,6 +59,17 @@ function toLatLng(pos: { x: number; y: number }): L.LatLng {
   return L.latLng(lat, lng);
 }
 
+type Building = { marker: L.Marker; latlng: L.LatLng; dots: Dot[]; keys: string[] };
+// Mutable record: the mount effect's map handlers read `open/close/relayout`
+// at call time, the markers effect reassigns them on every snapshot.
+type SpiderState = {
+  posKey: string | null;
+  layer: L.LayerGroup;
+  open: (posKey: string) => void;
+  close: () => void;
+  relayout: () => void;
+};
+
 export function SampleMapLeaflet({
   selection,
   center,
@@ -69,6 +86,15 @@ export function SampleMapLeaflet({
   const ringsRef = useRef<L.LayerGroup | null>(null);
   const dotsRef = useRef<L.LayerGroup | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const buildingsRef = useRef<Map<string, Building>>(new Map());
+  const spiderRef = useRef<SpiderState>({
+    posKey: null,
+    layer: L.layerGroup(),
+    open: () => {},
+    close: () => {},
+    relayout: () => {},
+  });
+  const applyHighlightRef = useRef<() => void>(() => {});
   // Latest `onSelect` without re-wiring every marker on each render.
   const onSelectRef = useRef(onSelect);
   useEffect(() => {
@@ -134,6 +160,17 @@ export function SampleMapLeaflet({
     ringsRef.current = rings;
     dotsRef.current = dots;
     const markers = markersRef.current;
+    const buildings = buildingsRef.current;
+    const spider = spiderRef.current;
+    spider.layer.addTo(map);
+    // A click on the map background folds an open spider; a zoom re-lays it out
+    // (legs are pixel-length, so their lat/lng ends move with the zoom).
+    map.on("click", () => spider.close());
+    map.on("zoomend", () => spider.relayout());
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") spider.close();
+    };
+    el.addEventListener("keydown", onKeyDown);
 
     const ro =
       typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => map.invalidateSize()) : null;
@@ -141,11 +178,15 @@ export function SampleMapLeaflet({
 
     return () => {
       ro?.disconnect();
+      el.removeEventListener("keydown", onKeyDown);
       map.remove();
       mapRef.current = null;
       ringsRef.current = null;
       dotsRef.current = null;
       markers.clear();
+      buildings.clear();
+      spider.posKey = null;
+      spider.layer = L.layerGroup();
     };
   }, []);
 
@@ -194,25 +235,138 @@ export function SampleMapLeaflet({
     else map.setView(c, 15, { animate: false });
   }, [centerLat, centerLng, halfM, selection.radiusUsedM]);
 
-  // Candidate dots follow the selection snapshot.
+  // Markers follow the snapshot: a plain dot for a lokal alone at its
+  // coordinate, ONE building marker (badge = count, colour = best status) for
+  // several lokale sharing it; click/Enter on the building spiderfies them onto
+  // legs, each lokal its own clickable dot.
   useEffect(() => {
+    const map = mapRef.current;
     const group = dotsRef.current;
-    if (!group) return;
+    if (!map || !group) return;
     const markers = markersRef.current;
+    const buildings = buildingsRef.current;
+    const spider = spiderRef.current;
+
+    const unspiderfy = () => {
+      const open = spider.posKey ? buildings.get(spider.posKey) : null;
+      spider.layer.clearLayers();
+      if (open) {
+        for (const k of open.keys) markers.delete(k);
+        const el = open.marker.getElement();
+        el?.classList.remove("smap-bld--open");
+        if (el?.getAttribute("role") === "button") el.setAttribute("aria-expanded", "false");
+      }
+      spider.posKey = null;
+    };
+
+    const spiderfy = (key: string) => {
+      const b = buildings.get(key);
+      if (!b) return;
+      unspiderfy();
+      spider.posKey = key;
+      const el = b.marker.getElement();
+      el?.classList.add("smap-bld--open");
+      if (el?.getAttribute("role") === "button") el.setAttribute("aria-expanded", "true");
+      const origin = map.latLngToLayerPoint(b.latlng);
+      const offsets = spiderOffsets(b.dots.length);
+      b.dots.forEach((d, i) => {
+        const ll = map.layerPointToLatLng(origin.add(L.point(offsets[i].dx, offsets[i].dy)));
+        L.polyline([b.latlng, ll], {
+          className: "smap-leg",
+          weight: 1.5,
+          interactive: false,
+        }).addTo(spider.layer);
+        markers.set(d.key, addDotMarker(d, ll, spider.layer, spiderTooltip(d), onSelectRef, true));
+      });
+      applyHighlightRef.current();
+    };
+
+    const addBuildingMarker = (dots: Dot[]) => {
+      const key = posKey(dots[0].pos);
+      const kind = bestKind(dots);
+      const clickable = kind !== "rejected";
+      const latlng = toLatLng(dots[0].pos);
+      const summary = buildingSummary(dots);
+      const toggle = () => (spider.posKey === key ? unspiderfy() : spiderfy(key));
+      const marker = L.marker(latlng, {
+        icon: L.divIcon({
+          className: `smap-bld smap-bld--${kind}`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+          html: `<span class="smap-bld-badge">${dots.length}</span>`,
+        }),
+        interactive: clickable,
+        keyboard: clickable,
+        zIndexOffset: DOT_Z[kind] + 50,
+        bubblingMouseEvents: false,
+      }).addTo(group);
+      const el = marker.getElement();
+      if (el) {
+        el.dataset.testid = `building-${kind}`;
+        el.dataset.posKey = key;
+        if (clickable) {
+          el.setAttribute("role", "button");
+          el.setAttribute("aria-label", `budynek: ${summary}`);
+          el.setAttribute("aria-expanded", "false");
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggle();
+            }
+          });
+        } else {
+          el.setAttribute("aria-hidden", "true");
+          el.title = summary;
+        }
+      }
+      if (clickable) {
+        marker.bindTooltip(summary, { direction: "top", offset: [0, -12] });
+        marker.on("click", toggle);
+      }
+      buildings.set(key, { marker, latlng, dots, keys: dots.map((d) => d.key) });
+    };
+
+    unspiderfy();
     group.clearLayers();
     markers.clear();
-    for (const d of buildDots(selection)) {
-      markers.set(d.key, addDotMarker(d, toLatLng(d.pos), group, dotTooltip(d), onSelectRef));
+    buildings.clear();
+    spider.open = spiderfy;
+    spider.close = unspiderfy;
+    spider.relayout = () => {
+      if (spider.posKey) spiderfy(spider.posKey);
+    };
+    for (const dots of groupByPos(buildDots(selection)).values()) {
+      if (dots.length === 1) {
+        const d = dots[0];
+        markers.set(d.key, addDotMarker(d, toLatLng(d.pos), group, dotTooltip(d), onSelectRef));
+      } else {
+        addBuildingMarker(dots);
+      }
     }
   }, [selection]);
 
-  // Selected-row highlight. `selection` is a deliberate dependency: the dots
-  // effect above rebuilds all markers on a new snapshot, so the selected
-  // class must be re-applied to the freshly created elements.
+  // Selected-row highlight: the dot itself, its building (auto-spiderfied so
+  // the lokal is visible) and its siblings as "kin". `spiderfy` calls this
+  // back after laying out legs; it terminates because `spider.posKey` is set
+  // before the callback runs.
   useEffect(() => {
-    for (const [key, marker] of markersRef.current) {
-      marker.getElement()?.classList.toggle("smap-dot--selected", key === selectedKey);
-    }
+    const apply = () => {
+      for (const [key, marker] of markersRef.current) {
+        marker.getElement()?.classList.toggle("smap-dot--selected", key === selectedKey);
+      }
+      for (const [key, b] of buildingsRef.current) {
+        const hit = selectedKey !== null && b.keys.includes(selectedKey);
+        b.marker.getElement()?.classList.toggle("smap-dot--selected", hit);
+        for (const k of b.keys) {
+          if (k !== selectedKey) {
+            markersRef.current.get(k)?.getElement()?.classList.toggle("smap-dot--kin", hit);
+          }
+        }
+        if (hit && spiderRef.current.posKey !== key) spiderRef.current.open(key);
+      }
+    };
+    applyHighlightRef.current = apply;
+    apply();
   }, [selectedKey, selection]);
 
   const eff = effectiveSelection(selection);
@@ -242,8 +396,9 @@ export function SampleMapLeaflet({
         </figcaption>
       </figure>
       <p className="text-sm text-muted-foreground">
-        Mapa: OpenStreetMap · Ortofoto i działki: GUGiK (WMS) · kółko myszy przybliża, klik w kropkę
-        podświetla wiersz i otwiera panel
+        Mapa: OpenStreetMap · Ortofoto i działki: GUGiK (WMS) · kółko myszy przybliża · znacznik z
+        liczbą = kilka lokali w jednym budynku, klik rozkłada je wokół · klik w kropkę podświetla
+        wiersz i otwiera panel
         {tilesFailed ? " · tło mapy nie wczytało się — znaczniki i pierścienie działają" : null}
       </p>
     </>

@@ -206,3 +206,156 @@ describe("SampleMapLeaflet — layers, rings, dots", () => {
     expect(() => unmount()).not.toThrow();
   });
 });
+
+// One building (identical pos) holding P1, P2 and the rejected R1 — the
+// Heweliusza 3 case: lokale of one building share the EGiB centroid.
+const BUILDING = { x: 355320.9, y: 505342.7 };
+function makeBuildingSelection(
+  overrides: Partial<SampleSelectionSnapshot> = {},
+): SampleSelectionSnapshot {
+  const base = makeSelection();
+  return {
+    ...base,
+    proposed: [c("P1", BUILDING), c("P2", BUILDING, { floor: 3 })],
+    rejected: [{ ...base.rejected![0], pos: BUILDING }],
+    ...overrides,
+  };
+}
+
+describe("SampleMapLeaflet — building markers + spiderfy", () => {
+  it("folds lokale sharing a coordinate into ONE building marker with a count badge", () => {
+    render(
+      <SampleMapLeaflet
+        selection={makeBuildingSelection()}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const building = screen.getByTestId("building-proposed");
+    expect(building).toHaveTextContent("3");
+    expect(building).toHaveAttribute(
+      "aria-label",
+      "budynek: 3 propozycje: 2 w próbie · 0 alternatyw · 1 odrzucona",
+    );
+    expect(building).toHaveAttribute("role", "button");
+    expect(building).toHaveAttribute("aria-expanded", "false");
+    expect(building).toHaveAttribute("tabindex", "0");
+    expect(screen.queryAllByTestId("dot-proposed")).toHaveLength(0);
+    expect(screen.queryAllByTestId("dot-rejected")).toHaveLength(0);
+    expect(screen.getByTestId("dot-alternate")).toBeInTheDocument();
+  });
+
+  it("a building with only rejected lokale is red and inert", () => {
+    render(
+      <SampleMapLeaflet
+        selection={makeBuildingSelection({
+          proposed: [c("P1", { x: 355280, y: 505350 })],
+          rejected: [
+            { ...makeSelection().rejected![0], pos: BUILDING },
+            { ...makeSelection().rejected![0], transactionId: "R2", lokalId: "LR2", pos: BUILDING },
+          ],
+        })}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const building = screen.getByTestId("building-rejected");
+    expect(building).toHaveAttribute("aria-hidden", "true");
+    expect(building).not.toHaveAttribute("tabindex");
+    expect(building).toHaveAttribute(
+      "title",
+      "2 propozycje: 0 w próbie · 0 alternatyw · 2 odrzucone",
+    );
+  });
+
+  it("click spiderfies every lokal onto its own leg; a leg dot selects; click again folds", () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <SampleMapLeaflet
+        selection={makeBuildingSelection()}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={onSelect}
+      />,
+    );
+    const building = screen.getByTestId("building-proposed");
+    fireEvent.click(building);
+    expect(building).toHaveAttribute("aria-expanded", "true");
+    expect(building).toHaveClass("smap-bld--open");
+    expect(container.querySelectorAll(".smap-leg")).toHaveLength(3);
+    const proposed = screen.getAllByTestId("dot-proposed");
+    expect(proposed).toHaveLength(2);
+    expect(proposed[0]).toHaveClass("smap-dot--spider");
+    expect(proposed[0]).toHaveAttribute("role", "button");
+    expect(screen.getByTestId("dot-rejected")).toHaveAttribute("aria-hidden", "true");
+    expect(onSelect).not.toHaveBeenCalled();
+
+    fireEvent.click(proposed[1]);
+    expect(onSelect).toHaveBeenCalledWith("P2|LP2");
+    expect(onSelect).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(building);
+    expect(building).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryAllByTestId("dot-proposed")).toHaveLength(0);
+    expect(container.querySelectorAll(".smap-leg")).toHaveLength(0);
+  });
+
+  it("Enter/Space toggle the spider; Escape folds it; zoom keeps it open", () => {
+    const { container } = render(
+      <SampleMapLeaflet
+        selection={makeBuildingSelection()}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const building = screen.getByTestId("building-proposed");
+    fireEvent.keyDown(building, { key: "Enter" });
+    expect(building).toHaveAttribute("aria-expanded", "true");
+    fireEvent.keyDown(building, { key: " " });
+    expect(building).toHaveAttribute("aria-expanded", "false");
+    fireEvent.keyDown(building, { key: "Enter" });
+    expect(screen.getAllByTestId("dot-proposed")).toHaveLength(2);
+
+    fireEvent.click(container.querySelector(".leaflet-control-zoom-in")!);
+    expect(building).toHaveAttribute("aria-expanded", "true");
+    expect(container.querySelectorAll(".smap-leg")).toHaveLength(3);
+
+    fireEvent.keyDown(screen.getByRole("group", { name: "Propozycje na mapie" }), {
+      key: "Escape",
+    });
+    expect(building).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelectorAll(".smap-leg")).toHaveLength(0);
+  });
+
+  it("a selected lokal inside a building opens the spider and marks the building, the lokal and its kin", () => {
+    const { rerender } = render(
+      <SampleMapLeaflet
+        selection={makeBuildingSelection()}
+        center={CENTER}
+        selectedKey="P2|LP2"
+        onSelect={vi.fn()}
+      />,
+    );
+    const building = screen.getByTestId("building-proposed");
+    expect(building).toHaveClass("smap-dot--selected");
+    expect(building).toHaveAttribute("aria-expanded", "true");
+    const [p1, p2] = screen.getAllByTestId("dot-proposed");
+    expect(p2).toHaveClass("smap-dot--selected");
+    expect(p1).toHaveClass("smap-dot--kin");
+    expect(p1).not.toHaveClass("smap-dot--selected");
+
+    rerender(
+      <SampleMapLeaflet
+        selection={makeBuildingSelection({ radiusUsedM: 1000 })}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("building-proposed")).not.toHaveClass("smap-dot--selected");
+    expect(screen.queryAllByTestId("dot-proposed")).toHaveLength(0);
+  });
+});
