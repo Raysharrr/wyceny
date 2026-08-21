@@ -58,9 +58,10 @@ vi.mock("@/app/actions/_record-failure", () => ({
 }));
 
 import { getSampleProposal } from "../src/app/actions/get-sample-proposal";
-import { sampleProposal, valuationRepository } from "@/app/valuations/_deps";
+import { sampleProposal, storage, valuationRepository } from "@/app/valuations/_deps";
 import { recordEvent } from "@/app/actions/_record-failure";
 import * as streetViewEnrich from "../src/app/actions/_street-view-enrich";
+import { loadPool, poolKey } from "@/app/actions/_pool-cache";
 import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
 import type { CandidatePool } from "@/ports/sample";
 
@@ -161,6 +162,11 @@ describe("getSampleProposal (v3)", () => {
     });
     expect(JSON.stringify(meta)).not.toMatch(/Heweliusza|306401|355300/);
     expect(sampleCall![0].valuationId).toBe(valuation.id);
+
+    // Task 8: the fetched pool is cached (gzip, under pool/<valuationId>.json.gz)
+    // so a later radius change (`reselectSample`) never re-queries WFS.
+    expect(depsState.store.has(poolKey(valuation.id))).toBe(true);
+    await expect(loadPool(storage, valuation.id)).resolves.toEqual(pool);
   });
 
   it("without subjectMeta the worker geocodes (no point sent) and ranking is distance-only", async () => {

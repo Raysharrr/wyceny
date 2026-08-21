@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
+import type { CandidatePool } from "@/ports/sample";
 
 /**
  * Shared validation for the valuation form — used by BOTH the client
@@ -109,6 +110,23 @@ export const candidateSchema = z.object({
   seller: z.string().nullable(),
   pos: z.object({ x: z.number(), y: z.number() }).nullable(),
 });
+
+/**
+ * Runtime validation for `CandidatePool` at the trust boundary — the worker
+ * is a separate process/deploy, so a shape drift must fail loudly rather
+ * than propagate an `as`-cast lie into the ranking/selection logic. Also
+ * used by `_pool-cache.ts` (Task 8) to validate the gzip pool cache read
+ * back from `PortStorage` — a corrupt cache must throw, never silently
+ * become `null` (only a genuinely missing key does that). Composed from
+ * `sampleMetaSchema` (`CandidatePool` minus `candidates`) plus
+ * `candidateSchema` above, both defined in this module — not redefined in
+ * `adapters/sample-http.ts`, so the adapter's pool validation and the pool
+ * cache's re-validation share one definition (F-10: adapters may import
+ * from `lib`, but nothing outside `app/`/`adapters/` may import an adapter).
+ */
+export const candidatePoolSchema = sampleMetaSchema.extend({
+  candidates: z.array(candidateSchema),
+}) satisfies z.ZodType<CandidatePool>;
 
 /** Mirrors `RejectReason` from `@/domain/sample-selection`. */
 const rejectReasonSchema = z.enum([

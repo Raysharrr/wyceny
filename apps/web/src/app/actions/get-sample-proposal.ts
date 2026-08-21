@@ -3,21 +3,14 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSession } from "@/auth/session";
-import { sampleProposal, storage, streetView, valuationRepository } from "@/app/valuations/_deps";
-import { recordEvent, recordFailure } from "@/app/actions/_record-failure";
-import {
-  enrichStreetView,
-  ENRICH_BUDGET_MS,
-  REQUEST_BUDGET_MS,
-} from "@/app/actions/_street-view-enrich";
-import { fingerprint } from "@/lib/fingerprint";
-import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
+import { sampleProposal, storage, valuationRepository } from "@/app/valuations/_deps";
+import { recordFailure } from "@/app/actions/_record-failure";
+import { errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
 import { valuationFormObject } from "@/lib/valuation-form-schema";
-import { selectSample } from "@/domain/sample-selection";
-import { storeysHintByBuilding } from "@/domain/street-view-framing";
-import { toSampleSelectionSnapshot, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
-import { deriveSubjectEgib } from "@/domain/egib-id";
+import { savePool } from "@/app/actions/_pool-cache";
+import { buildProposal } from "@/app/actions/_build-proposal";
+import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { SampleMeta } from "@/domain/kcs";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 
@@ -48,22 +41,18 @@ const GENERIC_ERROR =
  * "Dobor proby v3"). Session-gated like `createDraft`; validates
  * address/area with the same rules as the main form (reused via `.pick()`),
  * loads the draft's already-resolved subject point (step 1's fetch, if any),
- * fetches the RAW candidate pool from the worker, and runs the DOMAIN
- * (`selectSample`) over it — the worker only fetches, it never ranks or
- * filters. The adapter's Polish `detail` message (surfaced by the worker on
- * failure, e.g. too few nearby transactions) is passed through verbatim; a
- * zod validation failure at the trust boundary, or the adapter's own English
+ * fetches the RAW candidate pool from the worker, caches it (Task 8, so a
+ * later radius change via `reselectSample` never re-queries WFS), and runs
+ * the DOMAIN selection over it via `buildProposal` (shared with
+ * `reselectSample`) — the worker only fetches, it never ranks or filters.
+ * The adapter's Polish `detail` message (surfaced by the worker on failure,
+ * e.g. too few nearby transactions) is passed through verbatim; a zod
+ * validation failure at the trust boundary, or the adapter's own English
  * status-text fallback, is replaced with a generic Polish message instead.
  *
- * Slice 3: after the sample telemetry is recorded, `streetView` (null
- * without GOOGLE_STREET_VIEW_KEY) enriches every unique building among
- * proposed+alternates with a Street View preview (`enrichStreetView`) —
- * frozen entries reused, storage-cached, Google failures counted but never
- * thrown (a hiccup there must not cost the appraiser the sample).
- * `enrichStreetView`'s `budgetMs` is derived from `REQUEST_BUDGET_MS` minus
- * time already spent on the worker call (capped at `ENRICH_BUDGET_MS`), not
- * passed as a flat constant — a slow RCN fetch leaves enrichment less room
- * instead of the two budgets stacking past this action's own time limit.
+ * Slice 3: `buildProposal` enriches every unique building among
+ * proposed+alternates with a Street View preview (null without
+ * GOOGLE_STREET_VIEW_KEY) — see its own doc for the budget/cache details.
  */
 export async function getSampleProposal(
   input: GetSampleProposalInput,
@@ -83,10 +72,10 @@ export async function getSampleProposal(
   const { valuationId, address, area } = parsed.data;
 
   return withTrace(async () => {
-    // Wall-clock anchor for `enrichStreetView`'s `budgetMs` below — how much
-    // of REQUEST_BUDGET_MS is left after the worker call, so a slow RCN
-    // fetch leaves enrichment less room instead of enrichment blindly
-    // assuming it has the full budget to itself.
+    // Wall-clock anchor for `buildProposal`'s `enrichStreetView` budget below
+    // — how much of REQUEST_BUDGET_MS is left after the worker call, so a
+    // slow RCN fetch leaves enrichment less room instead of enrichment
+    // blindly assuming it has the full budget to itself.
     const startedAt = Date.now();
     try {
       const valuation = await valuationRepository.get(valuationId, session.user);
@@ -96,86 +85,32 @@ export async function getSampleProposal(
       const point = meta ? { x: meta.x, y: meta.y, srid: 2180 as const } : undefined;
       const pool = await sampleProposal.fetchPool({ address, area, ...(point ? { point } : {}) });
 
-      const selectionParams = {
-        subjectArea: area,
-        // The only clock read in this action — the domain stays pure
-        // (todayMonth is a parameter, never `new Date()` inside it).
-        todayMonth: new Date().toISOString().slice(0, 7),
-        subjectEgib: deriveSubjectEgib(meta?.buildingId, valuation.inputs?.subject?.parcelId),
-      };
-      const selection = selectSample(pool.candidates, selectionParams);
-      const sampleSelection = toSampleSelectionSnapshot(selection, selectionParams);
-      const { candidates: _candidates, ...sampleMeta } = pool;
-      const comparables = selection.proposed.map((c) => ({
-        date: c.date,
-        area: c.area,
-        pricePerM2: c.pricePerM2,
-        transactionId: c.transactionId,
-      }));
-
-      // Keyed by POSITION, never by transactionId: that id is masked out of
-      // the document by F-12, so it has no business sitting in a table key
-      // in the clear. Only the three fields the appraiser can actually edit
-      // are hashed — a later "% as proposed" needs to tell an edit from an
-      // acceptance, not to re-identify a transaction. Everything else in
-      // `meta` is a number or a class (F-13) — never an address, id or
-      // coordinate.
-      await recordEvent({
-        level: "info",
-        event: "proposal.sample",
-        traceId: currentTraceId(),
-        actorId: session.user.id,
-        valuationId,
-        meta: {
-          fields: fingerprint(
-            Object.fromEntries(
-              comparables.map((tx, i) => [
-                `tx${i}`,
-                { date: tx.date, area: tx.area, pricePerM2: tx.pricePerM2 },
-              ]),
-            ),
-          ),
-          geocoder: pool.point.source,
-          radiusUsedM: selection.radiusUsedM,
-          truncated: pool.query.truncated,
-          pages: pool.query.pages,
-          counts: {
-            ...selection.counts,
-            fetched: pool.counts.fetched,
-            deduped: pool.counts.deduped,
-            noPos: pool.counts.noPos,
-          },
-        },
-      });
-
-      let streetViewSnapshot: StreetViewSnapshot = valuation.inputs?.streetView ?? {};
-      if (streetView) {
-        const budgetMs = Math.min(
-          ENRICH_BUDGET_MS,
-          Math.max(0, REQUEST_BUDGET_MS - (Date.now() - startedAt)),
-        );
-        const enriched = await enrichStreetView([...selection.proposed, ...selection.alternates], {
-          streetView,
-          storage,
-          now: () => new Date(),
-          existing: valuation.inputs?.streetView ?? null,
-          budgetMs,
-          storeys: storeysHintByBuilding(pool.candidates),
-        });
-        streetViewSnapshot = { ...streetViewSnapshot, ...enriched.snapshot };
-        await recordEvent({
-          level: "info",
-          event: "proposal.streetview",
-          traceId: currentTraceId(),
-          actorId: session.user.id,
+      // Overwrites any previous cache for this valuation (it's a CACHE, not
+      // a versioned snapshot) — a write failure must not cost the appraiser
+      // the sample they just fetched, only the ability to change the radius
+      // without re-fetching later, so it's logged and swallowed.
+      try {
+        await savePool(storage, valuationId, pool);
+      } catch (error) {
+        await recordFailure({
+          event: "poolCache.writeFailed",
+          error,
           valuationId,
-          meta: enriched.meta,
+          actorId: session.user.id,
         });
       }
 
-      return {
-        proposal: { comparables, sampleSelection, sampleMeta, streetView: streetViewSnapshot },
-      };
+      const proposal = await buildProposal({
+        pool,
+        valuation,
+        area,
+        session,
+        valuationId,
+        event: "proposal.sample",
+        startedAt,
+      });
+
+      return { proposal };
     } catch (error) {
       await recordFailure({
         event: "getSampleProposal.failed",
