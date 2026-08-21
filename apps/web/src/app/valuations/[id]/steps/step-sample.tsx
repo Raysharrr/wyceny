@@ -31,7 +31,7 @@ import { SampleMap } from "./sample-map";
 import { SamplePanel } from "./sample-panel";
 import { SampleRadius } from "./sample-radius";
 import { SampleRejected } from "./sample-rejected";
-import { SampleTable } from "./sample-table";
+import { SampleSections } from "./sample-sections";
 import { rcnRow, useSampleReview } from "./use-sample-review";
 
 // `NEXT_PUBLIC_*` vars are inlined at build time (Next.js) or read from the
@@ -219,6 +219,8 @@ export function StepSample({
     next,
     reject,
     restore,
+    include,
+    reviewStats,
     isReselecting,
     poolMissing,
     setPoolMissing,
@@ -359,12 +361,24 @@ export function StepSample({
                     onSelect={setSelectedKey}
                   />
                 ) : null}
-                <SampleTable
+                <SampleSections
                   selection={sel}
                   streetView={liveStreetView ?? null}
                   streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
                   selectedKey={selectedKey}
                   onSelect={setSelectedKey}
+                  reviewedKeys={reviewStats.reviewedKeys}
+                  defaultAlternatesOpen={reviewStats.reviewed === 0}
+                  // "w próbie" checkbox (Task 3 wires the prop; Task 4/5 give
+                  // the "Odrzuć" path its reasons UI via the panel's
+                  // `initialRejecting` — until then, unchecking a proposed
+                  // row opens the panel on it, same as a row click, so the
+                  // appraiser reaches "Odrzuć" from there). Checking an
+                  // alternate is unconditional and already the FULL Task 5
+                  // behavior — `include` needs no reason.
+                  onToggleInSample={(key, inSample) =>
+                    inSample ? include(key) : setSelectedKey(key)
+                  }
                 />
                 <SampleRejected selection={sel} onRestore={restore} />
               </>
