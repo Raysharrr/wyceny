@@ -23,6 +23,7 @@ import type { SubjectMetaSnapshot, SubjectSnapshot } from "./subject-snapshot";
 import type { InspectionSnapshot } from "./inspection";
 import type { ProseSnapshot } from "./prose-snapshot";
 import type { SampleSelectionSnapshot } from "./sample-snapshot";
+import type { StreetViewSnapshot } from "./street-view-snapshot";
 
 /**
  * The RCN pool fetch's provenance for the whole sample (F-5) — `CandidatePool`
@@ -82,6 +83,8 @@ export type KcsInput = {
    * at the web ACL).
    */
   sampleSelection?: SampleSelectionSnapshot | null;
+  /** Frozen Street View per building (Slice 3, ADR-011) — display only; computeKcs never reads this. */
+  streetView?: StreetViewSnapshot | null;
   /** Scalar provenance map (F-4) — see domain/provenance.ts. Optional: legacy snapshots lack it. */
   provenance?: InputsProvenance | null;
   /** Auto-fetched EGiB/MPZP subject snapshot — display/audit metadata only; computeKcs never reads this. */

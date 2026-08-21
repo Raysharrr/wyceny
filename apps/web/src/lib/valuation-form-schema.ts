@@ -109,6 +109,59 @@ export const candidateSchema = z.object({
   pos: z.object({ x: z.number(), y: z.number() }).nullable(),
 });
 
+/** Mirrors `RejectReason` from `@/domain/sample-selection`. */
+const rejectReasonSchema = z.enum([
+  "share_not_whole",
+  "not_free_market",
+  "not_residential",
+  "no_price",
+  "out_of_window",
+  "out_of_area_band",
+  "primary_market",
+]);
+
+/** Mirrors `RejectedRow` from `@/domain/sample-snapshot` — the compact "Odrzucone" row (Slice 3). */
+const rejectedRowSchema = z.object({
+  transactionId: z.string(),
+  lokalId: z.string(),
+  reason: rejectReasonSchema,
+  allReasons: z.array(rejectReasonSchema),
+  date: z.string(),
+  area: z.number(),
+  pricePerM2: z.number(),
+  distanceM: z.number(),
+  pos: z.object({ x: z.number(), y: z.number() }).nullable(),
+});
+
+/** Mirrors `ManualRejection` from `@/domain/sample-manual` — the appraiser's manual rejection overlay (Slice 3). */
+export const manualRejectionSchema = z.object({
+  transactionId: z.string(),
+  lokalId: z.string(),
+  reason: z.enum([
+    "building_older",
+    "building_newer",
+    "different_building_type",
+    "different_standard",
+    "too_far",
+    "other",
+  ]),
+  note: z.string().max(500).optional(),
+  at: z.string(),
+});
+
+/** Mirrors `StreetViewSnapshot` from `@/domain/street-view-snapshot` — frozen Street View per building (Slice 3, ADR-011). */
+export const streetViewSchema = z.record(
+  z.string(),
+  z.object({
+    panoId: z.string().nullable(),
+    captureDate: z.string().nullable(),
+    thumbnailKey: z.string().nullable(),
+    heading: z.number().nullable(),
+    lat: z.number(),
+    lng: z.number(),
+  }),
+);
+
 /**
  * Mirrors `SampleSelectionSnapshot` from `@/domain/sample-snapshot` — what
  * step 3's domain call persists in `inputs.sampleSelection` (ADR-015 "Dobor
@@ -124,6 +177,10 @@ export const sampleSelectionSchema = z.object({
     z.array(z.enum(["price_outlier", "market_unknown", "primary_suspect"])),
   ),
   rejectedCounts: z.record(z.string(), z.number()),
+  /** Rows rejected by hygiene/band inside `radiusUsedM` (decision a). Optional: pre-Slice-3 snapshots lack it. */
+  rejected: z.array(rejectedRowSchema).optional(),
+  /** Appraiser's overlay (Slice 3). Optional for the same reason. */
+  manualRejections: z.array(manualRejectionSchema).optional(),
   radiusUsedM: z.number(),
   radiusWalk: z.array(
     z.object({
@@ -251,6 +308,7 @@ export const valuationFormObject = z.object({
     ),
   sampleMeta: sampleMetaSchema.optional(),
   sampleSelection: sampleSelectionSchema.optional(),
+  streetView: streetViewSchema.optional(),
   subject: subjectSchema.optional(),
   subjectMeta: subjectMetaSchema.optional(),
   kw: kwSchema.optional(),

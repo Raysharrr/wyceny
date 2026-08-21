@@ -574,6 +574,8 @@ export type SampleUpdate = {
   sampleMeta: KcsInput["sampleMeta"];
   /** The domain's selection over the fetched pool (ADR-015, D7) — optional so callers that predate it (or edit comparables without re-running the domain) keep compiling. */
   sampleSelection?: KcsInput["sampleSelection"];
+  /** Frozen Street View per building (Slice 3, ADR-011) — optional so a save without new lookups preserves what's already frozen. */
+  streetView?: KcsInput["streetView"];
 };
 
 /**
@@ -599,6 +601,7 @@ export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
       comparables,
       sampleMeta: u.sampleMeta,
       sampleSelection: u.sampleSelection ?? null,
+      streetView: u.streetView ?? v.inputs.streetView ?? null,
     },
   };
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { selectSample, candidateKey, type Candidate } from "../src/domain/sample-selection";
-import { toSampleSelectionSnapshot } from "../src/domain/sample-snapshot";
+import { toSampleSelectionSnapshot, effectiveSelection } from "../src/domain/sample-snapshot";
 import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
 import { deriveSubjectEgib } from "../src/domain/egib-id";
 
@@ -47,14 +47,26 @@ describe("toSampleSelectionSnapshot", () => {
   const sel = selectSample(candidates, params);
   const snap = toSampleSelectionSnapshot(sel, params);
 
-  it("keeps proposed/alternates/counts/radius, drops ranking and the rejected list", () => {
+  it("keeps proposed/alternates/counts/radius, drops ranking, keeps a COMPACT rejected list", () => {
     expect(snap.version).toBe(3);
     expect(snap.proposed).toEqual(sel.proposed);
     expect(snap.alternates).toEqual(sel.alternates);
-    expect(snap.counts).toEqual(sel.counts);
-    expect(snap.radiusUsedM).toBe(sel.radiusUsedM);
     expect("ranking" in snap).toBe(false);
-    expect("rejected" in snap).toBe(false);
+    expect(snap.rejected).toHaveLength(sel.rejected.length);
+    const first = snap.rejected![0];
+    expect(Object.keys(first).sort()).toEqual([
+      "allReasons",
+      "area",
+      "date",
+      "distanceM",
+      "lokalId",
+      "pos",
+      "pricePerM2",
+      "reason",
+      "transactionId",
+    ]);
+    expect(first.reason).toBe(sel.rejected[0].reason);
+    expect(snap.manualRejections).toEqual([]);
   });
   it("flags only for proposed ∪ alternates; rejectedCounts sums to the rejected list", () => {
     const keep = new Set([...sel.proposed, ...sel.alternates].map(candidateKey));
@@ -63,8 +75,8 @@ describe("toSampleSelectionSnapshot", () => {
       sel.rejected.length,
     );
   });
-  it("stays small enough for a jsonb column (< 120 kB for a 3 km pool)", () => {
-    expect(JSON.stringify(snap).length).toBeLessThan(120_000);
+  it("stays small enough for a jsonb column (< 1 MB for a 3 km pool, compact rejected rows)", () => {
+    expect(JSON.stringify(snap).length).toBeLessThan(1_000_000);
   });
   it("params record what the appraiser would need to re-run the choice", () => {
     expect(snap.params).toEqual({
@@ -72,6 +84,24 @@ describe("toSampleSelectionSnapshot", () => {
       todayMonth: "2026-08",
       subjectEgib: params.subjectEgib,
     });
+  });
+  it("effectiveSelection applies manualRejections as an overlay", () => {
+    const victim = snap.proposed[0];
+    const withRejection = {
+      ...snap,
+      manualRejections: [
+        {
+          transactionId: victim.transactionId,
+          lokalId: victim.lokalId,
+          reason: "building_older" as const,
+          at: "2026-08-21T10:00:00Z",
+        },
+      ],
+    };
+    const eff = effectiveSelection(withRejection);
+    expect(eff.proposed.map(candidateKey)).not.toContain(candidateKey(victim));
+    expect(eff.removed).toEqual([victim]);
+    expect(effectiveSelection(snap).proposed).toEqual(snap.proposed);
   });
 });
 

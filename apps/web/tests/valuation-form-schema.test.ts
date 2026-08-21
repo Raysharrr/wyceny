@@ -4,6 +4,7 @@ import {
   subjectSchema,
   valuationFormSchema,
 } from "../src/lib/valuation-form-schema";
+import { sampleSelectionSchema, streetViewSchema } from "../src/lib/valuation-form-schema";
 
 const valid = {
   address: "ul. Kościelna 33A, Poznań",
@@ -234,5 +235,72 @@ describe("subjectSchema — mpzpData (Fix B)", () => {
   it("accepts an empty or absent mpzpData", () => {
     expect(subjectSchema.safeParse({ mpzpData: "" }).success).toBe(true);
     expect(subjectSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe("sampleSelectionSchema — v3 additive fields (Slice 3)", () => {
+  const base = {
+    version: 3,
+    proposed: [],
+    alternates: [],
+    flags: {},
+    rejectedCounts: {},
+    radiusUsedM: 500,
+    radiusWalk: [],
+    counts: { pool: 1, inRadius: 1, afterHygiene: 1, afterBand: 1, proposed: 0 },
+    params: { subjectArea: 50, todayMonth: "2026-08" },
+  };
+  it("accepts a pre-Slice-3 snapshot (no rejected / manualRejections)", () => {
+    expect(sampleSelectionSchema.safeParse(base).success).toBe(true);
+  });
+  it("accepts compact rejected rows and manual rejections; rejects an unknown reason", () => {
+    const ok = sampleSelectionSchema.safeParse({
+      ...base,
+      rejected: [
+        {
+          transactionId: "T1",
+          lokalId: "L1",
+          reason: "no_price",
+          allReasons: ["no_price"],
+          date: "2026-01-02",
+          area: 50,
+          pricePerM2: 0,
+          distanceM: 10,
+          pos: null,
+        },
+      ],
+      manualRejections: [
+        {
+          transactionId: "T2",
+          lokalId: "L2",
+          reason: "building_older",
+          note: "kamienica 1905",
+          at: "2026-08-21T10:00:00Z",
+        },
+      ],
+    });
+    expect(ok.success).toBe(true);
+    const bad = sampleSelectionSchema.safeParse({
+      ...base,
+      manualRejections: [{ transactionId: "T2", lokalId: "L2", reason: "ugly", at: "x" }],
+    });
+    expect(bad.success).toBe(false);
+  });
+  it("still pins version 3", () => {
+    expect(sampleSelectionSchema.safeParse({ ...base, version: 2 }).success).toBe(false);
+  });
+  it("streetViewSchema: record of frozen entries, nulls allowed", () => {
+    expect(
+      streetViewSchema.safeParse({
+        "0039.22.13/82.1": {
+          panoId: null,
+          captureDate: null,
+          thumbnailKey: null,
+          heading: null,
+          lat: 52.39,
+          lng: 16.87,
+        },
+      }).success,
+    ).toBe(true);
   });
 });
