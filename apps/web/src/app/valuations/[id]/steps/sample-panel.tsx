@@ -73,6 +73,10 @@ export function SamplePanel({
   onClose,
 }: SamplePanelProps) {
   const streetViewUsable = Boolean(embedKey) && streetViewEnabled;
+  // Google has no panorama for this building (or enrichment never ran for
+  // it) — distinct from `!streetViewUsable` (no key/feature flag): here the
+  // KEY works fine, there's just nothing to show on the "Ulica" tab.
+  const noPanorama = !entry || entry.panoId === null;
 
   const [forKey, setForKey] = useState(candidateKey(candidate));
   const [mode, setMode] = useState<Mode>(initialMode(entry, streetViewUsable));
@@ -136,12 +140,14 @@ export function SamplePanel({
       );
     }
     if (!streetViewUsable) return null; // caption above already explains why; both tabs are disabled
-    if (!entry) {
-      return (
-        <p className="text-sm text-muted-foreground">brak danych podglądu dla tego budynku.</p>
-      );
-    }
     if (mode === "street") {
+      // "Ulica" is disabled whenever `noPanorama`, so this is unreachable
+      // in normal use — guarded rather than risking a broken iframe if
+      // `mode` is ever driven some other way. The Street View iframe must
+      // never render for a building with no panorama. (Checked directly on
+      // `entry` rather than via the `noPanorama` variable so TypeScript can
+      // narrow `entry` to defined below.)
+      if (!entry || entry.panoId === null) return null;
       return (
         <iframe
           title="Street View"
@@ -151,6 +157,14 @@ export function SamplePanel({
           referrerPolicy="no-referrer-when-downgrade"
           allowFullScreen
         />
+      );
+    }
+    // mode === "map" — works from `entry`'s lat/lng even without a
+    // panorama (a plain satellite view by location), so only a
+    // completely missing entry needs a fallback here.
+    if (!entry) {
+      return (
+        <p className="text-sm text-muted-foreground">brak danych podglądu dla tego budynku.</p>
       );
     }
     return (
@@ -190,6 +204,13 @@ export function SamplePanel({
             <p className="text-sm text-muted-foreground">
               Podgląd Street View jest wyłączony (brak klucza Maps Embed).
             </p>
+          ) : noPanorama ? (
+            // Visible in EVERY mode (not just "street") — it's the reason
+            // the panel opened on Ortofoto in the first place.
+            <p className="text-sm text-muted-foreground">
+              brak zdjęcia ulicy
+              {entry?.captureDate ? ` · Google z ${entry.captureDate.slice(0, 4)}` : ""}
+            </p>
           ) : mode === "street" ? (
             <p className="text-sm text-muted-foreground">
               {entry?.captureDate ? `zdjęcie Google z ${entry.captureDate}` : "brak zdjęcia ulicy"}
@@ -202,7 +223,7 @@ export function SamplePanel({
                 type="button"
                 size="sm"
                 variant={mode === "street" ? "default" : "outline"}
-                disabled={!streetViewUsable}
+                disabled={!streetViewUsable || noPanorama}
                 onClick={() => setMode("street")}
               >
                 Ulica

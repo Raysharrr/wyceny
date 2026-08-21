@@ -73,20 +73,22 @@ describe("SamplePanel", () => {
       expect.stringContaining("/maps/embed/v1/view"),
     );
   });
-  it("no panorama → no iframe, starts in Ortofoto; switching to Ulica shows 'brak zdjęcia ulicy' (location fallback)", async () => {
+  it("no panorama → Ulica disabled, no iframe ever, caption visible in every mode, starts in Ortofoto; Mapa stays enabled (works by location)", async () => {
     render(
       <SamplePanel
         {...base}
         entry={{ ...entry, panoId: null, captureDate: null, thumbnailKey: null, heading: null }}
       />,
     );
+    expect(screen.getByRole("button", { name: "Ulica" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Mapa" })).not.toBeDisabled();
     expect(screen.queryByTitle("Street View")).toBeNull();
     expect(screen.getByRole("img", { name: /Ortofotomapa/ })).toBeInTheDocument();
-    // The capture-date caption is scoped to mode "street" (it says nothing
-    // useful while looking at the map/orto preview) — reach it by
-    // switching tabs; Ulica stays enabled even without a panorama (only
-    // the embed key / feature flag disable it), so this is reachable.
-    await userEvent.click(screen.getByRole("button", { name: "Ulica" }));
+    expect(screen.getByText(/brak zdjęcia ulicy/)).toBeInTheDocument();
+    // Still visible after switching tabs — unlike the "has a panorama"
+    // caption (scoped to mode "street"), this one explains why the panel
+    // opened on Ortofoto in the first place and holds in every mode.
+    await userEvent.click(screen.getByRole("button", { name: "Mapa" }));
     expect(screen.getByText(/brak zdjęcia ulicy/)).toBeInTheDocument();
   });
   it("no embed key or feature off → placeholder text instead of iframe; ortofoto still works", () => {
