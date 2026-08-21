@@ -360,6 +360,31 @@ describe("enrichStreetView", () => {
     expect(port.lookup).toHaveBeenCalledTimes(1);
     expect(snapshot["0039.22.13/82.1"].panoId).toBe("P1");
   });
+  it("first lookup 80 m away, second lookup THROWS → keeps the first panorama, not counted failed", async () => {
+    const port = sv();
+    port.lookup
+      .mockResolvedValueOnce({ panoId: "P1", captureDate: "2021-01", camera: metersNorth(80) })
+      .mockRejectedValueOnce(new Error("HTTP 500"));
+    const storage = memStorage();
+    const { snapshot, meta } = await enrichStreetView([mk("1")], {
+      streetView: port,
+      storage,
+      now: NOW,
+    });
+    expect(port.lookup).toHaveBeenCalledTimes(2);
+    expect(snapshot["0039.22.13/82.1"].panoId).toBe("P1");
+    expect(meta.failed).toBe(0);
+  });
+  it("first lookup > 60 m away, second lookup finds nothing → keeps the first", async () => {
+    const port = sv();
+    port.lookup
+      .mockResolvedValueOnce({ panoId: "P1", captureDate: "2021-01", camera: metersNorth(80) })
+      .mockResolvedValueOnce(null);
+    const storage = memStorage();
+    const { snapshot } = await enrichStreetView([mk("1")], { streetView: port, storage, now: NOW });
+    expect(port.lookup).toHaveBeenCalledTimes(2);
+    expect(snapshot["0039.22.13/82.1"].panoId).toBe("P1");
+  });
 });
 
 describe("isThumbnailKey", () => {

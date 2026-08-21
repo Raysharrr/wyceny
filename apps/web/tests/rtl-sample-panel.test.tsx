@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import { SamplePanel } from "@/app/valuations/[id]/steps/sample-panel";
@@ -73,7 +73,7 @@ describe("SamplePanel", () => {
       expect.stringContaining("/maps/embed/v1/view"),
     );
   });
-  it("no panorama → no iframe, 'brak zdjęcia ulicy', starts in Ortofoto", () => {
+  it("no panorama → no iframe, starts in Ortofoto; switching to Ulica shows 'brak zdjęcia ulicy' (location fallback)", async () => {
     render(
       <SamplePanel
         {...base}
@@ -81,8 +81,13 @@ describe("SamplePanel", () => {
       />,
     );
     expect(screen.queryByTitle("Street View")).toBeNull();
-    expect(screen.getByText(/brak zdjęcia ulicy/)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Ortofotomapa/ })).toBeInTheDocument();
+    // The capture-date caption is scoped to mode "street" (it says nothing
+    // useful while looking at the map/orto preview) — reach it by
+    // switching tabs; Ulica stays enabled even without a panorama (only
+    // the embed key / feature flag disable it), so this is reachable.
+    await userEvent.click(screen.getByRole("button", { name: "Ulica" }));
+    expect(screen.getByText(/brak zdjęcia ulicy/)).toBeInTheDocument();
   });
   it("no embed key or feature off → placeholder text instead of iframe; ortofoto still works", () => {
     render(<SamplePanel {...base} embedKey={null} />);
@@ -109,8 +114,61 @@ describe("SamplePanel", () => {
     render(<SamplePanel {...base} onKeep={onKeep} onClose={onClose} />);
     screen.getByRole("button", { name: "Zostaw" }).focus();
     await userEvent.keyboard("{Enter}");
-    expect(onKeep).toHaveBeenCalled();
+    expect(onKeep).toHaveBeenCalledTimes(1);
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalled();
+  });
+  it("no embed key → Ulica and Mapa are disabled, Ortofoto is the active tab", () => {
+    render(<SamplePanel {...base} embedKey={null} />);
+    expect(screen.getByRole("button", { name: "Ulica" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Mapa" })).toBeDisabled();
+    const orto = screen.getByRole("button", { name: "Ortofoto" });
+    expect(orto).not.toBeDisabled();
+    expect(orto).toHaveAttribute("data-variant", "default");
+  });
+  it("ortofoto onError falls back to KIEG once; a second error leaves the src unchanged", async () => {
+    render(<SamplePanel {...base} />);
+    await userEvent.click(screen.getByRole("button", { name: "Ortofoto" }));
+    const img = screen.getByRole("img", { name: /Ortofotomapa/ });
+    fireEvent.error(img);
+    const srcAfterFirst = img.getAttribute("src");
+    expect(srcAfterFirst).toContain("KrajowaIntegracjaEwidencjiGruntow");
+    fireEvent.error(img);
+    expect(img.getAttribute("src")).toBe(srcAfterFirst);
+  });
+  it("switching to a different candidate (different transactionId) resets rejecting/reason/note", async () => {
+    const { rerender } = render(<SamplePanel {...base} />);
+    await userEvent.click(screen.getByRole("button", { name: "Odrzuć" }));
+    await userEvent.click(screen.getByLabelText("budynek starszy"));
+    await userEvent.type(screen.getByPlaceholderText("notatka (opcjonalnie)"), "kamienica 1905");
+    expect(screen.getByRole("button", { name: "Potwierdź odrzucenie" })).not.toBeDisabled();
+
+    const candidateB = { ...c, transactionId: "T2" };
+    rerender(<SamplePanel {...base} candidate={candidateB} />);
+
+    // rejecting block closed
+    expect(screen.queryByRole("button", { name: "Potwierdź odrzucenie" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument();
+
+    // reopening shows a FRESH block: no radio checked, note empty, confirm disabled
+    await userEvent.click(screen.getByRole("button", { name: "Odrzuć" }));
+    expect(screen.getByRole("button", { name: "Potwierdź odrzucenie" })).toBeDisabled();
+    expect(screen.getByLabelText("budynek starszy")).not.toBeChecked();
+    expect(screen.getByPlaceholderText("notatka (opcjonalnie)")).toHaveValue("");
+  });
+  it("switching to a candidate whose entry has no panorama resets the active tab to Ortofoto", () => {
+    const { rerender } = render(<SamplePanel {...base} />);
+    expect(screen.getByTitle("Street View")).toBeInTheDocument();
+
+    const candidateB = { ...c, transactionId: "T2" };
+    rerender(
+      <SamplePanel
+        {...base}
+        candidate={candidateB}
+        entry={{ ...entry, panoId: null, captureDate: null, thumbnailKey: null, heading: null }}
+      />,
+    );
+    expect(screen.queryByTitle("Street View")).toBeNull();
+    expect(screen.getByRole("img", { name: /Ortofotomapa/ })).toBeInTheDocument();
   });
 });

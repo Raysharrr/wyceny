@@ -12,7 +12,7 @@ import {
   type ManualRejectionReason,
 } from "@/domain/sample-manual";
 import { obrebLabel } from "@/domain/obreb-name";
-import type { Candidate } from "@/domain/sample-selection";
+import { candidateKey, type Candidate } from "@/domain/sample-selection";
 import type { StreetViewEntry } from "@/domain/street-view-snapshot";
 import { kiegWmsUrl, mapEmbedUrl, ortoWmsUrl, streetViewEmbedUrl } from "./embed-urls";
 
@@ -38,6 +38,10 @@ function sellerLabel(seller: string | null): string {
   if (seller === "osobaPrawna") return "osoba prawna";
   if (seller === "osobaFizyczna") return "osoba fizyczna";
   return "—";
+}
+
+function initialMode(entry: StreetViewEntry | undefined, streetViewUsable: boolean): Mode {
+  return entry?.panoId && streetViewUsable ? "street" : "orto";
 }
 
 /** One record field row — `dl`/`dt`/`dd` (as `flex` divs, since `dl` doesn't lay children out on its own). */
@@ -69,16 +73,28 @@ export function SamplePanel({
   onClose,
 }: SamplePanelProps) {
   const streetViewUsable = Boolean(embedKey) && streetViewEnabled;
-  const [mode, setMode] = useState<Mode>(entry?.panoId && streetViewUsable ? "street" : "orto");
+
+  const [forKey, setForKey] = useState(candidateKey(candidate));
+  const [mode, setMode] = useState<Mode>(initialMode(entry, streetViewUsable));
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState<ManualRejectionReason | null>(null);
   const [note, setNote] = useState("");
 
-  const caption = !streetViewUsable
-    ? "Podgląd Street View jest wyłączony (brak klucza Maps Embed)."
-    : entry?.captureDate
-      ? `zdjęcie Google z ${entry.captureDate}`
-      : "brak zdjęcia ulicy";
+  // Derived-state-from-props reset (React's documented pattern for
+  // resetting state when the "identity" a component represents changes),
+  // rather than relying on the integrator remounting us with a `key=` prop.
+  // setState during RENDER is safe here — React re-renders immediately with
+  // the new state before anything commits to the DOM, so switching
+  // candidates never lets a stale "reason"/"note" flash on screen for one
+  // frame the way a `useEffect`-based reset (which runs AFTER commit) would.
+  const currentKey = candidateKey(candidate);
+  if (currentKey !== forKey) {
+    setForKey(currentKey);
+    setMode(initialMode(entry, streetViewUsable));
+    setRejecting(false);
+    setReason(null);
+    setNote("");
+  }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape") {
@@ -108,6 +124,11 @@ export function SamplePanel({
           alt="Ortofotomapa GUGiK (podgląd)"
           src={ortoWmsUrl(pos)}
           onError={(e) => {
+            // One-shot: ORTO's own error already fired once and swapped us
+            // to KIEG below — a SECOND error (KIEG also down, or the
+            // browser retrying) must not loop back to ORTO again.
+            if (e.currentTarget.dataset.fallback) return;
+            e.currentTarget.dataset.fallback = "1";
             e.currentTarget.src = kiegWmsUrl(pos);
           }}
           className="aspect-square w-full rounded-lg border object-cover"
@@ -165,7 +186,15 @@ export function SamplePanel({
           {isProposed === false ? <Badge variant="outline">alternatywa</Badge> : null}
 
           {renderPreview()}
-          <p className="text-sm text-muted-foreground">{caption}</p>
+          {!streetViewUsable ? (
+            <p className="text-sm text-muted-foreground">
+              Podgląd Street View jest wyłączony (brak klucza Maps Embed).
+            </p>
+          ) : mode === "street" ? (
+            <p className="text-sm text-muted-foreground">
+              {entry?.captureDate ? `zdjęcie Google z ${entry.captureDate}` : "brak zdjęcia ulicy"}
+            </p>
+          ) : null}
 
           <div className="flex flex-col gap-1.5">
             <div role="tablist" className="inline-flex gap-1">

@@ -166,16 +166,24 @@ export async function enrichStreetView(
       let pano = await deps.streetView.lookup({ lat, lng }, LOOKUP_RADIUS_M);
       let cameraDistanceM = pano ? distanceM(pano.camera, { lat, lng }) : null;
       if (!pano || (cameraDistanceM !== null && cameraDistanceM > SECOND_LOOKUP_TRIGGER_M)) {
-        const second: PanoramaMeta | null = await deps.streetView.lookup(
-          { lat, lng },
-          SECOND_LOOKUP_RADIUS_M,
-        );
-        if (second) {
-          const secondDistanceM = distanceM(second.camera, { lat, lng });
-          if (!pano || secondDistanceM < (cameraDistanceM as number)) {
-            pano = second;
-            cameraDistanceM = secondDistanceM;
+        // Second chance ONLY — a failure here must not cost the first
+        // lookup's result (a successful pano, or a confirmed "missing"):
+        // caught locally so it can never reach the outer catch, which would
+        // otherwise count the WHOLE building `failed` and lose it.
+        try {
+          const second: PanoramaMeta | null = await deps.streetView.lookup(
+            { lat, lng },
+            SECOND_LOOKUP_RADIUS_M,
+          );
+          if (second) {
+            const secondDistanceM = distanceM(second.camera, { lat, lng });
+            if (cameraDistanceM === null || secondDistanceM < cameraDistanceM) {
+              pano = second;
+              cameraDistanceM = secondDistanceM;
+            }
           }
+        } catch {
+          // keep whatever the first lookup found (or didn't)
         }
       }
       let entry: StreetViewEntry;
