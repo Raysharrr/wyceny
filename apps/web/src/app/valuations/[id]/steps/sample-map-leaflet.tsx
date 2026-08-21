@@ -15,7 +15,6 @@ import {
   dotAriaLabel,
   dotTooltip,
   groupByPos,
-  posKey,
   rejectedCensus,
   ringStyle,
   spiderOffsets,
@@ -281,8 +280,7 @@ export function SampleMapLeaflet({
       applyHighlightRef.current();
     };
 
-    const addBuildingMarker = (dots: Dot[]) => {
-      const key = posKey(dots[0].pos);
+    const addBuildingMarker = (key: string, dots: Dot[]) => {
       const kind = bestKind(dots);
       const clickable = kind !== "rejected";
       const latlng = toLatLng(dots[0].pos);
@@ -335,12 +333,12 @@ export function SampleMapLeaflet({
     spider.relayout = () => {
       if (spider.posKey) spiderfy(spider.posKey);
     };
-    for (const dots of groupByPos(buildDots(selection)).values()) {
+    for (const [key, dots] of groupByPos(buildDots(selection))) {
       if (dots.length === 1) {
         const d = dots[0];
         markers.set(d.key, addDotMarker(d, toLatLng(d.pos), group, dotTooltip(d), onSelectRef));
       } else {
-        addBuildingMarker(dots);
+        addBuildingMarker(key, dots);
       }
     }
   }, [selection]);
@@ -358,9 +356,12 @@ export function SampleMapLeaflet({
         const hit = selectedKey !== null && b.keys.includes(selectedKey);
         b.marker.getElement()?.classList.toggle("smap-dot--selected", hit);
         for (const k of b.keys) {
-          if (k !== selectedKey) {
-            markersRef.current.get(k)?.getElement()?.classList.toggle("smap-dot--kin", hit);
-          }
+          // Visit EVERY key (also the selected one) so a stale kin class from an
+          // earlier selection is cleared — `.smap-dot--kin` would override `--selected`.
+          markersRef.current
+            .get(k)
+            ?.getElement()
+            ?.classList.toggle("smap-dot--kin", hit && k !== selectedKey);
         }
         if (hit && spiderRef.current.posKey !== key) spiderRef.current.open(key);
       }
