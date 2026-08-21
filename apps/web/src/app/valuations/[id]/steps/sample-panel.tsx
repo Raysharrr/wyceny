@@ -9,10 +9,11 @@ import { SectionCard } from "@/components/wizard/section-card";
 import {
   MANUAL_REJECTION_LABELS,
   MANUAL_REJECTION_REASONS,
+  type ManualRejection,
   type ManualRejectionReason,
 } from "@/domain/sample-manual";
 import { obrebLabel } from "@/domain/obreb-name";
-import { candidateKey, type Candidate } from "@/domain/sample-selection";
+import { candidateKey, DEFAULTS, type Candidate } from "@/domain/sample-selection";
 import type { StreetViewEntry } from "@/domain/street-view-snapshot";
 import { kiegWmsUrl, mapEmbedUrl, ortoWmsUrl, streetViewEmbedUrl } from "./embed-urls";
 
@@ -23,9 +24,27 @@ export type SamplePanelProps = {
   entry: StreetViewEntry | undefined;
   embedKey: string | null;
   streetViewEnabled: boolean;
-  isProposed: boolean;
+  /** Which section this candidate currently sits in — drives the action buttons and the top badge (Task 4). */
+  status: "proposed" | "alternate" | "rejected";
+  /**
+   * Pre-opens the rejection-reasons block immediately, skipping the extra
+   * "Odrzuć" click — the checkbox-uncheck path (`SampleSections`'s "w
+   * próbie" checkbox on a proposed row, Task 5). Only meaningful for
+   * `status: "proposed"`. Applies to the CANDIDATE it was passed for only —
+   * switching to a different candidate resets it like every other
+   * per-candidate state (see the `forKey` reset below).
+   */
+  initialRejecting?: boolean;
+  /** The candidate's own manual rejection (reason + optional note) — only present for `status: "rejected"`. */
+  rejection?: ManualRejection;
   onKeep(): void;
   onReject(r: { reason: ManualRejectionReason; note?: string }): void;
+  /** "Dodaj do próby" (status: "alternate") — adds this candidate to `manualInclusions` (Task 5 wiring: `include(key)`). */
+  onInclude(): void;
+  /** "Pomiń" (status: "alternate") — marks the row reviewed and advances, without adding it (Task 5 wiring: `skip(key)` + `next()`). */
+  onSkip(): void;
+  /** "Przywróć" (status: "rejected") — drops the manual rejection (Task 5 wiring: `restore(m)`). */
+  onRestore(): void;
   onClose(): void;
 };
 
@@ -74,9 +93,14 @@ export function SamplePanel({
   entry,
   embedKey,
   streetViewEnabled,
-  isProposed,
+  status,
+  initialRejecting = false,
+  rejection,
   onKeep,
   onReject,
+  onInclude,
+  onSkip,
+  onRestore,
   onClose,
 }: SamplePanelProps) {
   const streetViewUsable = Boolean(embedKey) && streetViewEnabled;
@@ -87,7 +111,7 @@ export function SamplePanel({
 
   const [forKey, setForKey] = useState(candidateKey(candidate));
   const [mode, setMode] = useState<Mode>(initialMode(entry, streetViewUsable));
-  const [rejecting, setRejecting] = useState(false);
+  const [rejecting, setRejecting] = useState(initialRejecting);
   const [reason, setReason] = useState<ManualRejectionReason | null>(null);
   const [note, setNote] = useState("");
 
@@ -102,9 +126,20 @@ export function SamplePanel({
   if (currentKey !== forKey) {
     setForKey(currentKey);
     setMode(initialMode(entry, streetViewUsable));
-    setRejecting(false);
+    // `initialRejecting` is read fresh for the NEW candidate's render — the
+    // caller only ever sets it `true` for the one candidate it applies to
+    // (e.g. `panelInitialRejecting === selectedKey`, Task 5), so a
+    // candidate it wasn't passed for correctly resets to closed here.
+    setRejecting(initialRejecting);
     setReason(null);
     setNote("");
+  }
+
+  /** Enter's default action (no button/input focused) — the status's own primary action (Task 4). */
+  function mainAction(): () => void {
+    if (status === "alternate") return onInclude;
+    if (status === "rejected") return onRestore;
+    return onKeep;
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -135,12 +170,13 @@ export function SamplePanel({
       }
       return;
     }
-    // Any focused BUTTON — including "Zostaw" itself — already answers
-    // Enter natively with its own click, so every button is excluded here;
-    // this only promotes Enter to "next" when focus is somewhere else in
-    // the panel, never double-firing `onKeep`.
+    // Any focused BUTTON — including "Zostaw"/"Dodaj do próby"/"Przywróć"
+    // themselves — already answers Enter natively with its own click, so
+    // every button is excluded here; this only promotes Enter to the
+    // status's main action when focus is somewhere else in the panel,
+    // never double-firing it.
     if (target.tagName === "BUTTON") return;
-    onKeep();
+    mainAction()();
   }
 
   function renderPreview() {
@@ -218,7 +254,13 @@ export function SamplePanel({
     <div onKeyDown={handleKeyDown}>
       <SectionCard
         icon={Building2}
-        title={`Propozycja ${index + 1} z ${total}`}
+        // A rejected row isn't in the proposed/alternate ranking (`index`
+        // is -1 there — it's not in `combined`, see `step-sample.tsx`'s
+        // `panelStatus` derivation), so "Propozycja N z M" would misprint
+        // "Propozycja 0 z M" — a distinct, non-ranked title instead.
+        title={
+          status === "rejected" ? "Odrzucona propozycja" : `Propozycja ${index + 1} z ${total}`
+        }
         right={
           <Button
             type="button"
@@ -232,7 +274,9 @@ export function SamplePanel({
         }
       >
         <div className="flex flex-col gap-3">
-          {isProposed === false ? <Badge variant="outline">alternatywa</Badge> : null}
+          {status !== "proposed" ? (
+            <Badge variant="outline">{status === "alternate" ? "alternatywa" : "odrzucona"}</Badge>
+          ) : null}
 
           {renderPreview()}
           {!streetViewUsable ? (
@@ -309,21 +353,55 @@ export function SamplePanel({
             <Field label="Odległość">{Math.round(candidate.distanceM)} m</Field>
           </dl>
 
-          <div className="flex gap-2">
-            <Button type="button" variant="default" className="flex-1" onClick={onKeep}>
-              Zostaw
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => setRejecting(true)}
-            >
-              Odrzuć
-            </Button>
-          </div>
+          {status === "proposed" ? (
+            <div className="flex gap-2">
+              <Button type="button" variant="default" className="flex-1" onClick={onKeep}>
+                Zostaw
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setRejecting(true)}
+              >
+                Odrzuć
+              </Button>
+            </div>
+          ) : status === "alternate" ? (
+            <>
+              <div className="flex gap-2">
+                <Button type="button" variant="default" className="flex-1" onClick={onInclude}>
+                  Dodaj do próby
+                </Button>
+                <Button type="button" variant="outline" className="flex-1" onClick={onSkip}>
+                  Pomiń
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Dodana alternatywa wchodzi do próby obok dotychczasowych — próba może mieć więcej
+                niż {DEFAULTS.proposedN} transakcji.
+              </p>
+            </>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <Button type="button" variant="default" onClick={onRestore}>
+                Przywróć
+              </Button>
+              {rejection ? (
+                <div className="rounded-lg border p-3 text-sm">
+                  <p>
+                    <span className="text-muted-foreground">Powód odrzucenia: </span>
+                    {MANUAL_REJECTION_LABELS[rejection.reason]}
+                  </p>
+                  {rejection.note ? (
+                    <p className="text-muted-foreground">„{rejection.note}”</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          )}
 
-          {rejecting ? (
+          {status === "proposed" && rejecting ? (
             <div className="flex flex-col gap-2 rounded-lg border p-3">
               <div className="flex flex-col gap-1.5">
                 {MANUAL_REJECTION_REASONS.map((r) => (

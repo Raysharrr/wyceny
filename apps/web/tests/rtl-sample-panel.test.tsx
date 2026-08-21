@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import { SamplePanel } from "@/app/valuations/[id]/steps/sample-panel";
-import type { Candidate } from "@/domain/sample-selection";
+import { DEFAULTS, type Candidate } from "@/domain/sample-selection";
+import type { ManualRejection } from "@/domain/sample-manual";
 
 afterEach(cleanup);
 const c: Candidate = {
@@ -47,9 +48,12 @@ const base = {
   entry,
   embedKey: "K",
   streetViewEnabled: true,
-  isProposed: true,
+  status: "proposed" as const,
   onKeep: vi.fn(),
   onReject: vi.fn(),
+  onInclude: vi.fn(),
+  onSkip: vi.fn(),
+  onRestore: vi.fn(),
   onClose: vi.fn(),
 };
 
@@ -264,5 +268,172 @@ describe("SamplePanel", () => {
     );
     expect(screen.queryByTitle("Street View")).toBeNull();
     expect(screen.getByRole("img", { name: /Ortofotomapa/ })).toBeInTheDocument();
+  });
+});
+
+describe("SamplePanel — status-aware actions (Task 4)", () => {
+  it("status 'proposed' (default): Zostaw/Odrzuć only, no badge, no rejection block", () => {
+    render(<SamplePanel {...base} />);
+    expect(screen.getByRole("button", { name: "Zostaw" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dodaj do próby" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pomiń" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Przywróć" })).toBeNull();
+    expect(screen.queryByText("alternatywa")).toBeNull();
+    expect(screen.queryByText("odrzucona")).toBeNull();
+  });
+
+  it("status 'alternate': Dodaj do próby (calls onInclude) / Pomiń (calls onSkip), 'alternatywa' badge, and the more-than-proposedN note", async () => {
+    const onInclude = vi.fn();
+    const onSkip = vi.fn();
+    render(<SamplePanel {...base} status="alternate" onInclude={onInclude} onSkip={onSkip} />);
+    expect(screen.getByText("alternatywa")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Zostaw" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Odrzuć" })).toBeNull();
+    expect(
+      screen.getByText(new RegExp(`więcej\\s+niż ${DEFAULTS.proposedN} transakcji`)),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Dodaj do próby" }));
+    expect(onInclude).toHaveBeenCalledTimes(1);
+    expect(onSkip).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Pomiń" }));
+    expect(onSkip).toHaveBeenCalledTimes(1);
+  });
+
+  it("status 'rejected': only Przywróć (calls onRestore), 'odrzucona' badge, and the rejection reason label + note", async () => {
+    const onRestore = vi.fn();
+    const rejection: ManualRejection = {
+      transactionId: c.transactionId,
+      lokalId: c.lokalId,
+      reason: "too_far",
+      note: "zbyt daleko od centrum",
+      at: "2026-08-21T10:00:00Z",
+    };
+    render(<SamplePanel {...base} status="rejected" rejection={rejection} onRestore={onRestore} />);
+    expect(screen.getByText("odrzucona")).toBeInTheDocument();
+    // "Propozycja N z M" would misprint "Propozycja 0 z 38" here (a rejected
+    // row isn't in the proposed/alternate ranking `index` counts) — a
+    // distinct title instead.
+    expect(screen.getByText("Odrzucona propozycja")).toBeInTheDocument();
+    expect(screen.queryByText(/Propozycja \d+ z \d+/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Przywróć" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Zostaw" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Odrzuć" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dodaj do próby" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pomiń" })).toBeNull();
+    expect(screen.getByText("za daleko")).toBeInTheDocument();
+    expect(screen.getByText(/zbyt daleko od centrum/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Przywróć" }));
+    expect(onRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it("status 'rejected' without a `rejection` prop still shows Przywróć, no reason block", () => {
+    render(<SamplePanel {...base} status="rejected" />);
+    expect(screen.getByRole("button", { name: "Przywróć" })).toBeInTheDocument();
+    expect(screen.queryByText(/Powód odrzucenia/)).toBeNull();
+  });
+
+  it("focused action button answers Enter natively — no double-fire from the panel's own handler ('alternate')", async () => {
+    const onInclude = vi.fn();
+    render(<SamplePanel {...base} status="alternate" onInclude={onInclude} />);
+    screen.getByRole("button", { name: "Dodaj do próby" }).focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onInclude).toHaveBeenCalledTimes(1);
+  });
+
+  it("focused action button answers Enter natively — no double-fire from the panel's own handler ('rejected')", async () => {
+    const onRestore = vi.fn();
+    render(<SamplePanel {...base} status="rejected" onRestore={onRestore} />);
+    screen.getByRole("button", { name: "Przywróć" }).focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onRestore).toHaveBeenCalledTimes(1);
+  });
+
+  // Enter with focus OUTSIDE any button/input (e.g. a record field) goes
+  // through `mainAction()` itself — the button-focus tests above can't
+  // exercise this dispatch, since a focused button always short-circuits
+  // via `target.tagName === "BUTTON"` and answers Enter with its own native
+  // click. `fireEvent.keyDown` on the `<dt>` "Data transakcji" label (always
+  // rendered, never a button/input) targets that fallback directly.
+  it("Enter with no button/input focused dispatches the status's main action exactly once ('proposed' → onKeep)", () => {
+    const onKeep = vi.fn();
+    const onInclude = vi.fn();
+    const onRestore = vi.fn();
+    render(
+      <SamplePanel
+        {...base}
+        status="proposed"
+        onKeep={onKeep}
+        onInclude={onInclude}
+        onRestore={onRestore}
+      />,
+    );
+    fireEvent.keyDown(screen.getByText("Data transakcji"), { key: "Enter" });
+    expect(onKeep).toHaveBeenCalledTimes(1);
+    expect(onInclude).not.toHaveBeenCalled();
+    expect(onRestore).not.toHaveBeenCalled();
+  });
+
+  it("Enter with no button/input focused dispatches the status's main action exactly once ('alternate' → onInclude)", () => {
+    const onKeep = vi.fn();
+    const onInclude = vi.fn();
+    const onRestore = vi.fn();
+    render(
+      <SamplePanel
+        {...base}
+        status="alternate"
+        onKeep={onKeep}
+        onInclude={onInclude}
+        onRestore={onRestore}
+      />,
+    );
+    fireEvent.keyDown(screen.getByText("Data transakcji"), { key: "Enter" });
+    expect(onInclude).toHaveBeenCalledTimes(1);
+    expect(onKeep).not.toHaveBeenCalled();
+    expect(onRestore).not.toHaveBeenCalled();
+  });
+
+  it("Enter with no button/input focused dispatches the status's main action exactly once ('rejected' → onRestore)", () => {
+    const onKeep = vi.fn();
+    const onInclude = vi.fn();
+    const onRestore = vi.fn();
+    render(
+      <SamplePanel
+        {...base}
+        status="rejected"
+        onKeep={onKeep}
+        onInclude={onInclude}
+        onRestore={onRestore}
+      />,
+    );
+    fireEvent.keyDown(screen.getByText("Data transakcji"), { key: "Enter" });
+    expect(onRestore).toHaveBeenCalledTimes(1);
+    expect(onKeep).not.toHaveBeenCalled();
+    expect(onInclude).not.toHaveBeenCalled();
+  });
+
+  it("`initialRejecting` opens the reasons block immediately, without clicking 'Odrzuć' first", () => {
+    render(<SamplePanel {...base} initialRejecting />);
+    expect(screen.getByRole("button", { name: "Potwierdź odrzucenie" })).toBeInTheDocument();
+    expect(screen.getByLabelText("budynek starszy")).not.toBeChecked();
+  });
+
+  it("`initialRejecting` applies only to the candidate it was passed for — switching candidates resets it", () => {
+    const candidateB = { ...c, transactionId: "T2" };
+    // Candidate A, no initialRejecting — reasons block closed.
+    const { rerender } = render(<SamplePanel {...base} />);
+    expect(screen.queryByRole("button", { name: "Potwierdź odrzucenie" })).toBeNull();
+
+    // Switch to candidate B WITH initialRejecting — opens for B.
+    rerender(<SamplePanel {...base} candidate={candidateB} initialRejecting />);
+    expect(screen.getByRole("button", { name: "Potwierdź odrzucenie" })).toBeInTheDocument();
+
+    // Switch back to candidate A WITHOUT initialRejecting — closed again for
+    // A, not left open from B's render.
+    rerender(<SamplePanel {...base} candidate={c} />);
+    expect(screen.queryByRole("button", { name: "Potwierdź odrzucenie" })).toBeNull();
   });
 });

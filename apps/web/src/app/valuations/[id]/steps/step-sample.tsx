@@ -26,7 +26,7 @@ import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import type { Comparable, KcsInput } from "@/domain/kcs";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
-import { DEFAULTS } from "@/domain/sample-selection";
+import { candidateKey, DEFAULTS } from "@/domain/sample-selection";
 import { SampleMap } from "./sample-map";
 import { SamplePanel } from "./sample-panel";
 import { SampleRadius } from "./sample-radius";
@@ -214,12 +214,13 @@ export function StepSample({
     setSelectedKey,
     selectedIndex,
     selectedCandidate,
-    isProposedSelected,
+    selectedStatus,
     streetViewEntryFor,
     next,
     reject,
     restore,
     include,
+    skip,
     reviewStats,
     isReselecting,
     poolMissing,
@@ -235,6 +236,21 @@ export function StepSample({
     replaceComparables,
     liveStreetView,
   });
+
+  // Manually-rejected rows aren't in `combined` (proposed ∪ alternates) —
+  // "Odrzucone" opening the panel on one (Task 4) needs `eff.removed`
+  // instead, since `selectedCandidate` (from `combined`) is null for them.
+  // `panelStatus` falls back to "proposed" only for TypeScript's sake: a
+  // `null` `selectedStatus` means `panelCandidate` is ALSO null (neither
+  // lookup found the key), so the panel never actually renders with the
+  // fallback in effect.
+  const rejectedCandidate =
+    eff && selectedKey ? eff.removed.find((c) => candidateKey(c) === selectedKey) : undefined;
+  const panelCandidate = selectedCandidate ?? rejectedCandidate ?? null;
+  const panelStatus = selectedStatus ?? "proposed";
+  const selectedRejection = selectedKey
+    ? (sel?.manualRejections ?? []).find((m) => candidateKey(m) === selectedKey)
+    : undefined;
 
   const onFetchSample = async () => {
     setFetchSampleError(null);
@@ -380,7 +396,7 @@ export function StepSample({
                     inSample ? include(key) : setSelectedKey(key)
                   }
                 />
-                <SampleRejected selection={sel} onRestore={restore} />
+                <SampleRejected selection={sel} onRestore={restore} onSelect={setSelectedKey} />
               </>
             ) : null}
 
@@ -548,17 +564,28 @@ export function StepSample({
         </SectionCard>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
-          {selectedCandidate ? (
+          {panelCandidate ? (
             <SamplePanel
-              candidate={selectedCandidate}
+              candidate={panelCandidate}
               index={selectedIndex}
               total={combined.length}
-              entry={streetViewEntryFor(selectedCandidate)}
+              entry={streetViewEntryFor(panelCandidate)}
               embedKey={EMBED_KEY}
               streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
-              isProposed={isProposedSelected}
+              status={panelStatus}
+              rejection={selectedRejection}
               onKeep={next}
               onReject={reject}
+              // `panelInitialRejecting`-driven wiring (checkbox-uncheck path)
+              // is Task 5 — `initialRejecting` stays unpassed (component
+              // default `false`) until then.
+              onInclude={() => selectedKey && include(selectedKey)}
+              onSkip={() => {
+                if (!selectedKey) return;
+                skip(selectedKey);
+                next();
+              }}
+              onRestore={() => selectedRejection && restore(selectedRejection)}
               onClose={() => setSelectedKey(null)}
             />
           ) : null}
