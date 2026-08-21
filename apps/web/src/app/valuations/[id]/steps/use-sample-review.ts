@@ -6,8 +6,17 @@ import type { z } from "zod";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
 import { reselectSample } from "@/app/actions/reselect-sample";
 import { buildingKey, candidateKey, type Candidate } from "@/domain/sample-selection";
-import type { ManualRejection, ManualRejectionReason } from "@/domain/sample-manual";
-import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
+import type {
+  ManualInclusion,
+  ManualRejection,
+  ManualRejectionReason,
+  ReviewedMark,
+} from "@/domain/sample-manual";
+import {
+  effectiveSelection,
+  reviewStats as computeReviewStats,
+  type SampleSelectionSnapshot,
+} from "@/domain/sample-snapshot";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 
 /** `reselectSample`'s radius union — mirrors `ReselectSampleInput["radiusOverrideM"]` in `@/app/actions/reselect-sample`. */
@@ -134,6 +143,23 @@ function roundedString(n: number): string {
 }
 
 /**
+ * Upserts a review-trail mark for `entity` (Slice 3c) — replaces any
+ * existing mark with the same `candidateKey` instead of appending a
+ * duplicate: `reviewStats` (domain/sample-snapshot.ts) only cares about SET
+ * membership of `reviewedKeys`, so a second mark for the same row is not a
+ * history worth keeping, just noise in the persisted jsonb.
+ */
+function withReviewed(
+  reviewed: readonly ReviewedMark[] | undefined,
+  entity: Pick<Candidate, "transactionId" | "lokalId">,
+  at: string,
+): ReviewedMark[] {
+  const key = candidateKey(entity);
+  const rest = (reviewed ?? []).filter((r) => candidateKey(r) !== key);
+  return [...rest, { transactionId: entity.transactionId, lokalId: entity.lokalId, at }];
+}
+
+/**
  * Matches a LEGACY row (no `lokalId` — a draft saved before that field
  * existed on the form row) to a candidate by transaction id + CONTENT, since
  * position can't be trusted (see {@link rebuildComparables}'s doc comment).
@@ -254,10 +280,15 @@ export function useSampleReview({
   /**
    * Panel's "Potwierdź odrzucenie" — records the appraiser's own rejection
    * (overlay only, the domain's `proposed`/`alternates` are never mutated),
-   * resyncs `comparables`, and follows the selection to whoever now
-   * occupies the SAME ranking slot (the candidate that backfilled it, or
-   * the next one along if nothing did, or closes the panel when the
-   * ranking has run out).
+   * marks the row reviewed (rejecting it IS reviewing it), resyncs
+   * `comparables`, and follows the selection to whoever now occupies the
+   * SAME ranking slot (the candidate that backfilled it, or the next one
+   * along if nothing did, or closes the panel when the ranking has run
+   * out). Leaves `manualInclusions` untouched even when the rejected row is
+   * itself a manual inclusion (controller ruling, Task 1 review round 2) —
+   * the domain overlay puts such a row into `removed` (rejection beats
+   * inclusion), and a later `include` of the same key deletes the
+   * rejection to bring it back.
    */
   const reject = ({ reason, note }: { reason: ManualRejectionReason; note?: string }) => {
     if (!sel || !selectedCandidate) return;
@@ -271,6 +302,7 @@ export function useSampleReview({
     const newSel: SampleSelectionSnapshot = {
       ...sel,
       manualRejections: [...(sel.manualRejections ?? []), m],
+      reviewed: withReviewed(sel.reviewed, selectedCandidate, m.at),
     };
     setValue("sampleSelection", newSel, { shouldDirty: true });
     syncComparables(newSel);
@@ -279,17 +311,120 @@ export function useSampleReview({
     setSelectedKey(replacement ? candidateKey(replacement) : null);
   };
 
-  /** "Przywróć" in the "Odrzucone" section — drops one manual rejection and resyncs `comparables`. */
+  /**
+   * "Przywróć" in the "Odrzucone" section — drops one manual rejection,
+   * marks the row reviewed (restoring it is itself a reviewed decision),
+   * and resyncs `comparables`. `m` already carries `transactionId`/`lokalId`
+   * (it's the `ManualRejection` row itself), so no candidate lookup is
+   * needed.
+   */
   const restore = (m: ManualRejection) => {
     if (!sel) return;
     const key = candidateKey(m);
     const newSel: SampleSelectionSnapshot = {
       ...sel,
       manualRejections: (sel.manualRejections ?? []).filter((x) => candidateKey(x) !== key),
+      reviewed: withReviewed(sel.reviewed, m, new Date().toISOString()),
     };
     setValue("sampleSelection", newSel, { shouldDirty: true });
     syncComparables(newSel);
   };
+
+  /**
+   * Looks up a `Candidate` by `candidateKey` among the rows the appraiser
+   * can currently see and act on — `effectiveSelection`'s three lists
+   * (proposed, alternates, removed). Mirrors {@link reviewStats}'s own
+   * scope (`effKeys`): the bulk auto-rejected `snap.rejected` sample is
+   * deliberately OUT of scope for review/inclusion — it's a census, not a
+   * one-by-one decision list.
+   */
+  const findEffCandidate = (key: string): Candidate | undefined =>
+    eff
+      ? [...eff.proposed, ...eff.alternates, ...eff.removed].find((c) => candidateKey(c) === key)
+      : undefined;
+
+  /**
+   * Which section a row is CURRENTLY sitting in, per the effective overlay.
+   * Independent from "is this a manual inclusion" (that must be read off
+   * `sel.manualInclusions` directly — controller ruling, Task 1 review round
+   * 2 — never off `effectiveSelection(...).included`, which only lists
+   * additions BEYOND the ranked list).
+   */
+  const statusOf = (key: string): "proposed" | "alternate" | "rejected" | null => {
+    if (!eff) return null;
+    if (eff.proposed.some((c) => candidateKey(c) === key)) return "proposed";
+    if (eff.alternates.some((c) => candidateKey(c) === key)) return "alternate";
+    if (eff.removed.some((c) => candidateKey(c) === key)) return "rejected";
+    return null;
+  };
+  const selectedStatus = selectedKey ? statusOf(selectedKey) : null;
+
+  /**
+   * List's "w próbie" checkbox / row action (Slice 3c) — records the
+   * appraiser's explicit addition of `key` to `manualInclusions`
+   * (idempotent: a key already present is not duplicated) and marks it
+   * reviewed. If `key` currently carries a manual rejection, that rejection
+   * is deleted first (restore + add, same instant) — the selection stays on
+   * the SAME row, which now reads from "Odrzucone"/"Alternatywy" into "W
+   * próbie" (brief, Task 2). The candidate payload is read off whichever of
+   * `effectiveSelection`'s three lists currently holds `key` — including
+   * `removed`, so including a row the appraiser had rejected moments ago
+   * reconstructs its full `Candidate`, not just the key.
+   */
+  const include = (key: string) => {
+    if (!sel) return;
+    const source = findEffCandidate(key);
+    if (!source) return;
+    const now = new Date().toISOString();
+    const alreadyIncluded = (sel.manualInclusions ?? []).some((m) => candidateKey(m) === key);
+    const inclusion: ManualInclusion = {
+      transactionId: source.transactionId,
+      lokalId: source.lokalId,
+      at: now,
+      candidate: source,
+    };
+    const newSel: SampleSelectionSnapshot = {
+      ...sel,
+      manualRejections: (sel.manualRejections ?? []).filter((r) => candidateKey(r) !== key),
+      manualInclusions: alreadyIncluded
+        ? (sel.manualInclusions ?? [])
+        : [...(sel.manualInclusions ?? []), inclusion],
+      reviewed: withReviewed(sel.reviewed, source, now),
+    };
+    setValue("sampleSelection", newSel, { shouldDirty: true });
+    syncComparables(newSel);
+  };
+
+  /**
+   * Marks `key` reviewed only — no rejection/inclusion change, no
+   * `comparables` resync (nothing about the sample itself changed). Looked
+   * up via {@link findEffCandidate} since `ReviewedMark` needs
+   * `transactionId`/`lokalId` separately, not just the combined key.
+   */
+  const markReviewed = (key: string) => {
+    if (!sel) return;
+    const entity = findEffCandidate(key);
+    if (!entity) return;
+    const newSel: SampleSelectionSnapshot = {
+      ...sel,
+      reviewed: withReviewed(sel.reviewed, entity, new Date().toISOString()),
+    };
+    setValue("sampleSelection", newSel, { shouldDirty: true });
+  };
+
+  /** List's "Pomiń" — same action as {@link markReviewed}, exposed under the button's own name (Slice 3c, Tasks 3–5). */
+  const skip = markReviewed;
+
+  /** List's "Zostaw" — marks the panel's currently selected row reviewed, then advances via {@link next} (Slice 3c: reviewed + next). */
+  const keep = () => {
+    if (selectedKey) markReviewed(selectedKey);
+    next();
+  };
+
+  /** "Przejrzano X z Y" (domain/sample-snapshot.ts) for the panel's own `sel`, or a zeroed shape before any selection exists. */
+  const reviewStats = sel
+    ? computeReviewStats(sel)
+    : { reviewed: 0, total: 0, reviewedKeys: new Set<string>() };
 
   /**
    * Radius button (Task 8) — re-runs the DOMAIN selection on the pool
@@ -353,6 +488,13 @@ export function useSampleReview({
     next,
     reject,
     restore,
+    include,
+    skip,
+    keep,
+    markReviewed,
+    reviewStats,
+    statusOf,
+    selectedStatus,
     isReselecting,
     poolMissing,
     setPoolMissing,
