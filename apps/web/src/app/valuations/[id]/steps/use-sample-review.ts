@@ -116,31 +116,34 @@ function roundedString(n: number): string {
  * Matches a LEGACY row (no `lokalId` — a draft saved before that field
  * existed on the form row) to a candidate by transaction id + CONTENT, since
  * position can't be trusted (see {@link rebuildComparables}'s doc comment).
- * A legacy row counts as a match only when its `date`/`area`/`pricePerM2`
- * strings are identical to what `rcnRow(candidate)` would itself produce
- * (same rounding) — if exactly one legacy row for this `transactionId`
- * matches, its OBJECT is reused (preserving whatever status it carries);
- * with zero or 2+ matches the caller falls back to `rcnRow(candidate)`.
+ * A SINGLE legacy row for this `transactionId` cannot belong to another
+ * lokal — there is no other row to confuse it with — so it is reused
+ * AS-IS, edits included, no content check needed (wave 5: a single-lokal
+ * act's edited price was being lost on every resync, because the earlier
+ * version demanded a content match even here). Content only has to
+ * arbitrate once 2+ legacy rows share the `transactionId` (a genuine
+ * multi-lokal act): a row counts as a match only when its
+ * `date`/`area`/`pricePerM2` strings are identical to what
+ * `rcnRow(candidate)` would itself produce (same rounding) — exactly one
+ * match reuses that object, zero or 2+ falls back to `rcnRow(candidate)`.
  *
- * Trade-off, accepted (only pre-`lokalId` drafts can hit it, and only for a
- * multi-lokal act specifically): an EDITED legacy row's content no longer
- * matches `rcnRow`'s fresh output, so it can never be content-matched — the
- * candidate regenerates fresh and that edit is lost on the next resync.
- * Never hands a candidate ANOTHER lokal's row just because a queue slot
- * lined up, which is the exact shape of the original data-loss bug.
+ * Trade-off, accepted (only pre-`lokalId` drafts can hit it, and only for
+ * an AMBIGUOUS multi-lokal act — never a single-lokal act): an EDITED row
+ * inside a 2+-row group no longer content-matches, so that edit is lost on
+ * the next resync. Never hands a candidate ANOTHER lokal's row just
+ * because a queue slot lined up, which is the exact shape of the original
+ * data-loss bug.
  */
 export function matchLegacyRow(
   candidate: { transactionId: string; date: string; area: number; pricePerM2: number },
   legacyRows: readonly ComparableRow[],
 ): ComparableRow | undefined {
+  const sameTx = legacyRows.filter((r) => r.transactionId === candidate.transactionId);
+  if (sameTx.length === 1) return sameTx[0];
   const wantArea = roundedString(candidate.area);
   const wantPrice = roundedString(candidate.pricePerM2);
-  const matches = legacyRows.filter(
-    (r) =>
-      r.transactionId === candidate.transactionId &&
-      r.date === candidate.date &&
-      r.area === wantArea &&
-      r.pricePerM2 === wantPrice,
+  const matches = sameTx.filter(
+    (r) => r.date === candidate.date && r.area === wantArea && r.pricePerM2 === wantPrice,
   );
   return matches.length === 1 ? matches[0] : undefined;
 }

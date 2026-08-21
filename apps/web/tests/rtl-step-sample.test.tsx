@@ -1783,7 +1783,7 @@ describe("StepSample — legacy draft path (wave 4): rows without lokalId are ma
     });
   });
 
-  it("an EDITED legacy row of a single-lokal act is REGENERATED (edit lost) on the next resync — accepted legacy trade-off: content-matching can't recover an edited row's identity without lokalId", async () => {
+  it("an EDITED legacy row of a SINGLE-lokal act SURVIVES a resync (wave 5) — a lone row for a transactionId can't be confused with another lokal, so it needs no content match", async () => {
     const user = userEvent.setup();
     const single = makeCandidate({
       transactionId: "ACT-SINGLE-LEGACY",
@@ -1837,13 +1837,86 @@ describe("StepSample — legacy draft path (wave 4): rows without lokalId are ma
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
 
     await waitFor(() => {
-      // The edit ("12345") is GONE — regenerated to the candidate's own
-      // fresh price (7000). Documented, accepted loss: only a pre-lokalId
-      // draft can hit this, and matchLegacyRow has no way to tell an EDITED
-      // row apart from a stale/unrelated one without lokalId or position.
+      // The edit ("12345") SURVIVES (wave 5) — "single" is the ONLY legacy
+      // row for its transactionId, so matchLegacyRow reuses it as-is
+      // without needing a content match at all. Only a genuinely AMBIGUOUS
+      // multi-lokal act (2+ rows for one transactionId) still trades an
+      // edit for correctness — see the "edited legacy row of a
+      // multi-lokal act" test below.
       expect((container.querySelector("#comparable-price-0") as HTMLInputElement).value).toBe(
-        "7000",
+        "12345",
       );
+    });
+  });
+
+  it("an EDITED legacy row of a genuinely AMBIGUOUS multi-lokal act (2+ rows sharing one transactionId) is REGENERATED (edit lost) on the next resync — wave 5's accepted trade-off, narrowed to this exact case", async () => {
+    const user = userEvent.setup();
+    const lokalA = makeCandidate({
+      transactionId: "ACT-AMBIGUOUS-LEGACY",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_A",
+      pricePerM2: 7505.43,
+      area: 50.63,
+      distanceM: 100,
+    });
+    const lokalB = makeCandidate({
+      transactionId: "ACT-AMBIGUOUS-LEGACY",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_B",
+      pricePerM2: 7541.24,
+      area: 38.19,
+      distanceM: 101,
+    });
+    const other = makeCandidate({
+      transactionId: "T-OTHER-LEGACY-4",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_E",
+      pricePerM2: 9000,
+      area: 45,
+      distanceM: 102,
+    });
+    const proposed = [lokalA, lokalB, other];
+    const sel = makeSampleSelection({ proposed, alternates: [] });
+    // LEGACY rows: two share ACT-AMBIGUOUS-LEGACY — a genuine multi-lokal
+    // act, the case content-matching still has to arbitrate.
+    const initialComparables: Comparable[] = proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(3\)/ }));
+    const priceA = container.querySelector("#comparable-price-0") as HTMLInputElement;
+    await user.clear(priceA);
+    await user.type(priceA, "12345");
+
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
+    // Reject "other" — forces a resync touching every row.
+    await user.click(candidateRows()[2]);
+    await user.click(await screen.findByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    await waitFor(() => {
+      // A's edit is GONE — regenerated to A's own fresh price (7505.43),
+      // never B's (7541.24). B, unedited, still gets its own fresh price
+      // too (content-matched or regenerated — either way, correct).
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      expect(prices).toEqual(["7505.43", "7541.24"]);
     });
   });
 });
