@@ -391,7 +391,10 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           valuationId: id,
           actorId: user.id,
           action: "sample_updated",
-          meta: { count: u.comparables.length },
+          meta: {
+            count: u.comparables.length,
+            radiusUsedM: u.sampleSelection?.radiusUsedM ?? null,
+          },
         });
         await insertAudit(tx, { valuationId: id, actorId: user.id, action: "sample_confirmed" });
         return toValuation(saved);

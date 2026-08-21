@@ -264,6 +264,52 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
   });
 
   /**
+   * `subjectMeta.buildingId` (Task 6, ADR-015's "same building" scoring
+   * bonus) has to be DECLARED in `step1Schema` — zod strips unknown keys, so
+   * a schema that forgot the field would silently drop it here before it
+   * ever reached the repo, and `getSampleProposal` would never see it. Routed
+   * through the real schema (not a hand-written `SubjectUpdate`, unlike the
+   * test above) precisely to prove that.
+   */
+  it("subjectMeta.buildingId survives step1Schema, save, and get() (ADR-015 same-building bonus)", async () => {
+    const created = await repo.create(partialDraft("Wizard BuildingId"));
+    const raw = {
+      address: "ul. Heweliusza 3, Poznań",
+      area: 50,
+      purpose: "sprzedaz" as const,
+      kwNumber: "KW-TEST-1",
+      client: "p. Jan Testowy",
+      subject: { obreb: "0039", nrDzialki: "13/24" },
+      subjectMeta: {
+        x: 355300.15,
+        y: 505330.31,
+        teryt: "306401",
+        fetchedAt: "2026-07-14T09:00:00.000Z",
+        source: "geopoz-gugik",
+        mpzpAbsent: false,
+        buildingId: "306401_1.0021.AR_10.162.1_BUD",
+      },
+    };
+    const parsed = step1Schema.parse(raw);
+
+    await repo.saveSubject(created.id, appraiserA, {
+      address: parsed.address,
+      area: parsed.area,
+      purpose: parsed.purpose,
+      kwNumber: parsed.kwNumber?.trim() || null,
+      client: parsed.client,
+      subject: parsed.subject ?? null,
+      subjectMeta: parsed.subjectMeta ?? null,
+      kw: parsed.kw ? normalizeKw(parsed.kw) : null,
+      kwMeta: parsed.kwMeta ?? null,
+      provenance: assignSubjectProvenance(parsed),
+    });
+
+    const after = await repo.get(created.id, appraiserA);
+    expect(after!.inputs!.subjectMeta!.buildingId).toBe("306401_1.0021.AR_10.162.1_BUD");
+  });
+
+  /**
    * The flow the geocode move has to survive: the appraiser never ran the
    * step-1 EGiB/MPZP fetch, so nothing geocoded the draft until the RCN fetch
    * on step 3 set `sampleMeta` — at which point the F-4 gate starts demanding
@@ -278,11 +324,12 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
     await repo.saveSample(created.id, appraiserA, {
       comparables: [{ pricePerM2: 10_000, source: "manual", status: "confirmed" }],
       sampleMeta: {
-        lat: 52.4,
-        lon: 16.9,
+        point: { x: 355300.15, y: 505330.31, source: "subject" as const },
+        maxRadiusM: 3000,
+        counts: { fetched: 100, deduped: 10, noPos: 0 },
         fetchedAt: "2026-07-14T09:00:00.000Z",
-        source: "rcn-wfs-gugik",
-        query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D" },
+        source: "rcn-wfs-gugik" as const,
+        query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D", pages: 1, truncated: false },
       },
     });
 
@@ -459,11 +506,18 @@ describe("every to_verify a legacy draft can hold has a step that clears it (T8)
         })),
         features: [],
         sampleMeta: {
-          lat: 52.4,
-          lon: 16.9,
+          point: { x: 355300.15, y: 505330.31, source: "subject" as const },
+          maxRadiusM: 3000,
+          counts: { fetched: 100, deduped: 10, noPos: 0 },
           fetchedAt: "2026-07-14T09:00:00.000Z",
-          source: "rcn-wfs-gugik",
-          query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D" },
+          source: "rcn-wfs-gugik" as const,
+          query: {
+            bbox: [1, 2, 3, 4],
+            count: 5000,
+            sort: "dok_data D",
+            pages: 1,
+            truncated: false,
+          },
         },
         subject: null,
         subjectMeta: null,

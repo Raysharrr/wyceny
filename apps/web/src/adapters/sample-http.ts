@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { CandidatePool, PortSampleProposal, SamplePoolRequest } from "../ports/sample";
-import { candidateSchema } from "../lib/valuation-form-schema";
+import { candidateSchema, sampleMetaSchema } from "../lib/valuation-form-schema";
 import { traceHeaders } from "../lib/trace";
 
 /**
@@ -16,27 +16,13 @@ export const WORKER_RESPONDED_PREFIX = "worker /sample-proposal responded";
  * Runtime validation for `CandidatePool` at the trust boundary — the worker
  * is a separate process/deploy, so a shape drift must fail loudly here
  * rather than propagate an `as`-cast lie into the ranking/selection logic.
- * `candidateSchema` comes from `lib/valuation-form-schema` (not redefined
- * here) so Task 7's subject/sample snapshot schema shares one definition.
+ * Composed from `sampleMetaSchema` (`CandidatePool` minus `candidates`) plus
+ * `candidateSchema`, both from `lib/valuation-form-schema` — not redefined
+ * here, so Task 7's `inputs.sampleMeta` schema shares one definition with
+ * this adapter's pool validation.
  */
-export const candidatePoolSchema = z.object({
-  point: z.object({
-    x: z.number(),
-    y: z.number(),
-    source: z.enum(["subject", "uug", "nominatim"]),
-  }),
-  maxRadiusM: z.number(),
+export const candidatePoolSchema = sampleMetaSchema.extend({
   candidates: z.array(candidateSchema),
-  counts: z.object({ fetched: z.number(), deduped: z.number(), noPos: z.number() }),
-  fetchedAt: z.string(),
-  source: z.literal("rcn-wfs-gugik"),
-  query: z.object({
-    bbox: z.array(z.number()),
-    count: z.number(),
-    sort: z.string(),
-    pages: z.number(),
-    truncated: z.boolean(),
-  }),
 }) satisfies z.ZodType<CandidatePool>;
 
 // Worker can page the WFS up to 8 x 20 s in the worst case — a deep pool can exceed this, and the user then gets the generic error.

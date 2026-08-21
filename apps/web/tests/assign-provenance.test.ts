@@ -9,11 +9,12 @@ import { DEFAULT_FEATURES } from "../src/lib/valuation-form-schema";
 import { powierzchniaDefinitions } from "../src/domain/feature-presets";
 
 const sampleMeta = {
-  lat: 52.4,
-  lon: 16.9,
+  point: { x: 355300.15, y: 505330.31, source: "subject" as const },
+  maxRadiusM: 3000,
+  counts: { fetched: 100, deduped: 10, noPos: 0 },
   fetchedAt: "2026-07-14T09:00:00.000Z",
-  source: "rcn-wfs-gugik",
-  query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D" },
+  source: "rcn-wfs-gugik" as const,
+  query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D", pages: 1, truncated: false },
 };
 
 describe("assignProvenance (the ADR-010 ACL — statuses are born here, server-side only)", () => {

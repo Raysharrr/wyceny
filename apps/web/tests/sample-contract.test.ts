@@ -55,6 +55,7 @@ describe("PortSampleProposal contract (v3 CandidatePool)", () => {
       address: "Poznań, Heweliusza 3",
       area: 50,
       point: { x: 355300.15, y: 505330.31, srid: 2180 },
+      radiusM: 1500,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
@@ -64,6 +65,7 @@ describe("PortSampleProposal contract (v3 CandidatePool)", () => {
       address: "Poznań, Heweliusza 3",
       area: 50,
       point: { x: 355300.15, y: 505330.31, srid: 2180 },
+      radiusM: 1500,
     });
     expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(result).toEqual(pool);

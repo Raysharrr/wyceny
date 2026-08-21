@@ -54,11 +54,18 @@ describe("F-3: stored inputs snapshot reproduces the stored WR", () => {
 describe("F-5: sample snapshot provenance round-trips (RCN comparables + sampleMeta)", () => {
   it("create → read: comparables keep source/transactionId, sampleMeta round-trips fully, length >= 12", async () => {
     const sampleMeta = {
-      lat: 52.4064,
-      lon: 16.9252,
+      point: { x: 355300.15, y: 505330.31, source: "subject" as const },
+      maxRadiusM: 3000,
+      counts: { fetched: 15000, deduped: 1200, noPos: 0 },
       fetchedAt: "2026-07-14T09:00:00.000Z",
-      source: "rcn-wfs-gugik",
-      query: { bbox: [52.39, 16.9, 52.42, 16.95], count: 5000, sort: "dok_data D" },
+      source: "rcn-wfs-gugik" as const,
+      query: {
+        bbox: [52.39, 16.9, 52.42, 16.95],
+        count: 5000,
+        sort: "dok_data D",
+        pages: 3,
+        truncated: false,
+      },
     };
     const comparables = fixture.input.comparables.map((c, i) => ({
       ...c,
