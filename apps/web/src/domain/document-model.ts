@@ -531,7 +531,18 @@ export function buildDocumentModel(
     kredyt: input.purpose === "zabezpieczenie_kredytu",
     transakcje: (() => {
       const sel = inputs.sampleSelection;
-      const candidates = sel ? [...sel.proposed, ...sel.alternates] : [];
+      // Manual inclusions too (final wave, I1): a row the appraiser added
+      // that later fell out of BOTH `proposed` and `alternates` after a
+      // radius change exists only in `manualInclusions[].candidate` —
+      // omitting it here made the join below miss it and print dashes for
+      // a row that IS in the sample.
+      const candidates = sel
+        ? [
+            ...sel.proposed,
+            ...sel.alternates,
+            ...(sel.manualInclusions ?? []).map((i) => i.candidate),
+          ]
+        : [];
       // Primary key: transactionId+lokalId (candidateKey) — one notarial
       // act can carry SEVERAL lokale (runtime bug, team-lead 2026-08-21,
       // Heweliusza 3/43: a transactionId-only join printed the SAME

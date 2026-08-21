@@ -95,4 +95,45 @@ describe("Tabela 1 — Obręb | Odległość (Slice 3)", () => {
       ["0006 · gm. 302104", "200"],
     ]);
   });
+
+  it("a manual inclusion re-attached after a radius change prints its own obręb/distance, not dashes (final wave, I1)", () => {
+    const input = syntheticDocumentInput();
+    input.address = "ul. Heweliusza 3, Poznań";
+    // The candidate lives ONLY in `manualInclusions` — it fell out of both
+    // `proposed` and `alternates` when the radius shrank, but the
+    // appraiser's explicit addition survives via the carried `candidate`
+    // payload (`applyManualOverlay` re-attaches it; see `sample-manual.ts`).
+    const reattached = cand("M1", "306401_1", "0039", 456.7);
+    input.inputs.comparables = [
+      {
+        date: "2026-05-10",
+        area: 50,
+        pricePerM2: 12000,
+        source: "rcn",
+        transactionId: "M1",
+        lokalId: reattached.lokalId,
+      },
+    ] as typeof input.inputs.comparables;
+    input.inputs.sampleSelection = {
+      version: 3,
+      proposed: [],
+      alternates: [],
+      manualInclusions: [
+        {
+          transactionId: "M1",
+          lokalId: reattached.lokalId,
+          at: "2026-08-21T10:00:00Z",
+          candidate: reattached,
+        },
+      ],
+      flags: {},
+      rejectedCounts: {},
+      radiusUsedM: 500,
+      radiusWalk: [],
+      counts: { pool: 0, inRadius: 0, afterHygiene: 0, afterBand: 0, proposed: 0 },
+      params: { subjectArea: 50, todayMonth: "2026-08" },
+    };
+    const m = buildDocumentModel(input);
+    expect(m.transakcje.map((r) => [r.obreb, r.odleglosc])).toEqual([["0039 Łazarz", "457"]]);
+  });
 });
