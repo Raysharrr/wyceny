@@ -98,6 +98,20 @@ export function SampleTable({
     if (next) onSelect(next);
   };
 
+  // Collapsing "Alternatywy" hides those rows again — if the panel is open
+  // on one of them, leaving `selectedKey` pointed at a now-invisible row
+  // would strand the panel (and let a stale ↑/↓ jump back to row 0, since
+  // `keys` above is recomputed from the now-collapsed `visible` list).
+  // Closing the panel (onSelect(null)) is simpler than trying to keep it
+  // open on a hidden row.
+  const toggleAlternates = () => {
+    const next = !showAlternates;
+    setShowAlternates(next);
+    if (!next && selectedKey && eff.alternates.some((c) => candidateKey(c) === selectedKey)) {
+      onSelect(null);
+    }
+  };
+
   const row = (c: Candidate, alternate: boolean) => {
     const key = candidateKey(c);
     const selected = key === selectedKey;
@@ -192,7 +206,7 @@ export function SampleTable({
           size="sm"
           className="w-fit"
           aria-expanded={showAlternates}
-          onClick={() => setShowAlternates((v) => !v)}
+          onClick={toggleAlternates}
         >
           {showAlternates ? <ChevronDown /> : <ChevronRight />} Alternatywy ({eff.alternates.length}
           )

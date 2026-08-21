@@ -112,7 +112,17 @@ function makeSampleSelection(
 ): SampleSelectionSnapshot {
   return {
     version: 3,
-    proposed: overrides.proposed ?? [],
+    // Two real candidates by default (not `[]`) — the RCN-fetch banner reads
+    // its "Dobrano N z …" count from `effectiveSelection(sel).proposed`, so a
+    // fixture whose `counts.proposed` (2, below) doesn't match a real
+    // `proposed` array would silently desync banner text from candidate rows.
+    proposed: overrides.proposed ?? [
+      makeCandidate({ transactionId: "T-DEFAULT-1" }),
+      makeCandidate({
+        transactionId: "T-DEFAULT-2",
+        lokalId: "306401_1.0001.34_BUD_5_LOK_7",
+      }),
+    ],
     alternates: overrides.alternates ?? [],
     flags: {},
     rejectedCounts: {},
@@ -756,5 +766,100 @@ describe("StepSample — candidate table (Slice 3)", () => {
     );
 
     expect(screen.getByRole("button", { name: /pobierz próbę z rcn/i })).toBeVisible();
+  });
+});
+
+describe("StepSample — manual rejection flow", () => {
+  // All five share one building (`maxPerBuilding` = 3, the domain default) —
+  // that's what keeps the two extras as ALTERNATES rather than being
+  // silently promoted into `proposed` on first render (same fixpoint the
+  // sample-table.test.tsx fixtures work around), and what makes the
+  // backfill-after-reject assertion below meaningful.
+  function buildingCandidate(i: number): Candidate {
+    return makeCandidate({
+      transactionId: `T-BUILD-${i}`,
+      lokalId: `306401_1.0001.34_BUD_5_LOK_${i}`,
+      date: `2024-0${i}`,
+      pricePerM2: 11000 + i * 10,
+      distanceM: 100 + i,
+    });
+  }
+
+  it("reject from the panel backfills from alternates, persists a manual rejection, and restore reverses it", async () => {
+    const user = userEvent.setup();
+    saveSampleAction.mockClear();
+    pushMock.mockClear();
+    saveSampleAction.mockResolvedValue({ ok: true });
+
+    const proposed = [buildingCandidate(1), buildingCandidate(2), buildingCandidate(3)];
+    const alternates = [buildingCandidate(4), buildingCandidate(5)];
+    const sel = makeSampleSelection({ proposed, alternates });
+    // Mirrors what the server ACL actually persists after a fetch (Task 9's
+    // `rcnRow`-equivalent mapping) — every row `source: "rcn"`, keyed by the
+    // SAME `transactionId` as the matching `Candidate`, so `syncComparables`
+    // can tell these apart from a hand-added row later.
+    const initialComparables: Comparable[] = proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    // Alternates collapsed by default: only the 3 proposed rows render.
+    expect(screen.getAllByRole("row").slice(1)).toHaveLength(3);
+
+    await user.click(screen.getAllByRole("row").slice(1)[0]);
+    await waitFor(() => expect(screen.getByText("Kandydatka 1 z 5")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    // proposed stays at 3 — the first former alternate backfilled the slot.
+    await waitFor(() => expect(screen.getAllByRole("row").slice(1)).toHaveLength(3));
+    expect(screen.getByRole("button", { name: /Odrzucone \(1\)/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+
+    await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
+    const [, payload] = saveSampleAction.mock.calls.at(-1) as [
+      string,
+      {
+        sampleSelection?: SampleSelectionSnapshot;
+        comparables: Array<{ source?: string; transactionId?: string }>;
+      },
+    ];
+    expect(payload.sampleSelection?.manualRejections).toHaveLength(1);
+    expect(payload.comparables).toHaveLength(3);
+    expect(payload.comparables.every((c) => c.source === "rcn")).toBe(true);
+    expect(new Set(payload.comparables.map((c) => c.transactionId))).toEqual(
+      new Set([proposed[1].transactionId, proposed[2].transactionId, alternates[0].transactionId]),
+    );
+
+    // Restore reverses the rejection.
+    await user.click(screen.getByRole("button", { name: /Odrzucone \(1\)/ }));
+    await user.click(screen.getByRole("button", { name: /Przywróć/i }));
+
+    saveSampleAction.mockClear();
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+    await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
+    const [, payload2] = saveSampleAction.mock.calls.at(-1) as [
+      string,
+      { sampleSelection?: SampleSelectionSnapshot },
+    ];
+    expect(payload2.sampleSelection?.manualRejections).toEqual([]);
   });
 });

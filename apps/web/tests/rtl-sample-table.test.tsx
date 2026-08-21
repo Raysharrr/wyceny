@@ -313,4 +313,58 @@ describe("SampleTable", () => {
     expect(within(rows[1]).getByText(`${a[0].distanceM} m`)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Alternatywy/ })).toBeNull();
   });
+
+  it("collapsing alternates clears the selection (onSelect(null)) when the selected row was an alternate no longer visible", async () => {
+    const onSelect = vi.fn();
+    const p = [cand(), cand()];
+    const a = [cand()];
+    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
+    const flags = { [candidateKey(a[0])]: ["price_outlier" as const] };
+    const { rerender } = render(
+      <SampleTable
+        selection={snap(p, a, { flags })}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={null}
+        onSelect={onSelect}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(3);
+    await userEvent.click(rows[2]);
+    expect(onSelect).toHaveBeenLastCalledWith(keyOf(a[0]));
+
+    rerender(
+      <SampleTable
+        selection={snap(p, a, { flags })}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={keyOf(a[0])}
+        onSelect={onSelect}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+  });
+
+  it("collapsing alternates leaves a still-visible (proposed) selection untouched", async () => {
+    const onSelect = vi.fn();
+    const p = [cand(), cand()];
+    const a = [cand()];
+    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
+    const flags = { [candidateKey(a[0])]: ["price_outlier" as const] };
+    render(
+      <SampleTable
+        selection={snap(p, a, { flags })}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={keyOf(p[0])}
+        onSelect={onSelect}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });

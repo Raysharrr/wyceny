@@ -26,8 +26,10 @@ import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import type { Comparable, KcsInput } from "@/domain/kcs";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
-import { effectiveSelection } from "@/domain/sample-snapshot";
+import { SamplePanel } from "./sample-panel";
+import { SampleRejected } from "./sample-rejected";
 import { SampleTable } from "./sample-table";
+import { rcnRow, useSampleReview } from "./use-sample-review";
 
 // `NEXT_PUBLIC_*` vars are inlined at build time (Next.js) or read from the
 // real process env (vitest/node) — mirrors the same check in
@@ -35,6 +37,12 @@ import { SampleTable } from "./sample-table";
 // this to "off" so the smoke test never depends on Google Street View being
 // reachable.
 export const NEXT_PUBLIC_STREET_VIEW_OFF = process.env.NEXT_PUBLIC_STREET_VIEW === "off";
+
+// Same "read once at module scope" pattern as `NEXT_PUBLIC_STREET_VIEW_OFF`
+// above — Next.js inlines `NEXT_PUBLIC_*` at build time, and vitest/node
+// read it straight off `process.env`, so both the app and the RTL tests see
+// the same value without threading it through props.
+const EMBED_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY ?? null;
 
 type FormInput = z.input<typeof sampleStepSchema>;
 type FormOutput = z.output<typeof sampleStepSchema>;
@@ -108,7 +116,6 @@ export function StepSample({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isFetchingSample, setIsFetchingSample] = useState(false);
   const [fetchSampleError, setFetchSampleError] = useState<string | null>(null);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   // Collapsed by default once a v3 selection snapshot already exists (the
   // candidate table above takes over) — expanded when it doesn't (manual
   // sample, legacy v2 draft), so the Playwright smoke and the pre-Slice-3
@@ -185,9 +192,24 @@ export function StepSample({
   // Watched so the candidate table's thumbnails reflect a fetch made in this
   // session, not only whatever `streetView` the page rendered with.
   const liveStreetView = useWatch({ control, name: "streetView" });
-  // Domain result + manual overlay (Task 1) — computed once here so the
-  // banner's alternates count and `<SampleTable>` below agree by construction.
-  const eff = sel ? effectiveSelection(sel) : null;
+
+  // Candidate-review state (Task 7): which row the side panel shows, the
+  // domain result + manual overlay it's derived from, and the
+  // reject/restore/next handlers — pulled into its own hook purely to keep
+  // this file's length down (see `use-sample-review.ts`).
+  const {
+    eff,
+    combined,
+    selectedKey,
+    setSelectedKey,
+    selectedIndex,
+    selectedCandidate,
+    isProposedSelected,
+    streetViewEntryFor,
+    next,
+    reject,
+    restore,
+  } = useSampleReview({ sel, comparables, setValue, replaceComparables, liveStreetView });
 
   const onFetchSample = async () => {
     setFetchSampleError(null);
@@ -205,15 +227,10 @@ export function StepSample({
       // here so the value the user sees and accepts in the input is the same
       // value that feeds the valuation engine. No `.slice(0, 12)` here — the
       // domain's `selectSample` already caps `proposed` at 12 (ADR-015 rule 6).
-      replaceComparables(
-        result.proposal.comparables.map((t) => ({
-          date: t.date,
-          area: String(Math.round(t.area * 100) / 100),
-          pricePerM2: String(Math.round(t.pricePerM2 * 100) / 100),
-          source: "rcn" as const,
-          transactionId: t.transactionId,
-        })),
-      );
+      // A fresh proposal has no `manualRejections` yet, so this is the same
+      // result `syncComparables` would produce — going through it here would
+      // just add a needless extra read of the (not-yet-updated) form state.
+      replaceComparables(result.proposal.comparables.map(rcnRow));
       setValue("sampleMeta", result.proposal.sampleMeta, {
         shouldDirty: true,
         shouldValidate: true,
@@ -225,6 +242,10 @@ export function StepSample({
       // Same round-trip requirement as sampleSelection above — the fresh
       // Street View lookup must persist alongside it.
       setValue("streetView", result.proposal.streetView, { shouldDirty: true });
+      // A fresh fetch replaces the whole candidate pool — a panel left open
+      // on a candidate from the PREVIOUS pool would show stale data (or a
+      // key that no longer resolves to anything).
+      setSelectedKey(null);
     } finally {
       setIsFetchingSample(false);
     }
@@ -253,7 +274,7 @@ export function StepSample({
               <AutoBanner>
                 Dobrano{" "}
                 <b>
-                  {sel.counts.proposed} z {sel.counts.afterBand} pasujących
+                  {eff.proposed.length} z {sel.counts.afterBand} pasujących
                 </b>{" "}
                 w promieniu <b>{sel.radiusUsedM} m</b> (przebadano {sel.counts.pool} transakcji z
                 RCN, {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
@@ -268,6 +289,9 @@ export function StepSample({
                   (total, count) => total + (count ?? 0),
                   0,
                 )}
+                {(sel.manualRejections?.length ?? 0) > 0
+                  ? ` · Twoich odrzuceń: ${sel.manualRejections?.length}`
+                  : null}
               </AutoBanner>
             ) : liveSampleMeta ? (
               // A persisted `sampleMeta` without its v3 selection snapshot (a
@@ -281,13 +305,16 @@ export function StepSample({
             ) : null}
 
             {sel ? (
-              <SampleTable
-                selection={sel}
-                streetView={liveStreetView ?? null}
-                streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
-                selectedKey={selectedKey}
-                onSelect={setSelectedKey}
-              />
+              <>
+                <SampleTable
+                  selection={sel}
+                  streetView={liveStreetView ?? null}
+                  streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
+                  selectedKey={selectedKey}
+                  onSelect={setSelectedKey}
+                />
+                <SampleRejected selection={sel} onRestore={restore} />
+              </>
             ) : null}
 
             <Button
@@ -454,6 +481,21 @@ export function StepSample({
         </SectionCard>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
+          {selectedCandidate ? (
+            <SamplePanel
+              candidate={selectedCandidate}
+              index={selectedIndex}
+              total={combined.length}
+              entry={streetViewEntryFor(selectedCandidate)}
+              embedKey={EMBED_KEY}
+              streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
+              isProposed={isProposedSelected}
+              onKeep={next}
+              onReject={reject}
+              onClose={() => setSelectedKey(null)}
+            />
+          ) : null}
+
           <SectionCard icon={Scale} title="Statystyki próby">
             <div className="flex flex-col gap-2 text-sm">
               <p>
