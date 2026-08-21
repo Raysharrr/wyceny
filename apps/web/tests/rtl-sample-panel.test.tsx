@@ -82,6 +82,10 @@ describe("SamplePanel", () => {
     );
     expect(screen.getByRole("button", { name: "Ulica" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Mapa" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ortofoto" })).toHaveAttribute(
+      "data-variant",
+      "default",
+    );
     expect(screen.queryByTitle("Street View")).toBeNull();
     expect(screen.getByRole("img", { name: /Ortofotomapa/ })).toBeInTheDocument();
     expect(screen.getByText(/brak zdjęcia ulicy/)).toBeInTheDocument();
@@ -137,6 +141,34 @@ describe("SamplePanel", () => {
     expect(srcAfterFirst).toContain("KrajowaIntegracjaEwidencjiGruntow");
     fireEvent.error(img);
     expect(img.getAttribute("src")).toBe(srcAfterFirst);
+  });
+  it("ortofoto's one-shot fallback remounts per candidate — candidate B's own ORTO failure still triggers its own KIEG fallback", async () => {
+    const entryNoPano = {
+      ...entry,
+      panoId: null,
+      captureDate: null,
+      thumbnailKey: null,
+      heading: null,
+    };
+    const { rerender } = render(<SamplePanel {...base} entry={entryNoPano} />);
+    const imgA = screen.getByRole("img", { name: /Ortofotomapa/ });
+    fireEvent.error(imgA);
+    const srcAAfterFallback = imgA.getAttribute("src");
+    expect(srcAAfterFallback).toContain("KrajowaIntegracjaEwidencjiGruntow");
+
+    // Candidate B has a different `pos` so its ORTO/KIEG URLs are
+    // distinguishable from A's; also no panorama, so mode stays "orto"
+    // across the switch — exactly the scenario where a reused DOM node
+    // (no key) would carry A's stale `data-fallback` marker over to B.
+    const candidateB = { ...c, transactionId: "T2", pos: { x: 355400, y: 505500 } };
+    rerender(<SamplePanel {...base} candidate={candidateB} entry={entryNoPano} />);
+    const imgB = screen.getByRole("img", { name: /Ortofotomapa/ });
+    expect(imgB.getAttribute("src")).toContain("PZGIK/ORTO");
+    expect(imgB.getAttribute("src")).not.toBe(srcAAfterFallback);
+
+    fireEvent.error(imgB);
+    expect(imgB.getAttribute("src")).toContain("KrajowaIntegracjaEwidencjiGruntow");
+    expect(imgB.getAttribute("src")).not.toBe(srcAAfterFallback);
   });
   it("switching to a different candidate (different transactionId) resets rejecting/reason/note", async () => {
     const { rerender } = render(<SamplePanel {...base} />);

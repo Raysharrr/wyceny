@@ -125,6 +125,14 @@ export function SamplePanel({
       return (
         // eslint-disable-next-line @next/next/no-img-element -- WMS tile, not an optimizable static asset
         <img
+          // Remounts on candidate change: the one-shot `data-fallback`
+          // marker below lives on THIS DOM node, and without a key React
+          // would reuse the same node across candidates (mode stays
+          // "orto") — candidate A's ORTO failure would leave the marker
+          // set, so candidate B's OWN ORTO failure gets silently ignored
+          // and B stays stuck on a broken image. A fresh `key` forces a
+          // fresh node (fresh marker, fresh `src`) per candidate.
+          key={candidateKey(candidate)}
           alt="Ortofotomapa GUGiK (podgląd)"
           src={ortoWmsUrl(pos)}
           onError={(e) => {
