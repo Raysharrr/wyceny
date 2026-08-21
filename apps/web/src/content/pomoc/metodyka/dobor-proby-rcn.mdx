@@ -7,7 +7,7 @@ Próba porównawcza pochodzi z rejestru cen nieruchomości (RCN) — publicznego
 
 - **Rejestr** — RCN przez usługę WFS Geoportalu, warstwa lokali.
 - **Obszar** — kwadrat ±3 km wokół punktu przedmiotu (`DEFAULT_RADIUS_M`, `apps/worker/app/main.py`). To promień zapytania do rejestru — szerszy od promieni rankingu opisanych w sekcji „Promień” niżej.
-- **Stronicowanie** — rekordy pobierane są stronami po 5000 (`PAGE_SIZE`, `apps/worker/app/rcn.py`), posortowane po dacie dokumentu i identyfikatorze transakcji malejąco (`SORT_BY`), aż pokryją {DEFAULTS.windowMonths} miesięcy wstecz (`DATE_WINDOW_MONTHS`, funkcja `fetch_pool`) — albo aż skończą się strony w rejestrze.
+- **Stronicowanie** — rekordy pobierane są stronami po 5000 (`PAGE_SIZE`, `apps/worker/app/rcn.py`), posortowane po dacie dokumentu i identyfikatorze transakcji malejąco (`SORT_BY`), aż pokryją {DEFAULTS.windowMonths} miesięcy wstecz (`DATE_WINDOW_MONTHS`, funkcja `fetch_pool`) — albo aż wyczerpie się nasz limit stron pobierania (8 × 5000 rekordów); wtedy pula może być niepełna.
 - **Duplikaty** — ta sama transakcja i ten sam lokal potrafią wystąpić w rejestrze w kilku wersjach; worker składa je do jednej, zostawiając wersję o najwyższym numerze (`tran_wersja_id`).
 
 ## Punkt przedmiotu
