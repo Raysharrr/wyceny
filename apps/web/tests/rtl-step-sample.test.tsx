@@ -1089,4 +1089,98 @@ describe("StepSample — radius buttons (Task 8)", () => {
     await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: "500 m" })).not.toBeDisabled());
   });
+
+  /**
+   * Review round 1, Important #1 (2026-08-21): the FIRST implementation's
+   * radius handler filtered manual rows with `c.source && c.source !==
+   * "rcn"`, which silently deleted a row still missing its `source` — the
+   * exact shape of a row right after "Dodaj transakcję", before it has been
+   * saved once. This pins the fix: the shared `rebuildComparables` helper
+   * keeps ANY non-"rcn" row, `source` present or not.
+   */
+  it("a hand-added row with NO source yet (mid-edit, right after 'Dodaj transakcję') survives a radius change with its typed values", async () => {
+    const user = userEvent.setup();
+    const initialProposed = [
+      makeCandidate({ transactionId: "T-OLD-1", pricePerM2: 11000 }),
+      makeCandidate({
+        transactionId: "T-OLD-2",
+        lokalId: "306401_1.0001.34_BUD_5_LOK_7",
+        pricePerM2: 11500,
+      }),
+    ];
+    const sel = makeSampleSelection({ proposed: initialProposed, radiusUsedM: 500 });
+    const initialComparables: Comparable[] = initialProposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    const newProposed = [
+      makeCandidate({ transactionId: "T-NEW-1", pricePerM2: 20000 }),
+      makeCandidate({
+        transactionId: "T-NEW-2",
+        lokalId: "306401_1.0001.34_BUD_5_LOK_8",
+        pricePerM2: 20500,
+      }),
+    ];
+    const sel2 = makeSampleSelection({ proposed: newProposed, radiusUsedM: 1000 });
+    reselectSample.mockResolvedValue({
+      proposal: {
+        comparables: newProposed.map((c) => ({
+          date: c.date,
+          area: c.area,
+          pricePerM2: c.pricePerM2,
+          transactionId: c.transactionId,
+        })),
+        sampleSelection: sel2,
+        sampleMeta: makeSampleMeta(),
+        streetView: null,
+      },
+    });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    // Expand the editable table, then add a row by hand (no `source` set —
+    // exactly what "Dodaj transakcję" produces before any save round-trip).
+    await user.click(screen.getByRole("button", { name: /próba do kalkulacji.*edytuj wartości/i }));
+    await user.click(screen.getByRole("button", { name: /dodaj transakcję/i }));
+
+    const dateInputs = screen.getAllByPlaceholderText("2024-07");
+    const areaInputs = screen.getAllByPlaceholderText("m²");
+    const priceInputs = screen.getAllByPlaceholderText("zł/m²");
+    const handIndex = priceInputs.length - 1;
+    await user.type(dateInputs[handIndex], "2020-01");
+    await user.type(areaInputs[handIndex], "50");
+    await user.type(priceInputs[handIndex], "9000");
+
+    await user.click(screen.getByRole("button", { name: "1000 m" }));
+    await waitFor(() => expect(reselectSample).toHaveBeenCalled());
+
+    await waitFor(() => {
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      // RCN rows replaced by the new pool; the hand-added row (no `source`)
+      // survives untouched, kept AFTER the RCN rows.
+      expect(prices).toEqual(["20000", "20500", "9000"]);
+    });
+    const dates = screen
+      .getAllByPlaceholderText("2024-07")
+      .map((el) => (el as HTMLInputElement).value);
+    expect(dates.at(-1)).toBe("2020-01");
+    const areas = screen.getAllByPlaceholderText("m²").map((el) => (el as HTMLInputElement).value);
+    expect(areas.at(-1)).toBe("50");
+  });
 });

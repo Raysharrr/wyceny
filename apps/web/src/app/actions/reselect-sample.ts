@@ -24,9 +24,14 @@ export type ReselectSampleInput = {
 };
 export type ReselectSampleResult =
   | { proposal: Awaited<ReturnType<typeof buildProposal>> }
-  | { error: string; code?: "pool_missing" };
+  | { error: string; code?: "pool_missing" | "pool_stale" };
 
 const POOL_MISSING = "Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.";
+// The subject's address/area changed (step 1 edit) since the pool was
+// fetched — reusing it would silently rank against the WRONG point/area
+// band (review round 1, Important #2, 2026-08-21).
+const POOL_STALE =
+  "Dane przedmiotu zmieniły się od ostatniego pobrania — pobierz próbę z RCN ponownie.";
 const GENERIC = "Nie udało się przeliczyć próby — spróbuj ponownie.";
 
 /**
@@ -36,9 +41,12 @@ const GENERIC = "Nie udało się przeliczyć próby — spróbuj ponownie.";
  * cached (`_pool-cache.ts`), at the appraiser's chosen radius. NEVER
  * re-queries the worker/WFS: the pool is a CACHE keyed by `valuationId`,
  * overwritten on every fresh fetch — when nothing is cached (a draft
- * started before Slice 3, or storage cleared), the answer is `pool_missing`,
- * never a silent re-selection on an empty pool (team-lead condition 1,
- * 2026-08-21). `sampleSelection` stays the only source of truth (ADR-011):
+ * started before Slice 3, or storage cleared), the answer is `pool_missing`;
+ * when a cache EXISTS but its `savedFor` no longer matches the valuation's
+ * current address/area (a step-1 edit since the last fetch), the answer is
+ * `pool_stale` — neither is ever a silent re-selection on the wrong pool
+ * (team-lead condition 1, 2026-08-21; stale guard added review round 1,
+ * Important #2). `sampleSelection` stays the only source of truth (ADR-011):
  * this returns a brand-new snapshot the same way the first fetch does — the
  * caller saves it via the same `saveSampleAction` → `applySampleUpdate`
  * path, whose `sample_updated` audit row sees `params.radiusOverrideM`.
@@ -60,11 +68,17 @@ export async function reselectSample(input: ReselectSampleInput): Promise<Resele
       const valuation = await valuationRepository.get(valuationId, session.user);
       if (!valuation) return { error: "Nie znaleziono wyceny." };
 
-      const pool = await loadPool(storage, valuationId);
-      if (!pool) return { error: POOL_MISSING, code: "pool_missing" };
+      const cached = await loadPool(storage, valuationId);
+      if (!cached) return { error: POOL_MISSING, code: "pool_missing" };
+      if (
+        cached.savedFor.address !== valuation.address ||
+        cached.savedFor.area !== valuation.area
+      ) {
+        return { error: POOL_STALE, code: "pool_stale" };
+      }
 
       const proposal = await buildProposal({
-        pool,
+        pool: cached.pool,
         valuation,
         area: valuation.area,
         radiusOverrideM,

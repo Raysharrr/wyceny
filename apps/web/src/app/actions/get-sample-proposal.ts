@@ -90,7 +90,7 @@ export async function getSampleProposal(
       // the sample they just fetched, only the ability to change the radius
       // without re-fetching later, so it's logged and swallowed.
       try {
-        await savePool(storage, valuationId, pool);
+        await savePool(storage, valuationId, pool, { address, area });
       } catch (error) {
         await recordFailure({
           event: "poolCache.writeFailed",

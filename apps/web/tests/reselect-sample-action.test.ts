@@ -96,6 +96,8 @@ const valuation = {
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any;
+/** Matches `valuation.address`/`valuation.area` — a pool saved under this never trips the stale-pool guard. */
+const SAVED_FOR = { address: valuation.address, area: valuation.area };
 
 describe("reselectSample", () => {
   beforeEach(() => {
@@ -139,7 +141,7 @@ describe("reselectSample", () => {
 
   it("(d) with a cached pool: re-runs the domain at the given radius, carries manualRejections 1:1, logs proposal.reselect with numbers/fields-only meta (F-13)", async () => {
     getMock.mockResolvedValue(valuation);
-    await savePool(storage, VALUATION_ID, pool);
+    await savePool(storage, VALUATION_ID, pool, SAVED_FOR);
     const manualRejections: ManualRejection[] = [
       { transactionId: "X", lokalId: "Y", reason: "too_far", at: "2026-08-21T09:00:00Z" },
     ];
@@ -177,7 +179,7 @@ describe("reselectSample", () => {
 
   it("(e) determinism: same pool + radius + manualRejections ⇒ identical `proposed` across two calls", async () => {
     getMock.mockResolvedValue(valuation);
-    await savePool(storage, VALUATION_ID, pool);
+    await savePool(storage, VALUATION_ID, pool, SAVED_FOR);
     const input = {
       valuationId: VALUATION_ID,
       radiusOverrideM: 1000 as const,
@@ -188,5 +190,35 @@ describe("reselectSample", () => {
     if ("error" in r1) throw new Error(r1.error);
     if ("error" in r2) throw new Error(r2.error);
     expect(r2.proposal.sampleSelection.proposed).toEqual(r1.proposal.sampleSelection.proposed);
+  });
+
+  it("(f) a cached pool whose savedFor no longer matches the valuation's current address/area → { error, code: 'pool_stale' } (review round 1, Important #2)", async () => {
+    getMock.mockResolvedValue(valuation);
+    // Saved for a DIFFERENT address than `valuation.address` — simulates a
+    // step-1 address edit after the pool was fetched.
+    await savePool(storage, VALUATION_ID, pool, { address: "ul. Inna 1, Poznań", area: 50 });
+    const r = await reselectSample({
+      valuationId: VALUATION_ID,
+      radiusOverrideM: 1000,
+      manualRejections: [],
+    });
+    expect(r).toEqual({
+      error: expect.stringMatching(/dane przedmiotu zmieniły się/i),
+      code: "pool_stale",
+    });
+  });
+
+  it("(g) an area mismatch alone also trips the stale-pool guard", async () => {
+    getMock.mockResolvedValue(valuation);
+    await savePool(storage, VALUATION_ID, pool, { address: valuation.address, area: 999 });
+    const r = await reselectSample({
+      valuationId: VALUATION_ID,
+      radiusOverrideM: 1000,
+      manualRejections: [],
+    });
+    expect(r).toEqual({
+      error: expect.stringMatching(/dane przedmiotu zmieniły się/i),
+      code: "pool_stale",
+    });
   });
 });

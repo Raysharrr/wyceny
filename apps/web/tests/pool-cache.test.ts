@@ -36,11 +36,13 @@ function buildPool(): CandidatePool {
   };
 }
 
+const SAVED_FOR = { address: "Poznań, Heweliusza 3", area: 50 };
+
 describe("_pool-cache", () => {
   it("savePool writes a gzip Buffer under pool/<valuationId>.json.gz", async () => {
     const storage = memStorage();
     const pool = buildPool();
-    await savePool(storage, "11111111-1111-4111-8111-111111111111", pool);
+    await savePool(storage, "11111111-1111-4111-8111-111111111111", pool, SAVED_FOR);
     const raw = await storage.get(poolKey("11111111-1111-4111-8111-111111111111"));
     expect(Buffer.isBuffer(raw)).toBe(true);
     // gzip magic bytes (RFC 1952).
@@ -48,12 +50,12 @@ describe("_pool-cache", () => {
     expect(raw[1]).toBe(0x8b);
   });
 
-  it("loadPool restores the pool byte-for-byte (toEqual)", async () => {
+  it("loadPool restores the pool AND its savedFor byte-for-byte (toEqual)", async () => {
     const storage = memStorage();
     const pool = buildPool();
-    await savePool(storage, "11111111-1111-4111-8111-111111111111", pool);
+    await savePool(storage, "11111111-1111-4111-8111-111111111111", pool, SAVED_FOR);
     const restored = await loadPool(storage, "11111111-1111-4111-8111-111111111111");
-    expect(restored).toEqual(pool);
+    expect(restored).toEqual({ savedFor: SAVED_FOR, pool });
   });
 
   it("missing key → null", async () => {
@@ -71,10 +73,10 @@ describe("_pool-cache", () => {
     await expect(loadPool(storage, "33333333-3333-4333-8333-333333333333")).rejects.toThrow();
   });
 
-  it("gzip size of the Heweliusza pool is under 2 MB (team-lead condition 2)", async () => {
+  it("gzip size of the Heweliusza pool (with savedFor wrapper) is under 2 MB (team-lead condition 2)", async () => {
     const storage = memStorage();
     const pool = buildPool();
-    await savePool(storage, "11111111-1111-4111-8111-111111111111", pool);
+    await savePool(storage, "11111111-1111-4111-8111-111111111111", pool, SAVED_FOR);
     const raw = await storage.get(poolKey("11111111-1111-4111-8111-111111111111"));
     expect(raw.byteLength).toBeLessThan(2 * 1024 * 1024);
   });

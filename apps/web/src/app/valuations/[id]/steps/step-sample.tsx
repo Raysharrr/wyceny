@@ -215,6 +215,7 @@ export function StepSample({
     poolMissing,
     setPoolMissing,
     reselectError,
+    clearReselectError,
     onRadius,
   } = useSampleReview({
     valuationId,
@@ -261,8 +262,10 @@ export function StepSample({
       // key that no longer resolves to anything).
       setSelectedKey(null);
       // A fresh fetch re-populates the pool cache `reselectSample` reads —
-      // clears whatever "pobierz ponownie" gate a previous radius click hit.
+      // clears whatever "pobierz ponownie" gate a previous radius click hit,
+      // and any leftover error message from that click.
       setPoolMissing(false);
+      clearReselectError();
     } finally {
       setIsFetchingSample(false);
     }
@@ -327,11 +330,12 @@ export function StepSample({
                   value={sel.radiusUsedM}
                   steps={DEFAULTS.radiusStepsM}
                   busy={isReselecting}
-                  disabledReason={
-                    poolMissing
-                      ? "Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie."
-                      : null
-                  }
+                  // The alert below is the single VISIBLE copy of the reason
+                  // (minor #3) — `disabledReason` here only drives `disabled`
+                  // + the `title` tooltip, so it reuses the SAME text
+                  // `reselectSample` returned rather than a second, possibly
+                  // drifting, hardcoded string.
+                  disabledReason={poolMissing ? reselectError : null}
                   onChange={onRadius}
                 />
                 {reselectError ? (

@@ -37,33 +37,26 @@ import type { Valuation } from "@/ports/valuation";
  * (e.g. the worker round trip in `getSampleProposal`), not just this
  * function's own runtime.
  */
-export async function buildProposal(args: {
-  pool: CandidatePool;
-  valuation: Valuation;
-  area: number;
-  radiusOverrideM?: number;
-  manualRejections?: ManualRejection[];
-  session: { user: { id: string } };
-  valuationId: string;
-  event: "proposal.sample" | "proposal.reselect";
-  startedAt: number;
-}): Promise<{
+export async function buildProposal(
+  args: {
+    pool: CandidatePool;
+    valuation: Valuation;
+    area: number;
+    manualRejections?: ManualRejection[];
+    session: { user: { id: string } };
+    valuationId: string;
+    startedAt: number;
+  } & ({ event: "proposal.sample" } | { event: "proposal.reselect"; radiusOverrideM: number }),
+): Promise<{
   comparables: { date: string; area: number; pricePerM2: number; transactionId: string }[];
   sampleSelection: SampleSelectionSnapshot;
   sampleMeta: SampleMeta;
   streetView: StreetViewSnapshot;
 }> {
-  const {
-    pool,
-    valuation,
-    area,
-    radiusOverrideM,
-    manualRejections,
-    session,
-    valuationId,
-    event,
-    startedAt,
-  } = args;
+  const { pool, valuation, area, manualRejections, session, valuationId, startedAt } = args;
+  // Only present for a reselect (the discriminated union above guarantees
+  // it) — a fresh fetch always walks the domain's own radius steps.
+  const radiusOverrideM = args.event === "proposal.reselect" ? args.radiusOverrideM : undefined;
 
   const subjectMeta = valuation.inputs?.subjectMeta ?? null;
   const selectionParams = {
@@ -103,7 +96,7 @@ export async function buildProposal(args: {
     ),
   );
 
-  if (event === "proposal.sample") {
+  if (args.event === "proposal.sample") {
     await recordEvent({
       level: "info",
       event: "proposal.sample",
@@ -128,6 +121,8 @@ export async function buildProposal(args: {
     // No re-fetch happened here — `geocoder`/`truncated`/`pages` are
     // properties of the POOL FETCH, not of a re-selection on it, so they
     // are deliberately absent (F-13, team-lead condition 3, 2026-08-21).
+    // `args.radiusOverrideM` is narrowed by the `event` discriminant above —
+    // no cast needed (review round 1, minor #6).
     await recordEvent({
       level: "info",
       event: "proposal.reselect",
@@ -135,7 +130,7 @@ export async function buildProposal(args: {
       actorId: session.user.id,
       valuationId,
       meta: {
-        radiusOverrideM: radiusOverrideM as number,
+        radiusOverrideM: args.radiusOverrideM,
         counts: { ...selection.counts },
         fields,
       },

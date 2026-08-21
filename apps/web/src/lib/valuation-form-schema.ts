@@ -63,9 +63,9 @@ export const poolQuerySchema = z.object({
 /**
  * `CandidatePool` minus `candidates` (ADR-015 "Dobor proby v3") — the RCN
  * pool fetch's provenance for the whole sample (F-5), persisted alongside
- * `sampleSelection` in `inputs.sampleMeta`. `adapters/sample-http.ts`'s
- * `candidatePoolSchema` extends this with `candidates` rather than
- * redefining the shared fields, so the two stay in lockstep.
+ * `sampleSelection` in `inputs.sampleMeta`. `candidatePoolSchema` (below,
+ * this module) extends this with `candidates` rather than redefining the
+ * shared fields, so the two stay in lockstep.
  */
 export const sampleMetaSchema = z.object({
   point: poolPointSchema,
@@ -89,7 +89,7 @@ export const egibSchema = z.object({
 /**
  * Mirrors `Candidate` from `@/domain/sample-selection` — one RCN transaction
  * in the sample pool fetched via `PortSampleProposal` (ADR-015). Exported
- * separately from `candidatePoolSchema` (adapters/sample-http.ts) so the
+ * separately from `candidatePoolSchema` (below, this module) so the
  * subject-snapshot schema can reuse it without importing an adapter (F-10).
  */
 export const candidateSchema = z.object({

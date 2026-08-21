@@ -164,9 +164,14 @@ describe("getSampleProposal (v3)", () => {
     expect(sampleCall![0].valuationId).toBe(valuation.id);
 
     // Task 8: the fetched pool is cached (gzip, under pool/<valuationId>.json.gz)
-    // so a later radius change (`reselectSample`) never re-queries WFS.
+    // so a later radius change (`reselectSample`) never re-queries WFS —
+    // wrapped with the address/area it was fetched for (review round 1,
+    // Important #2: `reselectSample` needs this to detect a stale pool).
     expect(depsState.store.has(poolKey(valuation.id))).toBe(true);
-    await expect(loadPool(storage, valuation.id)).resolves.toEqual(pool);
+    await expect(loadPool(storage, valuation.id)).resolves.toEqual({
+      savedFor: { address: valuation.address, area: 50 },
+      pool,
+    });
   });
 
   it("without subjectMeta the worker geocodes (no point sent) and ranking is distance-only", async () => {

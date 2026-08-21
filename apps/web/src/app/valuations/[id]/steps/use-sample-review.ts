@@ -41,6 +41,28 @@ export function rcnRow(t: {
 }
 
 /**
+ * Rebuilds `comparables` from the EFFECTIVE proposal (domain result + manual
+ * overlay) — RCN rows first, any row that isn't `source: "rcn"` (hand-added
+ * with `source: "manual"`, a row still mid-edit with NO `source` at all
+ * because the appraiser hasn't saved yet, or a leftover from before the
+ * last fetch) kept AFTER them rather than dropped. Shared by reject/restore
+ * (`syncComparables`) and the radius handler (`onRadius`) so both apply the
+ * IDENTICAL predicate — review round 1, Important #1 (2026-08-21): an
+ * earlier version of the radius handler used `c.source && c.source !==
+ * "rcn"`, which silently deleted a hand-added row still missing its
+ * `source` (e.g. right after "Dodaj transakcję", before any save round-trip
+ * gives it one) on every radius click.
+ */
+function rebuildComparables(
+  snap: SampleSelectionSnapshot,
+  currentRows: ComparableRow[],
+): ComparableRow[] {
+  const nextEff = effectiveSelection(snap);
+  const manualRows = currentRows.filter((c) => c.source !== "rcn");
+  return [...nextEff.proposed.map(rcnRow), ...manualRows];
+}
+
+/**
  * Step-3 candidate review state (Task 7): which candidate the side panel is
  * showing, and the reject/restore handlers that write the appraiser's
  * manual overlay into `sampleSelection` and resync `comparables` from the
@@ -95,18 +117,14 @@ export function useSampleReview({
   };
 
   /**
-   * Rebuilds `comparables` from the EFFECTIVE proposal (domain result +
-   * manual overlay) after a reject/restore — RCN rows first, any row that
-   * isn't `source: "rcn"` (hand-added, or a leftover from before the last
-   * fetch) kept AFTER them rather than dropped. `onFetchSample` deliberately
-   * does NOT go through this: a fresh proposal has no `manualRejections`
-   * yet, so the result would be identical, just via an extra read of
-   * not-yet-committed form state.
+   * After a reject/restore, rebuilds `comparables` from the EFFECTIVE
+   * proposal via the shared {@link rebuildComparables}. `onFetchSample`
+   * deliberately does NOT go through this: a fresh proposal has no
+   * `manualRejections` yet, so the result would be identical, just via an
+   * extra read of not-yet-committed form state.
    */
   const syncComparables = (snap: SampleSelectionSnapshot) => {
-    const nextEff = effectiveSelection(snap);
-    const manualRows = (comparables ?? []).filter((c) => c.source !== "rcn");
-    replaceComparables([...nextEff.proposed.map(rcnRow), ...manualRows]);
+    replaceComparables(rebuildComparables(snap, comparables ?? []));
   };
 
   /** Panel's "Zostaw" — advances to the next candidate in ranking order; past the last, closes the panel. */
@@ -160,15 +178,19 @@ export function useSampleReview({
    * Radius button (Task 8) — re-runs the DOMAIN selection on the pool
    * `getSampleProposal` already cached (`reselectSample`, no second WFS
    * call), carrying the CURRENT `manualRejections` so they survive the
-   * radius change (same candidateKey). `comparables` is rebuilt from the
-   * EFFECTIVE new proposal (domain result + `sampleSelection2.manualRejections`)
-   * — NOT from `proposal.comparables` (the raw domain output) — so a carried
-   * rejection whose key still matches a row in the new `proposed` is
-   * excluded here exactly as it is in the banner/table (both read via
-   * `effectiveSelection`); the manual (non-RCN) rows are kept after them,
-   * mirroring `syncComparables` but excluding rows with no `source` at all
-   * (the 3 default empty rows a fresh draft starts with — they must not be
-   * treated as "manual" and resurrected here).
+   * radius change (same candidateKey). `comparables` is rebuilt via the
+   * SAME shared {@link rebuildComparables} reject/restore uses — from the
+   * EFFECTIVE new proposal (domain result + the carried `manualRejections`),
+   * not from `result.proposal.comparables` (the raw domain output), so a
+   * carried rejection whose key still matches a row in the new `proposed`
+   * is excluded here exactly as it is in the banner/table (both read via
+   * `effectiveSelection`).
+   *
+   * `pool_missing` (no cached pool) and `pool_stale` (the cached pool's
+   * `savedFor` no longer matches the valuation's current address/area — a
+   * step-1 edit since the last fetch, review round 1 Important #2) are
+   * treated identically: both disable the radius buttons until a fresh
+   * "Pobierz próbę z RCN" re-populates the cache.
    */
   const onRadius = async (radiusM: RadiusM) => {
     if (!sel) return;
@@ -181,7 +203,7 @@ export function useSampleReview({
         manualRejections: sel.manualRejections ?? [],
       });
       if ("error" in result) {
-        if (result.code === "pool_missing") setPoolMissing(true);
+        if (result.code === "pool_missing" || result.code === "pool_stale") setPoolMissing(true);
         setReselectError(result.error);
         return;
       }
@@ -190,9 +212,7 @@ export function useSampleReview({
       setValue("sampleSelection", newSel, { shouldDirty: true });
       setValue("sampleMeta", result.proposal.sampleMeta, { shouldDirty: true });
       setValue("streetView", result.proposal.streetView, { shouldDirty: true });
-      const nextEff = effectiveSelection(newSel);
-      const manualRows = (comparables ?? []).filter((c) => c.source && c.source !== "rcn");
-      replaceComparables([...nextEff.proposed.map(rcnRow), ...manualRows]);
+      replaceComparables(rebuildComparables(newSel, comparables ?? []));
       // A fresh selection may no longer contain the candidate the panel was
       // showing — mirrors `onFetchSample` closing the panel on a new pool.
       setSelectedKey(null);
@@ -200,6 +220,9 @@ export function useSampleReview({
       setIsReselecting(false);
     }
   };
+
+  /** Clears the reselect error banner — called alongside `setPoolMissing(false)` when a fresh "Pobierz próbę z RCN" fetch succeeds (review round 1, minor #2). */
+  const clearReselectError = () => setReselectError(null);
 
   return {
     eff,
@@ -217,6 +240,7 @@ export function useSampleReview({
     poolMissing,
     setPoolMissing,
     reselectError,
+    clearReselectError,
     onRadius,
   };
 }

@@ -71,21 +71,23 @@ describe("SampleRadius", () => {
     }
   });
 
-  it("a disabledReason disables all buttons and shows the reason text", () => {
+  it("a disabledReason disables all buttons and exposes the reason via title (not as a second visible copy — the caller's alert is the single visible one, review round 1 minor #3)", () => {
+    const reason = "Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.";
     render(
       <SampleRadius
         value={500}
         steps={[500, 1000, 2000, 3000]}
         busy={false}
-        disabledReason="Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie."
+        disabledReason={reason}
         onChange={vi.fn()}
       />,
     );
     for (const r of [500, 1000, 2000, 3000]) {
-      expect(screen.getByRole("button", { name: `${r} m` })).toBeDisabled();
+      const btn = screen.getByRole("button", { name: `${r} m` });
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveAttribute("title", reason);
     }
-    expect(
-      screen.getByText("Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie."),
-    ).toBeInTheDocument();
+    // No second, always-visible copy of the message next to the buttons.
+    expect(screen.queryByText(reason)).toBeNull();
   });
 });
