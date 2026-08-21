@@ -620,11 +620,12 @@ export function StepSample({
               streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
               status={panelStatus}
               rejection={selectedRejection}
-              // Same "only when there's something to say" pattern as the
-              // banner's own "Twoich odrzuceń"/"dodanych" clauses — a fresh
-              // selection (reviewed === 0) keeps the plain "Propozycja i z
-              // M" title untouched.
-              reviewedCount={reviewStats.reviewed > 0 ? reviewStats.reviewed : undefined}
+              // Unconditional, like the banner's own counter (team-lead
+              // condition 2, Opus review round 1 I2) — the header always
+              // shows "przejrzane N", 0 included; `reviewedCount` stays
+              // OPTIONAL on `SamplePanel` itself so its own pre-Task-5 unit
+              // tests (which never pass it) keep their plain title.
+              reviewedCount={reviewStats.reviewed}
               onKeep={keep}
               onReject={reject}
               // Uncheck path (checkbox on a proposed row) pre-opens the
