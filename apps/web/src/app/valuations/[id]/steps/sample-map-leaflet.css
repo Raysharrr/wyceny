@@ -35,6 +35,62 @@
   outline-offset: 2px;
 }
 
+/* Building marker: several lokale on one coordinate; badge = count; colour = best status. */
+.smap-bld {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+.smap-bld--proposed {
+  background: #1f7a5c;
+}
+.smap-bld--alternate {
+  background: #9a978f;
+}
+.smap-bld--rejected {
+  background: #e7000b;
+  opacity: 0.85;
+  cursor: default;
+}
+.smap-bld-badge {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.smap-bld--open {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px rgba(31, 122, 92, 0.45);
+}
+.smap-bld.smap-dot--selected {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #1f7a5c;
+}
+.smap-bld:focus-visible {
+  outline: 2px solid #1f7a5c;
+  outline-offset: 2px;
+}
+/* Spider legs + sibling ("kin") lokale of the selected one. */
+.smap-leg {
+  stroke: #1f2937;
+  stroke-opacity: 0.75;
+}
+.smap--orto .smap-leg {
+  stroke: #fff;
+}
+.smap-dot--kin {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 3px rgba(31, 122, 92, 0.55);
+}
+
 .smap-subject {
   background: transparent;
 }
