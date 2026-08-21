@@ -54,6 +54,18 @@ export function bearingDeg(
   return ((Math.atan2(yy, xx) * 180) / Math.PI + 360) % 360;
 }
 
+/** Equirectangular approximation, metres — fine at building scale (well under a km); not for long-range distances. */
+export function distanceM(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const mPerDegLat = 111_320;
+  const dLat = (b.lat - a.lat) * mPerDegLat;
+  const dLng = (b.lng - a.lng) * mPerDegLat * Math.cos(toRad((a.lat + b.lat) / 2));
+  return Math.hypot(dLat, dLng);
+}
+
 /**
  * Square map frame around `center` (EPSG:2180): the WMS bbox (1.3.0 axis
  * order for EPSG:2180 — northing first, as apps/worker/app/maps.py) and a

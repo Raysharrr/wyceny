@@ -275,6 +275,7 @@ describe("getSampleProposal (v3)", () => {
     const passedBudgetMs = enrichSpy.mock.calls[0][1].budgetMs;
     expect(typeof passedBudgetMs).toBe("number");
     expect(passedBudgetMs).toBe(streetViewEnrich.ENRICH_BUDGET_MS);
+    expect(enrichSpy.mock.calls[0][1].storeys).toBeInstanceOf(Map);
     enrichSpy.mockRestore();
     const call = vi
       .mocked(recordEvent)

@@ -2,7 +2,7 @@ import type { PanoramaMeta, PortStreetView } from "../ports/street-view";
 
 const META_URL = "https://maps.googleapis.com/maps/api/streetview/metadata";
 const STATIC_URL = "https://maps.googleapis.com/maps/api/streetview";
-const THUMB = { size: "160x100", fov: "80", pitch: "0" };
+const THUMB_SIZE = "160x100";
 
 /**
  * Failure bounds, not service levels — Google answers in well under a
@@ -48,13 +48,13 @@ export function googleStreetView(apiKey: string, fetchImpl: typeof fetch = fetch
       }
       return { panoId: body.pano_id, captureDate: body.date ?? null, camera: body.location };
     },
-    async thumbnail(panoId, heading): Promise<Buffer> {
+    async thumbnail(panoId, view): Promise<Buffer> {
       const u = new URL(STATIC_URL);
-      u.searchParams.set("size", THUMB.size);
+      u.searchParams.set("size", THUMB_SIZE);
       u.searchParams.set("pano", panoId);
-      u.searchParams.set("heading", String(Math.round(heading)));
-      u.searchParams.set("pitch", THUMB.pitch);
-      u.searchParams.set("fov", THUMB.fov);
+      u.searchParams.set("heading", String(Math.round(view.heading)));
+      u.searchParams.set("pitch", String(view.pitch));
+      u.searchParams.set("fov", String(view.fov));
       u.searchParams.set("key", apiKey);
       const res = await fetchImpl(u.toString(), {
         signal: AbortSignal.timeout(STATIC_TIMEOUT_MS),

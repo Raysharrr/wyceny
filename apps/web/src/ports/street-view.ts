@@ -7,6 +7,6 @@ export type PanoramaMeta = {
 export interface PortStreetView {
   /** Metadata API: nearest outdoor panorama within `radiusM`; null when Google has none (ZERO_RESULTS). Throws on transport/auth errors. */
   lookup(at: { lat: number; lng: number }, radiusM: number): Promise<PanoramaMeta | null>;
-  /** Static API 160×100 JPEG for a panorama, camera pointed at `heading`. */
-  thumbnail(panoId: string, heading: number): Promise<Buffer>;
+  /** Static API 160×100 JPEG for a panorama, camera at `view` (heading/pitch/fov — `domain/street-view-framing.ts`). */
+  thumbnail(panoId: string, view: { heading: number; pitch: number; fov: number }): Promise<Buffer>;
 }

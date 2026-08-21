@@ -153,6 +153,7 @@ export const streetViewSchema = z.record(
     heading: z.number().nullable(),
     lat: z.number(),
     lng: z.number(),
+    storeysHint: z.number().nullable().optional(),
   }),
 );
 

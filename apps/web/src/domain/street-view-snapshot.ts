@@ -12,5 +12,7 @@ export type StreetViewEntry = {
   heading: number | null; // degrees 0–360
   lat: number;
   lng: number;
+  /** Max known floor across the building's candidates (`domain/street-view-framing.ts`) — a lower bound on storey count, used to pick the camera pitch. Additive; absent/null on entries written before this field existed. */
+  storeysHint?: number | null;
 };
 export type StreetViewSnapshot = Record<string, StreetViewEntry>;

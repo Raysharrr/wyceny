@@ -59,13 +59,14 @@ describe("googleStreetView adapter", () => {
         new Response(bytes, { status: 200, headers: { "content-type": "image/jpeg" } }),
       );
     const sv = googleStreetView("KEY", fetchMock as unknown as typeof fetch);
-    const buf = await sv.thumbnail("P1", 123.4);
+    const buf = await sv.thumbnail("P1", { heading: 123.4, pitch: 24, fov: 90 });
     expect(buf.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
     const url = new URL(fetchMock.mock.calls[0][0] as string);
     expect(url.pathname).toBe("/maps/api/streetview");
     expect(url.searchParams.get("size")).toBe("160x100");
     expect(url.searchParams.get("pano")).toBe("P1");
     expect(url.searchParams.get("heading")).toBe("123");
-    expect(url.searchParams.get("fov")).toBe("80");
+    expect(url.searchParams.get("pitch")).toBe("24");
+    expect(url.searchParams.get("fov")).toBe("90");
   });
 });

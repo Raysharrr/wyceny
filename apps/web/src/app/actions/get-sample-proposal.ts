@@ -15,6 +15,7 @@ import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
 import { valuationFormObject } from "@/lib/valuation-form-schema";
 import { selectSample } from "@/domain/sample-selection";
+import { storeysHintByBuilding } from "@/domain/street-view-framing";
 import { toSampleSelectionSnapshot, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import { deriveSubjectEgib } from "@/domain/egib-id";
 import type { SampleMeta } from "@/domain/kcs";
@@ -159,6 +160,7 @@ export async function getSampleProposal(
           now: () => new Date(),
           existing: valuation.inputs?.streetView ?? null,
           budgetMs,
+          storeys: storeysHintByBuilding(pool.candidates),
         });
         streetViewSnapshot = { ...streetViewSnapshot, ...enriched.snapshot };
         await recordEvent({

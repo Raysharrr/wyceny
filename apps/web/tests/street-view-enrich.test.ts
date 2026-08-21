@@ -10,6 +10,7 @@ import {
 import { StorageNotFoundError, type PortStorage } from "../src/ports/storage";
 import type { PortStreetView } from "../src/ports/street-view";
 import { buildingKey, type Candidate } from "../src/domain/sample-selection";
+import { puwg92ToWgs84 } from "../src/domain/geo";
 import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
 
 function memStorage(
@@ -74,6 +75,9 @@ const sv = (): PortStreetView & {
   }),
   thumbnail: vi.fn().mockResolvedValue(Buffer.from([0xff, 0xd8])),
 });
+// mk()'s default `pos` — building position all "camera N metres away" fixtures below are relative to.
+const BUILDING = puwg92ToWgs84(355285, 505324);
+const metersNorth = (m: number) => ({ lat: BUILDING.lat + m / 111_320, lng: BUILDING.lng });
 
 describe("enrichStreetView", () => {
   it("one lookup + one thumbnail per UNIQUE building; entry frozen with heading camera→building", async () => {
@@ -291,6 +295,70 @@ describe("enrichStreetView", () => {
     expect(port.lookup).not.toHaveBeenCalled();
     expect(port.thumbnail).not.toHaveBeenCalled();
     expect(storage.store.size).toBe(0);
+  });
+  it("thumbnail framing: storeys map wins over the candidate's own floor (7 storeys → pitch 24)", async () => {
+    const port = sv();
+    const storage = memStorage();
+    const storeys = new Map<string, number | null>([["0039.22.13/82.1", 7]]);
+    await enrichStreetView([mk("1", { floor: 3 })], {
+      streetView: port,
+      storage,
+      now: NOW,
+      storeys,
+    });
+    expect(port.thumbnail).toHaveBeenCalledTimes(1);
+    const [, view] = port.thumbnail.mock.calls[0] as [string, { pitch: number; fov: number }];
+    expect(view.pitch).toBe(24);
+  });
+  it("thumbnail framing falls back to the candidate's own floor when the storeys map lacks the building (floor 5 → pitch 20)", async () => {
+    const port = sv();
+    const storage = memStorage();
+    const storeys = new Map<string, number | null>(); // present but doesn't cover this building
+    await enrichStreetView([mk("2", { floor: 5 })], {
+      streetView: port,
+      storage,
+      now: NOW,
+      storeys,
+    });
+    expect(port.thumbnail).toHaveBeenCalledTimes(1);
+    const [, view] = port.thumbnail.mock.calls[0] as [string, { pitch: number; fov: number }];
+    expect(view.pitch).toBe(20);
+  });
+  it("first lookup (radius 50) finds nothing → a second lookup at radius 120 is tried and its panorama is used", async () => {
+    const port = sv();
+    port.lookup.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      panoId: "P2",
+      captureDate: "2022-01",
+      camera: metersNorth(0),
+    });
+    const storage = memStorage();
+    const { snapshot } = await enrichStreetView([mk("1")], { streetView: port, storage, now: NOW });
+    expect(port.lookup).toHaveBeenCalledTimes(2);
+    expect(port.lookup.mock.calls[0][1]).toBe(50);
+    expect(port.lookup.mock.calls[1][1]).toBe(120);
+    expect(snapshot["0039.22.13/82.1"].panoId).toBe("P2");
+  });
+  it("first lookup 80 m away (beyond the 60 m trigger) → second lookup at 120 finds one 20 m away → the closer one wins", async () => {
+    const port = sv();
+    port.lookup
+      .mockResolvedValueOnce({ panoId: "P1", captureDate: "2021-01", camera: metersNorth(80) })
+      .mockResolvedValueOnce({ panoId: "P2", captureDate: "2022-01", camera: metersNorth(20) });
+    const storage = memStorage();
+    const { snapshot } = await enrichStreetView([mk("1")], { streetView: port, storage, now: NOW });
+    expect(port.lookup).toHaveBeenCalledTimes(2);
+    expect(snapshot["0039.22.13/82.1"].panoId).toBe("P2");
+  });
+  it("first lookup 10 m away (within the 60 m trigger) → no second lookup", async () => {
+    const port = sv();
+    port.lookup.mockResolvedValueOnce({
+      panoId: "P1",
+      captureDate: "2021-01",
+      camera: metersNorth(10),
+    });
+    const storage = memStorage();
+    const { snapshot } = await enrichStreetView([mk("1")], { streetView: port, storage, now: NOW });
+    expect(port.lookup).toHaveBeenCalledTimes(1);
+    expect(snapshot["0039.22.13/82.1"].panoId).toBe("P1");
   });
 });
 

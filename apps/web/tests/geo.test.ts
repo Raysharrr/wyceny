@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import pairs from "./fixtures/geo-pairs.json";
-import { puwg92ToWgs84, bearingDeg, mapFrame } from "../src/domain/geo";
+import { puwg92ToWgs84, bearingDeg, mapFrame, distanceM } from "../src/domain/geo";
 
 const M_PER_DEG_LAT = 111_320;
 describe("puwg92ToWgs84 — EPSG:2180 (PUWG 1992) → WGS84", () => {
@@ -38,5 +38,16 @@ describe("mapFrame — linear metre→pixel in EPSG:2180", () => {
     expect(f.toPx({ x: 355285, y: 505324 })).toEqual({ px: 240, py: 240 });
     expect(f.toPx({ x: 355885, y: 505324 })).toEqual({ px: 360, py: 240 });
     expect(f.toPx({ x: 355285, y: 505924 })).toEqual({ px: 240, py: 120 });
+  });
+});
+describe("distanceM — equirectangular metres", () => {
+  it("0.001° of latitude ≈ 111 m", () => {
+    const a = { lat: 52.4, lng: 16.9 };
+    const b = { lat: 52.401, lng: 16.9 };
+    expect(distanceM(a, b)).toBeCloseTo(111.32, -1);
+  });
+  it("same point → 0", () => {
+    const p = { lat: 52.4, lng: 16.9 };
+    expect(distanceM(p, p)).toBe(0);
   });
 });
