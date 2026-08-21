@@ -19,9 +19,11 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * Pin on the committed template's bytes (Slice 3, Task 10 — team-lead
  * condition): update this pin in the SAME commit as any template change, so
  * every edit to the binary is a deliberate, reviewed event rather than a
- * silent drift.
+ * silent drift. Final wave B7: Table 1's Obręb/Odległość [m] column widths
+ * swapped (`scripts/patch-template-table1.mts`) — content-only change, no
+ * placeholder/text delta.
  */
-const TEMPLATE_SHA256 = "56e0e8a60bdb43d73fabe05c59cc19227061cf99974ef9dd2e01bbbbf9402652";
+const TEMPLATE_SHA256 = "146b7759610ee44085bb32f88ad1d12b8ee858a667a4533559e13ace15dca6be";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
