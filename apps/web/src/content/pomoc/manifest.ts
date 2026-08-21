@@ -73,13 +73,60 @@ export const HELP_PAGES: HelpPage[] = [
     summary: "Data wizyty, zdjęcia w trzech sekcjach i notatka — jedyny krok bez automatyzacji.",
     load: () => import("./jak-korzystac/krok-2-ogledziny.mdx"),
   },
+  /**
+   * Uwaga dla utrzymujących treść: od Slice 3 `krok-3-proba.mdx` importuje
+   * wprost `DEFAULTS` (`@/domain/sample-selection`), `REQUIRED_SAMPLE_SIZE`
+   * (`@/domain/provenance`), `MANUAL_REJECTION_REASONS`/`_LABELS`
+   * (`@/domain/sample-manual`), `REJECTED_PER_REASON`
+   * (`@/domain/sample-snapshot`) i `STREET_VIEW_TTL_DAYS`
+   * (`@/app/actions/_street-view-enrich`) — te liczby i etykiety rozjechać
+   * się z kodem nie mogą. Reszta strony (etykiety przycisków, nazwy sekcji,
+   * kolory kropek na mapie, kolejność zakładek podglądu, warunek zwinięcia
+   * „Próby do kalkulacji") opisuje UI komponentów kroku 3 i importu nie ma —
+   * trzeba ją porównać z kodem ręcznie przy każdej zmianie. Komentarz stoi w
+   * manifeście, a nie w MDX, z powodu opisanego przy `dobor-proby-rcn` niżej.
+   *
+   * Źródła do sprawdzenia przy każdej zmianie kroku 3:
+   *   apps/web/src/app/valuations/[id]/steps/sample-badges.ts        etykiety i warunki odznak (ten sam budynek / ta sama działka / inny obręb / p. N / >5 kond. / rynek? / prawdopodobnie deweloperska / cena odstająca)
+   *   apps/web/src/app/valuations/[id]/steps/sample-table.tsx        tabela kandydatek, miniaturki, sekcja „Alternatywy (N)"
+   *   apps/web/src/app/valuations/[id]/steps/sample-panel.tsx        panel boczny: zakładki Ulica / Mapa / Ortofoto, „Zostaw", „Odrzuć"
+   *   apps/web/src/app/valuations/[id]/steps/sample-rejected.tsx     sekcja „Odrzucone (N)", grupowanie po powodzie, „Przywróć"
+   *   apps/web/src/app/valuations/[id]/steps/rejected-groups.ts      REJECT_REASON_LABELS — etykiety powodów higieny/pasma w sekcji „Odrzucone"
+   *   apps/web/src/app/valuations/[id]/steps/sample-radius.tsx       przyciski promienia, stan disabled
+   *   apps/web/src/app/valuations/[id]/steps/sample-map.tsx          mapa przeglądowa, kolory kropek, fallback ORTO -> ewidencyjna
+   *   apps/web/src/app/valuations/[id]/steps/step-sample.tsx         sekcja „Próba do kalkulacji", pasek liczników, komunikat o starym szkicu
+   *   apps/web/src/domain/sample-manual.ts                           MANUAL_REJECTION_REASONS/LABELS (IMPORTOWANE do MDX), reguła promocji alternatywy
+   *   apps/web/src/domain/sample-snapshot.ts:42                      REJECTED_PER_REASON = 50 (IMPORTOWANE do MDX)
+   *   apps/web/src/domain/obreb-name.ts                               OBREBY_POZNAN, obrebLabel — format kolumny obręb
+   *   apps/web/src/app/actions/_street-view-enrich.ts                 STREET_VIEW_TTL_DAYS (IMPORTOWANE do MDX), ENRICH_BUDGET_MS
+   *   apps/web/src/adapters/street-view-google.ts                     Metadata -> Static 160×100, tylko współrzędna do Google
+   *   apps/web/src/app/actions/_pool-cache.ts                         cache puli per wycena — podstawa przycisków promienia
+   *   apps/web/src/app/actions/reselect-sample.ts                     przeliczenie po zmianie promienia bez ponownego zapytania RCN
+   */
   {
     slug: "krok-3-proba",
     title: "Krok 3 — Próba porównawcza",
     tree: "jak-korzystac",
     order: 4,
-    tags: ["próba", "transakcje", "RCN", "porównawcze", "zł/m²", "Cśr", "12 transakcji"],
-    summary: "Pobranie transakcji z RCN, ręczne uzupełnienia i wymagana liczebność próby.",
+    tags: [
+      "próba",
+      "transakcje",
+      "RCN",
+      "porównawcze",
+      "zł/m²",
+      "Cśr",
+      "12 transakcji",
+      "fasada",
+      "Street View",
+      "odrzuć",
+      "powód odrzucenia",
+      "promień",
+      "alternatywy",
+      "odrzucone",
+      "mapa",
+    ],
+    summary:
+      "Przegląd kandydatek z RCN z podglądem budynku, odrzucanie z powodem, promień i odrzucone.",
     load: () => import("./jak-korzystac/krok-3-proba.mdx"),
   },
   {
@@ -183,10 +230,14 @@ export const HELP_PAGES: HelpPage[] = [
    * `dobor-proby-rcn.mdx` i `krok-3-proba.mdx` importują je wprost, więc z
    * kodem rozjechać się nie mogą. Stałe workera (Python: paginacja rejestru,
    * promień zapytania) importu do MDX nie mają i strona przepisuje je
-   * ręcznie. Komentarz stoi tutaj, a nie w samym MDX, bo prettier formatuje
-   * `.mdx` markdownowo i przerabia `{/* … *\/}` na `{/_ … _/}` — plik
-   * przestaje się kompilować, a CI (`pnpm format:check`) i tak wywala
-   * różnicę.
+   * ręcznie. Od Slice 3 strona importuje też `STREET_VIEW_TTL_DAYS`
+   * (`@/app/actions/_street-view-enrich`) i `OBREBY_POZNAN`
+   * (`@/domain/obreb-name`) — mechanika Street View (Metadata → Static,
+   * kadrowanie kamery) i format etykiety obrębu importu nie mają i strona
+   * opisuje je z odczytu kodu. Komentarz stoi tutaj, a nie w samym MDX, bo
+   * prettier formatuje `.mdx` markdownowo i przerabia `{/* … *\/}` na
+   * `{/_ … _/}` — plik przestaje się kompilować, a CI (`pnpm format:check`)
+   * i tak wywala różnicę.
    *
    * Źródła do sprawdzenia przy każdej zmianie doboru:
    *   apps/web/src/domain/sample-selection.ts:92  DEFAULT_WEIGHTS (wagi rankingu, importowane wprost do MDX)
@@ -198,6 +249,11 @@ export const HELP_PAGES: HelpPage[] = [
    *   apps/worker/app/main.py:180 DEFAULT_RADIUS_M = 3000.0 (promień zapytania do rejestru, ±3 km)
    *   apps/worker/app/main.py:186 resolve_point — kolejność geokoderów: punkt z kroku 1 → UUG (GUGiK) → Nominatim
    *   apps/web/src/app/actions/get-sample-proposal.ts:50 getSampleProposal — spina pulę z workera (fetchPool) z domeną (selectSample)
+   *   apps/web/src/domain/sample-manual.ts                MANUAL_REJECTION_REASONS — słownik powodów ręcznego odrzucenia
+   *   apps/web/src/app/actions/_street-view-enrich.ts     STREET_VIEW_TTL_DAYS (IMPORTOWANE do MDX), ENRICH_BUDGET_MS, Metadata → Static, jedna miniaturka per budynek
+   *   apps/web/src/adapters/street-view-google.ts         wywołania Google — do serwisu trafia wyłącznie współrzędna budynku
+   *   apps/web/src/app/actions/_pool-cache.ts             pula cache'owana per wycena — podstawa przeliczenia promienia bez ponownego zapytania RCN
+   *   apps/web/src/domain/obreb-name.ts                   OBREBY_POZNAN (IMPORTOWANE do MDX), obrebLabel/obrebName — format „numer nazwa" / „numer · gm. TERYT"
    */
   {
     slug: "dobor-proby-rcn",
@@ -220,6 +276,10 @@ export const HELP_PAGES: HelpPage[] = [
       "odstające",
       "rynek pierwotny",
       "12 transakcji",
+      "Street View",
+      "Google",
+      "miniaturka",
+      "ręczne odrzucenie",
     ],
     summary:
       "Skąd pochodzą transakcje, jakie filtry przechodzą i dlaczego próba liczy dwanaście pozycji.",
@@ -424,7 +484,8 @@ export const HELP_PAGES: HelpPage[] = [
    *   apps/web/src/domain/document-model.ts:78          maskowanie: miesiąc zamiast pełnej daty (F-12)
    *   apps/web/src/domain/document-model.ts:277         mpzp / mpzp_brak — wzajemnie wykluczające się
    *   apps/web/src/domain/document-model.ts:285         cechy o wadze 0 poza dokumentem
-   *   apps/web/src/domain/document-model.ts:374         kolumna ulicy — kreska (brak w źródle)
+   *   apps/web/src/domain/document-model.ts:545,546     Tabela 1 (Slice 3): obreb (obrebLabel) i odleglosc per wiersz, ręczne wiersze — kreska
+   *   apps/web/src/domain/obreb-name.ts                 obrebLabel — format „numer nazwa" (Poznań) / „numer · gm. TERYT" (poza Poznaniem)
    *   apps/web/src/domain/document-model.ts:399,400     honest silence: skala ocen, uwagi z oględzin
    *   apps/web/src/app/actions/approve-valuation.ts:20  KOLEJNOŚĆ, nie transakcyjność
    *   apps/web/src/app/actions/approve-valuation.ts:50  odmowa PRZED generowaniem (nie nadpisz operatu)

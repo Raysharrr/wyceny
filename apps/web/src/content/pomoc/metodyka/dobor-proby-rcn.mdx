@@ -1,7 +1,15 @@
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 import { DEFAULTS, DEFAULT_WEIGHTS } from "@/domain/sample-selection";
+import { STREET_VIEW_TTL_DAYS } from "@/app/actions/_street-view-enrich";
+import { OBREBY_POZNAN } from "@/domain/obreb-name";
 
 Próba porównawcza pochodzi z rejestru cen nieruchomości (RCN) — publicznego zbioru danych o cenach transakcyjnych, udostępnianego usługą WFS Geoportalu (GUGiK). Rejestr podaje surowe transakcje; o tym, które z nich trafią do wyceny, decydują dwa moduły: worker (`apps/worker/app/rcn.py`, `apps/worker/app/main.py`) pobiera surową pulę z rejestru, a czysta domena (`apps/web/src/domain/sample-selection.ts`) ją filtruje i sortuje. Poniżej opis krok po kroku, z liczbami cytowanymi wprost z kodu — jeśli kiedyś się zmienią, zmieni się też ta strona.
+
+## Co robi rzeczoznawca, a co program
+
+**Automatycznie:** pula z rejestru, higiena, pasmo metrażu, wybór promienia, ranking podobieństwa, flagi (cena odstająca, rynek nieznany, prawdopodobnie deweloperska) i miniaturki budynków ze Street View.
+
+**Ręcznie, w [kroku 3](/pomoc/krok-3-proba):** przegląd fasad kandydatek, odrzucenie z powodem (wiek lub typ budynku, standard, odległość), zmiana promienia i dopisanie własnej transakcji.
 
 ## Skąd bierze się pula transakcji
 
@@ -31,7 +39,7 @@ Transakcja odpada, gdy trafi na którykolwiek z poniższych warunków (kod odrzu
 - miesiąc transakcji poza oknem {DEFAULTS.windowMonths} miesięcy wstecz od miesiąca wyceny (`out_of_window`),
 - rynek pierwotny (`primary_market`) — sprzedaż od dewelopera nie wchodzi do próby porównań z rynkiem wtórnym.
 
-Odrzucona transakcja zapamiętuje pierwszy pasujący powód z tej listy, ale też komplet powodów, które akurat zaszły — to widać dopiero w diagnostyce, nie w interfejsie kroku 3.
+Odrzucona transakcja zapamiętuje pierwszy pasujący powód z tej listy, ale też komplet powodów, które akurat zaszły — w kroku 3 sekcja „Odrzucone” grupuje je po pierwszym powodzie.
 
 Dopiero transakcje, które przejdą higienę, trafiają do osobnego, drugiego filtra — pasma metrażu: odpada z niego powierzchnia poza pasmem ±{DEFAULTS.areaBandPct / 0.01}% powierzchni przedmiotu (`out_of_area_band`).
 
@@ -48,6 +56,7 @@ Transakcje, które przejdą higienę i pasmo metrażu, dostają punktację (`sco
 `score` = {DEFAULT_WEIGHTS.sameBuilding}·(ten sam budynek) + {DEFAULT_WEIGHTS.sameParcel}·(ta sama działka) + {DEFAULT_WEIGHTS.sameObreb}·(ten sam obręb) − odległość (m) / {1 / DEFAULT_WEIGHTS.distancePerM}
 
 - Tożsamość liczona jest z identyfikatora EGiB lokalu z rejestru (obręb / arkusz / działka / budynek); dla przedmiotu wyceny ten sam identyfikator budynku pochodzi z GEOPOZ.
+- Nazwę obrębu, którą widzisz przy kandydatce i w tabeli operatu, aplikacja zna dla {Object.keys(OBREBY_POZNAN).length} obrębów Poznania (mapa z GEOPOZ) — dla pozostałych pokazuje sam numer. Poza Poznaniem pokazuje numer obrębu i kod gminy (TERYT), bo nazw tamtejszych obrębów nie mamy wcale.
 - Poziomy dopasowania się kumulują — ten sam budynek to zarazem ta sama działka i ten sam obręb, więc razem daje to {DEFAULT_WEIGHTS.sameBuilding + DEFAULT_WEIGHTS.sameParcel + DEFAULT_WEIGHTS.sameObreb} punktów (sama działka, bez budynku — {DEFAULT_WEIGHTS.sameParcel + DEFAULT_WEIGHTS.sameObreb}).
 - Wyższy poziom dopasowania bije niższy — być bliżej, ale w innym budynku, nie nadrabia bycia w tym samym budynku.
 - Remis w punktacji rozstrzyga nowsza data transakcji.
@@ -60,7 +69,7 @@ Trzy obserwacje przyczepiane są do transakcji, która przeszła higienę i pasm
 - **rynek nieznany** — pole rodzaju rynku w rejestrze jest puste; w danych ze spike'u ADR-015 dotyczyło to około 72% rekordów,
 - **prawdopodobnie deweloperska** — rynek nieznany **i** sprzedający to osoba prawna naraz; to najsilniejsza dostępna poszlaka sprzedaży pierwotnej tam, gdzie samo pole rynku milczy.
 
-Skutek dla rankingu nie jest jednakowy: **cena odstająca** i **prawdopodobnie deweloperska** wypychają transakcję z listy proponowanej do alternatyw, niezależnie od punktacji. Sam **rynek nieznany**, bez towarzyszącego sprzedającego-osoby-prawnej, nic nie zmienia — transakcja zostaje na miejscu wyznaczonym przez ranking. Krok 3 pokazuje dziś wyłącznie listę proponowaną; alternatywy razem z flagami będą widoczne od kolejnej wersji.
+Skutek dla rankingu nie jest jednakowy: **cena odstająca** i **prawdopodobnie deweloperska** wypychają transakcję z listy proponowanej do alternatyw, niezależnie od punktacji. Sam **rynek nieznany**, bez towarzyszącego sprzedającego-osoby-prawnej, nic nie zmienia — transakcja zostaje na miejscu wyznaczonym przez ranking. Krok 3 pokazuje propozycję, a pod nią alternatywy z odznakami; flagi widać jako odznaki w wierszu.
 
 ## Ile transakcji trafia do próby
 
@@ -68,9 +77,19 @@ Z posortowanej listy dobór bierze **{DEFAULTS.proposedN}** transakcji jako prop
 
 Gdy pula po higienie, paśmie i promieniu jest mniejsza niż {DEFAULTS.proposedN}, aplikacja pokazuje tyle, ile znalazła — nie ma progu, poniżej którego dobór odmawia zwrotu wyniku. Zatwierdzenie operatu zostaje mimo to zablokowane, dopóki cała próba (transakcje z RCN plus ewentualne wiersze wpisane ręcznie) nie osiągnie {REQUIRED_SAMPLE_SIZE} transakcji. To dwie niezależne stałe zapisane w dwóch miejscach — `DEFAULTS.proposedN` w domenie doboru i `REQUIRED_SAMPLE_SIZE` w progu zatwierdzenia — dziś równe, ale zmiana jednej nie rusza drugiej.
 
+## Skąd zdjęcia budynków
+
+Miniaturka i podgląd w panelu kroku 3 nie są ręcznym uzupełnieniem — powstają z automatycznego wzbogacenia propozycji i alternatyw o widok budynku (`apps/web/src/app/actions/_street-view-enrich.ts`, `apps/web/src/adapters/street-view-google.ts`):
+
+1. **Street View Metadata** (Google, bezpłatne, bez limitu) sprawdza, czy w pobliżu współrzędnych budynku istnieje panorama zewnętrzna, i jeśli tak — zwraca jej identyfikator oraz datę przejazdu. Brak panoramy jest informacją, nie błędem — zwykle znaczy to, że budynek jest nowszy niż ostatni przejazd Google w tej okolicy.
+2. **Street View Static** pobiera z tej panoramy jedną klatkę 160×100 px, z kamerą skierowaną na budynek.
+3. Do Google trafia wyłącznie współrzędna budynku z rejestru EGiB — żadne inne dane wyceny.
+
+Wzbogacenie liczy się raz na budynek, nie raz na transakcję: kilka mieszkań w tym samym budynku dzieli jedną miniaturkę. Wynik trzyma się w dwóch miejscach — we współdzielonym cache na {STREET_VIEW_TTL_DAYS} dni (po tym czasie kolejne pobranie pyta Google od nowa) oraz jako zamrożony wpis w migawce tej wyceny (ADR-011), więc ponowne otwarcie szkicu nigdy nie pyta Google drugi raz.
+
 ## Czego ten dobór nie robi
 
 - **Nie koryguje cen ze względu na upływ czasu.** Transakcja sprzed dwóch lat wchodzi do średniej z tą samą wagą co sprzed miesiąca; jedynym zabezpieczeniem przed starym rynkiem jest okno {DEFAULTS.windowMonths} miesięcy.
-- **Nie zna roku budowy.** Warstwa budynków GEOPOZ nie ma pola roku budowy, a rejestr RCN — tym bardziej. Spike ADR-015 pokazał to jako główny brakujący składnik podobieństwa, którego nie da się odtworzyć samym promieniem ani wagami rankingu.
+- **Nie zna roku budowy.** Warstwa budynków GEOPOZ nie ma pola roku budowy, a rejestr RCN — tym bardziej. Spike ADR-015 pokazał to jako główny brakujący składnik podobieństwa, którego nie da się odtworzyć samym promieniem ani wagami rankingu. Rok i typ budynku oceniasz sam z fasady w kroku 3 — stąd powody odrzucenia „budynek starszy / nowszy / inna zabudowa”.
 - **Nie pokazuje adresu lokalu porównawczego dla Poznania** — rejestr nie wypełnia tego pola dla tej gminy, więc adresu transakcji nie da się sprawdzić inaczej niż przez współrzędne i identyfikator EGiB.
 - **Nie ocenia standardu ani stanu technicznego lokalu.** Rejestr nie zawiera takich cech; różnice między wycenianym lokalem a próbą wyrażają dopiero oceny cech w kalkulacji.
