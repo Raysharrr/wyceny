@@ -9,7 +9,7 @@ Próba porównawcza pochodzi z rejestru cen nieruchomości (RCN) — publicznego
 
 **Automatycznie:** pula z rejestru, higiena, pasmo metrażu, wybór promienia, ranking podobieństwa, flagi (cena odstająca, rynek nieznany, prawdopodobnie deweloperska) i miniaturki budynków ze Street View.
 
-**Ręcznie, w [kroku 3](/pomoc/krok-3-proba):** przegląd fasad kandydatek, odrzucenie z powodem (wiek lub typ budynku, standard, odległość), zmiana promienia i dopisanie własnej transakcji.
+**Ręcznie, w [kroku 3](/pomoc/krok-3-proba):** przegląd fasad propozycji, odrzucenie z powodem (wiek lub typ budynku, standard, odległość), zmiana promienia i dopisanie własnej transakcji.
 
 ## Skąd bierze się pula transakcji
 
@@ -56,7 +56,7 @@ Transakcje, które przejdą higienę i pasmo metrażu, dostają punktację (`sco
 `score` = {DEFAULT_WEIGHTS.sameBuilding}·(ten sam budynek) + {DEFAULT_WEIGHTS.sameParcel}·(ta sama działka) + {DEFAULT_WEIGHTS.sameObreb}·(ten sam obręb) − odległość (m) / {1 / DEFAULT_WEIGHTS.distancePerM}
 
 - Tożsamość liczona jest z identyfikatora EGiB lokalu z rejestru (obręb / arkusz / działka / budynek); dla przedmiotu wyceny ten sam identyfikator budynku pochodzi z GEOPOZ.
-- Nazwę obrębu, którą widzisz przy kandydatce i w tabeli operatu, aplikacja zna dla {Object.keys(OBREBY_POZNAN).length} obrębów Poznania (mapa z GEOPOZ) — dla pozostałych pokazuje sam numer. Poza Poznaniem pokazuje numer obrębu i kod gminy (TERYT), bo nazw tamtejszych obrębów nie mamy wcale.
+- Nazwę obrębu, którą widzisz przy propozycji i w tabeli operatu, aplikacja zna dla {Object.keys(OBREBY_POZNAN).length} obrębów Poznania (mapa z GEOPOZ) — dla pozostałych pokazuje sam numer. Poza Poznaniem pokazuje numer obrębu i kod gminy (TERYT), bo nazw tamtejszych obrębów nie mamy wcale.
 - Poziomy dopasowania się kumulują — ten sam budynek to zarazem ta sama działka i ten sam obręb, więc razem daje to {DEFAULT_WEIGHTS.sameBuilding + DEFAULT_WEIGHTS.sameParcel + DEFAULT_WEIGHTS.sameObreb} punktów (sama działka, bez budynku — {DEFAULT_WEIGHTS.sameParcel + DEFAULT_WEIGHTS.sameObreb}).
 - Wyższy poziom dopasowania bije niższy — być bliżej, ale w innym budynku, nie nadrabia bycia w tym samym budynku.
 - Remis w punktacji rozstrzyga nowsza data transakcji.

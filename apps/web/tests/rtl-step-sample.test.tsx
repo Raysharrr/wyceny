@@ -788,7 +788,7 @@ describe("StepSample — overview map (Task 9)", () => {
       />,
     );
 
-    expect(screen.getByAltText("Ortofotomapa GUGiK z kandydatkami")).toBeInTheDocument();
+    expect(screen.getByAltText("Ortofotomapa GUGiK z propozycjami")).toBeInTheDocument();
   });
 
   it("is absent without a persisted sampleMeta (no subject point to centre it on)", () => {
@@ -804,7 +804,7 @@ describe("StepSample — overview map (Task 9)", () => {
       />,
     );
 
-    expect(screen.queryByAltText("Ortofotomapa GUGiK z kandydatkami")).toBeNull();
+    expect(screen.queryByAltText("Ortofotomapa GUGiK z propozycjami")).toBeNull();
   });
 });
 
@@ -861,7 +861,7 @@ describe("StepSample — manual rejection flow", () => {
     expect(screen.getAllByRole("row").slice(1)).toHaveLength(3);
 
     await user.click(screen.getAllByRole("row").slice(1)[0]);
-    await waitFor(() => expect(screen.getByText("Kandydatka 1 z 5")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Propozycja 1 z 5")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
@@ -912,7 +912,7 @@ describe("StepSample — manual rejection flow", () => {
     );
   });
 
-  it("post-reject selection follows the SAME ranking slot to whoever backfilled it ('Kandydatka 1 z 4' after rejecting the first of 5)", async () => {
+  it("post-reject selection follows the SAME ranking slot to whoever backfilled it ('Propozycja 1 z 4' after rejecting the first of 5)", async () => {
     const user = userEvent.setup();
     const proposed = [buildingCandidate(1), buildingCandidate(2), buildingCandidate(3)];
     const alternates = [buildingCandidate(4), buildingCandidate(5)];
@@ -941,7 +941,7 @@ describe("StepSample — manual rejection flow", () => {
     const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
     // Reject the FIRST proposed row (index 0 of 5 total).
     await user.click(candidateRows()[0]);
-    await waitFor(() => expect(screen.getByText("Kandydatka 1 z 5")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Propozycja 1 z 5")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
@@ -949,7 +949,7 @@ describe("StepSample — manual rejection flow", () => {
     // Total drops from 5 to 4 (the rejected candidate leaves both lists);
     // the panel stays on the SAME slot (index 0), now showing whoever
     // backfilled it.
-    await waitFor(() => expect(screen.getByText("Kandydatka 1 z 4")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Propozycja 1 z 4")).toBeInTheDocument());
   });
 
   it("'Zostaw' (and Enter, which routes to the identical onKeep callback — see rtl-sample-panel.test.tsx) advances through the ranking and closes the panel past the last candidate", async () => {
@@ -975,15 +975,15 @@ describe("StepSample — manual rejection flow", () => {
 
     const candidateTable = () => screen.getByText("Fasada").closest("table")!;
     await user.click(within(candidateTable()).getAllByRole("row").slice(1)[0]);
-    await waitFor(() => expect(screen.getByText("Kandydatka 1 z 2")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Propozycja 1 z 2")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Zostaw" }));
-    await waitFor(() => expect(screen.getByText("Kandydatka 2 z 2")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Propozycja 2 z 2")).toBeInTheDocument());
 
     // Past the last candidate: the panel closes rather than showing a
-    // dangling "Kandydatka 3 z 2".
+    // dangling "Propozycja 3 z 2".
     await user.click(screen.getByRole("button", { name: "Zostaw" }));
-    await waitFor(() => expect(screen.queryByText(/Kandydatka \d+ z \d+/)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/Propozycja \d+ z \d+/)).toBeNull());
     expect(screen.queryByRole("button", { name: "Zostaw" })).toBeNull();
   });
 
@@ -1035,7 +1035,7 @@ describe("StepSample — manual rejection flow", () => {
     const candidateTable = () => screen.getByText("Fasada").closest("table")!;
     const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
     await user.click(candidateRows()[1]);
-    await waitFor(() => expect(screen.getByText("Kandydatka 2 z 5")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Propozycja 2 z 5")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
@@ -1488,7 +1488,7 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     // Reject the THIRD candidate ("other") — lokalA/lokalB (the shared act)
     // must BOTH keep their own price/area, never collapse onto one of them.
     await user.click(candidateRows()[2]);
-    await waitFor(() => expect(screen.getByText("Kandydatka 3 z 4")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Propozycja 3 z 4")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
@@ -1508,7 +1508,7 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     await user.type(priceA, "99999");
 
     await user.click(candidateRows()[2]); // the backfilled candidate now occupies slot 3
-    await waitFor(() => expect(screen.getByText("Kandydatka 3 z 3")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Propozycja 3 z 3")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
@@ -1583,7 +1583,7 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     // 0, B's at slot 1), never collapsed onto whichever one happens to
     // occupy a shared bucket.
     await user.click(candidateRows()[2]);
-    await waitFor(() => expect(screen.getByText("Kandydatka 3 z 3")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Propozycja 3 z 3")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));

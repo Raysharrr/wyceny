@@ -34,7 +34,7 @@ function dotTitle(date: string, pricePerM2: number): string {
 }
 
 /**
- * "kandydatka date · price · distance · propozycja|alternatywa" for the
+ * "propozycja date · price · distance · w próbie|alternatywa" for the
  * clickable dot's `aria-label` (final wave A2/B2) — the SVG carries
  * `role="group"`, not `role="img"`, so each dot's own label is what makes
  * it discoverable to assistive tech, not one caption on the whole overlay.
@@ -45,8 +45,8 @@ function dotAriaLabel(
   distanceM: number,
   kind: "proposed" | "alternate",
 ): string {
-  const kindLabel = kind === "proposed" ? "propozycja" : "alternatywa";
-  return `kandydatka ${dotTitle(date, pricePerM2)} · ${Math.round(distanceM)} m · ${kindLabel}`;
+  const kindLabel = kind === "proposed" ? "w próbie" : "alternatywa";
+  return `propozycja ${dotTitle(date, pricePerM2)} · ${Math.round(distanceM)} m · ${kindLabel}`;
 }
 
 /** date/pricePerM2/distanceM for every dot key, built once per render (proposed/alternates/removed + the sampled rejected rows). Keyed via the shared `candidateKey` (final wave B2), not a hand-rolled `${transactionId}|${lokalId}` — the exact key `mapDots` builds each dot with. */
@@ -138,7 +138,7 @@ export function SampleMap({
             }
           }}
           src={src}
-          alt="Ortofotomapa GUGiK z kandydatkami"
+          alt="Ortofotomapa GUGiK z propozycjami"
           // Absolute + object-cover, not `block w-full` (wave 3, live
           // verification): the figure has no intrinsic size of its own, so
           // when the raster fails to load, a `block w-full` img collapses
@@ -157,7 +157,7 @@ export function SampleMap({
           viewBox={`0 0 ${PX} ${PX}`}
           className="absolute inset-0 h-full w-full"
           role="group"
-          aria-label="Kandydatki na mapie"
+          aria-label="Propozycje na mapie"
         >
           {rings.map((r) => (
             <g key={r.radiusM}>
@@ -255,7 +255,7 @@ export function SampleMap({
         </svg>
         <figcaption className="absolute left-2 bottom-2 flex gap-3 rounded-md bg-background/90 px-2 py-1 text-xs">
           <span>
-            <span style={{ color: FILL.proposed }}>●</span> propozycja {eff.proposed.length}
+            <span style={{ color: FILL.proposed }}>●</span> w próbie {eff.proposed.length}
           </span>
           <span>
             <span style={{ color: FILL.alternate }}>●</span> alternatywy {eff.alternates.length}

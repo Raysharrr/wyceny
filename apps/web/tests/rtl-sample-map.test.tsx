@@ -89,7 +89,7 @@ describe("SampleMap", () => {
         onSelect={vi.fn()}
       />,
     );
-    const img = screen.getByAltText("Ortofotomapa GUGiK z kandydatkami") as HTMLImageElement;
+    const img = screen.getByAltText("Ortofotomapa GUGiK z propozycjami") as HTMLImageElement;
     expect(img.src).toBe(ortoWmsUrl(CENTER, HALF_M, PX));
 
     fireEvent.error(img);
@@ -113,7 +113,7 @@ describe("SampleMap", () => {
     expect(figure?.className).toContain("aspect-square");
     expect(container.querySelector("svg")).not.toBeNull();
 
-    const img = screen.getByAltText("Ortofotomapa GUGiK z kandydatkami") as HTMLImageElement;
+    const img = screen.getByAltText("Ortofotomapa GUGiK z propozycjami") as HTMLImageElement;
     fireEvent.error(img);
     // Still there, and the figure's sizing is unaffected by the img's own
     // (now-collapsed-to-nothing, since it failed to load) intrinsic size.
@@ -135,7 +135,7 @@ describe("SampleMap", () => {
           onSelect={vi.fn()}
         />,
       );
-      const img = screen.getByAltText("Ortofotomapa GUGiK z kandydatkami") as HTMLImageElement;
+      const img = screen.getByAltText("Ortofotomapa GUGiK z propozycjami") as HTMLImageElement;
       expect(img.src).toBe(kiegWmsUrl(CENTER, HALF_M, PX));
       // One-shot: a re-render (still "complete && naturalWidth 0" under the
       // mock) must not loop the fallback or throw.
@@ -162,12 +162,12 @@ describe("SampleMap", () => {
     // the full census: rejectedCounts (3) + manualRejections.length (0) = 3.
     expect(screen.getAllByTestId("dot-rejected")).toHaveLength(1);
     const legend = container.querySelector("figcaption");
-    expect(legend?.textContent).toMatch(/propozycja 2/);
+    expect(legend?.textContent).toMatch(/w próbie 2/);
     expect(legend?.textContent).toMatch(/alternatywy 1/);
     expect(legend?.textContent).toMatch(/odrzucone 3/);
   });
 
-  it("legend's rejected count also folds in manual rejections; propozycja/alternatywy read the EFFECTIVE lists, not the raw snapshot", () => {
+  it("legend's rejected count also folds in manual rejections; w próbie/alternatywy read the EFFECTIVE lists, not the raw snapshot", () => {
     const sel = makeSelection({
       manualRejections: [
         { transactionId: "P1", lokalId: "LP1", reason: "too_far", at: "2026-08-21T10:00:00Z" },
@@ -181,7 +181,7 @@ describe("SampleMap", () => {
     // manual rejection of P1, A1 stays demoted (price_outlier) rather than
     // backfilling — effective proposed=[P2] (1), alternates=[A1] (1). Both
     // the legend text and the dot counts must read the EFFECTIVE lists.
-    expect(container.querySelector("figcaption")?.textContent).toMatch(/propozycja 1/);
+    expect(container.querySelector("figcaption")?.textContent).toMatch(/w próbie 1/);
     expect(container.querySelector("figcaption")?.textContent).toMatch(/alternatywy 1/);
     expect(screen.getAllByTestId("dot-proposed")).toHaveLength(1);
     expect(screen.getAllByTestId("dot-alternate")).toHaveLength(1);
@@ -237,7 +237,7 @@ describe("SampleMap", () => {
         onSelect={vi.fn()}
       />,
     );
-    const group = screen.getByRole("group", { name: "Kandydatki na mapie" });
+    const group = screen.getByRole("group", { name: "Propozycje na mapie" });
     expect(group).toBeInTheDocument();
     // Every clickable dot is reachable inside the group with its own accessible name.
     const buttons = within(group).getAllByRole("button");
@@ -247,7 +247,7 @@ describe("SampleMap", () => {
     }
   });
 
-  it("a clickable dot's aria-label reads date · price · distance · propozycja|alternatywa (A2/B2)", () => {
+  it("a clickable dot's aria-label reads date · price · distance · w próbie|alternatywa (A2/B2)", () => {
     render(
       <SampleMap
         selection={makeSelection()}
@@ -260,13 +260,13 @@ describe("SampleMap", () => {
     const proposedDot = screen.getAllByTestId("dot-proposed")[0];
     expect(proposedDot).toHaveAttribute(
       "aria-label",
-      `kandydatka 2026-05-01 · 12${NBSP}000 zł/m² · 100 m · propozycja`,
+      `propozycja 2026-05-01 · 12${NBSP}000 zł/m² · 100 m · w próbie`,
     );
     // A1: same date/price/distance, alternate.
     const alternateDot = screen.getByTestId("dot-alternate");
     expect(alternateDot).toHaveAttribute(
       "aria-label",
-      `kandydatka 2026-05-01 · 12${NBSP}000 zł/m² · 100 m · alternatywa`,
+      `propozycja 2026-05-01 · 12${NBSP}000 zł/m² · 100 m · alternatywa`,
     );
   });
 

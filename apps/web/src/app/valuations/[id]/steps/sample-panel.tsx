@@ -218,7 +218,7 @@ export function SamplePanel({
     <div onKeyDown={handleKeyDown}>
       <SectionCard
         icon={Building2}
-        title={`Kandydatka ${index + 1} z ${total}`}
+        title={`Propozycja ${index + 1} z ${total}`}
         right={
           <Button
             type="button"
@@ -287,7 +287,7 @@ export function SamplePanel({
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              ↑ ↓ zmiana kandydatki · Enter = następna
+              ↑ ↓ zmiana propozycji · Enter = następna
             </p>
           </div>
 
@@ -357,8 +357,8 @@ export function SamplePanel({
                 Potwierdź odrzucenie
               </Button>
               <p className="text-xs text-muted-foreground">
-                Odrzucona kandydatka wypada z propozycji, następna alternatywa wchodzi. Powód trafia
-                do zapisu wyceny (snapshot) — proza „analiza rynku” go na razie nie czyta.
+                Odrzucona propozycja wypada z próby, następna alternatywa wchodzi. Powód trafia do
+                zapisu wyceny (snapshot) — proza „analiza rynku” go na razie nie czyta.
               </p>
             </div>
           ) : null}

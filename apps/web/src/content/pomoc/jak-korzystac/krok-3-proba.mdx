@@ -4,11 +4,11 @@ import { MANUAL_REJECTION_REASONS, MANUAL_REJECTION_LABELS } from "@/domain/samp
 import { REJECTED_PER_REASON } from "@/domain/sample-snapshot";
 import { STREET_VIEW_TTL_DAYS, ENRICH_BUDGET_MS } from "@/app/actions/_street-view-enrich";
 
-W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m², na których oprze się kalkulacja. „Pobierz próbę z RCN” proponuje kandydatki z rejestru: przeglądasz je z podglądem budynku i odrzucasz niepasujące, podając powód. Transakcje możesz też wpisać ręcznie — oba źródła się łączą, bo ostateczna tabela zostaje edytowalna.
+W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m², na których oprze się kalkulacja. „Pobierz próbę z RCN” pokazuje propozycje z rejestru: przeglądasz je z podglądem budynku i odrzucasz niepasujące, podając powód. Transakcje możesz też wpisać ręcznie — oba źródła się łączą, bo ostateczna tabela zostaje edytowalna.
 
 <img
   src="/api/pomoc/krok-3-proba.png"
-  alt="Krok 3 kreatora: tabela kandydatek z RCN z miniaturką budynku, obrębem, odległością i odznakami, mapa przeglądowa z okręgami promieni nad tabelą, obok panel statystyk próby z Cmin, Cmax, Cśr i granicami korekty."
+  alt="Krok 3 kreatora: tabela propozycji z RCN z miniaturką budynku, obrębem, odległością i odznakami, mapa przeglądowa z okręgami promieni nad tabelą, obok panel statystyk próby z Cmin, Cmax, Cśr i granicami korekty."
   style={{
     width: "100%",
     height: "auto",
@@ -23,10 +23,10 @@ Zrzut pochodzi sprzed przebudowy kroku 3 — zostanie odświeżony po wdrożeniu
 
 Przycisk „Pobierz próbę z RCN” pobiera transakcje dobrane rankingiem podobieństwa w promieniu od {DEFAULTS.radiusStepsM[0]} m do {DEFAULTS.radiusStepsM[DEFAULTS.radiusStepsM.length - 1]} m wokół przedmiotu tej wyceny. Pobieranie trwa zwykle kilka do kilkunastu sekund — przycisk pokazuje wtedy „Pobieranie…”.
 
-- Do propozycji trafia najwyżej {DEFAULTS.proposedN} kandydatek — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku — a kolejne, do {DEFAULTS.alternatesN}, wchodzą do zwijanej sekcji „Alternatywy”.
+- Do próby trafia najwyżej {DEFAULTS.proposedN} propozycji — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku — a kolejne, do {DEFAULTS.alternatesN}, wchodzą do zwijanej sekcji „Alternatywy”.
 - Każdy wiersz ma podgląd fasady, datę transakcji, obręb, odległość od przedmiotu, powierzchnię, cenę, piętro i odznaki: **ten sam budynek**, **ta sama działka**, **inny obręb**, **p. N** (piętro), **>5 kond.**, **rynek?**, **prawdopodobnie deweloperska**, **cena odstająca**. Skąd biorą się flagi i punktacja, opisuje [dobór próby z RCN](/pomoc/dobor-proby-rcn).
 - Podgląd fasady ma trzy stany: **miniaturka**, gdy Google ma zdjęcie i aplikacja zdążyła je pobrać; pusta ramka z podpisem **„brak zdjęcia ulicy”**, gdy Google nie ma tam panoramy — to może, ale nie musi, znaczyć budynek nowszy niż ostatni przejazd Google; pusta ramka z podpisem **„brak miniaturki”**, gdy pobranie nie zdążyło w budżecie {ENRICH_BUDGET_MS / 1000} s albo akurat zawiodło po stronie Google lub zapisu — kolejne „Pobierz próbę z RCN” dociąga brakujące. Brak zdjęcia sam w sobie nie jest dowodem wieku budynku — nie wybieraj na tej podstawie powodu „budynek nowszy”.
-- Nad tabelą jest mapa przeglądowa (ortofotomapa GUGiK; gdy akurat nie odpowie, aplikacja po cichu pokazuje mapę ewidencyjną — to nie jest błąd) z okręgami promieni i kropkami: zielona to propozycja, szara alternatywa, czerwona odrzucona. Klik w kropkę (poza czerwonymi) otwiera panel tej kandydatki.
+- Nad tabelą jest mapa przeglądowa (ortofotomapa GUGiK; gdy akurat nie odpowie, aplikacja po cichu pokazuje mapę ewidencyjną — to nie jest błąd) z okręgami promieni i kropkami: zielona to propozycja w próbie, szara alternatywa, czerwona odrzucona. Klik w kropkę (poza czerwonymi) otwiera panel tej propozycji.
 - **Pobranie zastępuje całą dotychczasową zawartość tabeli, również wiersze wpisane ręcznie — i czyści zapamiętane ręczne odrzucenia z sekcji „Odrzucone”: Twoje odrzucenia trzeba wtedy zaznaczyć ponownie.**
 - Gdy pobranie się nie uda, zobaczysz komunikat z powodem, a próbę wpisujesz ręcznie.
 
@@ -34,13 +34,13 @@ Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebad
 
 Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty; [jak dobieramy próbę](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
 
-## Jak przeglądać kandydatki
+## Jak przeglądać propozycje
 
-Klik w wiersz albo strzałki ↑ / ↓ otwierają panel boczny tej kandydatki. W panelu jest przełącznik podglądu — **Ulica** (Street View, z podpisem daty zdjęcia Google), **Mapa** i **Ortofoto** — oraz komplet pól rekordu: data transakcji, cena, cena za m², powierzchnia, piętro i liczba izb, rynek, sprzedający, udział, obręb, działka i budynek, odległość. Gdy Google nie ma panoramy tego budynku, zakładka „Ulica” jest nieaktywna i panel otwiera się od razu na „Ortofoto”.
+Klik w wiersz albo strzałki ↑ / ↓ otwierają panel boczny tej propozycji. W panelu jest przełącznik podglądu — **Ulica** (Street View, z podpisem daty zdjęcia Google), **Mapa** i **Ortofoto** — oraz komplet pól rekordu: data transakcji, cena, cena za m², powierzchnia, piętro i liczba izb, rynek, sprzedający, udział, obręb, działka i budynek, odległość. Gdy Google nie ma panoramy tego budynku, zakładka „Ulica” jest nieaktywna i panel otwiera się od razu na „Ortofoto”.
 
-Dwie decyzje kończą przegląd kandydatki:
+Dwie decyzje kończą przegląd propozycji:
 
-- **Zostaw** (albo klawisz Enter) — kandydatka zostaje w propozycji, panel przechodzi do następnej.
+- **Zostaw** (albo klawisz Enter) — propozycja zostaje w próbie, panel przechodzi do następnej.
 - **Odrzuć → powód** — wybierasz powód z listy poniżej i możesz dopisać notatkę:
 
 <ul>
@@ -49,7 +49,7 @@ Dwie decyzje kończą przegląd kandydatki:
   ))}
 </ul>
 
-Odrzucenie niczego nie kasuje — zapamiętuje decyzję. Odrzucona kandydatka wypada z propozycji, a pierwsza pasująca alternatywa wchodzi na jej miejsce: nigdy kandydatka z flagą „cena odstająca” ani „prawdopodobnie deweloperska”, i nigdy więcej niż {DEFAULTS.maxPerBuilding} kandydatek z jednego budynku. Sekcja „Odrzucone” niżej ma przy każdym ręcznym odrzuceniu przycisk „Przywróć” — kandydatka wraca do puli tak, jakby jej nigdy nie odrzucono.
+Odrzucenie niczego nie kasuje — zapamiętuje decyzję. Odrzucona propozycja wypada z próby, a pierwsza pasująca alternatywa wchodzi na jej miejsce: nigdy propozycja z flagą „cena odstająca” ani „prawdopodobnie deweloperska”, i nigdy więcej niż {DEFAULTS.maxPerBuilding} propozycji z jednego budynku. Sekcja „Odrzucone” niżej ma przy każdym ręcznym odrzuceniu przycisk „Przywróć” — propozycja wraca do puli tak, jakby jej nigdy nie odrzucono.
 
 ## Promień
 
@@ -57,11 +57,11 @@ Przyciski {DEFAULTS.radiusStepsM.join(" / ")} m przeliczają dobór na tej samej
 
 ## Odrzucone
 
-Nagłówek sekcji „Odrzucone (N)” liczy wszystkie odrzucenia — automatyczne (higiena i pasmo metrażu z [doboru próby](/pomoc/dobor-proby-rcn)) oraz Twoje ręczne — to zawsze pełny licznik. Wewnątrz odrzucenia są pogrupowane po powodzie; gdy w danym powodzie jest więcej kandydatek niż {REJECTED_PER_REASON}, grupa pokazuje tylko najbliższe {REJECTED_PER_REASON} z podpisem „najbliższe X z Y” — reszta istnieje wyłącznie w liczniku. Ręczne odrzucenia mają dopisaną notatkę, jeśli ją zostawiłeś, i przycisk „Przywróć”.
+Nagłówek sekcji „Odrzucone (N)” liczy wszystkie odrzucenia — automatyczne (higiena i pasmo metrażu z [doboru próby](/pomoc/dobor-proby-rcn)) oraz Twoje ręczne — to zawsze pełny licznik. Wewnątrz odrzucenia są pogrupowane po powodzie; gdy w danym powodzie jest więcej propozycji niż {REJECTED_PER_REASON}, grupa pokazuje tylko najbliższe {REJECTED_PER_REASON} z podpisem „najbliższe X z Y” — reszta istnieje wyłącznie w liczniku. Ręczne odrzucenia mają dopisaną notatkę, jeśli ją zostawiłeś, i przycisk „Przywróć”.
 
 ## Próba do kalkulacji
 
-Pod tabelą kandydatek jest zwijana sekcja „Próba do kalkulacji (N) — edytuj wartości lub dopisz ręcznie”. Jest zwinięta, gdy wycena ma już propozycję z RCN, i rozwinięta, gdy próby jeszcze nie pobrano. W tej tabeli:
+Pod tabelą propozycji jest zwijana sekcja „Próba do kalkulacji (N) — edytuj wartości lub dopisz ręcznie”. Jest zwinięta, gdy wycena ma już propozycję z RCN, i rozwinięta, gdy próby jeszcze nie pobrano. W tej tabeli:
 
 - **Cena (zł/m²)** w każdym wierszu — bez niej zapis nie przejdzie.
 - **Data transakcji** i **powierzchnia (m²)** — przy pobraniu z RCN wypełniają się same; przy wpisie ręcznym są opcjonalne przy zapisie, ale powierzchnie z próby są używane w kroku 4 przy definicjach cech.

@@ -56,7 +56,7 @@ const base = {
 describe("SamplePanel", () => {
   it("shows the street view iframe with capture caption, all record fields, and the mode switch", async () => {
     render(<SamplePanel {...base} />);
-    expect(screen.getByText("Kandydatka 1 z 38")).toBeInTheDocument();
+    expect(screen.getByText("Propozycja 1 z 38")).toBeInTheDocument();
     const frame = screen.getByTitle("Street View");
     expect(frame).toHaveAttribute("src", expect.stringContaining("/maps/embed/v1/streetview"));
     expect(screen.getByText(/zdjęcie Google z 2023-07/)).toBeInTheDocument();

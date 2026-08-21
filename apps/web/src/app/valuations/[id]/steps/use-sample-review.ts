@@ -216,7 +216,7 @@ export function useSampleReview({
   // Domain result + manual overlay (Task 1).
   const eff = sel ? effectiveSelection(sel) : null;
 
-  // Ranking order (proposed then alternates) — the panel's "Kandydatka N z
+  // Ranking order (proposed then alternates) — the panel's "Propozycja N z
   // total" header and its ↑/↓/Zostaw "next" walk both index into this same
   // list (mirrors `SampleTable`'s own `keys`), so the two stay consistent by
   // construction instead of drifting apart under separate bookkeeping.

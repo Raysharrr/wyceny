@@ -126,7 +126,7 @@ export const HELP_PAGES: HelpPage[] = [
       "mapa",
     ],
     summary:
-      "Przegląd kandydatek z RCN z podglądem budynku, odrzucanie z powodem, promień i odrzucone.",
+      "Przegląd propozycji z RCN z podglądem budynku, odrzucanie z powodem, promień i odrzucone.",
     load: () => import("./jak-korzystac/krok-3-proba.mdx"),
   },
   {
