@@ -84,12 +84,14 @@ export function StepSample({
   area,
   comparables: initialComparables,
   sampleMeta,
+  sampleSelection = null,
 }: {
   valuationId: string;
   address: string;
   area: number;
   comparables: Comparable[];
   sampleMeta: KcsInput["sampleMeta"];
+  sampleSelection?: KcsInput["sampleSelection"];
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -114,6 +116,7 @@ export function StepSample({
           }))
         : [{ ...emptyComparable }, { ...emptyComparable }, { ...emptyComparable }],
       sampleMeta: sampleMeta ?? undefined,
+      sampleSelection: sampleSelection ?? undefined,
     },
   });
 
@@ -151,12 +154,19 @@ export function StepSample({
   const validCount = validPrices.length;
   const comparablesCount = (comparables ?? []).length;
   const comparablesError = errors.comparables?.root?.message ?? errors.comparables?.message;
+  // The v3 selection snapshot (ADR-015) — the banner reads counts/radius from
+  // here (falling back to `comparablesCount`/"?" for a persisted `sampleMeta`
+  // with no matching `sampleSelection`, e.g. an old draft or a hand-edited sample).
+  const sel = useWatch({ control, name: "sampleSelection" });
+  // Watched (not the raw `sampleMeta` prop) so the banner reacts live to a
+  // fetch in this session, not only to whatever the page rendered with.
+  const liveSampleMeta = useWatch({ control, name: "sampleMeta" });
 
   const onFetchSample = async () => {
     setFetchSampleError(null);
     setIsFetchingSample(true);
     try {
-      const result = await getSampleProposal({ address, area });
+      const result = await getSampleProposal({ valuationId, address, area });
       if ("error" in result) {
         setFetchSampleError(result.error);
         return;
@@ -166,9 +176,10 @@ export function StepSample({
       // reconciling edited-vs-fetched fidelity is a later gating-slice concern.
       // RCN's raw floats (e.g. `16030.8916015625`) are rounded to 2 decimals
       // here so the value the user sees and accepts in the input is the same
-      // value that feeds the valuation engine.
+      // value that feeds the valuation engine. No `.slice(0, 12)` here — the
+      // domain's `selectSample` already caps `proposed` at 12 (ADR-015 rule 6).
       replaceComparables(
-        result.proposal.transactions.slice(0, 12).map((t) => ({
+        result.proposal.comparables.map((t) => ({
           date: t.date,
           area: String(Math.round(t.area * 100) / 100),
           pricePerM2: String(Math.round(t.pricePerM2 * 100) / 100),
@@ -176,7 +187,14 @@ export function StepSample({
           transactionId: t.transactionId,
         })),
       );
-      setValue("sampleMeta", result.proposal.meta, { shouldDirty: true, shouldValidate: true });
+      setValue("sampleMeta", result.proposal.sampleMeta, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      // `sampleSelection` must round-trip alongside `sampleMeta` — omitting it
+      // on save would wipe the persisted snapshot to null even for a plain
+      // price edit that never re-fetches (see the "hidden round-trip" RTL test).
+      setValue("sampleSelection", result.proposal.sampleSelection, { shouldDirty: true });
     } finally {
       setIsFetchingSample(false);
     }
@@ -201,10 +219,18 @@ export function StepSample({
           sub={`${comparablesCount} ${plural(comparablesCount, "transakcja", "transakcje", "transakcji")}`}
         >
           <div className="flex flex-col gap-3">
-            {sampleMeta ? (
+            {liveSampleMeta ? (
               <AutoBanner>
-                Pobrano <b>{sampleMeta.query.count} transakcji</b> z RCN (
-                {new Date(sampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
+                Dobrano{" "}
+                <b>
+                  {sel?.counts.proposed ?? comparablesCount} z {sel?.counts.afterBand ?? "?"}{" "}
+                  pasujących
+                </b>{" "}
+                w promieniu <b>{sel?.radiusUsedM ?? "?"} m</b> (przebadano {sel?.counts.pool ?? "?"}{" "}
+                transakcji z RCN, {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
+                {liveSampleMeta.query.truncated
+                  ? " — rejestr zwrócił limit strony, pula może być niepełna"
+                  : null}
               </AutoBanner>
             ) : null}
 
