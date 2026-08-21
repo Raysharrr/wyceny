@@ -135,4 +135,36 @@ describe("groupRejected", () => {
     expect(g[0].rows).toHaveLength(1);
     expect(g[0].rows[0].key).toBe("P1|PL1");
   });
+
+  it("renders a rejected re-attached manual inclusion — its candidate lives ONLY in manualInclusions, not proposed/alternates (final wave, I2)", () => {
+    const reattached = cand(9);
+    const g = groupRejected(
+      snap({
+        manualInclusions: [
+          {
+            transactionId: reattached.transactionId,
+            lokalId: reattached.lokalId,
+            at: "2026-08-21T09:00:00Z",
+            candidate: reattached,
+          },
+        ],
+        manualRejections: [
+          {
+            transactionId: reattached.transactionId,
+            lokalId: reattached.lokalId,
+            reason: "too_far",
+            at: "2026-08-21T10:00:00Z",
+          },
+        ],
+      }),
+    );
+    expect(g).toHaveLength(1);
+    expect(g[0].rows).toHaveLength(1);
+    expect(g[0].rows[0]).toMatchObject({
+      key: `${reattached.transactionId}|${reattached.lokalId}`,
+      manual: true,
+      pricePerM2: reattached.pricePerM2,
+      distanceM: reattached.distanceM,
+    });
+  });
 });
