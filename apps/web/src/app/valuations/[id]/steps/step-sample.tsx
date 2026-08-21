@@ -403,7 +403,17 @@ export function StepSample({
                   // `reselectSample` returned rather than a second, possibly
                   // drifting, hardcoded string.
                   disabledReason={poolMissing ? reselectError : null}
-                  onChange={onRadius}
+                  // Also clears `panelInitialRejecting` (local UI state,
+                  // final wave M2) — a radius change replaces the whole
+                  // candidate pool (`onRadius` itself resets `selectedKey` to
+                  // null on success), so a stale value here pointed at a row
+                  // from the OLD pool must not survive to reopen the
+                  // reasons block unbidden, same reasoning as the "Potwierdź
+                  // odrzucenie" and "Pobierz próbę z RCN" clears above.
+                  onChange={(radiusM: Parameters<typeof onRadius>[0]) => {
+                    setPanelInitialRejecting(null);
+                    onRadius(radiusM);
+                  }}
                 />
                 {reselectError ? (
                   <p role="alert" className="text-sm text-destructive">

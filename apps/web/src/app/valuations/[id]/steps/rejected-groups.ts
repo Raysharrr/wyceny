@@ -50,8 +50,18 @@ export function groupRejected(snap: SampleSelectionSnapshot): RejectedGroup[] {
   const groups: RejectedGroup[] = [...auto.entries()]
     .sort(([reasonA, rowsA], [reasonB, rowsB]) => census(reasonB, rowsB) - census(reasonA, rowsA))
     .map(([reason, rows]) => ({ key: reason, label: REJECT_REASON_LABELS[reason], rows }));
+  // Manual inclusions too (final wave, I2): a rejection whose candidate
+  // fell out of both `proposed` and `alternates` after a radius change can
+  // still be a re-attached `manualInclusions` entry (the appraiser's own
+  // addition survives via its carried `candidate` — `sample-manual.ts`) —
+  // omitting it here made a genuinely-in-the-sample rejected row silently
+  // disappear from the list while still counting toward the header total.
   const all = new Map(
-    [...snap.proposed, ...snap.alternates].map((c) => [candidateKey(c), c] as const),
+    [
+      ...snap.proposed,
+      ...snap.alternates,
+      ...(snap.manualInclusions ?? []).map((i) => i.candidate),
+    ].map((c) => [candidateKey(c), c] as const),
   );
   for (const reason of MANUAL_REJECTION_REASONS) {
     const rows = (snap.manualRejections ?? [])
@@ -59,11 +69,12 @@ export function groupRejected(snap: SampleSelectionSnapshot): RejectedGroup[] {
       .flatMap((m) => {
         const c = all.get(`${m.transactionId}|${m.lokalId}`);
         // A carried manualRejection whose candidate matches NEITHER the
-        // current `proposed` NOR `alternates` (e.g. it fell out of both
-        // after a radius change) has nothing real to show — skip it rather
-        // than render a "0,00 zł/m²" ghost row (final wave, T8 #1). The
-        // header count (census + manualRejections.length) is unaffected —
-        // it never reads this function's output.
+        // current `proposed`/`alternates` NOR any re-attached
+        // `manualInclusions` (e.g. it never had a full `Candidate` carried
+        // at all) has nothing real to show — skip it rather than render a
+        // "0,00 zł/m²" ghost row (final wave, T8 #1). The header count
+        // (census + manualRejections.length) is unaffected — it never
+        // reads this function's output.
         if (!c) return [];
         return [
           {
