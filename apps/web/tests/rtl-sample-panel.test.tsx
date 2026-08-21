@@ -439,6 +439,22 @@ describe("SamplePanel — status-aware actions (Task 4)", () => {
     expect(screen.getByLabelText("budynek starszy")).not.toBeChecked();
   });
 
+  it("'Anuluj' inside the rejection-reasons block closes it (without rejecting) and calls onCancelRejecting", async () => {
+    const onReject = vi.fn();
+    const onCancelRejecting = vi.fn();
+    render(<SamplePanel {...base} onReject={onReject} onCancelRejecting={onCancelRejecting} />);
+    await userEvent.click(screen.getByRole("button", { name: "Odrzuć" }));
+    await userEvent.click(screen.getByLabelText("budynek starszy"));
+    expect(screen.getByRole("button", { name: "Potwierdź odrzucenie" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Anuluj" }));
+
+    expect(screen.queryByRole("button", { name: "Potwierdź odrzucenie" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument();
+    expect(onReject).not.toHaveBeenCalled();
+    expect(onCancelRejecting).toHaveBeenCalledTimes(1);
+  });
+
   it("`initialRejecting` applies only to the candidate it was passed for — switching candidates resets it", () => {
     const candidateB = { ...c, transactionId: "T2" };
     // Candidate A, no initialRejecting — reasons block closed.

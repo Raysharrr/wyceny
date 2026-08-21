@@ -16,6 +16,8 @@ export type SampleSectionsProps = {
   onSelect(key: string | null): void;
   onToggleInSample(key: string, inSample: boolean): void;
   reviewedKeys: ReadonlySet<string>;
+  /** Keys that carry the "dodana ręcznie" badge (Slice 3c, Task 5) — `eff.included` minus whatever is still in `sel.alternates`, computed by the caller. Defaults to empty (older callers, and every existing unit test, need not pass it). */
+  includedKeys?: ReadonlySet<string>;
   /** Initial "Alternatywy" expand state (`reviewStats.reviewed === 0` at the caller) — read once on mount, like the old `showAlternates` default. */
   defaultAlternatesOpen: boolean;
 };
@@ -40,6 +42,7 @@ export function SampleSections({
   onSelect,
   onToggleInSample,
   reviewedKeys,
+  includedKeys,
   defaultAlternatesOpen,
 }: SampleSectionsProps) {
   const [showAlternates, setShowAlternates] = useState(defaultAlternatesOpen);
@@ -71,6 +74,7 @@ export function SampleSections({
           kind="proposed"
           allKeys={allKeys}
           reviewedKeys={reviewedKeys}
+          includedKeys={includedKeys}
           selection={selection}
           streetView={streetView}
           streetViewEnabled={streetViewEnabled}
@@ -98,6 +102,7 @@ export function SampleSections({
               kind="alternate"
               allKeys={allKeys}
               reviewedKeys={reviewedKeys}
+              includedKeys={includedKeys}
               selection={selection}
               streetView={streetView}
               streetViewEnabled={streetViewEnabled}

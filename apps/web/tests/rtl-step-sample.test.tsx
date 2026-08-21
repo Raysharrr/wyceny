@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import type { Comparable, SampleMeta } from "@/domain/kcs";
 import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
-import type { Candidate } from "@/domain/sample-selection";
+import { candidateKey, type Candidate } from "@/domain/sample-selection";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
@@ -956,7 +956,11 @@ describe("StepSample — manual rejection flow", () => {
     // Total drops from 5 to 4 (the rejected candidate leaves both lists);
     // the panel stays on the SAME slot (index 0), now showing whoever
     // backfilled it.
-    await waitFor(() => expect(screen.getByText("Propozycja 1 z 4")).toBeInTheDocument());
+    // The just-rejected row is itself marked reviewed (rejecting IS
+    // reviewing it) — the title now carries the "przejrzane" counter.
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 1 z 4 · przejrzane 1")).toBeInTheDocument(),
+    );
   });
 
   it("'Zostaw' (and Enter, which routes to the identical onKeep callback — see rtl-sample-panel.test.tsx) advances through the ranking and closes the panel past the last candidate", async () => {
@@ -985,7 +989,11 @@ describe("StepSample — manual rejection flow", () => {
     await waitFor(() => expect(screen.getByText("Propozycja 1 z 2")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Zostaw" }));
-    await waitFor(() => expect(screen.getByText("Propozycja 2 z 2")).toBeInTheDocument());
+    // "Zostaw" marks the row reviewed before advancing (Slice 3c, Task 5) —
+    // the title on the NEXT candidate already shows "przejrzane 1".
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 2 z 2 · przejrzane 1")).toBeInTheDocument(),
+    );
 
     // Past the last candidate: the panel closes rather than showing a
     // dangling "Propozycja 3 z 2".
@@ -1191,6 +1199,8 @@ describe("StepSample — radius buttons (Task 8)", () => {
         valuationId: VID,
         radiusOverrideM: 1000,
         manualRejections: [],
+        manualInclusions: [],
+        reviewed: [],
       }),
     );
 
@@ -1514,7 +1524,10 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     await user.type(priceA, "99999");
 
     await user.click(screen.getAllByTestId("proposed-row")[2]); // the backfilled candidate now occupies slot 3
-    await waitFor(() => expect(screen.getByText("Propozycja 3 z 3")).toBeInTheDocument());
+    // The first reject already marked one row reviewed — carries through.
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 3 z 3 · przejrzane 1")).toBeInTheDocument(),
+    );
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
@@ -2069,5 +2082,468 @@ describe("StepSample — legacy draft path (wave 6): one legacy row, two candida
       expect(prices).toEqual(["7541.24", "7505.43"]); // B first, then A
       expect(prices[0]).not.toBe(prices[1]);
     });
+  });
+});
+
+describe("StepSample — Slice 3c sections integration (Task 5)", () => {
+  beforeEach(() => {
+    saveSampleAction.mockClear();
+    reselectSample.mockReset();
+  });
+
+  /** Maps a `Candidate` to the `Comparable` shape a saved draft's `comparables` carries for it (mirrors the other describe blocks in this file). */
+  function rcnComparable(c: Candidate): Comparable {
+    return {
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+      lokalId: c.lokalId,
+    };
+  }
+
+  it("(a) checking an alternate's checkbox includes it — 'W próbie (13)', 13 RCN rows in the save payload, manualInclusions 1, reviewed contains the key", async () => {
+    const user = userEvent.setup();
+    saveSampleAction.mockResolvedValue({ ok: true });
+    const proposed = Array.from({ length: 12 }, (_, i) =>
+      makeCandidate({ transactionId: `T-P-${i}`, lokalId: `L-P-${i}` }),
+    );
+    const alt = makeCandidate({ transactionId: "T-ALT", lokalId: "L-ALT", pricePerM2: 15000 });
+    const sel = makeSampleSelection({ proposed, alternates: [alt] });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={proposed.map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const altTable = screen.getByRole("table", { name: "Alternatywy" });
+    await user.click(within(altTable).getByRole("checkbox", { name: /^Dodaj do próby/ }));
+
+    await waitFor(() => expect(screen.getByText("W próbie (13)")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+    await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
+    const [, payload] = saveSampleAction.mock.calls.at(-1) as [
+      string,
+      {
+        comparables: Array<{ source?: string }>;
+        sampleSelection?: SampleSelectionSnapshot;
+      },
+    ];
+    expect(payload.comparables.filter((c) => c.source === "rcn")).toHaveLength(13);
+    expect(payload.sampleSelection?.manualInclusions).toHaveLength(1);
+    expect(
+      payload.sampleSelection?.reviewed?.some((r) => candidateKey(r) === candidateKey(alt)),
+    ).toBe(true);
+  });
+
+  it("(b) unchecking a proposed row opens the panel already in the rejection-reasons state; confirming moves it to Odrzucone, backfills, reviewed reaches 2", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const p2 = makeCandidate({ transactionId: "T-P2", lokalId: "L-P2" });
+    // A third proposed row keeps `comparables` at ≥3 after p1 is rejected —
+    // the min-3 zod gate would otherwise block submit regardless of this
+    // test's own subject (the "reviewed reaches 2" round-trip).
+    const p3 = makeCandidate({ transactionId: "T-P3", lokalId: "L-P3" });
+    const alt1 = makeCandidate({ transactionId: "T-ALT1", lokalId: "L-ALT1" });
+    const sel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ proposed: [p1, p2, p3], alternates: [alt1] }),
+      // p2 already reviewed BEFORE this test's own action — isolates "the
+      // count reaches 2" from "there happen to be 2 actions in this test".
+      reviewed: [
+        { transactionId: p2.transactionId, lokalId: p2.lokalId, at: "2026-08-20T10:00:00Z" },
+      ],
+    };
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, p2, p3].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const proposedTable = screen.getByRole("table", { name: "W próbie" });
+    // p1 is the FIRST "W próbie" row (ranking order) — uncheck it.
+    await user.click(within(proposedTable).getAllByRole("checkbox")[0]);
+
+    // initialRejecting skips the extra "Odrzuć" click — reasons UI already open.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Potwierdź odrzucenie/i })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    // p1 left "W próbie" — alt1 backfills the slot, so the section still has 3 rows.
+    await waitFor(() => expect(screen.getByText("W próbie (3)")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Odrzucone \(1\)/ })).toBeInTheDocument();
+
+    saveSampleAction.mockResolvedValue({ ok: true });
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+    await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
+    const [, payload] = saveSampleAction.mock.calls.at(-1) as [
+      string,
+      { sampleSelection?: SampleSelectionSnapshot },
+    ];
+    expect(payload.sampleSelection?.reviewed).toHaveLength(2);
+  });
+
+  it("(c) 'Pomiń' on an alternate (from the panel) marks it reviewed — ✓ in the table, sample unchanged, banner shows przejrzane 1/N", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const alt1 = makeCandidate({ transactionId: "T-ALT1", lokalId: "L-ALT1" });
+    // Demoted so the domain's own backfill (proposed.length 1 < proposedN
+    // 12) doesn't silently promote it into "W próbie" before this test ever
+    // touches it — mirrors the same fixpoint workaround `rtl-sample-sections
+    // .test.tsx`/`rtl-sample-map.test.tsx` use.
+    const sel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ proposed: [p1], alternates: [alt1] }),
+      flags: { [candidateKey(alt1)]: ["price_outlier"] },
+    };
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const altTable = screen.getByRole("table", { name: "Alternatywy" });
+    const altRow = within(altTable).getAllByRole("row").slice(1)[0];
+    await user.click(altRow);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pomiń" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Pomiń" }));
+
+    // Scoped to the ROW (not the whole table) — the "✓" COLUMN HEADER also
+    // carries `aria-label="przejrzane"`, so a table-wide query is ambiguous.
+    await waitFor(() => expect(within(altRow).getByLabelText("przejrzane")).toBeInTheDocument());
+    expect(screen.getByText("W próbie (1)")).toBeInTheDocument();
+    expect(bannerText(container)).toMatch(/przejrzane 1\//);
+  });
+
+  it("(d) reload with persisted reviewed/manualInclusions: rebuilds sections with ✓ + the 'dodana ręcznie' badge, Alternatywy starts collapsed", () => {
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const included = makeCandidate({ transactionId: "T-INC", lokalId: "L-INC" });
+    const alt1 = makeCandidate({ transactionId: "T-ALT1", lokalId: "L-ALT1" });
+    const sel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ proposed: [p1], alternates: [alt1] }),
+      // Demoted so alt1 stays a genuine alternate — the domain's own
+      // backfill (proposed.length 1 < proposedN 12) would otherwise
+      // silently promote it into "proposed" before the overlay even runs.
+      flags: { [candidateKey(alt1)]: ["price_outlier"] },
+      manualInclusions: [
+        {
+          transactionId: included.transactionId,
+          lokalId: included.lokalId,
+          at: "2026-08-20T09:00:00Z",
+          candidate: included,
+        },
+      ],
+      reviewed: [
+        { transactionId: p1.transactionId, lokalId: p1.lokalId, at: "2026-08-20T09:00:00Z" },
+      ],
+    };
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, included].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    // p1 (ranked) + included (reattached) — reviewed > 0, so Alternatywy stays collapsed.
+    expect(screen.getByText("W próbie (2)")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Alternatywy" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Alternatywy \(1\)/, expanded: false }),
+    ).toBeInTheDocument();
+
+    const proposedTable = screen.getByRole("table", { name: "W próbie" });
+    // `role: "img"` excludes the "✓" COLUMN HEADER (also `aria-label=
+    // "przejrzane"`, but no `role="img"`) — only the check-mark svg counts.
+    expect(within(proposedTable).getAllByRole("img", { name: "przejrzane" })).toHaveLength(1);
+    expect(within(proposedTable).getByText("dodana ręcznie")).toBeInTheDocument();
+  });
+
+  it("radius change carries manualInclusions/reviewed forward: an out-of-radius inclusion stays in 'W próbie', badged 'dodana ręcznie'", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const p2 = makeCandidate({ transactionId: "T-P2", lokalId: "L-P2" });
+    const alt1 = makeCandidate({ transactionId: "T-ALT1", lokalId: "L-ALT1" });
+    // alt1 demoted so the domain's own backfill doesn't silently promote it
+    // into "W próbie" before the checkbox click this test exercises.
+    const sel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ proposed: [p1, p2], alternates: [alt1], radiusUsedM: 500 }),
+      flags: { [candidateKey(alt1)]: ["price_outlier"] },
+    };
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, p2].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const altTable = screen.getByRole("table", { name: "Alternatywy" });
+    await user.click(within(altTable).getByRole("checkbox", { name: /^Dodaj do próby/ }));
+    await waitFor(() => expect(screen.getByText("W próbie (3)")).toBeInTheDocument());
+
+    // The server-side re-run (mocked here) no longer finds alt1 within the
+    // new radius — `buildProposal` re-injects `manualInclusions`/`reviewed`
+    // into the fresh snapshot exactly as it does `manualRejections` today.
+    // p1/p2 stay in the new proposal (still ≥3 comparables after the
+    // re-attach, clearing the min-3 zod gate for the submit below).
+    const newSel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ proposed: [p1, p2], alternates: [], radiusUsedM: 1000 }),
+      manualInclusions: [
+        {
+          transactionId: alt1.transactionId,
+          lokalId: alt1.lokalId,
+          at: "2026-08-21T10:00:00Z",
+          candidate: alt1,
+        },
+      ],
+      reviewed: [
+        { transactionId: alt1.transactionId, lokalId: alt1.lokalId, at: "2026-08-21T10:00:00Z" },
+      ],
+    };
+    reselectSample.mockResolvedValue({
+      proposal: {
+        comparables: [p1, p2].map((c) => ({
+          date: c.date,
+          area: c.area,
+          pricePerM2: c.pricePerM2,
+          transactionId: c.transactionId,
+        })),
+        sampleSelection: newSel,
+        sampleMeta: makeSampleMeta(),
+        // `{}`, never `null` — mirrors what `_build-proposal.ts` actually
+        // returns (`valuation.inputs?.streetView ?? {}`); `streetViewSchema`
+        // is `z.record(...).optional()`, which accepts `undefined` but NOT
+        // `null` — a `null` here would silently fail submit validation with
+        // no visible alert (the JSX only checks `errors.sampleMeta` /
+        // `errors.sampleSelection`, not `errors.streetView`).
+        streetView: {},
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: "1000 m" }));
+    await waitFor(() => expect(reselectSample).toHaveBeenCalled());
+
+    await waitFor(() => expect(screen.getByText("W próbie (3)")).toBeInTheDocument());
+    const proposedTable = screen.getByRole("table", { name: "W próbie" });
+    expect(within(proposedTable).getByText("dodana ręcznie")).toBeInTheDocument();
+
+    saveSampleAction.mockResolvedValue({ ok: true });
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+    await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
+    const [, payload] = saveSampleAction.mock.calls.at(-1) as [
+      string,
+      { comparables: Array<{ transactionId?: string }> },
+    ];
+    expect(payload.comparables.some((c) => c.transactionId === alt1.transactionId)).toBe(true);
+  });
+
+  it("(f) gate A1: a manually-included alternate + an edited price survive rejecting a DIFFERENT candidate, 1:1", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1", pricePerM2: 11000 });
+    const p2 = makeCandidate({ transactionId: "T-P2", lokalId: "L-P2", pricePerM2: 11500 });
+    // A third proposed row keeps `comparables` at ≥3 after p2 is rejected
+    // below — the min-3 zod gate would otherwise block the final submit.
+    const p3 = makeCandidate({ transactionId: "T-P3", lokalId: "L-P3", pricePerM2: 11800 });
+    const alt1 = makeCandidate({ transactionId: "T-ALT1", lokalId: "L-ALT1", pricePerM2: 15000 });
+    // alt1 demoted so the domain's own backfill doesn't silently promote it
+    // into "W próbie" before the checkbox click this test exercises.
+    const sel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ proposed: [p1, p2, p3], alternates: [alt1] }),
+      flags: { [candidateKey(alt1)]: ["price_outlier"] },
+    };
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, p2, p3].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    // Add alt1 to the sample via the checkbox.
+    const altTable = screen.getByRole("table", { name: "Alternatywy" });
+    await user.click(within(altTable).getByRole("checkbox", { name: /^Dodaj do próby/ }));
+    await waitFor(() => expect(screen.getByText("W próbie (4)")).toBeInTheDocument());
+
+    // Edit p1's price by hand.
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(4\)/ }));
+    const priceP1 = container.querySelector("#comparable-price-0") as HTMLInputElement;
+    await user.clear(priceP1);
+    await user.type(priceP1, "77777");
+
+    // Reject p2 — a DIFFERENT candidate than the one just edited or included.
+    await user.click(screen.getAllByTestId("proposed-row")[1]);
+    await waitFor(() => expect(screen.getByText(/^Propozycja/)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    // p1's edit, p3, and alt1's inclusion all survive — no alternates left
+    // to backfill p2's slot, so "W próbie" drops from 4 to 3.
+    await waitFor(() => expect(screen.getByText("W próbie (3)")).toBeInTheDocument());
+    const prices = screen
+      .getAllByPlaceholderText("zł/m²")
+      .map((el) => (el as HTMLInputElement).value);
+    expect(prices).toEqual(["77777", String(p3.pricePerM2), String(alt1.pricePerM2)]);
+
+    saveSampleAction.mockResolvedValue({ ok: true });
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+    await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
+    const [, payload] = saveSampleAction.mock.calls.at(-1) as [
+      string,
+      { comparables: Array<{ pricePerM2?: number; transactionId?: string }> },
+    ];
+    // `comparableSchema.pricePerM2` is `z.coerce.number()` — the SAVED
+    // payload carries numbers, unlike the raw `<input>` string values above.
+    expect(payload.comparables).toEqual([
+      expect.objectContaining({ pricePerM2: 77777, transactionId: "T-P1" }),
+      expect.objectContaining({ pricePerM2: p3.pricePerM2, transactionId: "T-P3" }),
+      expect.objectContaining({ pricePerM2: alt1.pricePerM2, transactionId: "T-ALT1" }),
+    ]);
+  });
+
+  it("(g) clicking a manually-rejected row in Odrzucone opens the panel with the reason; Przywróć moves it back to W próbie", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const p2 = makeCandidate({ transactionId: "T-P2", lokalId: "L-P2" });
+    const rejected = makeCandidate({ transactionId: "T-REJ", lokalId: "L-REJ" });
+    const sel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ proposed: [p1, p2, rejected], alternates: [] }),
+      manualRejections: [
+        {
+          transactionId: rejected.transactionId,
+          lokalId: rejected.lokalId,
+          reason: "too_far",
+          note: "test note",
+          at: "2026-08-20T09:00:00Z",
+        },
+      ],
+    };
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, p2].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    expect(screen.getByText("W próbie (2)")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Odrzucone \(1\)/ }));
+    await user.click(screen.getByRole("button", { name: /Podgląd odrzuconej propozycji/i }));
+
+    await waitFor(() => expect(screen.getByText("Odrzucona propozycja")).toBeInTheDocument());
+    // "za daleko"/the note text also appear in the still-expanded "Odrzucone"
+    // list row itself — scope to the panel's own rejection block to disambiguate.
+    const rejectionBlock = screen.getByText(/Powód odrzucenia:/).closest("div")!;
+    expect(rejectionBlock.textContent).toMatch(/za daleko/);
+    expect(rejectionBlock.textContent).toMatch(/test note/);
+
+    // The still-expanded "Odrzucone" list ALSO has its own inline "Przywróć"
+    // button — scope to the panel (the SectionCard around "Odrzucona
+    // propozycja") to disambiguate.
+    const panelSection = screen.getByText("Odrzucona propozycja").closest("section")!;
+    await user.click(within(panelSection).getByRole("button", { name: "Przywróć" }));
+
+    await waitFor(() => expect(screen.getByText("W próbie (3)")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Odrzucone \(0\)/ })).toBeInTheDocument();
+  });
+
+  it("the panel header shows the review counter — 'Propozycja N z M · przejrzane R'", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const p2 = makeCandidate({ transactionId: "T-P2", lokalId: "L-P2" });
+    const sel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ proposed: [p1, p2], alternates: [] }),
+      reviewed: [
+        { transactionId: p2.transactionId, lokalId: p2.lokalId, at: "2026-08-20T09:00:00Z" },
+      ],
+    };
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, p2].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    await user.click(screen.getAllByTestId("proposed-row")[0]);
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 1 z 2 · przejrzane 1")).toBeInTheDocument(),
+    );
+  });
+
+  it("'Anuluj' inside the rejection-reasons block closes it without rejecting the row", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const sel = makeSampleSelection({ proposed: [p1], alternates: [] });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    await user.click(screen.getAllByTestId("proposed-row")[0]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Odrzuć" }));
+    expect(screen.getByRole("button", { name: /Potwierdź odrzucenie/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Anuluj" }));
+    expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument();
   });
 });

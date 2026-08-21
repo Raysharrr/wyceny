@@ -441,4 +441,45 @@ describe("SampleTable", () => {
     expect(within(rows[0]).queryByLabelText("przejrzane")).toBeNull();
     expect(within(rows[1]).getByLabelText("przejrzane")).toBeInTheDocument();
   });
+
+  it("shows a 'dodana ręcznie' badge only for rows in includedKeys (Slice 3c, Task 5)", () => {
+    const p = [cand(), cand()];
+    render(
+      <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
+        includedKeys={new Set([keyOf(p[1])])}
+        selection={snap(p, [])}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={null}
+        onSelect={noop}
+        onToggleInSample={noop}
+      />,
+    );
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(within(rows[0]).queryByText("dodana ręcznie")).toBeNull();
+    expect(within(rows[1]).getByText("dodana ręcznie")).toBeInTheDocument();
+  });
+
+  it("includedKeys defaults to empty — no badge when the prop is omitted", () => {
+    const p = [cand()];
+    render(
+      <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
+        selection={snap(p, [])}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={null}
+        onSelect={noop}
+        onToggleInSample={noop}
+      />,
+    );
+    expect(screen.queryByText("dodana ręcznie")).toBeNull();
+  });
 });

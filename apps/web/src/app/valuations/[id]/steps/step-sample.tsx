@@ -221,6 +221,7 @@ export function StepSample({
     restore,
     include,
     skip,
+    keep,
     reviewStats,
     isReselecting,
     poolMissing,
@@ -251,6 +252,26 @@ export function StepSample({
   const selectedRejection = selectedKey
     ? (sel?.manualRejections ?? []).find((m) => candidateKey(m) === selectedKey)
     : undefined;
+
+  // Which candidate the "w próbie" checkbox's uncheck path pre-opens the
+  // rejection-reasons block for (Task 5) — compared against `selectedKey`
+  // rather than stored as a boolean, so switching the panel to a DIFFERENT
+  // row (click, ↑/↓, "Odrzucone") naturally stops pre-opening it without any
+  // extra bookkeeping. Cleared explicitly on "Anuluj" (the panel's own
+  // cancel button) so reopening the SAME row later doesn't resurrect it.
+  const [panelInitialRejecting, setPanelInitialRejecting] = useState<string | null>(null);
+
+  // "Dodana ręcznie" badge (Task 5) — keys the appraiser added BEYOND the
+  // ranked list (`eff.included`, never `sel.manualInclusions` — an inclusion
+  // the domain's own refill already promoted into `proposed` is a no-op and
+  // isn't in `eff.included`) that are no longer part of the raw domain's
+  // `alternates` — a row still sitting in `sel.alternates` was only just
+  // promoted THIS render (e.g. the checkbox's own optimistic re-render) and
+  // isn't the "survived a radius change" case the badge exists for.
+  const alternateKeys = new Set((sel?.alternates ?? []).map(candidateKey));
+  const includedKeys = new Set(
+    (eff?.included ?? []).filter((c) => !alternateKeys.has(candidateKey(c))).map(candidateKey),
+  );
 
   const onFetchSample = async () => {
     setFetchSampleError(null);
@@ -287,6 +308,7 @@ export function StepSample({
       // on a candidate from the PREVIOUS pool would show stale data (or a
       // key that no longer resolves to anything).
       setSelectedKey(null);
+      setPanelInitialRejecting(null);
       // A fresh fetch re-populates the pool cache `reselectSample` reads —
       // clears whatever "pobierz ponownie" gate a previous radius click hit,
       // and any leftover error message from that click.
@@ -335,9 +357,16 @@ export function StepSample({
                   (total, count) => total + (count ?? 0),
                   0,
                 )}
+                {" · przejrzane "}
+                {reviewStats.reviewed}/{reviewStats.total}
                 {(sel.manualRejections?.length ?? 0) > 0
                   ? ` · Twoich odrzuceń: ${sel.manualRejections?.length}`
                   : null}
+                {/* `eff.included.length` (never `sel.manualInclusions.length`
+                    — controller ruling, Task 5) — an inclusion the domain's
+                    own refill already promoted into `proposed` is a no-op
+                    and would overcount. */}
+                {eff.included.length > 0 ? ` · dodanych: ${eff.included.length}` : null}
               </AutoBanner>
             ) : liveSampleMeta ? (
               // A persisted `sampleMeta` without its v3 selection snapshot (a
@@ -384,17 +413,22 @@ export function StepSample({
                   selectedKey={selectedKey}
                   onSelect={setSelectedKey}
                   reviewedKeys={reviewStats.reviewedKeys}
+                  includedKeys={includedKeys}
                   defaultAlternatesOpen={reviewStats.reviewed === 0}
-                  // "w próbie" checkbox (Task 3 wires the prop; Task 4/5 give
-                  // the "Odrzuć" path its reasons UI via the panel's
-                  // `initialRejecting` — until then, unchecking a proposed
-                  // row opens the panel on it, same as a row click, so the
-                  // appraiser reaches "Odrzuć" from there). Checking an
-                  // alternate is unconditional and already the FULL Task 5
-                  // behavior — `include` needs no reason.
-                  onToggleInSample={(key, inSample) =>
-                    inSample ? include(key) : setSelectedKey(key)
-                  }
+                  // "w próbie" checkbox (Task 3 wires the prop): unchecking a
+                  // proposed row selects it AND pre-opens the panel's
+                  // rejection-reasons block (`panelInitialRejecting`) — the
+                  // appraiser reaches "Potwierdź odrzucenie" in one click
+                  // instead of select-then-"Odrzuć". Checking an alternate
+                  // needs no reason — `include` is unconditional.
+                  onToggleInSample={(key, inSample) => {
+                    if (inSample) {
+                      include(key);
+                    } else {
+                      setSelectedKey(key);
+                      setPanelInitialRejecting(key);
+                    }
+                  }}
                 />
                 <SampleRejected selection={sel} onRestore={restore} onSelect={setSelectedKey} />
               </>
@@ -574,11 +608,19 @@ export function StepSample({
               streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
               status={panelStatus}
               rejection={selectedRejection}
-              onKeep={next}
+              // Same "only when there's something to say" pattern as the
+              // banner's own "Twoich odrzuceń"/"dodanych" clauses — a fresh
+              // selection (reviewed === 0) keeps the plain "Propozycja i z
+              // M" title untouched.
+              reviewedCount={reviewStats.reviewed > 0 ? reviewStats.reviewed : undefined}
+              onKeep={keep}
               onReject={reject}
-              // `panelInitialRejecting`-driven wiring (checkbox-uncheck path)
-              // is Task 5 — `initialRejecting` stays unpassed (component
-              // default `false`) until then.
+              // Uncheck path (checkbox on a proposed row) pre-opens the
+              // reasons block for THAT candidate only — comparing against
+              // `selectedKey` (not a bare boolean) means switching the panel
+              // to any other row naturally stops pre-opening it.
+              initialRejecting={panelInitialRejecting === selectedKey}
+              onCancelRejecting={() => setPanelInitialRejecting(null)}
               onInclude={() => selectedKey && include(selectedKey)}
               onSkip={() => {
                 if (!selectedKey) return;
