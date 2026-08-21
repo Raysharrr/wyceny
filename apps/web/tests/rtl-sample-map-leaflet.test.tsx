@@ -37,13 +37,11 @@ const c = (
 });
 
 // Heweliusza 3, Poznań — real EPSG:2180 {x: easting, y: northing}.
-export const CENTER = { x: 355300.15, y: 505330.31 };
+const CENTER = { x: 355300.15, y: 505330.31 };
 
 // Four DISTINCT coordinates: 2 proposed, 1 alternate (demoted by a flag so
 // effectiveSelection does not promote it), 1 sampled rejected; census 3.
-export function makeSelection(
-  overrides: Partial<SampleSelectionSnapshot> = {},
-): SampleSelectionSnapshot {
+function makeSelection(overrides: Partial<SampleSelectionSnapshot> = {}): SampleSelectionSnapshot {
   return {
     version: 3,
     proposed: [c("P1", { x: 355320.9, y: 505342.7 }), c("P2", { x: 355280, y: 505350 })],
@@ -92,6 +90,14 @@ describe("SampleMapLeaflet — layers, rings, dots", () => {
       /OpenStreetMap/,
     );
     expect(screen.getByLabelText("przedmiot wyceny")).toBeInTheDocument();
+
+    // Switching the base layer to Ortofoto via the real layers control toggles the background class.
+    const ortoInput = screen
+      .getByText(/Ortofoto \(GUGiK\)/)
+      .closest("label")!
+      .querySelector("input")!;
+    fireEvent.click(ortoInput);
+    expect(container.querySelector(".smap")).toHaveClass("smap--orto");
   });
 
   it("draws all four rings, the used radius active, bigger ones outer; a radius change restyles them", () => {
