@@ -46,7 +46,7 @@ const c = (
 const BUILDING = { x: 355320.9, y: 505342.7 };
 
 // `flags` demotes A1 so `effectiveSelection` does not top `proposed` up from
-// `alternates` (same fixture trick as rtl-sample-map.test.tsx / map-dots.test.ts).
+// `alternates` (same fixture trick as rtl-sample-map-leaflet.test.tsx).
 function makeSelection(overrides: Partial<SampleSelectionSnapshot> = {}): SampleSelectionSnapshot {
   return {
     version: 3,
