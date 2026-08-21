@@ -109,7 +109,17 @@ export function applyManualRejections(
  * once. An inclusion whose row is still in `alternates` is spliced into
  * `proposed` in ranking order; one that has fallen out of both lists (e.g. a
  * smaller radius) is re-attached from its stored `candidate`, appended at
- * the end. `removed` is unaffected by inclusions.
+ * the end. A rejected inclusion whose candidate isn't a real
+ * `sel.proposed`/`sel.alternates` row (the re-attach case) would otherwise
+ * vanish from every list — `applyManualRejections`'s `removed` only scans
+ * those two arrays — so it's appended to `removed` here instead, unless a
+ * row with that key is already there.
+ *
+ * `included` (the return field) lists only additions BEYOND the ranked
+ * list — an inclusion the refill already promoted into `base.proposed` is a
+ * no-op and is NOT in `included`. Callers deriving "w próbie" checkbox
+ * state must read `snap.manualInclusions` (the appraiser's intent), never
+ * `included` (which one row can appear in or not depending on ranking).
  */
 export function applyManualOverlay(
   sel: { proposed: Candidate[]; alternates: Candidate[]; flags: Record<string, Flag[]> },
@@ -121,13 +131,24 @@ export function applyManualOverlay(
   const baseProposedKeys = new Set(base.proposed.map(candidateKey));
   const baseAlternatesByKey = new Map(base.alternates.map((c) => [candidateKey(c), c]));
 
+  const removed = [...base.removed];
+  const removedKeys = new Set(removed.map(candidateKey));
+
   const fromAlternatesKeys = new Set<string>();
   const reattached: Candidate[] = [];
   const seen = new Set<string>();
   for (const inclusion of overlay.inclusions) {
     const key = candidateKey(inclusion);
-    if (rejectedKeys.has(key) || seen.has(key) || baseProposedKeys.has(key)) continue;
+    if (seen.has(key)) continue;
     seen.add(key);
+    if (rejectedKeys.has(key)) {
+      if (!removedKeys.has(key)) {
+        removed.push(inclusion.candidate);
+        removedKeys.add(key);
+      }
+      continue;
+    }
+    if (baseProposedKeys.has(key)) continue;
     if (baseAlternatesByKey.has(key)) {
       fromAlternatesKeys.add(key);
     } else {
@@ -146,7 +167,7 @@ export function applyManualOverlay(
   return {
     proposed: [...base.proposed, ...included],
     alternates: base.alternates.filter((c) => !includedKeys.has(candidateKey(c))),
-    removed: base.removed,
+    removed,
     included,
   };
 }
