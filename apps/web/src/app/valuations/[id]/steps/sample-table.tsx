@@ -109,6 +109,12 @@ export function SampleTable({
 
   const move = (from: string, delta: 1 | -1) => {
     const i = allKeys.indexOf(from);
+    // `from` (the current `selectedKey`) can fall outside `allKeys` once a
+    // row leaves both sections it's rendered from — e.g. a rejected row
+    // (Task 4 lets `selectedKey` point at one while its reasons UI is open).
+    // `indexOf` returns -1 there; `allKeys[-1 + delta]` would silently wrap
+    // to the array's last/second-to-last element instead of no-op'ing.
+    if (i < 0) return;
     const next = allKeys[i + delta];
     if (!next) return;
     onSelect(next);
@@ -153,7 +159,12 @@ export function SampleTable({
         <TableCell>
           <Checkbox
             checked={inSample}
-            aria-label={inSample ? "Usuń z próby" : "Dodaj do próby"}
+            // The mandated text ("Usuń z próby" / "Dodaj do próby") is the
+            // PREFIX — identical across every row on its own, which made
+            // the accessible name ambiguous for `getByRole("checkbox", {
+            // name })` (Opus review, fix round 1). The row identity suffix
+            // disambiguates without changing what the prefix says.
+            aria-label={`${inSample ? "Usuń z próby" : "Dodaj do próby"} — ${c.date.slice(0, 7)}, ${Math.round(c.distanceM)} m, ${pln.format(c.pricePerM2)} zł/m²`}
             onCheckedChange={(v) => onToggleInSample(key, v === true)}
             onClick={(e) => e.stopPropagation()}
             // Space/Enter on the checkbox otherwise bubbles to this row's own
@@ -167,7 +178,7 @@ export function SampleTable({
         </TableCell>
         <TableCell>
           {reviewedKeys.has(key) ? (
-            <Check className="size-4 text-primary" aria-label="przejrzane" />
+            <Check role="img" className="size-4 text-primary" aria-label="przejrzane" />
           ) : null}
         </TableCell>
         <TableCell>
@@ -202,7 +213,7 @@ export function SampleTable({
   };
 
   return (
-    <Table>
+    <Table aria-label={kind === "proposed" ? "W próbie" : "Alternatywy"}>
       <TableHeader>
         <TableRow>
           <TableHead aria-label="w próbie">W próbie</TableHead>

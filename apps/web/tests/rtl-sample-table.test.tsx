@@ -362,9 +362,14 @@ describe("SampleTable", () => {
         onToggleInSample={noop}
       />,
     );
-    const proposedCheckbox = screen.getByRole("checkbox", { name: "Usuń z próby" });
+    const proposedCheckbox = screen.getByRole("checkbox", { name: /^Usuń z próby/ });
     expect(proposedCheckbox).toBeChecked();
     expect(proposedCheckbox).toHaveAttribute("type", "button");
+    // The accessible name carries the row's own identity (date/distance/
+    // price) as a suffix — otherwise every row's name is identical and
+    // `getByRole("checkbox", { name })` is ambiguous once more than one row
+    // is on screen (Opus review, fix round 1).
+    expect(proposedCheckbox).toHaveAccessibleName(new RegExp(`${Math.round(p[0].distanceM)} m`));
 
     rerender(
       <SampleTable
@@ -380,7 +385,7 @@ describe("SampleTable", () => {
         onToggleInSample={noop}
       />,
     );
-    const alternateCheckbox = screen.getByRole("checkbox", { name: "Dodaj do próby" });
+    const alternateCheckbox = screen.getByRole("checkbox", { name: /^Dodaj do próby/ });
     expect(alternateCheckbox).not.toBeChecked();
   });
 
@@ -405,7 +410,7 @@ describe("SampleTable", () => {
         />
       </form>,
     );
-    const checkbox = screen.getByRole("checkbox", { name: "Dodaj do próby" });
+    const checkbox = screen.getByRole("checkbox", { name: /^Dodaj do próby/ });
     await userEvent.click(checkbox);
     expect(onToggleInSample).toHaveBeenCalledWith(keyOf(a[0]), true);
     expect(onSelect).not.toHaveBeenCalled();
