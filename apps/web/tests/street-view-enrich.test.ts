@@ -4,6 +4,7 @@ import {
   ENRICH_BUDGET_MS,
   isThumbnailKey,
   metaKey,
+  MIN_BUDGET_MS,
   thumbnailKey,
 } from "../src/app/actions/_street-view-enrich";
 import { StorageNotFoundError, type PortStorage } from "../src/ports/storage";
@@ -234,12 +235,21 @@ describe("enrichStreetView", () => {
     const storage = memStorage();
     const start = new Date("2026-08-21T10:00:00Z");
     const pastDeadline = new Date(start.getTime() + ENRICH_BUDGET_MS + 1);
+    // No `deps.budgetMs` passed — exercises the ENRICH_BUDGET_MS default
+    // fix round 2 kept (`budgetMs = deps.budgetMs ?? ENRICH_BUDGET_MS`), the
+    // same value this test always used.
+    //
     // Fixed start time while the enrichment's own setup + the first wave of
     // concurrent workers are still dispatching (all of that happens before
     // any of their `readCache`/Google awaits actually suspend execution —
-    // JS runs the synchronous prefix of CONCURRENCY=6 workers in one go),
-    // then flips to a time past the deadline for every check after — proven
-    // empirically against this implementation rather than assumed.
+    // JS runs the synchronous prefix of CONCURRENCY=6 workers in one go, so
+    // all 6 workers' `job = queue.shift()` + deadline-check calls land in
+    // the SAME synchronous burst as the two setup calls, `now` and
+    // `deadline`; that's 2 + 6 = 8 calls before any of them actually starts
+    // Google/storage work), then flips to a time past the deadline for
+    // every check after — proven empirically against this implementation
+    // (threshold 2, as a first reading of the ruling might suggest, made
+    // ALL 8 buildings skip instead of a partial split) rather than assumed.
     let calls = 0;
     const now = () => {
       calls += 1;
@@ -253,6 +263,34 @@ describe("enrichStreetView", () => {
     expect(meta.skipped + Object.keys(snapshot).length).toBe(8);
     expect(port.lookup.mock.calls.length).toBe(Object.keys(snapshot).length);
     expect(Object.values(meta).every((v) => typeof v === "number")).toBe(true);
+  });
+  it("budgetMs below MIN_BUDGET_MS skips the whole pool without starting it — frozen entries still returned, no port calls (Important #1, round 2)", async () => {
+    const port = sv();
+    const storage = memStorage();
+    const existing = {
+      "0039.22.13/82.1": {
+        panoId: "OLD",
+        captureDate: "2020-01",
+        thumbnailKey: thumbnailKey("0039.22.13/82.1"),
+        heading: 10,
+        lat: 1,
+        lng: 2,
+      },
+    };
+    const cands = [mk("1"), mk("2"), mk("3")];
+    expect(1000).toBeLessThan(MIN_BUDGET_MS);
+    const { snapshot, meta } = await enrichStreetView(cands, {
+      streetView: port,
+      storage,
+      now: NOW,
+      existing,
+      budgetMs: 1000,
+    });
+    expect(meta).toEqual({ requested: 3, cached: 1, missing: 0, failed: 0, skipped: 2 });
+    expect(snapshot["0039.22.13/82.1"].panoId).toBe("OLD");
+    expect(port.lookup).not.toHaveBeenCalled();
+    expect(port.thumbnail).not.toHaveBeenCalled();
+    expect(storage.store.size).toBe(0);
   });
 });
 

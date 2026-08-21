@@ -5,7 +5,11 @@ import { z } from "zod";
 import { getSession } from "@/auth/session";
 import { sampleProposal, storage, streetView, valuationRepository } from "@/app/valuations/_deps";
 import { recordEvent, recordFailure } from "@/app/actions/_record-failure";
-import { enrichStreetView } from "@/app/actions/_street-view-enrich";
+import {
+  enrichStreetView,
+  ENRICH_BUDGET_MS,
+  REQUEST_BUDGET_MS,
+} from "@/app/actions/_street-view-enrich";
 import { fingerprint } from "@/lib/fingerprint";
 import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
@@ -55,6 +59,10 @@ const GENERIC_ERROR =
  * proposed+alternates with a Street View preview (`enrichStreetView`) —
  * frozen entries reused, storage-cached, Google failures counted but never
  * thrown (a hiccup there must not cost the appraiser the sample).
+ * `enrichStreetView`'s `budgetMs` is derived from `REQUEST_BUDGET_MS` minus
+ * time already spent on the worker call (capped at `ENRICH_BUDGET_MS`), not
+ * passed as a flat constant — a slow RCN fetch leaves enrichment less room
+ * instead of the two budgets stacking past this action's own time limit.
  */
 export async function getSampleProposal(
   input: GetSampleProposalInput,
@@ -74,6 +82,11 @@ export async function getSampleProposal(
   const { valuationId, address, area } = parsed.data;
 
   return withTrace(async () => {
+    // Wall-clock anchor for `enrichStreetView`'s `budgetMs` below — how much
+    // of REQUEST_BUDGET_MS is left after the worker call, so a slow RCN
+    // fetch leaves enrichment less room instead of enrichment blindly
+    // assuming it has the full budget to itself.
+    const startedAt = Date.now();
     try {
       const valuation = await valuationRepository.get(valuationId, session.user);
       if (!valuation) return { error: "Nie znaleziono wyceny." };
@@ -136,11 +149,16 @@ export async function getSampleProposal(
 
       let streetViewSnapshot: StreetViewSnapshot = valuation.inputs?.streetView ?? {};
       if (streetView) {
+        const budgetMs = Math.min(
+          ENRICH_BUDGET_MS,
+          Math.max(0, REQUEST_BUDGET_MS - (Date.now() - startedAt)),
+        );
         const enriched = await enrichStreetView([...selection.proposed, ...selection.alternates], {
           streetView,
           storage,
           now: () => new Date(),
           existing: valuation.inputs?.streetView ?? null,
+          budgetMs,
         });
         streetViewSnapshot = { ...streetViewSnapshot, ...enriched.snapshot };
         await recordEvent({

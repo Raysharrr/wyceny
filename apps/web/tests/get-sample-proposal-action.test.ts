@@ -60,6 +60,7 @@ vi.mock("@/app/actions/_record-failure", () => ({
 import { getSampleProposal } from "../src/app/actions/get-sample-proposal";
 import { sampleProposal, valuationRepository } from "@/app/valuations/_deps";
 import { recordEvent } from "@/app/actions/_record-failure";
+import * as streetViewEnrich from "../src/app/actions/_street-view-enrich";
 import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
 import type { CandidatePool } from "@/ports/sample";
 
@@ -259,6 +260,7 @@ describe("getSampleProposal (v3)", () => {
     depsState.streetView = stubPort;
     getMock.mockResolvedValue(valuation);
     fetchPoolMock.mockResolvedValue(pool);
+    const enrichSpy = vi.spyOn(streetViewEnrich, "enrichStreetView");
     const r = await getSampleProposal({
       valuationId: valuation.id,
       address: valuation.address,
@@ -266,6 +268,14 @@ describe("getSampleProposal (v3)", () => {
     });
     if ("error" in r) throw new Error(r.error);
     expect(Object.keys(r.proposal.streetView).length).toBeGreaterThan(0);
+    // Fix round 2: budgetMs is derived from REQUEST_BUDGET_MS minus elapsed
+    // time, capped at ENRICH_BUDGET_MS — in this fast, all-stubbed test the
+    // cap always wins, so budgetMs should equal ENRICH_BUDGET_MS exactly.
+    expect(enrichSpy).toHaveBeenCalledTimes(1);
+    const passedBudgetMs = enrichSpy.mock.calls[0][1].budgetMs;
+    expect(typeof passedBudgetMs).toBe("number");
+    expect(passedBudgetMs).toBe(streetViewEnrich.ENRICH_BUDGET_MS);
+    enrichSpy.mockRestore();
     const call = vi
       .mocked(recordEvent)
       .mock.calls.find((c) => c[0].event === "proposal.streetview");

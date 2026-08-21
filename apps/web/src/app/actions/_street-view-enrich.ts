@@ -5,8 +5,22 @@ import { StorageNotFoundError, type PortStorage } from "@/ports/storage";
 import type { PortStreetView } from "@/ports/street-view";
 
 export const STREET_VIEW_TTL_DAYS = 365;
-/** Wall-clock budget for one enrichment call (Important #1) — the RCN sample must always return; buildings not started in time are counted `skipped`, never left to blow the caller's own timeout. */
+/** Wall-clock budget for one enrichment call (Important #1) — the RCN sample must always return; buildings not started in time are counted `skipped`, never left to blow the caller's own timeout. Default when the caller passes no `deps.budgetMs`. */
 export const ENRICH_BUDGET_MS = 12_000;
+/**
+ * The whole Server Action's budget (`getSampleProposal`), not just
+ * enrichment's slice of it — matches `maxDuration = 60` in
+ * `app/valuations/[id]/page.tsx` minus headroom, and sits above
+ * `adapters/sample-http.ts`'s own `TIMEOUT_MS = 50_000` worst case for the
+ * worker fetch that runs before enrichment starts. `getSampleProposal`
+ * derives the actual `budgetMs` it passes to `enrichStreetView` from how
+ * much of this is left after the worker call, capped at `ENRICH_BUDGET_MS`
+ * so a fast worker response never grants enrichment more than its own
+ * fixed slice.
+ */
+export const REQUEST_BUDGET_MS = 55_000;
+/** Below this, don't even start the worker pool — the round trip to check `deps.now()` and shift the first job costs more than it could accomplish. Every building is counted `skipped`; frozen `existing` entries are still returned (an object lookup, not I/O, so they cost nothing). */
+export const MIN_BUDGET_MS = 3_000;
 const LOOKUP_RADIUS_M = 50;
 const CONCURRENCY = 6;
 /**
@@ -65,6 +79,8 @@ export async function enrichStreetView(
     storage: PortStorage;
     now: () => Date;
     existing?: StreetViewSnapshot | null;
+    /** Overrides `ENRICH_BUDGET_MS` — `getSampleProposal` derives this from `REQUEST_BUDGET_MS` minus time already spent. Below `MIN_BUDGET_MS`, the whole pool is skipped (see that constant's doc). */
+    budgetMs?: number;
   },
 ): Promise<{
   snapshot: StreetViewSnapshot;
@@ -77,18 +93,31 @@ export async function enrichStreetView(
   }
   const snapshot: StreetViewSnapshot = {};
   const meta = { requested: byBuilding.size, cached: 0, missing: 0, failed: 0, skipped: 0 };
+  const budgetMs = deps.budgetMs ?? ENRICH_BUDGET_MS;
+
+  /** Frozen `existing` entries cost nothing (an object lookup) — applied both on the fast path below and when the budget gate skips everything else. */
+  function applyFrozen(b: string): boolean {
+    const frozen = deps.existing?.[b];
+    if (!frozen) return false;
+    snapshot[b] = frozen;
+    meta.cached += 1;
+    if (frozen.panoId === null) meta.missing += 1;
+    return true;
+  }
+
+  if (budgetMs < MIN_BUDGET_MS) {
+    for (const b of byBuilding.keys()) {
+      if (!applyFrozen(b)) meta.skipped += 1;
+    }
+    return { snapshot, meta };
+  }
+
   const now = deps.now();
-  const deadline = deps.now().getTime() + ENRICH_BUDGET_MS;
+  const deadline = deps.now().getTime() + budgetMs;
   const queue = [...byBuilding.entries()];
 
   async function one([b, c]: [string, Candidate]) {
-    const frozen = deps.existing?.[b];
-    if (frozen) {
-      snapshot[b] = frozen;
-      meta.cached += 1;
-      if (frozen.panoId === null) meta.missing += 1;
-      return;
-    }
+    if (applyFrozen(b)) return;
     const { lat, lng } = puwg92ToWgs84(c.pos!.x, c.pos!.y);
     try {
       const cached = await readCache(deps.storage, b, now);
