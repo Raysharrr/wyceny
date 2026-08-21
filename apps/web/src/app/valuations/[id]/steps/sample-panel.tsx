@@ -114,7 +114,19 @@ export function SamplePanel({
     }
     if (e.key !== "Enter") return;
     const target = e.target as HTMLElement;
-    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+      // Never let Enter here fall through to the surrounding step form's
+      // native submit (I2, final wave addendum) — without this, Enter in
+      // the note field or on a reason radio would save the step and jump
+      // to step 4, silently losing the in-progress rejection.
+      e.preventDefault();
+      // Bonus: Enter in the rejection note WITH a reason already picked
+      // reads as "I'm done" — the same action "Potwierdź odrzucenie" does.
+      if (target.id === "reject-note" && reason) {
+        onReject({ reason, ...(note.trim() ? { note: note.trim() } : {}) });
+      }
+      return;
+    }
     // Any focused BUTTON — including "Zostaw" itself — already answers
     // Enter natively with its own click, so every button is excluded here;
     // this only promotes Enter to "next" when focus is somewhere else in
@@ -221,10 +233,15 @@ export function SamplePanel({
             </p>
           ) : noPanorama ? (
             // Visible in EVERY mode (not just "street") — it's the reason
-            // the panel opened on Ortofoto in the first place.
+            // the panel opened on Ortofoto in the first place. Two distinct
+            // states (M6, final wave addendum): NO entry at all (enrichment
+            // skipped/failed) reads "brak miniaturki", same wording as the
+            // table's dashed box; an entry whose `panoId` is null (Google
+            // confirmed no panorama there) reads "brak zdjęcia ulicy" — no
+            // capture-date suffix (M3: `panoId === null` always means
+            // `captureDate === null` too, so that suffix could never show).
             <p className="text-sm text-muted-foreground">
-              brak zdjęcia ulicy
-              {entry?.captureDate ? ` · Google z ${entry.captureDate.slice(0, 4)}` : ""}
+              {entry ? "brak zdjęcia ulicy" : "brak miniaturki"}
             </p>
           ) : mode === "street" ? (
             <p className="text-sm text-muted-foreground">
@@ -315,6 +332,7 @@ export function SamplePanel({
                 ))}
               </div>
               <Input
+                id="reject-note"
                 placeholder="notatka (opcjonalnie)"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}

@@ -71,11 +71,14 @@ export function rcnRow(t: {
  * different units of the same act), and a `transactionId`-only key
  * collapsed both onto whichever row a `Map` happened to keep last — every
  * row for that act then printed the SAME price/area. `currentRows` from an
- * OLDER draft (saved before `lokalId` existed on the form row) falls back
- * to matching by `transactionId` alone, but ONLY when it is the SINGLE
- * current row carrying that id — with two or more (the exact multi-lokal
- * shape this bug hit), which one belongs to which candidate is genuinely
- * unknown, so both regenerate via `rcnRow` rather than guessing.
+ * OLDER draft (saved before `lokalId` existed on the form row) falls back to
+ * a per-`transactionId` QUEUE, consumed one-by-one in effective-proposal
+ * order (final wave addendum, C1 refinement): the pre-`lokalId` code always
+ * wrote `comparables` as `nextEff.proposed.map(rcnRow)`, i.e. in EXACTLY
+ * that order, so the Nth legacy row for a `transactionId` is the Nth
+ * candidate for it here too — same correspondence it always had. This
+ * preserves an edit on EITHER lokal of an old-style multi-lokal act, not
+ * just the earlier "exactly one row" fallback's single-lokal case.
  */
 function rebuildComparables(
   snap: SampleSelectionSnapshot,
@@ -92,21 +95,19 @@ function rebuildComparables(
         (c) => [candidateKey({ transactionId: c.transactionId, lokalId: c.lokalId }), c] as const,
       ),
   );
-  const countByTransactionId = new Map<string, number>();
+  const legacyQueueByTransactionId = new Map<string, ComparableRow[]>();
   for (const c of currentRcnRows) {
-    countByTransactionId.set(c.transactionId, (countByTransactionId.get(c.transactionId) ?? 0) + 1);
+    if (c.lokalId) continue; // matched via candidateKey above instead
+    const queue = legacyQueueByTransactionId.get(c.transactionId);
+    if (queue) queue.push(c);
+    else legacyQueueByTransactionId.set(c.transactionId, [c]);
   }
-  const byUnambiguousTransactionId = new Map(
-    currentRcnRows
-      .filter((c) => !c.lokalId && countByTransactionId.get(c.transactionId) === 1)
-      .map((c) => [c.transactionId, c] as const),
-  );
   const manualRows = currentRows.filter((c) => c.source !== "rcn");
   return [
     ...nextEff.proposed.map(
       (c) =>
         byCandidateKey.get(candidateKey(c)) ??
-        byUnambiguousTransactionId.get(c.transactionId) ??
+        legacyQueueByTransactionId.get(c.transactionId)?.shift() ??
         rcnRow(c),
     ),
     ...manualRows,

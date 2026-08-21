@@ -1519,4 +1519,74 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     // The rejected backfill left the proposal — not kept as a stray row.
     expect(container.querySelector("#comparable-price-2")).toBeNull();
   });
+
+  it("legacy rows (no lokalId, pre-fix draft) sharing one transactionId are matched via a per-transactionId QUEUE, in order — not collapsed (C1 refinement)", async () => {
+    const user = userEvent.setup();
+    const lokalA = makeCandidate({
+      transactionId: "ACT-LEGACY",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_A",
+      pricePerM2: 7505.43,
+      area: 50.63,
+      distanceM: 100,
+    });
+    const lokalB = makeCandidate({
+      transactionId: "ACT-LEGACY",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_B",
+      pricePerM2: 7541.24,
+      area: 38.19,
+      distanceM: 101,
+    });
+    const other = makeCandidate({
+      transactionId: "T-OTHER-2",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_C",
+      pricePerM2: 9000,
+      area: 45,
+      distanceM: 102,
+    });
+    const proposed = [lokalA, lokalB, other];
+    const sel = makeSampleSelection({ proposed, alternates: [] });
+    // LEGACY rows: source "rcn" + transactionId, but NO lokalId — simulates
+    // a draft saved before this field existed on the form row. Two rows
+    // share ACT-LEGACY, exactly the shape the earlier "only when exactly
+    // one row" fallback could not disambiguate and regenerated instead.
+    const initialComparables: Comparable[] = proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
+
+    // Reject "other" — forces a resync; the two legacy ACT-LEGACY rows must
+    // land back in ORDER (A's price at slot 0, B's at slot 1), never
+    // collapsed onto whichever one a transactionId-keyed Map kept last.
+    await user.click(candidateRows()[2]);
+    await waitFor(() => expect(screen.getByText("Kandydatka 3 z 3")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(2\)/ }));
+    await waitFor(() => {
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      expect(prices).toEqual(["7505.43", "7541.24"]);
+    });
+  });
 });

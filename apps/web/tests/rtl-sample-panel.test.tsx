@@ -108,6 +108,40 @@ describe("SamplePanel", () => {
     expect(screen.queryByTitle("Street View")).toBeNull();
     expect(screen.getByText(/Podgląd Street View jest wyłączony/)).toBeInTheDocument();
   });
+  it("NO entry at all (enrichment skipped/failed) → 'brak miniaturki', same wording as the table; Ulica still disabled, starts in Ortofoto (M6, final wave addendum)", () => {
+    render(<SamplePanel {...base} entry={undefined} />);
+    expect(screen.getByRole("button", { name: "Ulica" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ortofoto" })).toHaveAttribute(
+      "data-variant",
+      "default",
+    );
+    expect(screen.getByText("brak miniaturki")).toBeInTheDocument();
+    expect(screen.queryByText(/brak zdjęcia ulicy/)).toBeNull();
+  });
+  it("Enter in the rejection note never submits the surrounding step form (I2, final wave addendum) — and triggers the reject when a reason is already selected", async () => {
+    const onReject = vi.fn();
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <SamplePanel {...base} onReject={onReject} />
+        <button type="submit">Zapisz</button>
+      </form>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Odrzuć" }));
+    const note = screen.getByPlaceholderText("notatka (opcjonalnie)");
+    note.focus();
+    // No reason picked yet — Enter must neither submit the form nor reject blind.
+    await userEvent.keyboard("{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onReject).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByLabelText("budynek starszy"));
+    note.focus();
+    await userEvent.type(note, "test note");
+    await userEvent.keyboard("{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledWith({ reason: "building_older", note: "test note" });
+  });
   it("Zostaw → onKeep; Odrzuć → reasons, confirm requires a reason, emits reason + note", async () => {
     const onReject = vi.fn();
     const onKeep = vi.fn();

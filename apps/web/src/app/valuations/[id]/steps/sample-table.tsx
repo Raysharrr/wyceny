@@ -55,11 +55,11 @@ function Thumb({
   }
   // No entry at all (enrichment skipped/failed for this building) vs. an
   // entry that ran but found no panorama (`panoId === null`) — two distinct
-  // captions (final wave B11), the second one joined with " · " like
-  // `sample-panel.tsx`'s own "brak zdjęcia ulicy" message, not a `<br/>`.
-  const caption = !e
-    ? "brak miniaturki"
-    : `brak zdjęcia ulicy${e.captureDate ? ` · Google z ${e.captureDate.slice(0, 4)}` : ""}`;
+  // captions (final wave B11), same wording as `sample-panel.tsx`'s own
+  // no-entry/no-panorama split. No capture-date suffix here (M3, final wave
+  // addendum): `panoId === null` always means `captureDate === null` too,
+  // so that suffix could never actually show — it was dead code.
+  const caption = !e ? "brak miniaturki" : "brak zdjęcia ulicy";
   return (
     <div className="flex items-center gap-2">
       <div className="grid h-10 w-16 place-items-center rounded-md border border-dashed bg-muted text-muted-foreground">
