@@ -115,13 +115,38 @@ export function SampleMap({
 
   return (
     <>
-      <figure className="relative overflow-hidden rounded-lg border">
+      <figure className="relative aspect-square overflow-hidden rounded-lg border bg-muted">
         {/* eslint-disable-next-line @next/next/no-img-element -- WMS tile, not an optimizable static asset */}
         <img
           key={frameKey}
+          ref={(el) => {
+            // A fast 0-byte 404 (GUGiK throttling a request that carries a
+            // Referer) can resolve BEFORE hydration — React never replays
+            // the `error` event for that, so `onError` below would never
+            // fire and KIEG would never get requested. Ref callbacks run
+            // synchronously on mount (and on every re-render, since this is
+            // a fresh function each time), so this catches that case too:
+            // a `complete` image with zero natural width is a
+            // finished-but-failed load, whether that finished before or
+            // after hydration attached `onError`. Same one-shot
+            // `triedFallback` guard as `onError`, so the two can never
+            // double-fallback.
+            if (!el || triedFallback) return;
+            if (el.complete && el.naturalWidth === 0) {
+              setTriedFallback(true);
+              setSrc(kiegWmsUrl(center, halfM, PX));
+            }
+          }}
           src={src}
           alt="Ortofotomapa GUGiK z kandydatkami"
-          className="block w-full"
+          // Absolute + object-cover, not `block w-full` (wave 3, live
+          // verification): the figure has no intrinsic size of its own, so
+          // when the raster fails to load, a `block w-full` img collapses
+          // to 0 px tall and drags the `absolute inset-0 h-full` SVG below
+          // down to ~24 px with it — dots become unclickable, the legend
+          // overlaps the alt text. `aspect-square` on the figure now gives
+          // it a size the img/svg both fill regardless of load state.
+          className="absolute inset-0 h-full w-full object-cover"
           onError={() => {
             if (triedFallback) return;
             setTriedFallback(true);

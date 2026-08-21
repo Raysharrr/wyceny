@@ -142,6 +142,24 @@ describe("SamplePanel", () => {
     expect(onSubmit).not.toHaveBeenCalled();
     expect(onReject).toHaveBeenCalledWith({ reason: "building_older", note: "test note" });
   });
+  it("Enter on the CHECKED reason radio confirms the rejection, never submits the surrounding form (wave 3C)", async () => {
+    const onReject = vi.fn();
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <SamplePanel {...base} onReject={onReject} />
+        <button type="submit">Zapisz</button>
+      </form>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Odrzuć" }));
+    const radio = screen.getByLabelText("budynek starszy");
+    await userEvent.click(radio);
+    radio.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledTimes(1);
+    expect(onReject).toHaveBeenCalledWith({ reason: "building_older" });
+  });
   it("Zostaw → onKeep; Odrzuć → reasons, confirm requires a reason, emits reason + note", async () => {
     const onReject = vi.fn();
     const onKeep = vi.fn();

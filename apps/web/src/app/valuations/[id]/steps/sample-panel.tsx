@@ -120,9 +120,17 @@ export function SamplePanel({
       // the note field or on a reason radio would save the step and jump
       // to step 4, silently losing the in-progress rejection.
       e.preventDefault();
-      // Bonus: Enter in the rejection note WITH a reason already picked
-      // reads as "I'm done" — the same action "Potwierdź odrzucenie" does.
-      if (target.id === "reject-note" && reason) {
+      // Bonus: Enter in the rejection note WITH a reason already picked, or
+      // on the reason radio that's actually CHECKED (wave 3C — an
+      // unchecked radio mid-navigation must not confirm), reads as "I'm
+      // done" — the same action "Potwierdź odrzucenie" does. A checked
+      // radio's `checked` DOM property is controlled by `reason === r`
+      // above, so checking it here is equivalent to `reason === value` but
+      // needs no extra state read.
+      const input = target as HTMLInputElement;
+      const isNote = input.id === "reject-note";
+      const isCheckedRadio = input.type === "radio" && input.checked;
+      if (reason && (isNote || isCheckedRadio)) {
         onReject({ reason, ...(note.trim() ? { note: note.trim() } : {}) });
       }
       return;

@@ -100,6 +100,53 @@ describe("SampleMap", () => {
     expect(img.src).toBe(kiegWmsUrl(CENTER, HALF_M, PX));
   });
 
+  it("the figure has an intrinsic size (aspect-square) so the SVG overlay never collapses; the SVG is present regardless of the img's load state (wave 3A)", () => {
+    const { container } = render(
+      <SampleMap
+        selection={makeSelection()}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const figure = container.querySelector("figure");
+    expect(figure?.className).toContain("aspect-square");
+    expect(container.querySelector("svg")).not.toBeNull();
+
+    const img = screen.getByAltText("Ortofotomapa GUGiK z kandydatkami") as HTMLImageElement;
+    fireEvent.error(img);
+    // Still there, and the figure's sizing is unaffected by the img's own
+    // (now-collapsed-to-nothing, since it failed to load) intrinsic size.
+    expect(container.querySelector("svg")).not.toBeNull();
+    expect(figure?.className).toContain("aspect-square");
+  });
+
+  it("a fast pre-hydration 404 (img already complete with naturalWidth 0 on mount) falls back to KIEG without waiting for onError (wave 3B)", () => {
+    const completeSpy = vi
+      .spyOn(HTMLImageElement.prototype, "complete", "get")
+      .mockReturnValue(true);
+    const widthSpy = vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(0);
+    try {
+      render(
+        <SampleMap
+          selection={makeSelection()}
+          center={CENTER}
+          selectedKey={null}
+          onSelect={vi.fn()}
+        />,
+      );
+      const img = screen.getByAltText("Ortofotomapa GUGiK z kandydatkami") as HTMLImageElement;
+      expect(img.src).toBe(kiegWmsUrl(CENTER, HALF_M, PX));
+      // One-shot: a re-render (still "complete && naturalWidth 0" under the
+      // mock) must not loop the fallback or throw.
+      fireEvent.error(img);
+      expect(img.src).toBe(kiegWmsUrl(CENTER, HALF_M, PX));
+    } finally {
+      completeSpy.mockRestore();
+      widthSpy.mockRestore();
+    }
+  });
+
   it("draws one dot per proposed/alternate candidate; legend counts are the census, not the sampled dots", () => {
     const { container } = render(
       <SampleMap
