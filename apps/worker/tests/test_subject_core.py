@@ -1,11 +1,15 @@
 """Pure-core tests for subject.py — in-code fixtures, zero network (F-9: no PESEL/KW shapes)."""
 
+import pytest
+
 from app.subject import (
     building_from_xml,
+    building_ids_from_xml,
     is_poznan,
     normalize_uug_address,
     parcel_from_xml,
     parse_geopoz_fields,
+    pick_building_id,
     pick_mpzp_function,
     pick_plan,
 )
@@ -239,3 +243,66 @@ def test_suggest_addresses_normalizes_query_and_uses_short_timeout(monkeypatch):
     assert subject_module.suggest_addresses("ul. Siel") == []
     assert calls["timeout"] == 5
     assert "Pozna%C5%84%2C+Siel" in calls["url"]
+
+
+def test_nominatim_to_2180_queries_uldk_lon_first_and_returns_parcel_centroid(monkeypatch):
+    # Nominatim speaks (lat, lon); ULDK's xy= wants lon,lat — mixing these up
+    # silently returns the wrong parcel, so pin the URL order alongside the result.
+    from app import subject as subject_module
+
+    calls = {}
+
+    def fake_get(url, timeout=30):
+        calls["url"] = url
+        return "0\n123456"
+
+    monkeypatch.setattr(subject_module, "_get", fake_get)
+    monkeypatch.setattr(
+        subject_module,
+        "fetch_parcel_wkt",
+        lambda parcel_id, srid: "POLYGON((0 0,10 0,10 10,0 10,0 0))",
+    )
+    x, y = subject_module.nominatim_to_2180(52.4, 16.9)
+    assert (x, y) == (5.0, 5.0)
+    assert "xy=16.9,52.4,4326" in calls["url"] and "result=id" in calls["url"]
+
+
+def test_nominatim_to_2180_uldk_miss_raises_address_not_found(monkeypatch):
+    from app import subject as subject_module
+
+    monkeypatch.setattr(subject_module, "_get", lambda url, timeout=30: "-1\nBlad zapytania")
+    with pytest.raises(subject_module.AddressNotFound):
+        subject_module.nominatim_to_2180(52.4, 16.9)
+
+
+TWO_BUILDINGS_XML = """<FeatureInfoResponse>
+<FIELDS><ID_BUDYNKU>306401_1.0039.AR_22.13/82.3_BUD</ID_BUDYNKU><RODZAJ>m</RODZAJ><KONDYGNACJE_NADZIEMNE>3</KONDYGNACJE_NADZIEMNE></FIELDS>
+<FIELDS><ID_BUDYNKU>306401_1.0039.AR_22.13/24.1_BUD</ID_BUDYNKU><RODZAJ>m</RODZAJ><KONDYGNACJE_NADZIEMNE>6</KONDYGNACJE_NADZIEMNE></FIELDS>
+</FeatureInfoResponse>"""
+
+
+def test_building_ids_from_xml_lists_all_in_order():
+    assert building_ids_from_xml(TWO_BUILDINGS_XML) == [
+        "306401_1.0039.AR_22.13/82.3_BUD",
+        "306401_1.0039.AR_22.13/24.1_BUD",
+    ]
+    assert building_ids_from_xml("<x/>") == []
+
+
+def test_pick_building_id_prefers_the_building_on_the_uldk_parcel_else_first():
+    ids = building_ids_from_xml(TWO_BUILDINGS_XML)
+    assert pick_building_id(ids, "306401_1.0039.AR_22.13/24") == "306401_1.0039.AR_22.13/24.1_BUD"
+    assert pick_building_id(ids, "306401_1.0039.AR_22.999") == "306401_1.0039.AR_22.13/82.3_BUD"
+    assert pick_building_id([], "x") is None
+
+
+def test_building_from_xml_with_building_id_selects_the_matching_block():
+    ids = building_ids_from_xml(TWO_BUILDINGS_XML)
+    assert building_from_xml(TWO_BUILDINGS_XML, ids[0])["kondygnacje_nadziemne"] == 3
+    assert building_from_xml(TWO_BUILDINGS_XML, ids[1])["kondygnacje_nadziemne"] == 6
+
+
+def test_building_from_xml_without_building_id_flattens_whole_xml_last_wins():
+    # Documented today's behaviour: no building_id -> every <FIELDS> block's
+    # tags are parsed as one flat dict, so the last block's value wins.
+    assert building_from_xml(TWO_BUILDINGS_XML)["kondygnacje_nadziemne"] == 6

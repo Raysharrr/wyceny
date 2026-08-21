@@ -114,8 +114,28 @@ def parcel_from_xml(xml: str) -> dict | None:
     }
 
 
-def building_from_xml(xml: str) -> dict | None:
-    fields = parse_geopoz_fields(xml)
+_FIELDS_BLOCK_RX = re.compile(r"<FIELDS>(.*?)</FIELDS>", re.DOTALL)
+
+
+def building_from_xml(xml: str, building_id: str | None = None) -> dict | None:
+    """Building fields for `building_id`, or (without one) the whole response
+    flattened into one dict — see `building_ids_from_xml` for why that
+    matters when a query box holds more than one building.
+
+    A real GetFeatureInfo response wraps each feature in its own <FIELDS>
+    block; when `building_id` is given, the block whose ID_BUDYNKU matches it
+    is parsed alone, so the returned fields describe the SAME building as
+    `meta.buildingId` (ADR-015). If no block matches — or none was requested,
+    or the response has no <FIELDS> wrapper at all (single-building fixtures) —
+    this falls back to flattening the whole xml, same as before.
+    """
+    source = xml
+    if building_id is not None:
+        for block in _FIELDS_BLOCK_RX.findall(xml):
+            if f"<ID_BUDYNKU>{building_id}</ID_BUDYNKU>" in block:
+                source = block
+                break
+    fields = parse_geopoz_fields(source)
     if not fields.get("ID_BUDYNKU"):
         return None
     return {
@@ -123,6 +143,39 @@ def building_from_xml(xml: str) -> dict | None:
         "kondygnacje_nadziemne": _to_int(fields.get("KONDYGNACJE_NADZIEMNE")),
         "kondygnacje_podziemne": _to_int(fields.get("KONDYGNACJE_PODZIEMNE")),
     }
+
+
+_BUILDING_ID_RX = re.compile(r"<ID_BUDYNKU>([^<]+)</ID_BUDYNKU>")
+
+
+def building_ids_from_xml(xml: str) -> list[str]:
+    """Every ID_BUDYNKU in the GetFeatureInfo response, in document order.
+
+    `building_from_xml` flattens the whole response into one dict via
+    `parse_geopoz_fields` (last block wins) unless given the building id to
+    select one block; a real response within the ±50 m query box can list up
+    to FEATURE_COUNT=10 buildings (`fetch_egib_xml`), so ranking the
+    subject's building needs all of them, not just the first.
+    """
+    return [m.strip() for m in _BUILDING_ID_RX.findall(xml)]
+
+
+def pick_building_id(ids: list[str], parcel_id: str | None) -> str | None:
+    """Pick the building on the subject's own ULDK parcel, else the first hit.
+
+    ID_BUDYNKU is prefixed with the parcel id it sits on (e.g.
+    "306401_1.0021.AR_10.161.1_BUD" on parcel "306401_1.0021.AR_10.161"), so
+    a "startswith(parcel_id + '.')" match identifies the subject's building
+    among neighbours returned by the ±50 m query box. Spike A found the UUG
+    geocoded point lands on a neighbouring parcel for ~40% of addresses, so
+    that match is not guaranteed — falling back to the first hit still gives
+    web step 3 a usable ranking signal instead of silently returning nothing.
+    """
+    if parcel_id:
+        for building_id in ids:
+            if building_id.startswith(f"{parcel_id}."):
+                return building_id
+    return ids[0] if ids else None
 
 
 def pick_mpzp_function(parcel_wkt_2180: str, functions_geojson: dict) -> dict | None:
@@ -295,6 +348,18 @@ def fetch_mpzp_functions(parcel_wkt_2180: str) -> dict:
 def centroid_4326(parcel_wkt_4326: str) -> tuple[float, float]:
     centroid = shapely_wkt.loads(parcel_wkt_4326).centroid
     return centroid.x, centroid.y
+
+
+def nominatim_to_2180(lat: float, lon: float) -> tuple[float, float]:
+    """Nominatim speaks WGS84; everything downstream is EPSG:2180. ULDK converts for free:
+    parcel under the WGS84 point -> its geometry in 2180 -> centroid. No pyproj dependency.
+    """
+    body = _get(f"{ULDK_URL}?request=GetParcelByXY&xy={lon},{lat},4326&result=id")
+    lines = body.strip().splitlines()
+    if not lines or lines[0].strip() != "0" or len(lines) < 2:
+        raise AddressNotFound(f"ULDK nie zna działki pod punktem Nominatim: {body[:80]}")
+    pt = shapely_wkt.loads(fetch_parcel_wkt(lines[1].strip(), 2180)).centroid
+    return (pt.x, pt.y)
 
 
 def fetch_plans() -> dict:

@@ -60,10 +60,18 @@ const ADAPTER_CALLS = [
   },
   {
     name: "worker /sample-proposal",
-    body: { transactions: [], meta: {} },
+    body: {
+      point: { x: 1, y: 2, source: "subject" },
+      maxRadiusM: 500,
+      candidates: [],
+      counts: { fetched: 0, deduped: 0, noPos: 0 },
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+      source: "rcn-wfs-gugik",
+      query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D", pages: 1, truncated: false },
+    },
     contentType: "application/json",
     call: async () => {
-      await httpSampleProposal(BASE).fetchProposal("ul. Testowa 1, Nowogród", 54.2);
+      await httpSampleProposal(BASE).fetchPool({ address: "ul. Testowa 1, Nowogród", area: 54.2 });
     },
   },
   {

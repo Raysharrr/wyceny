@@ -44,7 +44,11 @@ export const step1Schema = step1Object.superRefine((values, ctx) => {
   }
 });
 
-export const sampleStepSchema = valuationFormObject.pick({ comparables: true, sampleMeta: true });
+export const sampleStepSchema = valuationFormObject.pick({
+  comparables: true,
+  sampleMeta: true,
+  sampleSelection: true,
+});
 export const featuresStepSchema = valuationFormObject.pick({ features: true });
 
 export type Step1Input = z.input<typeof step1Schema>;

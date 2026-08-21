@@ -263,6 +263,7 @@ export async function saveSampleAction(
       const updated = await valuationRepository.saveSample(valuationId, session.user, {
         comparables,
         sampleMeta: parsed.data.sampleMeta ?? null,
+        sampleSelection: parsed.data.sampleSelection ?? null,
       });
       if (!updated) {
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };

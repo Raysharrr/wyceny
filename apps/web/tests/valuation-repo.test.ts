@@ -127,6 +127,38 @@ describe("valuationRepo (integration, real Postgres)", () => {
     expect(fetched?.wr).toBe(1_044_400);
     expect(fetched?.inputs?.comparables[0]?.pricePerM2).toBe(14698.91);
   });
+
+  it("saveSample persists a sampleSelection snapshot (ADR-015, Task 7) — round-trips through get() and nulls wr", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Sample Selection 1"),
+      wr: 500_000,
+      inputs: partialDraftInputs(),
+    });
+    expect(created.wr).toBe(500_000);
+
+    const sampleSelection: NonNullable<KcsInput["sampleSelection"]> = {
+      version: 3,
+      proposed: [],
+      alternates: [],
+      flags: {},
+      rejectedCounts: { no_price: 2, out_of_area_band: 1 },
+      radiusUsedM: 500,
+      radiusWalk: [{ radiusM: 500, inRadius: 40, afterHygiene: 38, afterBand: 30 }],
+      counts: { pool: 40, inRadius: 40, afterHygiene: 38, afterBand: 30, proposed: 0 },
+      params: { subjectArea: 50, todayMonth: "2026-08" },
+    };
+
+    const updated = await repo.saveSample(created.id, appraiserA, {
+      comparables: [],
+      sampleMeta: null,
+      sampleSelection,
+    });
+    expect(updated?.wr).toBeNull();
+
+    const fetched = await repo.get(created.id, appraiserA);
+    expect(fetched?.wr).toBeNull();
+    expect(fetched?.inputs?.sampleSelection).toEqual(sampleSelection);
+  });
 });
 
 describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {

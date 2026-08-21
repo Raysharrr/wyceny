@@ -572,6 +572,8 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
 export type SampleUpdate = {
   comparables: Comparable[];
   sampleMeta: KcsInput["sampleMeta"];
+  /** The domain's selection over the fetched pool (ADR-015, D7) — optional so callers that predate it (or edit comparables without re-running the domain) keep compiling. */
+  sampleSelection?: KcsInput["sampleSelection"];
 };
 
 /**
@@ -592,7 +594,12 @@ export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
   return {
     ...v,
     wr: null,
-    inputs: { ...v.inputs, comparables, sampleMeta: u.sampleMeta },
+    inputs: {
+      ...v.inputs,
+      comparables,
+      sampleMeta: u.sampleMeta,
+      sampleSelection: u.sampleSelection ?? null,
+    },
   };
 }
 

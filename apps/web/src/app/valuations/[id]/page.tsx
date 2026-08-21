@@ -111,6 +111,7 @@ export default async function ValuationViewPage({
             area={valuation.area}
             comparables={valuation.inputs?.comparables ?? []}
             sampleMeta={valuation.inputs?.sampleMeta ?? null}
+            sampleSelection={valuation.inputs?.sampleSelection ?? null}
           />
         ) : step === 4 ? (
           <StepFeatures

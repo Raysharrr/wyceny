@@ -311,6 +311,7 @@ describe("saveSampleAction", () => {
         },
       ],
       sampleMeta: null,
+      sampleSelection: null,
     });
   });
 

@@ -123,16 +123,17 @@ sequenceDiagram
 
 ## Fitness functions active in CI
 
-Six architectural invariants are enforced automatically on every push/PR (`.github/workflows/ci.yml`). Full table (all 12, active + deferred) in [`docs/architecture/README.md`](docs/architecture/README.md#fitness-functions-f-1f-12).
+Seven architectural invariants are enforced automatically on every push/PR (`.github/workflows/ci.yml`). Full table (all 12, active + deferred) in [`docs/architecture/README.md`](docs/architecture/README.md#fitness-functions-f-1f-12).
 
-| #    | What                                                                                                    | Where                                                                                 |
-| ---- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| F-1  | Golden WR harness (pins the create→worker→save pipeline shape)                                          | `apps/web/tests/golden-wr.test.ts`                                                    |
-| F-8  | Owner isolation (appraiser sees own, admin sees all) — app-layer + Postgres RLS                         | `apps/web/tests/rls-isolation.test.ts`, `docs-route.test.ts`                          |
-| F-9  | No PII/secrets committed (PESEL, land-register numbers, signed PDFs)                                    | `scripts/check-no-pii.sh`                                                             |
-| F-10 | Hexagonal dependency rule (`domain/`/`packages/shared` never import adapters)                           | `.dependency-cruiser.cjs`                                                             |
-| F-11 | Worker never returns a valuation-result field — words/data only                                         | `apps/web/tests/worker-contract.test.ts`, `apps/worker/tests/test_amount_in_words.py` |
-| F-13 | No PII in logs — the allowlist gate is still wired (a deleted rule is the failure nothing else catches) | `apps/web/tests/log.test.ts`, `apps/web/eslint.config.mjs`                            |
+| #    | What                                                                                                                                       | Where                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| F-1  | Golden WR harness (pins the create→worker→save pipeline shape)                                                                             | `apps/web/tests/golden-wr.test.ts`                                                    |
+| F-8  | Owner isolation (appraiser sees own, admin sees all) — app-layer + Postgres RLS                                                            | `apps/web/tests/rls-isolation.test.ts`, `docs-route.test.ts`                          |
+| F-9  | No PII/secrets committed (PESEL, land-register numbers, signed PDFs)                                                                       | `scripts/check-no-pii.sh`                                                             |
+| F-10 | Hexagonal dependency rule (`domain/`/`packages/shared` never import adapters)                                                              | `.dependency-cruiser.cjs`                                                             |
+| F-11 | Worker never returns a valuation-result field — words/data only                                                                            | `apps/web/tests/worker-contract.test.ts`, `apps/worker/tests/test_amount_in_words.py` |
+| F-13 | No PII in logs — the allowlist gate is still wired (a deleted rule is the failure nothing else catches)                                    | `apps/web/tests/log.test.ts`, `apps/web/eslint.config.mjs`                            |
+| F-14 | Sample-selection fidelity — WR from the proposed RCN sample within ±10% (≥4/5) / ±5% (≥2/5) of five reference operaty, on frozen snapshots | `apps/web/tests/f14-sample-selection.test.ts`                                         |
 
 ## Observability — reconstructing what an appraiser did
 

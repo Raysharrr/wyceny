@@ -1,91 +1,190 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
-/**
- * Focused unit test of `getSampleProposal` — mirrors
- * create-valuation-action.test.ts's session-mock style. `_deps` is
- * automocked so `sampleProposal.fetchProposal` becomes a controllable
- * `vi.fn()` and no real HTTP call ever leaves the test process.
- */
 vi.mock("@/auth/session", () => ({
   getSession: vi.fn(async () => ({ user: { id: "test-user", role: "appraiser" } })),
 }));
-
 vi.mock("@/app/valuations/_deps");
+vi.mock("@/app/actions/_record-failure", () => ({
+  recordEvent: vi.fn(async () => {}),
+  recordFailure: vi.fn(async () => {}),
+}));
 
 import { getSampleProposal } from "../src/app/actions/get-sample-proposal";
-import { sampleProposal } from "@/app/valuations/_deps";
-import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
-import type { SampleProposal } from "@/ports/sample";
+import { sampleProposal, valuationRepository } from "@/app/valuations/_deps";
+import { recordEvent } from "@/app/actions/_record-failure";
+import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
+import type { CandidatePool } from "@/ports/sample";
 
-const fetchProposalMock = vi.mocked(sampleProposal.fetchProposal);
-
-const validInput = { address: "ul. Kościelna 33A, Poznań", area: 71.63 };
-
-const proposal: SampleProposal = {
-  transactions: [{ date: "2026-05", area: 48.5, pricePerM2: 12500, transactionId: "abc-123" }],
-  meta: {
-    lat: 52.2297,
-    lon: 21.0122,
-    fetchedAt: "2026-07-14T10:00:00.000Z",
-    source: "rcn-wfs-gugik",
-    query: { bbox: [52.2117, 20.9832, 52.2477, 21.0412], count: 5000, sort: "dok_data D" },
+const fetchPoolMock = vi.mocked(sampleProposal.fetchPool);
+const getMock = vi.mocked(valuationRepository.get);
+const { subject, candidates } = loadSnapshot("heweliusza");
+const pool: CandidatePool = {
+  point: { x: subject.x, y: subject.y, source: "subject" },
+  maxRadiusM: 3000,
+  candidates,
+  counts: { fetched: 10000, deduped: 1200, noPos: 0 },
+  fetchedAt: "2026-08-21T10:00:00.000Z",
+  source: "rcn-wfs-gugik",
+  query: {
+    bbox: [1, 2, 3, 4],
+    count: 5000,
+    sort: "dok_data D,tran_lokalny_id_iip D",
+    pages: 2,
+    truncated: false,
   },
 };
+const valuation = {
+  id: "11111111-1111-4111-8111-111111111111",
+  address: "Poznań, Heweliusza 3",
+  area: 50,
+  inputs: {
+    subject: { parcelId: subject.parcelId },
+    subjectMeta: {
+      x: subject.x,
+      y: subject.y,
+      teryt: "306401",
+      fetchedAt: "",
+      source: "geopoz-gugik",
+      mpzpAbsent: false,
+      buildingId: subject.buildingId,
+    },
+  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+} as any;
 
-describe("getSampleProposal", () => {
+describe("getSampleProposal (v3)", () => {
   beforeEach(() => {
-    fetchProposalMock.mockReset();
+    fetchPoolMock.mockReset();
+    getMock.mockReset();
+    vi.mocked(recordEvent).mockClear();
   });
 
-  it("happy path — returns the proposal from the mocked adapter", async () => {
-    fetchProposalMock.mockResolvedValue(proposal);
-
-    const result = await getSampleProposal(validInput);
-
-    expect(fetchProposalMock).toHaveBeenCalledWith(validInput.address, validInput.area);
-    expect(result).toEqual({ proposal });
-  });
-
-  it("adapter throw carrying the worker's Polish detail -> { error } with that message", async () => {
-    const detail =
-      "Za mało transakcji w okolicy (znaleziono 5) — zawęź adres albo uzupełnij próbę ręcznie.";
-    fetchProposalMock.mockRejectedValue(new Error(detail));
-
-    const result = await getSampleProposal(validInput);
-
-    // The worker's own Polish sentence is preserved verbatim; the trace code
-    // is appended so the appraiser can read it back (Slice: obserwowalność).
-    expect(result).toEqual({ error: expect.stringMatching(/^Za mało transakcji/) });
-    expect(result).toEqual({ error: expect.stringContaining(detail) });
-    expect(result).toEqual({ error: expect.stringMatching(/ \(kod: [0-9a-f]{8}\)$/) });
-  });
-
-  it("adapter throw with the status-text fallback -> generic Polish { error }", async () => {
-    fetchProposalMock.mockRejectedValue(
-      new Error(`${WORKER_RESPONDED_PREFIX} 500 Internal Server Error`),
+  it("passes the step-1 point, runs the domain, returns comparables + snapshot + meta, logs numbers only", async () => {
+    getMock.mockResolvedValue(valuation);
+    fetchPoolMock.mockResolvedValue(pool);
+    const r = await getSampleProposal({
+      valuationId: valuation.id,
+      address: valuation.address,
+      area: 50,
+    });
+    expect(fetchPoolMock).toHaveBeenCalledWith({
+      address: valuation.address,
+      area: 50,
+      point: { x: subject.x, y: subject.y, srid: 2180 },
+    });
+    if ("error" in r) throw new Error(r.error);
+    expect(r.proposal.comparables.length).toBeGreaterThanOrEqual(6);
+    expect(r.proposal.comparables.length).toBeLessThanOrEqual(12);
+    expect(r.proposal.comparables[0]).toEqual(
+      expect.objectContaining({
+        date: expect.any(String),
+        area: expect.any(Number),
+        pricePerM2: expect.any(Number),
+        transactionId: expect.any(String),
+      }),
     );
+    expect(r.proposal.sampleSelection.radiusUsedM).toBe(500);
+    expect(r.proposal.sampleSelection.params.subjectEgib).toEqual({
+      obreb: "0039",
+      arkusz: "22",
+      dzialka: "13/24",
+      budynek: "1",
+    });
+    expect("candidates" in r.proposal.sampleMeta).toBe(false);
+    const meta = vi.mocked(recordEvent).mock.calls[0][0].meta as Record<string, unknown>;
+    expect(meta).toMatchObject({
+      geocoder: "subject",
+      radiusUsedM: 500,
+      truncated: false,
+      counts: expect.any(Object),
+    });
+    expect(JSON.stringify(meta)).not.toMatch(/Heweliusza|306401|355300/);
+    expect(vi.mocked(recordEvent).mock.calls[0][0].valuationId).toBe(valuation.id);
+  });
 
-    const result = await getSampleProposal(validInput);
+  it("without subjectMeta the worker geocodes (no point sent) and ranking is distance-only", async () => {
+    getMock.mockResolvedValue({ ...valuation, inputs: {} });
+    fetchPoolMock.mockResolvedValue({ ...pool, point: { ...pool.point, source: "uug" } });
+    const r = await getSampleProposal({
+      valuationId: valuation.id,
+      address: valuation.address,
+      area: 50,
+    });
+    expect(fetchPoolMock.mock.calls[0][0].point).toBeUndefined();
+    if ("error" in r) throw new Error(r.error);
+    expect(r.proposal.sampleSelection.params.subjectEgib).toBeUndefined();
+  });
 
-    expect(result).toEqual({
-      error: expect.stringContaining(
-        "Nie udało się pobrać próby z RCN — spróbuj ponownie albo wpisz transakcje ręcznie.",
+  it("unknown valuation → error, no worker call", async () => {
+    getMock.mockResolvedValue(null);
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 1 });
+    expect(r).toEqual({ error: expect.stringMatching(/Nie znaleziono wyceny/) });
+    expect(fetchPoolMock).not.toHaveBeenCalled();
+  });
+
+  it("adapter throw with the worker's Polish detail → { error } with that message + code", async () => {
+    getMock.mockResolvedValue(valuation);
+    // Deliberately a DIFFERENT Polish message than GENERIC_ERROR — proves the
+    // detail is passed through verbatim, not just re-derived from the fallback.
+    fetchPoolMock.mockRejectedValue(
+      new Error(
+        "Za mało transakcji w okolicy (znaleziono 5) — zawęź adres albo uzupełnij próbę ręcznie.",
+      ),
+    );
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
+    expect(r).toEqual({
+      error: expect.stringMatching(
+        /^Za mało transakcji w okolicy \(znaleziono 5\).*\(kod: [0-9a-f]{8}\)$/,
       ),
     });
-    expect(result).toEqual({ error: expect.stringMatching(/ \(kod: [0-9a-f]{8}\)$/) });
   });
 
-  it("rejects an empty address using the shared schema's rule, without calling the adapter", async () => {
-    const result = await getSampleProposal({ ...validInput, address: "" });
-
-    expect(result).toEqual({ error: "Podaj adres nieruchomości." });
-    expect(fetchProposalMock).not.toHaveBeenCalled();
+  it("adapter throw of its own English status-text fallback → generic Polish message + code", async () => {
+    getMock.mockResolvedValue(valuation);
+    fetchPoolMock.mockRejectedValue(
+      new Error("worker /sample-proposal responded 500 Internal Server Error"),
+    );
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
+    expect(r).toEqual({
+      error: expect.stringMatching(/^Nie udało się pobrać próby z RCN.*\(kod: [0-9a-f]{8}\)$/),
+    });
   });
 
-  it("rejects a non-positive area using the shared schema's rule, without calling the adapter", async () => {
-    const result = await getSampleProposal({ ...validInput, area: 0 });
+  it("adapter throws a TimeoutError (AbortSignal.timeout) → generic Polish message + code, no English leak", async () => {
+    getMock.mockResolvedValue(valuation);
+    fetchPoolMock.mockRejectedValue(
+      Object.assign(new Error("The operation was aborted due to timeout"), {
+        name: "TimeoutError",
+      }),
+    );
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
+    expect(r).toEqual({
+      error: expect.stringMatching(/^Nie udało się pobrać próby z RCN.*\(kod: [0-9a-f]{8}\)$/),
+    });
+  });
 
-    expect(result).toEqual({ error: "Powierzchnia musi być większa od zera." });
-    expect(fetchProposalMock).not.toHaveBeenCalled();
+  it("adapter throws a real ZodError (trust-boundary parse failure) → generic Polish message + code, no JSON blob", async () => {
+    getMock.mockResolvedValue(valuation);
+    const zodError = z.object({ a: z.string() }).safeParse({}).error!;
+    fetchPoolMock.mockRejectedValue(zodError);
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
+    expect(r).toEqual({
+      error: expect.stringMatching(/^Nie udało się pobrać próby z RCN.*\(kod: [0-9a-f]{8}\)$/),
+    });
+  });
+
+  it("empty address → { error }, no repo or worker call", async () => {
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "", area: 50 });
+    expect(r).toEqual({ error: expect.any(String) });
+    expect(getMock).not.toHaveBeenCalled();
+    expect(fetchPoolMock).not.toHaveBeenCalled();
+  });
+
+  it("area: 0 → { error }, no repo or worker call", async () => {
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 0 });
+    expect(r).toEqual({ error: expect.any(String) });
+    expect(getMock).not.toHaveBeenCalled();
+    expect(fetchPoolMock).not.toHaveBeenCalled();
   });
 });

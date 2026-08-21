@@ -16,12 +16,23 @@
  */
 
 import type { ProvenanceStatus } from "@wyceny/shared";
-import type { SampleMeta } from "../ports/sample";
+import type { CandidatePool } from "../ports/sample";
 import type { KwMetaSnapshot, KwSnapshot } from "./kw-snapshot";
 import type { InputsProvenance } from "./provenance";
 import type { SubjectMetaSnapshot, SubjectSnapshot } from "./subject-snapshot";
 import type { InspectionSnapshot } from "./inspection";
 import type { ProseSnapshot } from "./prose-snapshot";
+import type { SampleSelectionSnapshot } from "./sample-snapshot";
+
+/**
+ * The RCN pool fetch's provenance for the whole sample (F-5) — `CandidatePool`
+ * (`ports/sample.ts`) minus `candidates`, which live instead as
+ * `proposed`/`alternates` inside {@link KcsInput.sampleSelection}. Declared
+ * locally (not imported from `ports/sample`) so this file's only dependency
+ * on that port is the type-only `CandidatePool` import below, itself erased
+ * at compile time (F-10 — domain stays pure, no runtime port dependency).
+ */
+export type SampleMeta = Omit<CandidatePool, "candidates">;
 
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
 
@@ -63,6 +74,14 @@ export type KcsInput = {
   features: Feature[];
   /** RCN fetch provenance for the whole sample (F-5) — display/audit metadata only; computeKcs never reads this. */
   sampleMeta?: SampleMeta | null;
+  /**
+   * The domain's own selection over the fetched pool (ADR-015 "Dobor proby
+   * v3", D7) — proposed/alternates/flags/counts, trimmed for persistence by
+   * `toSampleSelectionSnapshot`. Display/audit metadata only; computeKcs
+   * never reads this (it consumes `comparables`, assembled from `proposed`
+   * at the web ACL).
+   */
+  sampleSelection?: SampleSelectionSnapshot | null;
   /** Scalar provenance map (F-4) — see domain/provenance.ts. Optional: legacy snapshots lack it. */
   provenance?: InputsProvenance | null;
   /** Auto-fetched EGiB/MPZP subject snapshot — display/audit metadata only; computeKcs never reads this. */

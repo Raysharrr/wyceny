@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
-import type { Comparable } from "@/domain/kcs";
+import type { Comparable, SampleMeta } from "@/domain/kcs";
+import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
+import type { Candidate } from "@/domain/sample-selection";
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
 // auto-cleanup never registers — without this each render leaks into the
@@ -45,6 +47,101 @@ function twelveComparables(): Comparable[] {
   }));
 }
 
+/** A v3 `SampleMeta` (ADR-015) — `CandidatePool` minus `candidates`. */
+function makeSampleMeta(overrides: { truncated?: boolean } = {}): SampleMeta {
+  return {
+    point: { x: 100, y: 200, source: "subject" },
+    maxRadiusM: 3000,
+    // Deliberately DIFFERENT from `makeSampleSelection().counts.pool` (9000):
+    // the "przebadano" banner count must come from the v3 selection snapshot,
+    // not from sampleMeta — an assertion against 9000 alone couldn't tell the
+    // two apart when both fixtures happened to share the same number.
+    counts: { fetched: 9400, deduped: 8000, noPos: 10 },
+    fetchedAt: "2026-07-23T10:00:00Z",
+    source: "rcn-wfs-gugik",
+    query: {
+      bbox: [1, 2, 3, 4],
+      count: 100,
+      sort: "distance",
+      pages: 1,
+      truncated: overrides.truncated ?? false,
+    },
+  };
+}
+
+/**
+ * A fully-populated `Candidate` (all 16 fields) — the shape `candidateSchema`
+ * actually validates on the client (`zodResolver(sampleStepSchema)` gates
+ * submit). Needed so at least one `sampleSelection` fixture below exercises
+ * that resolver with a real row, not an empty `proposed`/`alternates` array —
+ * an empty array can't reveal a schema/domain field mismatch that would
+ * silently block submit in production with no visible error (only
+ * `errors.comparables` is rendered, never `errors.sampleSelection`).
+ */
+function makeCandidate(overrides: Partial<Candidate> = {}): Candidate {
+  return {
+    transactionId: "T-100",
+    date: "2024-05",
+    area: 61,
+    pricePerM2: 11000,
+    priceTotal: 671000,
+    egib: { teryt: "306401", obreb: "0001", arkusz: "12", dzialka: "34", budynek: "5", lokal: "6" },
+    lokalId: "306401_1.0001.34_BUD_5_LOK_6",
+    distanceM: 120,
+    floor: 2,
+    rooms: 3,
+    market: "wtorny",
+    share: "1/1",
+    transType: "wolnyRynek",
+    function: "mieszkalna",
+    seller: "osobaFizyczna",
+    pos: { x: 100, y: 200 },
+    ...overrides,
+  };
+}
+
+/** A v3 `SampleSelectionSnapshot` (ADR-015). */
+function makeSampleSelection(
+  overrides: {
+    radiusUsedM?: number;
+    counts?: Partial<SampleSelectionSnapshot["counts"]>;
+    proposed?: Candidate[];
+    alternates?: Candidate[];
+  } = {},
+): SampleSelectionSnapshot {
+  return {
+    version: 3,
+    proposed: overrides.proposed ?? [],
+    alternates: overrides.alternates ?? [],
+    flags: {},
+    rejectedCounts: {},
+    radiusUsedM: overrides.radiusUsedM ?? 500,
+    radiusWalk: [],
+    counts: {
+      pool: 9000,
+      inRadius: 60,
+      afterHygiene: 50,
+      afterBand: 48,
+      proposed: 2,
+      ...overrides.counts,
+    },
+    params: { subjectArea: 50, todayMonth: "2026-08" },
+  };
+}
+
+/**
+ * The banner's own text is split across the outer `<AutoBanner>` container
+ * and nested `<b>` tags — RTL's `getByText` only matches an element's DIRECT
+ * text-node children, not text inside nested elements, so a single regex
+ * spanning "Dobrano X z Y…w promieniu R m" can't land on any one node via
+ * `screen.getByText`. Reading the container's full `textContent` instead
+ * (keyed by `AutoBanner`'s own `data-kind` attribute) sidesteps that and
+ * asserts on what the appraiser actually sees.
+ */
+function bannerText(container: HTMLElement): string | null {
+  return container.querySelector('[data-kind="info"]')?.textContent ?? null;
+}
+
 describe("StepSample — defaults", () => {
   it("renders one row per existing comparable and no amber hint at 12", () => {
     render(
@@ -54,6 +151,7 @@ describe("StepSample — defaults", () => {
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -64,49 +162,73 @@ describe("StepSample — defaults", () => {
 });
 
 describe("StepSample — RCN fetch", () => {
-  it("replaces rows with the RCN proposal and includes sampleMeta on submit", async () => {
+  it("fetches the v3 proposal, replaces rows, shows the banner, and round-trips sampleSelection/sampleMeta on submit", async () => {
     const user = userEvent.setup();
     const proposal = {
-      transactions: [
+      comparables: [
         { date: "2024-05", area: 61, pricePerM2: 11000, transactionId: "T1" },
         { date: "2024-06", area: 62, pricePerM2: 11500, transactionId: "T2" },
-        { date: "2024-07", area: 63, pricePerM2: 12000, transactionId: "T3" },
       ],
-      meta: {
-        lat: 52.4,
-        lon: 16.9,
-        fetchedAt: "2026-07-23T10:00:00Z",
-        source: "geokoder",
-        query: { bbox: [1, 2, 3, 4], count: 100, sort: "distance" },
-      },
+      sampleSelection: makeSampleSelection(),
+      sampleMeta: makeSampleMeta({ truncated: false }),
     };
     getSampleProposal.mockResolvedValue({ proposal });
     saveSampleAction.mockResolvedValue({ ok: true });
 
-    render(
+    const { container } = render(
       <StepSample
         valuationId={VID}
         address={ADDRESS}
         area={AREA}
         comparables={[]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
     await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
 
+    // (a) called with the full v3 input shape, including valuationId.
     await waitFor(() =>
-      expect(getSampleProposal).toHaveBeenCalledWith({ address: ADDRESS, area: AREA }),
+      expect(getSampleProposal).toHaveBeenCalledWith({
+        valuationId: VID,
+        address: ADDRESS,
+        area: AREA,
+      }),
     );
-    await waitFor(() => expect(screen.getAllByPlaceholderText("zł/m²")).toHaveLength(3));
-    expect(screen.getByDisplayValue("11000")).toBeDefined();
+
+    // (b) rows replaced.
+    await waitFor(() =>
+      expect((container.querySelector("#comparable-price-0") as HTMLInputElement).value).toBe(
+        "11000",
+      ),
+    );
+    expect((container.querySelector("#comparable-price-1") as HTMLInputElement).value).toBe(
+      "11500",
+    );
+    expect(container.querySelector("#comparable-price-2")).toBeNull();
+
+    // (d) honest banner — counts/radius from the v3 selection snapshot.
+    expect(bannerText(container)).toMatch(/Dobrano 2 z 48 pasujących w promieniu 500 m/);
+    expect(bannerText(container)).toMatch(/przebadano 9000/);
+    expect(bannerText(container)).not.toMatch(/pula może być niepełna/);
+
+    // The form still enforces "at least 3 comparables" (comparableSchema),
+    // so a 2-row fetch alone can't reach submit — add a third row by hand,
+    // like the "hand-typed row" test below, purely to clear that gate.
+    await user.click(screen.getByRole("button", { name: /dodaj transakcję/i }));
+    const prices = await screen.findAllByPlaceholderText("zł/m²");
+    expect(prices).toHaveLength(3);
+    await user.type(prices[2], "9999");
 
     await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
 
+    // (c) sampleSelection/sampleMeta round-trip into the save payload.
     await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
     const [id, payload] = saveSampleAction.mock.calls.at(-1) as [string, Record<string, unknown>];
     expect(id).toBe(VID);
-    expect(payload.sampleMeta).toMatchObject({ source: "geokoder" });
+    expect(payload.sampleSelection).toMatchObject({ radiusUsedM: 500 });
+    expect(payload.sampleMeta).toMatchObject({ query: { truncated: false } });
     expect(payload.comparables).toHaveLength(3);
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith(`/valuations/${VID}?step=4`));
   });
@@ -114,7 +236,7 @@ describe("StepSample — RCN fetch", () => {
   it("rounds RCN-proposed price and area to 2 decimals before populating inputs", async () => {
     const user = userEvent.setup();
     const proposal = {
-      transactions: [
+      comparables: [
         {
           date: "2024-05",
           area: 61.567234,
@@ -122,13 +244,8 @@ describe("StepSample — RCN fetch", () => {
           transactionId: "T1",
         },
       ],
-      meta: {
-        lat: 52.4,
-        lon: 16.9,
-        fetchedAt: "2026-07-23T10:00:00Z",
-        source: "geokoder",
-        query: { bbox: [1, 2, 3, 4], count: 100, sort: "distance" },
-      },
+      sampleSelection: makeSampleSelection(),
+      sampleMeta: makeSampleMeta(),
     };
     getSampleProposal.mockResolvedValue({ proposal });
 
@@ -139,16 +256,47 @@ describe("StepSample — RCN fetch", () => {
         area={AREA}
         comparables={[]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
     await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
 
     await waitFor(() =>
-      expect(getSampleProposal).toHaveBeenCalledWith({ address: ADDRESS, area: AREA }),
+      expect(getSampleProposal).toHaveBeenCalledWith({
+        valuationId: VID,
+        address: ADDRESS,
+        area: AREA,
+      }),
     );
     await waitFor(() => expect(screen.getByDisplayValue("16030.89")).toBeDefined());
     expect(screen.getByDisplayValue("61.57")).toBeDefined();
+  });
+
+  it("(e) appends the truncated-pool warning when sampleMeta.query.truncated is true", async () => {
+    const user = userEvent.setup();
+    const proposal = {
+      comparables: [{ date: "2024-05", area: 61, pricePerM2: 11000, transactionId: "T1" }],
+      sampleSelection: makeSampleSelection(),
+      sampleMeta: makeSampleMeta({ truncated: true }),
+    };
+    getSampleProposal.mockResolvedValue({ proposal });
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[]}
+        sampleMeta={null}
+        sampleSelection={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+
+    await waitFor(() => expect(bannerText(container)).toMatch(/Dobrano/));
+    expect(bannerText(container)).toMatch(/pula może być niepełna/);
   });
 });
 
@@ -169,6 +317,7 @@ describe("StepSample — submit", () => {
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -197,6 +346,7 @@ describe("StepSample — submit", () => {
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -206,6 +356,50 @@ describe("StepSample — submit", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/nie udało się zapisać próby/i),
     );
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A save that never re-fetches (e.g. the appraiser only hand-edits a
+   * price) must still send the PRE-EXISTING `sampleSelection` snapshot —
+   * omitting it here would wipe the persisted selection to null even though
+   * nothing about the sample selection itself changed. The snapshot carries
+   * a FULLY-POPULATED `proposed` candidate (not an empty array) so this test
+   * also exercises `candidateSchema` on the client's `zodResolver` — the
+   * gate that actually decides whether "Zatwierdź próbę i dalej" does
+   * anything at all; an empty array would let a real schema/domain mismatch
+   * through silently (no `errors.sampleSelection` is ever rendered).
+   */
+  it("keeps a pre-existing sampleSelection prop (with a populated candidate) in the save payload without re-fetching", async () => {
+    const user = userEvent.setup();
+    getSampleProposal.mockClear();
+    saveSampleAction.mockResolvedValue({ ok: true });
+    const existingSelection = makeSampleSelection({
+      radiusUsedM: 777,
+      proposed: [makeCandidate()],
+    });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={existingSelection}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+
+    await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
+    expect(getSampleProposal).not.toHaveBeenCalled();
+    const [, payload] = saveSampleAction.mock.calls.at(-1) as [
+      string,
+      { sampleSelection?: SampleSelectionSnapshot },
+    ];
+    expect(payload.sampleSelection?.proposed).toHaveLength(1);
+    expect(payload.sampleSelection?.proposed[0]).toMatchObject({ transactionId: "T-100" });
+    expect(payload.sampleSelection).toMatchObject({ radiusUsedM: 777 });
   });
 });
 
@@ -234,6 +428,7 @@ describe("StepSample — a hand-typed row carries no transactionId", () => {
         area={AREA}
         comparables={fetched}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -258,7 +453,54 @@ describe("StepSample — a hand-typed row carries no transactionId", () => {
   });
 });
 
-describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity)", () => {
+/**
+ * A draft persisted before ADR-015 v3 shipped carries the old `sampleMeta`
+ * shape (`lat`/`lon` instead of `point`, no `maxRadiusM`/`counts`), which
+ * fails `sampleMetaSchema` on submit. Before this fix that error had no
+ * visible surface (only `errors.comparables` was ever rendered) — the
+ * appraiser saw the button do nothing.
+ */
+describe("StepSample — legacy v2 sampleMeta draft (item A)", () => {
+  it("surfaces the resolver error instead of a silently inert submit", async () => {
+    const user = userEvent.setup();
+    saveSampleAction.mockClear();
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[
+          { date: "2024-01", area: 60, pricePerM2: 10000, source: "manual" },
+          { date: "2024-02", area: 61, pricePerM2: 10100, source: "manual" },
+          { date: "2024-03", area: 62, pricePerM2: 10200, source: "manual" },
+        ]}
+        sampleMeta={
+          {
+            lat: 52.4,
+            lon: 16.9,
+            fetchedAt: "2026-07-14T10:00:00.000Z",
+            source: "rcn-wfs-gugik",
+            query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D" },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any
+        }
+        sampleSelection={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /ta próba pochodzi ze starszej wersji doboru/i,
+      ),
+    );
+    expect(saveSampleAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR-015 v3 copy)", () => {
   it("shows Statystyki próby with Cmin/Cmax/Cśr and the V-ratio range for ≥2 comparable prices", () => {
     render(
       <StepSample
@@ -270,6 +512,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity)", (
           { date: "2024-02", area: 61, pricePerM2: 12000, source: "manual" },
         ]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -288,6 +531,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity)", (
         area={AREA}
         comparables={[]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -295,42 +539,39 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity)", (
     expect(screen.queryByText(/Granice korekty/)).toBeNull();
   });
 
-  it("does not show the RCN AutoBanner without sampleMeta", () => {
-    render(
+  it("(f) does not show the RCN AutoBanner without sampleMeta", () => {
+    const { container } = render(
       <StepSample
         valuationId={VID}
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
-    expect(screen.queryByText(/Pobrano/)).toBeNull();
+    expect(container.querySelector('[data-kind="info"]')).toBeNull();
   });
 
-  it("shows the RCN AutoBanner with fetch count and date when sampleMeta is present", () => {
-    render(
+  it("asks for a re-fetch (no question marks) when sampleMeta is present without a matching sampleSelection", () => {
+    const { container } = render(
       <StepSample
         valuationId={VID}
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
-        sampleMeta={{
-          lat: 52.4,
-          lon: 16.9,
-          fetchedAt: "2026-07-23T10:00:00Z",
-          source: "geokoder",
-          query: { bbox: [1, 2, 3, 4], count: 87, sort: "distance" },
-        }}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={null}
       />,
     );
 
-    expect(screen.getByText(/Pobrano/)).toBeInTheDocument();
-    expect(screen.getByText(/87 transakcji/)).toBeInTheDocument();
-    // "z RCN (" (with the opening paren) rather than a bare "z RCN" — the
-    // "Pobierz próbę z RCN" fetch button already contains that substring.
-    expect(screen.getByText(/z RCN \(/)).toBeInTheDocument();
+    // No matching `sampleSelection` (hand-edited sample, test data) → no counts to
+    // show, so the banner says so instead of printing question marks.
+    const text = bannerText(container);
+    expect(text).not.toContain("?");
+    expect(text).toMatch(/pobierz próbę z RCN ponownie/i);
+    expect(text).toMatch(/23\.07\.2026/);
   });
 
   it("shows the FootNav mid slot with the valid-price count and Cśr once stats are available", () => {
@@ -344,6 +585,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity)", (
           { date: "2024-02", area: 61, pricePerM2: 12000, source: "manual" },
         ]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -365,6 +607,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity)", (
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -394,6 +637,7 @@ describe("StepSample — validation", () => {
           { date: "2024-02", area: 61, pricePerM2: 10100, source: "manual" },
         ]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -418,6 +662,7 @@ describe("StepSample — validation", () => {
           { date: "2024-05", area: 64, pricePerM2: 10400, source: "manual" },
         ]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 

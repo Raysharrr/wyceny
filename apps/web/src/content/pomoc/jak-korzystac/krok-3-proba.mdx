@@ -1,3 +1,6 @@
+import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { DEFAULTS } from "@/domain/sample-selection";
+
 W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m², na których oprze się kalkulacja. Transakcje możesz pobrać z rejestru cen nieruchomości (RCN) albo wpisać ręcznie; oba źródła da się łączyć, bo każdy wiersz tabeli zostaje edytowalny.
 
 <img
@@ -13,17 +16,15 @@ W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m²,
 
 ## Co wypełnia się samo
 
-Przycisk „Pobierz próbę z RCN” pobiera transakcje dla adresu i powierzchni tej wyceny. Pobieranie trwa zwykle kilka do kilkunastu sekund — przycisk pokazuje wtedy „Pobieranie…”.
+Przycisk „Pobierz próbę z RCN” pobiera transakcje dobrane rankingiem podobieństwa w promieniu od {DEFAULTS.radiusStepsM[0]} m do {DEFAULTS.radiusStepsM[DEFAULTS.radiusStepsM.length - 1]} m wokół przedmiotu tej wyceny. Pobieranie trwa zwykle kilka do kilkunastu sekund — przycisk pokazuje wtedy „Pobieranie…”.
 
-- Do tabeli trafia najwyżej dwanaście transakcji: data, powierzchnia i cena zł/m².
+- Do tabeli trafia najwyżej {DEFAULTS.proposedN} transakcji: data, powierzchnia i cena zł/m².
 - **Pobranie zastępuje całą dotychczasową zawartość tabeli**, również wiersze wpisane ręcznie.
 - Gdy pobranie się nie uda, zobaczysz komunikat z powodem, a próbę wpisujesz ręcznie.
 
-Pobranie wybiera **dwanaście najnowszych** transakcji lokalami mieszkalnymi z prostokąta około 4 km na 4 km wokół adresu, o powierzchni różniącej się od wycenianego lokalu o nie więcej niż 30%, zawartych w ciągu ostatnich 24 miesięcy, po odrzuceniu cen skrajnych (to odrzucenie działa dopiero od ośmiu transakcji w puli). Dobór nie patrzy na obręb, dzielnicę ani odległość od wycenianego lokalu, choć rejestr niesie identyfikator z numerem obrębu i działki; nie odróżnia rynku pierwotnego od wtórnego, sprzedaży wolnorynkowej od innych rodzajów transakcji ani sprzedaży całego lokalu od sprzedaży udziału. Dla Poznania rejestr nie wypełnia pola adresu transakcji, a aplikacja tego pola i tak nie czyta — w tabeli nie ma więc jak sprawdzić, gdzie dokładnie leży lokal porównawczy. Każdy niepasujący wiersz usuwasz sam.
+Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebadano N transakcji z RCN, data)”: N to cała pula z rejestru w kwadracie ±3 km wokół przedmiotu, po złożeniu duplikatów i odrzuceniu rekordów bez współrzędnych; Y — ile z tej puli przeszło higienę i pasmo metrażu w promieniu R; R — promień, na którym dobór się zatrzymał. Gdy pobieranie przerwie się, zanim pula sięgnie pełnego okna czasowego — przez limit stron pobierania (8 × 5000 rekordów) albo budżet czasu (ok. 25 s) — pasek dokłada ostrzeżenie, że pula może być niepełna. Jeśli w zapisanym szkicu jest próba z RCN, ale bez szczegółów doboru (np. wiersze edytowane ręcznie), pasek prosi o ponowne pobranie zamiast pokazywać liczniki.
 
-Pasek „Pobrano 5000 transakcji z RCN” podaje limit zapytania do rejestru, a nie liczbę transakcji znalezionych w okolicy.
-
-Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty. [Metodę doboru próby](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
+Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty; [jak dobieramy próbę](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
 
 ## Co musisz uzupełnić ręcznie
 
@@ -36,7 +37,7 @@ Wiersze pobrane z RCN możesz poprawiać jak każde inne: zmienić wartość, do
 ## Co blokuje przejście dalej
 
 - Zapis („Zatwierdź próbę i dalej”) wymaga co najmniej **trzech transakcji** z ceną większą od zera. Przy mniejszej liczbie zobaczysz komunikat „Podaj co najmniej 3 transakcje porównawcze”.
-- Dopóki próba ma mniej niż **dwanaście transakcji**, pod tabelą wisi ostrzeżenie: szkic zapiszesz i przejdziesz dalej, ale zatwierdzenie operatu będzie zablokowane.
+- Dopóki próba ma mniej niż **{REQUIRED_SAMPLE_SIZE} transakcji**, pod tabelą wisi ostrzeżenie: szkic zapiszesz i przejdziesz dalej, ale zatwierdzenie operatu będzie zablokowane.
 - Transakcje pobrane z RCN wchodzą ze [statusem „do weryfikacji”](/pomoc/zasady-zatwierdzania). Potwierdzasz je zbiorczo tutaj — przycisk „Zatwierdź próbę i dalej” w pasku na dole ekranu zapisuje próbę i potwierdza ją naraz, na ekranie, na którym ją widzisz. To jedyne miejsce, w którym się to dzieje: krok 7 transakcji nie pokazuje, więc o nie nie pyta. Transakcje wpisane ręcznie są potwierdzone z definicji.
 
 Zapis kroku **kasuje zatwierdzoną wartość rynkową**. Po każdej zmianie próby kwotę trzeba potwierdzić w kroku 5 jeszcze raz, a do tego czasu kroki 6 i 7 są z powrotem niedostępne.

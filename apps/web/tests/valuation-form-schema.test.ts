@@ -141,11 +141,18 @@ describe("valuationFormSchema — document fields (Slice 4)", () => {
 
 describe("valuationFormSchema — RCN provenance (F-5)", () => {
   const sampleMeta = {
-    lat: 52.4064,
-    lon: 16.9252,
+    point: { x: 355300.15, y: 505330.31, source: "subject" as const },
+    maxRadiusM: 3000,
+    counts: { fetched: 15000, deduped: 1200, noPos: 0 },
     fetchedAt: "2026-07-14T09:00:00.000Z",
-    source: "rcn-wfs-gugik",
-    query: { bbox: [52.39, 16.9, 52.42, 16.95], count: 5000, sort: "dok_data D" },
+    source: "rcn-wfs-gugik" as const,
+    query: {
+      bbox: [52.39, 16.9, 52.42, 16.95],
+      count: 5000,
+      sort: "dok_data D",
+      pages: 3,
+      truncated: false,
+    },
   };
 
   it("accepts provenance fields on a comparable (source + transactionId)", () => {

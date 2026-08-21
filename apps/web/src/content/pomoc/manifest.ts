@@ -177,25 +177,27 @@ export const HELP_PAGES: HelpPage[] = [
     load: () => import("./metodyka/metoda-kcs.mdx"),
   },
   /**
-   * Uwaga dla utrzymujących treść (ograniczenie R1 ze specu): stałe doboru
-   * próby żyją w workerze (Python), więc `dobor-proby-rcn.mdx` przepisuje je
-   * ręcznie — importowalny jest tylko web-owy `REQUIRED_SAMPLE_SIZE`
-   * (`@/domain/provenance`, brama zatwierdzenia). Komentarz stoi tutaj, a nie
-   * w samym MDX, bo prettier formatuje `.mdx` markdownowo i przerabia
-   * `{/* … *\/}` na `{/_ … _/}` — plik przestaje się kompilować, a CI (`pnpm
-   * format:check`) i tak wywala różnicę.
+   * Uwaga dla utrzymujących treść: od ADR-015 („Dobór próby v3”) ranking
+   * podobieństwa i jego stałe żyją w czystej domenie TS
+   * (`DEFAULTS`, `DEFAULT_WEIGHTS` w `@/domain/sample-selection`) —
+   * `dobor-proby-rcn.mdx` i `krok-3-proba.mdx` importują je wprost, więc z
+   * kodem rozjechać się nie mogą. Stałe workera (Python: paginacja rejestru,
+   * promień zapytania) importu do MDX nie mają i strona przepisuje je
+   * ręcznie. Komentarz stoi tutaj, a nie w samym MDX, bo prettier formatuje
+   * `.mdx` markdownowo i przerabia `{/* … *\/}` na `{/_ … _/}` — plik
+   * przestaje się kompilować, a CI (`pnpm format:check`) i tak wywala
+   * różnicę.
    *
    * Źródła do sprawdzenia przy każdej zmianie doboru:
-   *   apps/worker/app/rcn.py:27   POOL_N = 19
-   *   apps/worker/app/rcn.py:28   AREA_BAND_PCT = 0.30
-   *   apps/worker/app/rcn.py:29   DATE_WINDOW_MONTHS = 24
-   *   apps/worker/app/rcn.py:32   WFS_URL (RCN w Geoportalu)
-   *   apps/worker/app/rcn.py:33   NOMINATIM (geokoder)
-   *   apps/worker/app/rcn.py:109  próg 8 rekordów dla przycinania IQR
-   *   apps/worker/app/main.py:125 bbox ±0.018° / ±0.029°
-   *   apps/worker/app/main.py:135 próg 12 wybranych transakcji przy pobraniu
-   *   apps/worker/app/main.py:159 count=5000, sortBy="dok_data D"
-   *   apps/web/src/app/valuations/[id]/steps/step-sample.tsx:171 slice(0, 12)
+   *   apps/web/src/domain/sample-selection.ts:92  DEFAULT_WEIGHTS (wagi rankingu, importowane wprost do MDX)
+   *   apps/web/src/domain/sample-selection.ts:99  DEFAULTS (promień, okno, pasmo metrażu, IQR, importowane wprost do MDX)
+   *   apps/worker/app/rcn.py:21   DATE_WINDOW_MONTHS = 24
+   *   apps/worker/app/rcn.py:22   PAGE_SIZE = 5000
+   *   apps/worker/app/rcn.py:23   SORT_BY = "dok_data D,tran_lokalny_id_iip D"
+   *   apps/worker/app/rcn.py:187  fetch_pool — paginacja aż do pokrycia okna albo max_pages
+   *   apps/worker/app/main.py:180 DEFAULT_RADIUS_M = 3000.0 (promień zapytania do rejestru, ±3 km)
+   *   apps/worker/app/main.py:186 resolve_point — kolejność geokoderów: punkt z kroku 1 → UUG (GUGiK) → Nominatim
+   *   apps/web/src/app/actions/get-sample-proposal.ts:50 getSampleProposal — spina pulę z workera (fetchPool) z domeną (selectSample)
    */
   {
     slug: "dobor-proby-rcn",
@@ -208,11 +210,15 @@ export const HELP_PAGES: HelpPage[] = [
       "Geoportal",
       "GUGiK",
       "WFS",
-      "geokodowanie",
+      "promień",
+      "ranking podobieństwa",
+      "obręb",
+      "działka",
+      "budynek",
       "pasmo metrażu",
       "okno czasowe",
-      "IQR",
       "odstające",
+      "rynek pierwotny",
       "12 transakcji",
     ],
     summary:

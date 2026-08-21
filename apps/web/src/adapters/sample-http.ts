@@ -1,4 +1,6 @@
-import type { PortSampleProposal, SampleProposal } from "../ports/sample";
+import { z } from "zod";
+import type { CandidatePool, PortSampleProposal, SamplePoolRequest } from "../ports/sample";
+import { candidateSchema, sampleMetaSchema } from "../lib/valuation-form-schema";
 import { traceHeaders } from "../lib/trace";
 
 /**
@@ -11,34 +13,46 @@ import { traceHeaders } from "../lib/trace";
 export const WORKER_RESPONDED_PREFIX = "worker /sample-proposal responded";
 
 /**
+ * Runtime validation for `CandidatePool` at the trust boundary — the worker
+ * is a separate process/deploy, so a shape drift must fail loudly here
+ * rather than propagate an `as`-cast lie into the ranking/selection logic.
+ * Composed from `sampleMetaSchema` (`CandidatePool` minus `candidates`) plus
+ * `candidateSchema`, both from `lib/valuation-form-schema` — not redefined
+ * here, so Task 7's `inputs.sampleMeta` schema shares one definition with
+ * this adapter's pool validation.
+ */
+export const candidatePoolSchema = sampleMetaSchema.extend({
+  candidates: z.array(candidateSchema),
+}) satisfies z.ZodType<CandidatePool>;
+
+// Worker stops starting new WFS pages after 25 s (`fetch_pool` time budget) and one page takes up to 20 s,
+// so ~45 s is its worst case — inside this timeout and Vercel's 60 s. Deeper pools come back `truncated`.
+const TIMEOUT_MS = 50_000;
+
+/**
  * HTTP adapter for {@link PortSampleProposal}, backed by the Python worker's
- * `/sample-proposal` endpoint (RCN WFS integration).
+ * `/sample-proposal` endpoint (RCN WFS integration, ADR-015 "Dobor proby v3").
  */
 export function httpSampleProposal(baseUrl: string): PortSampleProposal {
   return {
-    async fetchProposal(address: string, area: number): Promise<SampleProposal> {
+    async fetchPool(input: SamplePoolRequest): Promise<CandidatePool> {
       const response = await fetch(`${baseUrl}/sample-proposal`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...traceHeaders() },
-        body: JSON.stringify({ address, area }),
+        body: JSON.stringify(input),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!response.ok) {
         // On failure the worker returns { detail: "<Polish user-facing message>" }
         // (e.g. RCN fetch failed, or too few transactions nearby) — surface it
         // so a later Server Action can show it to the user instead of a generic
         // status message.
-        let detail: string | undefined;
-        try {
-          const body = (await response.json()) as { detail?: string };
-          detail = body.detail;
-        } catch {
-          // no JSON body — fall back below
-        }
+        const body = (await response.json().catch(() => ({}))) as { detail?: string };
         throw new Error(
-          detail ?? `${WORKER_RESPONDED_PREFIX} ${response.status} ${response.statusText}`,
+          body.detail ?? `${WORKER_RESPONDED_PREFIX} ${response.status} ${response.statusText}`,
         );
       }
-      return (await response.json()) as SampleProposal;
+      return candidatePoolSchema.parse(await response.json());
     },
   };
 }

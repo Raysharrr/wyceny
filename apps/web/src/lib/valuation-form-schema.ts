@@ -35,16 +35,123 @@ export const featureSchema = z.object({
   definitions: featureDefinitionsSchema.optional(),
 });
 
-/** Mirrors `SampleMeta` from `@/ports/sample` — the RCN fetch's provenance for the whole sample (F-5). */
+/** Mirrors `PoolPoint` from `@/ports/sample` — the subject point the pool was fetched around (ADR-015 v3). */
+export const poolPointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  source: z.enum(["subject", "uug", "nominatim"]),
+});
+
+/** Mirrors `CandidatePool["counts"]` from `@/ports/sample`. */
+export const poolCountsSchema = z.object({
+  fetched: z.number(),
+  deduped: z.number(),
+  noPos: z.number(),
+});
+
+/** Mirrors `CandidatePool["query"]` from `@/ports/sample`. */
+export const poolQuerySchema = z.object({
+  bbox: z.array(z.number()),
+  count: z.number(),
+  sort: z.string(),
+  pages: z.number(),
+  truncated: z.boolean(),
+});
+
+/**
+ * `CandidatePool` minus `candidates` (ADR-015 "Dobor proby v3") — the RCN
+ * pool fetch's provenance for the whole sample (F-5), persisted alongside
+ * `sampleSelection` in `inputs.sampleMeta`. `adapters/sample-http.ts`'s
+ * `candidatePoolSchema` extends this with `candidates` rather than
+ * redefining the shared fields, so the two stay in lockstep.
+ */
 export const sampleMetaSchema = z.object({
-  lat: z.number(),
-  lon: z.number(),
+  point: poolPointSchema,
+  maxRadiusM: z.number(),
+  counts: poolCountsSchema,
   fetchedAt: z.string(),
-  source: z.string(),
-  query: z.object({
-    bbox: z.array(z.number()),
-    count: z.number(),
-    sort: z.string(),
+  source: z.literal("rcn-wfs-gugik"),
+  query: poolQuerySchema,
+});
+
+/** Mirrors `Egib` from `@/domain/egib-id` — parsed EGiB identity on an RCN candidate transaction. */
+export const egibSchema = z.object({
+  teryt: z.string(),
+  obreb: z.string(),
+  arkusz: z.string(),
+  dzialka: z.string(),
+  budynek: z.string(),
+  lokal: z.string(),
+});
+
+/**
+ * Mirrors `Candidate` from `@/domain/sample-selection` — one RCN transaction
+ * in the sample pool fetched via `PortSampleProposal` (ADR-015). Exported
+ * separately from `candidatePoolSchema` (adapters/sample-http.ts) so the
+ * subject-snapshot schema can reuse it without importing an adapter (F-10).
+ */
+export const candidateSchema = z.object({
+  transactionId: z.string(),
+  date: z.string(),
+  area: z.number(),
+  pricePerM2: z.number(),
+  priceTotal: z.number(),
+  egib: egibSchema.nullable(),
+  lokalId: z.string(),
+  distanceM: z.number(),
+  floor: z.number().nullable(),
+  rooms: z.number().nullable(),
+  market: z.enum(["wtorny", "pierwotny"]).nullable(),
+  share: z.string(),
+  transType: z.string(),
+  function: z.string(),
+  seller: z.string().nullable(),
+  pos: z.object({ x: z.number(), y: z.number() }).nullable(),
+});
+
+/**
+ * Mirrors `SampleSelectionSnapshot` from `@/domain/sample-snapshot` — what
+ * step 3's domain call persists in `inputs.sampleSelection` (ADR-015 "Dobor
+ * proby v3"): the appraiser's proposed/alternate rows plus enough context
+ * (flags, radius walk, counts, params) to show badges and re-run the choice.
+ */
+export const sampleSelectionSchema = z.object({
+  version: z.literal(3),
+  proposed: z.array(candidateSchema),
+  alternates: z.array(candidateSchema),
+  flags: z.record(
+    z.string(),
+    z.array(z.enum(["price_outlier", "market_unknown", "primary_suspect"])),
+  ),
+  rejectedCounts: z.record(z.string(), z.number()),
+  radiusUsedM: z.number(),
+  radiusWalk: z.array(
+    z.object({
+      radiusM: z.number(),
+      inRadius: z.number(),
+      afterHygiene: z.number(),
+      afterBand: z.number(),
+    }),
+  ),
+  counts: z.object({
+    pool: z.number(),
+    inRadius: z.number(),
+    afterHygiene: z.number(),
+    afterBand: z.number(),
+    proposed: z.number(),
+  }),
+  params: z.object({
+    subjectArea: z.number(),
+    todayMonth: z.string(),
+    subjectEgib: z
+      .object({
+        obreb: z.string(),
+        dzialka: z.string(),
+        arkusz: z.string().optional(),
+        budynek: z.string().optional(),
+      })
+      .optional(),
+    radiusOverrideM: z.number().optional(),
   }),
 });
 
@@ -88,6 +195,9 @@ export const subjectMetaSchema = z.object({
   fetchedAt: z.string(),
   source: z.string(),
   mpzpAbsent: z.boolean(),
+  // GEOPOZ ID_BUDYNKU (ULDK parcel id as fallback) — feeds `subjectEgib` for
+  // the sample-selection scoring (ADR-015 "same building" bonus).
+  buildingId: z.string().nullable().optional(),
 });
 
 /** Mirrors `KwDzialSnapshot`/`KwSnapshot` from `@/domain/kw-snapshot` (Slice 6). */
@@ -140,6 +250,7 @@ export const valuationFormObject = z.object({
       "Każda cecha może wystąpić najwyżej raz.",
     ),
   sampleMeta: sampleMetaSchema.optional(),
+  sampleSelection: sampleSelectionSchema.optional(),
   subject: subjectSchema.optional(),
   subjectMeta: subjectMetaSchema.optional(),
   kw: kwSchema.optional(),

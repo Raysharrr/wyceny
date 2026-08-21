@@ -7,11 +7,12 @@ Local run:
 """
 
 import base64
+import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -89,82 +90,160 @@ def amount_in_words(request: AmountInWordsRequest) -> AmountInWordsResponse:
     return AmountInWordsResponse(words=to_amount_in_words(request.amount))
 
 
+# Not "try again": the geocoder gave a definitive answer, and repeating the
+# request repeats it. Only a corrected address changes the outcome.
+ADDRESS_NOT_FOUND_DETAIL = (
+    "Nie rozpoznano adresu nieruchomości — sprawdź jego pisownię "
+    "(np. „ul. Główna 12, Poznań”) i popraw go w kroku 1."
+)
+OUT_OF_COVERAGE_DETAIL = "Dane przedmiotu dostępne na razie dla Poznania — wpisz dane ręcznie."
+SUBJECT_FAILED_DETAIL = (
+    "Nie udało się pobrać danych przedmiotu — spróbuj ponownie albo wpisz dane ręcznie."
+)
+
+
+class SamplePoint(BaseModel):
+    x: float
+    y: float
+    srid: Literal[2180]
+
+
 class SampleProposalRequest(BaseModel):
     address: str
     area: float
+    point: SamplePoint | None = None
+    radiusM: float | None = Field(default=None, gt=0, le=5000)
 
 
-class SampleTransaction(BaseModel):
+class CandidateEgib(BaseModel):
+    teryt: str
+    obreb: str
+    arkusz: str
+    dzialka: str
+    budynek: str
+    lokal: str
+
+
+class CandidatePos(BaseModel):
+    x: float
+    y: float
+
+
+class Candidate(BaseModel):
+    transactionId: str
     date: str
     area: float
     pricePerM2: float
-    transactionId: str
+    priceTotal: float
+    egib: CandidateEgib | None
+    lokalId: str
+    distanceM: float
+    floor: int | None
+    rooms: int | None
+    market: Literal["wtorny", "pierwotny"] | None
+    share: str
+    transType: str
+    function: str
+    seller: str | None
+    pos: CandidatePos | None
 
 
-class SampleProposalQuery(BaseModel):
+class PoolPoint(BaseModel):
+    x: float
+    y: float
+    source: Literal["subject", "uug", "nominatim"]
+
+
+class PoolCounts(BaseModel):
+    fetched: int
+    deduped: int
+    noPos: int
+
+
+class PoolQuery(BaseModel):
     bbox: list[float]
     count: int
     sort: str
+    pages: int
+    truncated: bool
 
 
-class SampleProposalMeta(BaseModel):
-    lat: float
-    lon: float
+class CandidatePoolResponse(BaseModel):
+    point: PoolPoint
+    maxRadiusM: float
+    candidates: list[Candidate]
+    counts: PoolCounts
     fetchedAt: str
-    source: str
-    query: SampleProposalQuery
+    source: Literal["rcn-wfs-gugik"]
+    query: PoolQuery
 
 
-class SampleProposalResponse(BaseModel):
-    transactions: list[SampleTransaction]
-    meta: SampleProposalMeta
+DEFAULT_RADIUS_M = 3000.0
+SAMPLE_FAILED_DETAIL = (
+    "Nie udało się pobrać próby z RCN — spróbuj ponownie albo wpisz transakcje ręcznie."
+)
+
+
+def resolve_point(address: str, point: SamplePoint | None) -> tuple[float, float, str]:
+    """Step-1 point first; UUG second; Nominatim last (ADR-015 — logged, never silent)."""
+    if point is not None:
+        return point.x, point.y, "subject"
+    try:
+        geo = subject.geocode_address(address)
+        return geo["x"], geo["y"], "uug"
+    except (subject.AddressNotFound, json.JSONDecodeError):
+        pass
+    try:
+        lat, lon = rcn.geocode(address)
+        x, y = subject.nominatim_to_2180(lat, lon)
+    except Exception as exc:
+        logger.warning("sample_proposal_geocoder_miss", err_type=type(exc).__name__)
+        raise subject.AddressNotFound(str(exc)) from exc
+    logger.warning("sample_proposal_geocoder_fallback", geocoder="nominatim")
+    return x, y, "nominatim"
 
 
 @app.post("/sample-proposal")
-def sample_proposal(request: SampleProposalRequest) -> SampleProposalResponse:
-    # I/O boundary: the clock is read here, never inside the pure core.
+def sample_proposal(request: SampleProposalRequest) -> CandidatePoolResponse:
     today_month = datetime.now(UTC).strftime("%Y-%m")
-
+    radius_m = request.radiusM or DEFAULT_RADIUS_M
     try:
-        lat, lon = rcn.geocode(request.address)
-        bbox = (lat - 0.018, lon - 0.029, lat + 0.018, lon + 0.029)
-        gml = rcn.fetch_rcn(bbox)
-        transactions = rcn.parse_gml(gml)
+        x, y, source = resolve_point(request.address, request.point)
+    except subject.AddressNotFound as exc:
+        raise HTTPException(status_code=422, detail=ADDRESS_NOT_FOUND_DETAIL) from exc
     except Exception as exc:
-        # A handled HTTPException is never logged by FastAPI — without this line
-        # the traceId shown to the user leads to a log with status=502 and nothing else.
         logger.error("sample_proposal_failed", err=str(exc), err_type=type(exc).__name__)
-        raise HTTPException(
-            status_code=502,
-            detail="Nie udało się pobrać próby z RCN — spróbuj ponownie albo wpisz transakcje ręcznie.",
-        ) from exc
-
-    selection = rcn.select_sample(transactions, request.area, today_month)
-    if len(selection) < 12:
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                f"Za mało transakcji w okolicy (znaleziono {len(selection)}) — "
-                "zawęź adres albo uzupełnij próbę ręcznie."
-            ),
-        )
-
-    return SampleProposalResponse(
-        transactions=[
-            SampleTransaction(
-                date=t["date"],
-                area=t["area"],
-                pricePerM2=t["price_per_m2"],
-                transactionId=t["transaction_id"],
-            )
-            for t in selection
-        ],
-        meta=SampleProposalMeta(
-            lat=lat,
-            lon=lon,
-            fetchedAt=datetime.now(UTC).isoformat(),
-            source="rcn-wfs-gugik",
-            query=SampleProposalQuery(bbox=list(bbox), count=5000, sort="dok_data D"),
+        raise HTTPException(status_code=502, detail=SAMPLE_FAILED_DETAIL) from exc
+    try:
+        pool = rcn.fetch_pool(x, y, radius_m, today_month)
+    except Exception as exc:
+        logger.error("sample_proposal_failed", err=str(exc), err_type=type(exc).__name__)
+        raise HTTPException(status_code=502, detail=SAMPLE_FAILED_DETAIL) from exc
+    kept, deduped = rcn.dedupe_pair(pool["raw"])
+    with_pos = [c for c in kept if c["pos"] is not None]
+    candidates = [Candidate(**{k: v for k, v in c.items() if k != "versionId"}) for c in with_pos]
+    logger.info(
+        "sample_proposal_pool",
+        fetched=len(pool["raw"]),
+        deduped=deduped,
+        pages=pool["pages"],
+        truncated=pool["truncated"],
+    )
+    return CandidatePoolResponse(
+        point=PoolPoint(x=x, y=y, source=source),
+        maxRadiusM=radius_m,
+        candidates=candidates,
+        counts=PoolCounts(
+            fetched=len(pool["raw"]), deduped=deduped, noPos=len(kept) - len(with_pos)
+        ),
+        fetchedAt=datetime.now(UTC).isoformat(),
+        source="rcn-wfs-gugik",
+        query=PoolQuery(
+            bbox=pool["bbox"],
+            count=rcn.PAGE_SIZE,
+            sort=rcn.SORT_BY,
+            pages=pool["pages"],
+            truncated=pool["truncated"],
         ),
     )
 
@@ -203,6 +282,7 @@ class SubjectMeta(BaseModel):
     fetchedAt: str
     source: str
     mpzpAbsent: bool
+    buildingId: str | None = None
 
 
 class SubjectProposalResponse(BaseModel):
@@ -210,18 +290,6 @@ class SubjectProposalResponse(BaseModel):
     building: SubjectBuilding | None
     mpzp: SubjectMpzp | None
     meta: SubjectMeta
-
-
-# Not "try again": the geocoder gave a definitive answer, and repeating the
-# request repeats it. Only a corrected address changes the outcome.
-ADDRESS_NOT_FOUND_DETAIL = (
-    "Nie rozpoznano adresu nieruchomości — sprawdź jego pisownię "
-    "(np. „ul. Główna 12, Poznań”) i popraw go w kroku 1."
-)
-OUT_OF_COVERAGE_DETAIL = "Dane przedmiotu dostępne na razie dla Poznania — wpisz dane ręcznie."
-SUBJECT_FAILED_DETAIL = (
-    "Nie udało się pobrać danych przedmiotu — spróbuj ponownie albo wpisz dane ręcznie."
-)
 
 
 @app.post("/subject-proposal")
@@ -244,7 +312,11 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
         parcel = subject.parcel_from_xml(subject.fetch_egib_xml("dzialki", x, y))
         if parcel is None:
             raise RuntimeError("EGiB nie zwróciło działki")
-        building = subject.building_from_xml(subject.fetch_egib_xml("budynki", x, y))
+        building_xml = subject.fetch_egib_xml("budynki", x, y)
+        building_id = subject.pick_building_id(
+            subject.building_ids_from_xml(building_xml), parcel_ref["parcel_id"]
+        )
+        building = subject.building_from_xml(building_xml, building_id)
         wkt_2180 = subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 2180)
         function = subject.pick_mpzp_function(wkt_2180, subject.fetch_mpzp_functions(wkt_2180))
         lon, lat = subject.centroid_4326(subject.fetch_parcel_wkt(parcel_ref["parcel_id"], 4326))
@@ -286,6 +358,7 @@ def subject_proposal(request: SubjectProposalRequest) -> SubjectProposalResponse
             fetchedAt=datetime.now(UTC).isoformat(),
             source="geopoz-gugik",
             mpzpAbsent=mpzp is None,
+            buildingId=building_id,
         ),
     )
 

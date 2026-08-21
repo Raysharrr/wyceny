@@ -40,6 +40,21 @@ describe("httpSubjectProposal", () => {
     expect(result).toEqual({ kind: "ok", proposal });
   });
 
+  it("passes through meta.buildingId unchanged", async () => {
+    const proposalWithBuildingId = {
+      ...proposal,
+      meta: { ...proposal.meta, buildingId: "306401_1.0021.AR_10.161.1_BUD" },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify(proposalWithBuildingId), { status: 200 })),
+    );
+    const result = await httpSubjectProposal("http://w").fetchSubject("Poznań, Kościelna 33");
+    expect(result).toEqual({ kind: "ok", proposal: proposalWithBuildingId });
+  });
+
   it("passes through null EGiB fields unchanged (worker leaves them absent)", async () => {
     const proposalWithNulls = {
       ...proposal,
