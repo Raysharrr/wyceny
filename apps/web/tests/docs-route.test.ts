@@ -5,6 +5,8 @@ import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
 import { pgStorage } from "../src/adapters/storage-pg";
 import { buildPhotoKey } from "../src/domain/inspection";
+import { thumbnailKey } from "../src/app/actions/_street-view-enrich";
+import { valuationRepository } from "../src/app/valuations/_deps";
 import { approvableInput, valuationInput, withConfirmedProse } from "./fixtures/valuation-inputs";
 import type { SessionUser } from "../src/ports/valuation";
 
@@ -245,7 +247,7 @@ describe("/api/docs/[key] — Street View thumbnails (Slice 3, session-gated onl
 
   it("no session -> 401", async () => {
     getSessionMock.mockResolvedValue(null);
-    const key = "streetview/0039.22.13/82.1.jpg";
+    const key = thumbnailKey("0039.22.13/82.1");
 
     const res = await GET(
       new Request(`http://test/api/docs/${encodeURIComponent(key)}`),
@@ -255,9 +257,10 @@ describe("/api/docs/[key] — Street View thumbnails (Slice 3, session-gated onl
     expect(res.status).toBe(401);
   });
 
-  it("session present, key not in storage -> 404 (no valuation link to check — storage presence is the only gate)", async () => {
+  it("session present, key not in storage -> 404 (no valuation link to check — the branch short-circuits before any ownership lookup)", async () => {
     getSessionMock.mockResolvedValue({ user: appraiserA });
-    const key = "streetview/0039.22.13/82.never-stored.jpg";
+    const key = thumbnailKey("0039.22.13/82.never-stored");
+    const getByDocKeySpy = vi.spyOn(valuationRepository, "getByDocKey");
 
     const res = await GET(
       new Request(`http://test/api/docs/${encodeURIComponent(key)}`),
@@ -265,10 +268,12 @@ describe("/api/docs/[key] — Street View thumbnails (Slice 3, session-gated onl
     );
 
     expect(res.status).toBe(404);
+    expect(getByDocKeySpy).not.toHaveBeenCalled();
+    getByDocKeySpy.mockRestore();
   });
 
   it("session present, key present -> 200 image/jpeg, correct bytes", async () => {
-    const key = "streetview/0039.22.13/82.9.jpg";
+    const key = thumbnailKey("0039.22.13/82.9");
     const docUrl = await storage.put(key, jpegBytes);
 
     getSessionMock.mockResolvedValue({ user: appraiserA });

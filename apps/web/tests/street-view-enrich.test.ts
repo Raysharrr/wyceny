@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { enrichStreetView, metaKey, thumbnailKey } from "../src/app/actions/_street-view-enrich";
+import {
+  enrichStreetView,
+  ENRICH_BUDGET_MS,
+  isThumbnailKey,
+  metaKey,
+  thumbnailKey,
+} from "../src/app/actions/_street-view-enrich";
 import { StorageNotFoundError, type PortStorage } from "../src/ports/storage";
 import type { PortStreetView } from "../src/ports/street-view";
 import type { Candidate } from "../src/domain/sample-selection";
@@ -79,7 +85,7 @@ describe("enrichStreetView", () => {
     });
     expect(port.lookup).toHaveBeenCalledTimes(2);
     expect(port.thumbnail).toHaveBeenCalledTimes(2);
-    expect(meta).toEqual({ requested: 2, cached: 0, missing: 0, failed: 0 });
+    expect(meta).toEqual({ requested: 2, cached: 0, missing: 0, failed: 0, skipped: 0 });
     const e = snapshot["0039.22.13/82.1"];
     expect(e.panoId).toBe("P1");
     expect(e.captureDate).toBe("2023-07");
@@ -105,7 +111,7 @@ describe("enrichStreetView", () => {
     });
     expect(port2.lookup).not.toHaveBeenCalled();
     expect(port2.thumbnail).not.toHaveBeenCalled();
-    expect(meta).toEqual({ requested: 1, cached: 1, missing: 0, failed: 0 });
+    expect(meta).toEqual({ requested: 1, cached: 1, missing: 0, failed: 0, skipped: 0 });
     expect(snapshot["0039.22.13/82.1"].panoId).toBe("P1");
   });
   it("cache older than TTL (365 days) is refreshed", async () => {
@@ -184,5 +190,81 @@ describe("enrichStreetView", () => {
     expect(port.lookup).not.toHaveBeenCalled();
     expect(snapshot["0039.22.13/82.1"].panoId).toBe("OLD");
     expect(meta.cached).toBe(1);
+  });
+  it("a frozen entry with panoId === null counts as missing too, same as the sidecar branch", async () => {
+    const port = sv();
+    const storage = memStorage();
+    const existing = {
+      "0039.22.13/82.1": {
+        panoId: null,
+        captureDate: null,
+        thumbnailKey: null,
+        heading: null,
+        lat: 1,
+        lng: 2,
+      },
+    };
+    const { meta } = await enrichStreetView([mk("1")], {
+      streetView: port,
+      storage,
+      now: NOW,
+      existing,
+    });
+    expect(port.lookup).not.toHaveBeenCalled();
+    expect(meta).toEqual({ requested: 1, cached: 1, missing: 1, failed: 0, skipped: 0 });
+  });
+  it("a corrupt/malformed sidecar self-heals as a cache miss — re-fetches from Google, overwrites with a fresh valid sidecar (Important #2)", async () => {
+    const port = sv();
+    const b = "0039.22.13/82.1";
+    const storage = memStorage({ [metaKey(b)]: "{not json" });
+    const { snapshot, meta } = await enrichStreetView([mk("1")], {
+      streetView: port,
+      storage,
+      now: NOW,
+    });
+    expect(port.lookup).toHaveBeenCalledTimes(1);
+    expect(meta).toEqual({ requested: 1, cached: 0, missing: 0, failed: 0, skipped: 0 });
+    expect(snapshot[b].panoId).toBe("P1");
+    const stored = JSON.parse(String(storage.store.get(metaKey(b))));
+    expect(stored).toMatchObject({ panoId: "P1", fetchedAt: "2026-08-21T10:00:00.000Z" });
+  });
+  it("a wall-clock budget stops new buildings once ENRICH_BUDGET_MS elapses — some processed, the rest skipped, sample still returns (Important #1)", async () => {
+    const port = sv();
+    const storage = memStorage();
+    const start = new Date("2026-08-21T10:00:00Z");
+    const pastDeadline = new Date(start.getTime() + ENRICH_BUDGET_MS + 1);
+    // Fixed start time while the enrichment's own setup + the first wave of
+    // concurrent workers are still dispatching (all of that happens before
+    // any of their `readCache`/Google awaits actually suspend execution —
+    // JS runs the synchronous prefix of CONCURRENCY=6 workers in one go),
+    // then flips to a time past the deadline for every check after — proven
+    // empirically against this implementation rather than assumed.
+    let calls = 0;
+    const now = () => {
+      calls += 1;
+      return calls <= 8 ? start : pastDeadline;
+    };
+    const cands = Array.from({ length: 8 }, (_, i) => mk(String(i + 1)));
+    const { snapshot, meta } = await enrichStreetView(cands, { streetView: port, storage, now });
+    expect(meta.requested).toBe(8);
+    expect(meta.skipped).toBeGreaterThan(0);
+    expect(meta.skipped).toBeLessThan(8);
+    expect(meta.skipped + Object.keys(snapshot).length).toBe(8);
+    expect(port.lookup.mock.calls.length).toBe(Object.keys(snapshot).length);
+    expect(Object.values(meta).every((v) => typeof v === "number")).toBe(true);
+  });
+});
+
+describe("isThumbnailKey", () => {
+  it("accepts a key produced by thumbnailKey()", () => {
+    expect(isThumbnailKey(thumbnailKey("0039.22.13/82.1"))).toBe(true);
+  });
+  it("rejects a .json sidecar key, a slash-containing key, an inspection-photo key, and a key with a space", () => {
+    expect(isThumbnailKey("streetview-x.json")).toBe(false);
+    expect(isThumbnailKey("streetview/x.jpg")).toBe(false);
+    expect(isThumbnailKey("ogledziny-budynek-x-11111111-1111-4111-8111-111111111111.jpg")).toBe(
+      false,
+    );
+    expect(isThumbnailKey("streetview-a b.jpg")).toBe(false);
   });
 });

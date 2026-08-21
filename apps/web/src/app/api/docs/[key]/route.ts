@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/auth/session";
 import { storage, valuationRepository } from "@/app/valuations/_deps";
+import { isThumbnailKey } from "@/app/actions/_street-view-enrich";
 
 const TEXT_HEADERS = { "Content-Type": "text/plain; charset=utf-8" };
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -18,9 +19,6 @@ const PHOTO_HEADERS = { "Content-Type": "image/jpeg", "Content-Disposition": "in
  */
 const PHOTO_KEY_RX =
   /^ogledziny-(?:otoczenie|budynek|wnetrza)-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jpg$/;
-
-/** Slice 3: Street View thumbnails are keyed by EGiB building id (public register data, no valuation link) — session is the gate. */
-const STREETVIEW_KEY_RX = /^streetview\/[0-9A-Za-z._/-]+\.jpg$/;
 
 /**
  * Success-path Content-Type/-Disposition, derived from the key's file
@@ -59,7 +57,10 @@ function successHeaders(key: string): Record<string, string> {
  *
  * Street View thumbnails (Slice 3) are a THIRD branch, gated by session
  * only (like the photo branch) but with no ownership check — the key is
- * derived from a public EGiB building id, carries no valuation data.
+ * derived from a public EGiB building id, carries no valuation data. Keys
+ * are slash-free by construction (`isThumbnailKey`, next to `thumbnailKey`
+ * in `_street-view-enrich.ts`) so this `[key]` route segment never has to
+ * rely on `%2F` surviving decode — same convention as the photo keys above.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
@@ -85,7 +86,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ key
     }
   }
 
-  if (STREETVIEW_KEY_RX.test(key)) {
+  if (isThumbnailKey(key)) {
     try {
       const data = await storage.get(key);
       return new NextResponse(new Uint8Array(data), {

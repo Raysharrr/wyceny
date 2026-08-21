@@ -147,7 +147,11 @@ describe("getSampleProposal (v3)", () => {
     expect(
       vi.mocked(recordEvent).mock.calls.some((c) => c[0].event === "proposal.streetview"),
     ).toBe(false);
-    const meta = vi.mocked(recordEvent).mock.calls[0][0].meta as Record<string, unknown>;
+    const sampleCall = vi
+      .mocked(recordEvent)
+      .mock.calls.find((c) => c[0].event === "proposal.sample");
+    expect(sampleCall).toBeDefined();
+    const meta = sampleCall![0].meta as Record<string, unknown>;
     expect(meta).toMatchObject({
       geocoder: "subject",
       radiusUsedM: 500,
@@ -155,7 +159,7 @@ describe("getSampleProposal (v3)", () => {
       counts: expect.any(Object),
     });
     expect(JSON.stringify(meta)).not.toMatch(/Heweliusza|306401|355300/);
-    expect(vi.mocked(recordEvent).mock.calls[0][0].valuationId).toBe(valuation.id);
+    expect(sampleCall![0].valuationId).toBe(valuation.id);
   });
 
   it("without subjectMeta the worker geocodes (no point sent) and ranking is distance-only", async () => {

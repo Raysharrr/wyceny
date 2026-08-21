@@ -8,7 +8,7 @@
 export type StreetViewEntry = {
   panoId: string | null;
   captureDate: string | null; // "YYYY-MM" from Metadata API, null when no panorama
-  thumbnailKey: string | null; // PortStorage key "streetview/<buildingKey>.jpg"
+  thumbnailKey: string | null; // PortStorage key from `thumbnailKey()` (app/actions/_street-view-enrich.ts) — slash-free, e.g. "streetview-<buildingKey with / -> ~>.jpg"
   heading: number | null; // degrees 0–360
   lat: number;
   lng: number;
