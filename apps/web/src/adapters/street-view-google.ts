@@ -15,6 +15,14 @@ const THUMB_SIZE = "160x100";
  */
 export const METADATA_TIMEOUT_MS = 4000;
 export const STATIC_TIMEOUT_MS = 5000;
+/**
+ * The worst case above, as a number `_build-proposal.ts` can subtract from
+ * its own request budget (I1, final wave addendum): a job that starts one
+ * tick before `enrichStreetView`'s deadline can still run this long, so the
+ * CALLER must stop handing out new jobs `MAX_JOB_MS` before its own
+ * `REQUEST_BUDGET_MS` runs out, not just before `ENRICH_BUDGET_MS` does.
+ */
+export const MAX_JOB_MS = 2 * METADATA_TIMEOUT_MS + STATIC_TIMEOUT_MS;
 
 /**
  * Google Street View Metadata (free, unlimited) + Static (10 000/month free,

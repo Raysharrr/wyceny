@@ -5,6 +5,7 @@ import {
   ENRICH_BUDGET_MS,
   REQUEST_BUDGET_MS,
 } from "@/app/actions/_street-view-enrich";
+import { MAX_JOB_MS } from "@/adapters/street-view-google";
 import { fingerprint } from "@/lib/fingerprint";
 import { currentTraceId } from "@/lib/trace";
 import { selectSample } from "@/domain/sample-selection";
@@ -149,9 +150,19 @@ export async function buildProposal(
 
   let streetViewSnapshot: StreetViewSnapshot = valuation.inputs?.streetView ?? {};
   if (streetView) {
+    // I1 (final wave addendum): a job `enrichStreetView` starts one tick
+    // before ITS OWN deadline can still run up to `MAX_JOB_MS` (≈13 s —
+    // worst case two Metadata calls + one Static call), so capping only at
+    // `REQUEST_BUDGET_MS - elapsed` still lets the LAST job overshoot this
+    // whole Server Action's `maxDuration`. Reserve `MAX_JOB_MS` off the
+    // request-budget term so no job starts after ~`REQUEST_BUDGET_MS -
+    // MAX_JOB_MS` (55000 - 13000 = 42000 ms) of request time; the
+    // `ENRICH_BUDGET_MS` cap (enrichment's fixed slice on a FAST worker
+    // response) is untouched — it stays the binding term in the common
+    // case, where this subtraction changes nothing.
     const budgetMs = Math.min(
       ENRICH_BUDGET_MS,
-      Math.max(0, REQUEST_BUDGET_MS - (Date.now() - startedAt)),
+      Math.max(0, REQUEST_BUDGET_MS - MAX_JOB_MS - (Date.now() - startedAt)),
     );
     const enriched = await enrichStreetView([...selection.proposed, ...selection.alternates], {
       streetView,

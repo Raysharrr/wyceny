@@ -120,7 +120,14 @@ export async function enrichStreetView(
   }
   const snapshot: StreetViewSnapshot = {};
   const meta = { requested: byBuilding.size, cached: 0, missing: 0, failed: 0, skipped: 0 };
-  const budgetMs = deps.budgetMs ?? ENRICH_BUDGET_MS;
+  // A non-finite override (NaN/Infinity from a caller's own bad arithmetic,
+  // I1 final wave addendum) is treated as NO budget at all rather than
+  // propagating into the `deadline`/`Promise.all` machinery below — it
+  // falls straight into the `< MIN_BUDGET_MS` branch, so every building is
+  // `skipped` (frozen entries still returned) instead of computing a
+  // deadline that is never reached, or is already in the past either way.
+  const rawBudgetMs = deps.budgetMs ?? ENRICH_BUDGET_MS;
+  const budgetMs = Number.isFinite(rawBudgetMs) ? rawBudgetMs : 0;
 
   /** Frozen `existing` entries cost nothing (an object lookup) — applied both on the fast path below and when the budget gate skips everything else. */
   function applyFrozen(b: string): boolean {
@@ -241,7 +248,11 @@ export async function enrichStreetView(
     Array.from({ length: CONCURRENCY }, async () => {
       for (let job = queue.shift(); job; job = queue.shift()) {
         if (deps.now().getTime() > deadline) {
-          meta.skipped += 1;
+          // M2 (final wave addendum): a building the deadline cut off still
+          // gets its FROZEN entry when `existing` has one — same as the
+          // `< MIN_BUDGET_MS` branch above — instead of being counted
+          // `skipped` outright and losing an entry it already had.
+          if (!applyFrozen(job[0])) meta.skipped += 1;
           continue;
         }
         await one(job);

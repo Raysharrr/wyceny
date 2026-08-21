@@ -296,6 +296,91 @@ describe("enrichStreetView", () => {
     expect(port.thumbnail).not.toHaveBeenCalled();
     expect(storage.store.size).toBe(0);
   });
+  it("a non-finite budgetMs (NaN/Infinity — a bad caller computation) is treated as zero: whole pool skipped, frozen entries still returned (I1, final wave addendum)", async () => {
+    const port = sv();
+    const storage = memStorage();
+    const existing = {
+      "0039.22.13/82.1": {
+        panoId: "OLD",
+        captureDate: "2020-01",
+        thumbnailKey: thumbnailKey("0039.22.13/82.1"),
+        heading: 10,
+        lat: 1,
+        lng: 2,
+      },
+    };
+    const cands = [mk("1"), mk("2")];
+    const { snapshot, meta } = await enrichStreetView(cands, {
+      streetView: port,
+      storage,
+      now: NOW,
+      existing,
+      budgetMs: NaN,
+    });
+    expect(meta).toEqual({ requested: 2, cached: 1, missing: 0, failed: 0, skipped: 1 });
+    expect(snapshot["0039.22.13/82.1"].panoId).toBe("OLD");
+    expect(port.lookup).not.toHaveBeenCalled();
+    expect(port.thumbnail).not.toHaveBeenCalled();
+  });
+  it("with an EXPLICIT budgetMs (the shape `_build-proposal.ts`'s I1 formula computes, not just the ENRICH_BUDGET_MS default), the gate closing before the SECOND wave skips exactly that wave — the first CONCURRENCY workers still complete", async () => {
+    const port = sv();
+    const storage = memStorage();
+    const start = new Date("2026-08-21T10:00:00Z");
+    const pastDeadline = new Date(start.getTime() + 4000 + 1);
+    // Same proven timing as the ENRICH_BUDGET_MS wall-clock test above (2
+    // setup calls + 6 synchronous first-wave deadline checks = 8 before any
+    // worker's first await actually suspends).
+    let calls = 0;
+    const now = () => {
+      calls += 1;
+      return calls <= 8 ? start : pastDeadline;
+    };
+    const cands = Array.from({ length: 12 }, (_, i) => mk(String(i + 1)));
+    const { snapshot, meta } = await enrichStreetView(cands, {
+      streetView: port,
+      storage,
+      now,
+      budgetMs: 4000,
+    });
+    expect(meta.requested).toBe(12);
+    expect(Object.keys(snapshot).length).toBe(6);
+    expect(meta.skipped).toBe(6);
+  });
+  it("a building skipped at the deadline still returns its FROZEN entry when `existing` has one — cached, not skipped (M2, final wave addendum)", async () => {
+    const port = sv();
+    const storage = memStorage();
+    const start = new Date("2026-08-21T10:00:00Z");
+    const pastDeadline = new Date(start.getTime() + 4000 + 1);
+    let calls = 0;
+    const now = () => {
+      calls += 1;
+      return calls <= 8 ? start : pastDeadline;
+    };
+    // Building "7" is the FIRST job of the second (deadline-cut) wave — the
+    // exact case that used to fall straight into `skipped` even though a
+    // frozen entry for it was sitting right there in `existing`.
+    const existing = {
+      "0039.22.13/82.7": {
+        panoId: "OLD7",
+        captureDate: "2020-01",
+        thumbnailKey: thumbnailKey("0039.22.13/82.7"),
+        heading: 10,
+        lat: 1,
+        lng: 2,
+      },
+    };
+    const cands = Array.from({ length: 12 }, (_, i) => mk(String(i + 1)));
+    const { snapshot, meta } = await enrichStreetView(cands, {
+      streetView: port,
+      storage,
+      now,
+      budgetMs: 4000,
+      existing,
+    });
+    expect(snapshot["0039.22.13/82.7"].panoId).toBe("OLD7");
+    expect(meta).toEqual({ requested: 12, cached: 1, missing: 0, failed: 0, skipped: 5 });
+    expect(Object.keys(snapshot).length).toBe(7); // 6 first-wave + the 1 frozen second-wave
+  });
   it("thumbnail framing: storeys map wins over the candidate's own floor (7 storeys → pitch 24)", async () => {
     const port = sv();
     const storage = memStorage();
