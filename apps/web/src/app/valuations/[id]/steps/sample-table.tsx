@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Camera, ChevronDown, ChevronRight } from "lucide-react";
+import { Camera, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -13,18 +12,28 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { buildingKey, candidateKey, type Candidate } from "@/domain/sample-selection";
-import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
+import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 import { padObreb } from "@/domain/egib-id";
 import { obrebName } from "@/domain/obreb-name";
 import { rowBadges } from "./sample-badges";
 
 export type SampleTableProps = {
+  /** The rows THIS table renders — one section's worth (proposed or alternate), already resolved by the caller via `effectiveSelection`. */
+  rows: Candidate[];
+  /** Which section these rows belong to — drives the checkbox's checked state and aria-label. */
+  kind: "proposed" | "alternate";
+  /** Shared keyboard order across BOTH sections (proposed ∪ visible alternates) — owned by `SampleSections`, not derived locally. */
+  allKeys: string[];
+  reviewedKeys: ReadonlySet<string>;
+  /** Only `flags` and `params.subjectEgib` are read off this — row membership comes from `rows`, not from re-deriving `effectiveSelection` here. */
   selection: SampleSelectionSnapshot;
   streetView: StreetViewSnapshot | null;
   streetViewEnabled: boolean;
   selectedKey: string | null;
   onSelect(key: string | null): void;
+  /** The "w próbie" checkbox. proposed row unchecked (`inSample=false`) = a request to remove it from the sample; alternate row checked (`inSample=true`) = a request to add it. */
+  onToggleInSample(key: string, inSample: boolean): void;
 };
 
 const pln = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -71,56 +80,55 @@ function Thumb({
 }
 
 /**
- * Step-3 candidate review (spec §Krok 3 UI, layer 1): one row per candidate —
- * facade thumbnail, date, obręb, distance, area, price, floor, badges. Shows
- * the EFFECTIVE lists (domain result + manual overlay, Task 1). Alternates
- * collapse behind one button. Keyboard: Enter/Space select, ↑/↓ move.
+ * Step-3 candidate row list, ONE section at a time (spec §Krok 3 UI, layer
+ * 1 — Slice 3c, Task 3): facade thumbnail, reviewed mark, date, obręb,
+ * distance, area, price, floor, badges, and a "w próbie" checkbox. Which
+ * rows to show (`rows`) and the shared keyboard order across BOTH sections
+ * (`allKeys`) are computed by the caller
+ * ({@link import("./sample-sections").SampleSections}) — this component
+ * neither knows about `effectiveSelection` nor owns the "Alternatywy"
+ * expand/collapse toggle (moved to `SampleSections`'s section header).
+ * Keyboard: Enter/Space select, ↑/↓ move along `allKeys`, following DOM
+ * focus via `data-key` (not `nextElementSibling`/`previousElementSibling` —
+ * those can't cross the boundary between the two sections' separate
+ * `<table>`s).
  */
 export function SampleTable({
+  rows,
+  kind,
+  allKeys,
+  reviewedKeys,
   selection,
   streetView,
   streetViewEnabled,
   selectedKey,
   onSelect,
+  onToggleInSample,
 }: SampleTableProps) {
-  const [showAlternates, setShowAlternates] = useState(false);
-  const eff = effectiveSelection(selection);
   const subjectEgib = selection.params.subjectEgib;
-  const visible = showAlternates ? [...eff.proposed, ...eff.alternates] : eff.proposed;
-  const keys = visible.map(candidateKey);
 
   const move = (from: string, delta: 1 | -1) => {
-    const i = keys.indexOf(from);
-    const next = keys[i + delta];
-    if (next) onSelect(next);
+    const i = allKeys.indexOf(from);
+    const next = allKeys[i + delta];
+    if (!next) return;
+    onSelect(next);
+    document.querySelector<HTMLElement>(`[data-key="${next}"]`)?.focus();
   };
 
-  // Collapsing "Alternatywy" hides those rows again — if the panel is open
-  // on one of them, leaving `selectedKey` pointed at a now-invisible row
-  // would strand the panel (and let a stale ↑/↓ jump back to row 0, since
-  // `keys` above is recomputed from the now-collapsed `visible` list).
-  // Closing the panel (onSelect(null)) is simpler than trying to keep it
-  // open on a hidden row.
-  const toggleAlternates = () => {
-    const next = !showAlternates;
-    setShowAlternates(next);
-    if (!next && selectedKey && eff.alternates.some((c) => candidateKey(c) === selectedKey)) {
-      onSelect(null);
-    }
-  };
-
-  const row = (c: Candidate, alternate: boolean) => {
+  const row = (c: Candidate) => {
     const key = candidateKey(c);
     const selected = key === selectedKey;
     const name = c.egib ? obrebName(c.egib) : null;
+    const inSample = kind === "proposed";
     return (
       <TableRow
         key={key}
+        data-key={key}
         tabIndex={0}
         aria-selected={selected}
         data-state={selected ? "selected" : undefined}
-        data-testid={alternate ? "alternate-row" : "proposed-row"}
-        className={`cursor-pointer ${alternate ? "text-muted-foreground" : ""}`}
+        data-testid={kind === "alternate" ? "alternate-row" : "proposed-row"}
+        className={`cursor-pointer ${kind === "alternate" ? "text-muted-foreground" : ""}`}
         onClick={() => onSelect(key)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -131,20 +139,37 @@ export function SampleTable({
           // on — a row can hold DOM focus without being `selectedKey` (e.g.
           // after Tab), and repeated arrow presses on a row whose selection
           // never changed (a controlled prop, updated by the parent) must
-          // still walk forward from where the selection actually is. Move
-          // DOM focus along with it — a `<tr>` never receives it on its own.
+          // still walk forward from where the selection actually is.
           if (e.key === "ArrowDown") {
             e.preventDefault();
             move(selectedKey ?? key, 1);
-            (e.currentTarget.nextElementSibling as HTMLElement | null)?.focus();
           }
           if (e.key === "ArrowUp") {
             e.preventDefault();
             move(selectedKey ?? key, -1);
-            (e.currentTarget.previousElementSibling as HTMLElement | null)?.focus();
           }
         }}
       >
+        <TableCell>
+          <Checkbox
+            checked={inSample}
+            aria-label={inSample ? "Usuń z próby" : "Dodaj do próby"}
+            onCheckedChange={(v) => onToggleInSample(key, v === true)}
+            onClick={(e) => e.stopPropagation()}
+            // Space/Enter on the checkbox otherwise bubbles to this row's own
+            // `onKeyDown` above (React keydown events bubble through the
+            // native checkbox `<button>`), which would ALSO select the row —
+            // stopping propagation here keeps the checkbox and the row as
+            // two independent actions, mouse or keyboard (RTL evidence: see
+            // rtl-sample-table.test.tsx's "does NOT select the row" case).
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        </TableCell>
+        <TableCell>
+          {reviewedKeys.has(key) ? (
+            <Check className="size-4 text-primary" aria-label="przejrzane" />
+          ) : null}
+        </TableCell>
         <TableCell>
           <Thumb c={c} streetView={streetView} enabled={streetViewEnabled} />
         </TableCell>
@@ -177,38 +202,22 @@ export function SampleTable({
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Fasada</TableHead>
-            <TableHead>Data</TableHead>
-            <TableHead>Obręb</TableHead>
-            <TableHead className="text-right">Odległość</TableHead>
-            <TableHead className="text-right">Pow. (m²)</TableHead>
-            <TableHead className="text-right">Cena (zł/m²)</TableHead>
-            <TableHead className="text-center">Piętro</TableHead>
-            <TableHead>Odznaki</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {eff.proposed.map((c) => row(c, false))}
-          {showAlternates ? eff.alternates.map((c) => row(c, true)) : null}
-        </TableBody>
-      </Table>
-      {eff.alternates.length ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="w-fit"
-          aria-expanded={showAlternates}
-          onClick={toggleAlternates}
-        >
-          {showAlternates ? <ChevronDown /> : <ChevronRight />} Alternatywy ({eff.alternates.length}
-          )
-        </Button>
-      ) : null}
-    </div>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead aria-label="w próbie">W próbie</TableHead>
+          <TableHead aria-label="przejrzane">✓</TableHead>
+          <TableHead>Fasada</TableHead>
+          <TableHead>Data</TableHead>
+          <TableHead>Obręb</TableHead>
+          <TableHead className="text-right">Odległość</TableHead>
+          <TableHead className="text-right">Pow. (m²)</TableHead>
+          <TableHead className="text-right">Cena (zł/m²)</TableHead>
+          <TableHead className="text-center">Piętro</TableHead>
+          <TableHead>Odznaki</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>{rows.map(row)}</TableBody>
+    </Table>
   );
 }

@@ -863,10 +863,12 @@ describe("StepSample — manual rejection flow", () => {
       />,
     );
 
-    // Alternates collapsed by default: only the 3 proposed rows render.
-    expect(screen.getAllByRole("row").slice(1)).toHaveLength(3);
+    // "W próbie" has 3 rows regardless of the "Alternatywy" section's own
+    // (unrelated) default-expand state — scoped by testid, not a raw row
+    // count, since Slice 3c splits the candidate table into two sections.
+    expect(screen.getAllByTestId("proposed-row")).toHaveLength(3);
 
-    await user.click(screen.getAllByRole("row").slice(1)[0]);
+    await user.click(screen.getAllByTestId("proposed-row")[0]);
     await waitFor(() => expect(screen.getByText("Propozycja 1 z 5")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
@@ -874,7 +876,7 @@ describe("StepSample — manual rejection flow", () => {
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
 
     // proposed stays at 3 — the first former alternate backfilled the slot.
-    await waitFor(() => expect(screen.getAllByRole("row").slice(1)).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByTestId("proposed-row")).toHaveLength(3));
     expect(screen.getByRole("button", { name: /Odrzucone \(1\)/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
@@ -943,10 +945,9 @@ describe("StepSample — manual rejection flow", () => {
       />,
     );
 
-    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
-    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
-    // Reject the FIRST proposed row (index 0 of 5 total).
-    await user.click(candidateRows()[0]);
+    // Reject the FIRST proposed row ("W próbie" section, testid-scoped —
+    // Slice 3c splits the candidate table into two sections).
+    await user.click(screen.getAllByTestId("proposed-row")[0]);
     await waitFor(() => expect(screen.getByText("Propozycja 1 z 5")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
@@ -1036,11 +1037,10 @@ describe("StepSample — manual rejection flow", () => {
     await user.type(priceA, "77777");
     expect(priceA.value).toBe("77777");
 
-    // Reject row B — scoped to the CANDIDATE table (distinct from the
-    // now-expanded editable table, which also has role="row" elements).
-    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
-    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
-    await user.click(candidateRows()[1]);
+    // Reject row B — scoped by testid to the "W próbie" section (distinct
+    // from both the now-expanded editable table AND the "Alternatywy"
+    // section, which also has role="row" elements).
+    await user.click(screen.getAllByTestId("proposed-row")[1]);
     await waitFor(() => expect(screen.getByText("Propozycja 2 z 5")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
@@ -1488,12 +1488,12 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
       />,
     );
 
-    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
-    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
-
     // Reject the THIRD candidate ("other") — lokalA/lokalB (the shared act)
     // must BOTH keep their own price/area, never collapse onto one of them.
-    await user.click(candidateRows()[2]);
+    // testid-scoped to "W próbie" (Slice 3c splits the candidate table into
+    // two sections) — proposed stays at 3 rows both before and after the
+    // reject below, so index 2 keeps meaning "the third proposed row".
+    await user.click(screen.getAllByTestId("proposed-row")[2]);
     await waitFor(() => expect(screen.getByText("Propozycja 3 z 4")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
@@ -1513,7 +1513,7 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     await user.clear(priceA);
     await user.type(priceA, "99999");
 
-    await user.click(candidateRows()[2]); // the backfilled candidate now occupies slot 3
+    await user.click(screen.getAllByTestId("proposed-row")[2]); // the backfilled candidate now occupies slot 3
     await waitFor(() => expect(screen.getByText("Propozycja 3 z 3")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));

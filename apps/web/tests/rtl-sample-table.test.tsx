@@ -8,7 +8,17 @@ import { SampleTable } from "@/app/valuations/[id]/steps/sample-table";
 import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import { candidateKey, type Candidate } from "@/domain/sample-selection";
 
+// jsdom ships no ResizeObserver; Radix's Checkbox mounts a hidden
+// "bubble input" (native mirror, for form integration) whenever it sits
+// inside a `<form>`, and that sizing effect touches ResizeObserver on mount.
+// Mirrors tests/rtl-step-calculation.test.tsx.
 afterEach(cleanup);
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
+
 let n = 0;
 function cand(over: Partial<Candidate> = {}): Candidate {
   n += 1;
@@ -75,23 +85,22 @@ function snap(
   };
 }
 
+const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
+const noop = () => {};
+
 describe("SampleTable", () => {
-  it("renders proposed rows with thumbnail, obręb label, distance, badges; alternates collapsed behind a button", async () => {
+  it("renders proposed rows with thumbnail, obręb label, distance, badges", () => {
     const p = [cand(), cand()];
-    const a = [cand(), cand(), cand()];
     const key = `0039.22.13/82.${p[0].egib!.budynek}`;
-    // Real selectSample always fills `proposed` to the cap (12) first, so the
-    // domain's refill-from-alternates (applyManualRejections, Task 1) never
-    // fires with room to spare. This tiny fixture is under the cap on
-    // purpose (for a readable assertion) — flagging the alternates as
-    // price_outlier keeps them demoted (ADR-015 rules 5/7), same as the
-    // "never promotes a flagged alternate" case in sample-manual.test.ts,
-    // so they stay alternates instead of being silently promoted.
-    const flags = Object.fromEntries(a.map((c) => [candidateKey(c), ["price_outlier" as const]]));
+    const flags = { [candidateKey(p[1])]: [] };
     const key1 = thumbKey(key);
     render(
       <SampleTable
-        selection={snap(p, a, { flags })}
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
+        selection={snap(p, [], { flags })}
         streetView={{
           [key]: {
             panoId: "P",
@@ -104,7 +113,8 @@ describe("SampleTable", () => {
         }}
         streetViewEnabled
         selectedKey={null}
-        onSelect={() => {}}
+        onSelect={noop}
+        onToggleInSample={noop}
       />,
     );
     const rows = screen.getAllByRole("row").slice(1);
@@ -116,14 +126,17 @@ describe("SampleTable", () => {
     expect(within(rows[0]).getByText("0039")).toBeInTheDocument();
     expect(within(rows[0]).getByText("ten sam budynek")).toBeInTheDocument();
     expect(within(rows[0]).getByText("10 m")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(3\)/ }));
-    expect(screen.getAllByRole("row").slice(1)).toHaveLength(5);
   });
+
   it("no panorama → placeholder text (M3, final wave addendum: no capture-date suffix, unreachable — panoId null implies captureDate null); streetView disabled → no img at all", () => {
     const p = [cand()];
     const key = `0039.22.13/82.${p[0].egib!.budynek}`;
     const { rerender } = render(
       <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
         selection={snap(p, [])}
         streetView={{
           [key]: {
@@ -137,47 +150,64 @@ describe("SampleTable", () => {
         }}
         streetViewEnabled
         selectedKey={null}
-        onSelect={() => {}}
+        onSelect={noop}
+        onToggleInSample={noop}
       />,
     );
     expect(screen.getByText(/brak zdjęcia ulicy/)).toBeInTheDocument();
     rerender(
       <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
         selection={snap(p, [])}
         streetView={null}
         streetViewEnabled={false}
         selectedKey={null}
-        onSelect={() => {}}
+        onSelect={noop}
+        onToggleInSample={noop}
       />,
     );
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.queryByText(/brak zdjęcia ulicy/)).toBeNull();
   });
+
   it("NO street-view entry at all for the building (enrichment skipped/failed) → 'brak miniaturki', not a blank caption (final wave B11)", () => {
     const p = [cand()];
     render(
       <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
         selection={snap(p, [])}
         streetView={{}}
         streetViewEnabled
         selectedKey={null}
-        onSelect={() => {}}
+        onSelect={noop}
+        onToggleInSample={noop}
       />,
     );
     expect(screen.getByText("brak miniaturki")).toBeInTheDocument();
     expect(screen.queryByText(/brak zdjęcia ulicy/)).toBeNull();
   });
+
   it("click selects a row; the parent re-rendering with the new selectedKey marks it data-state=selected", async () => {
     const onSelect = vi.fn();
     const p = [cand(), cand(), cand()];
-    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
     const { rerender } = render(
       <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
         selection={snap(p, [])}
         streetView={null}
         streetViewEnabled={false}
         selectedKey={null}
         onSelect={onSelect}
+        onToggleInSample={noop}
       />,
     );
     const rows = screen.getAllByRole("row").slice(1);
@@ -185,28 +215,37 @@ describe("SampleTable", () => {
     expect(onSelect).toHaveBeenLastCalledWith(keyOf(p[1]));
     rerender(
       <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
         selection={snap(p, [])}
         streetView={null}
         streetViewEnabled={false}
         selectedKey={keyOf(p[1])}
         onSelect={onSelect}
+        onToggleInSample={noop}
       />,
     );
     expect(screen.getAllByRole("row").slice(1)[1]).toHaveAttribute("data-state", "selected");
   });
 
-  it("arrow keys walk from the CURRENT selection, not the row the keydown fired on, and move DOM focus with them", async () => {
+  it("arrow keys walk from the CURRENT selection (via allKeys), not the row the keydown fired on, and move DOM focus with them", async () => {
     const onSelect = vi.fn();
     const p = [cand(), cand(), cand(), cand()];
-    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
     const rowsAfterHeader = () => screen.getAllByRole("row").slice(1);
     const { rerender } = render(
       <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
         selection={snap(p, [])}
         streetView={null}
         streetViewEnabled={false}
         selectedKey={keyOf(p[1])}
         onSelect={onSelect}
+        onToggleInSample={noop}
       />,
     );
 
@@ -221,11 +260,16 @@ describe("SampleTable", () => {
     // row that received the FIRST keydown (the regression this locks in).
     rerender(
       <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
         selection={snap(p, [])}
         streetView={null}
         streetViewEnabled={false}
         selectedKey={keyOf(p[2])}
         onSelect={onSelect}
+        onToggleInSample={noop}
       />,
     );
     await userEvent.keyboard("{ArrowDown}");
@@ -233,62 +277,62 @@ describe("SampleTable", () => {
 
     rerender(
       <SampleTable
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
         selection={snap(p, [])}
         streetView={null}
         streetViewEnabled={false}
         selectedKey={keyOf(p[3])}
         onSelect={onSelect}
+        onToggleInSample={noop}
       />,
     );
     await userEvent.keyboard("{ArrowUp}");
     expect(onSelect).toHaveBeenLastCalledWith(keyOf(p[2]));
   });
 
-  it("arrow down at the end of the visible list is a no-op until alternates are expanded, then selects the first alternate", async () => {
+  it("arrow down at the end of allKeys is a no-op (SampleSections owns crossing into alternates)", async () => {
     const onSelect = vi.fn();
     const p = [cand(), cand()];
-    const a = [cand()];
-    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
-    // Same fixpoint quirk as the first test above: with proposed.length(2)
-    // under proposedN(12), an unflagged alternate is silently promoted into
-    // `proposed` by the domain overlay — flag it demoted so it stays an
-    // alternate and the "Alternatywy" button actually renders.
-    const flags = { [candidateKey(a[0])]: ["price_outlier" as const] };
     render(
       <SampleTable
-        selection={snap(p, a, { flags })}
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
+        selection={snap(p, [])}
         streetView={null}
         streetViewEnabled={false}
         selectedKey={null}
         onSelect={onSelect}
+        onToggleInSample={noop}
       />,
     );
-    const lastProposedRow = screen.getAllByRole("row").slice(1).at(-1)!;
-    lastProposedRow.focus();
+    const lastRow = screen.getAllByRole("row").slice(1).at(-1)!;
+    lastRow.focus();
     await userEvent.keyboard("{ArrowDown}");
     expect(onSelect).not.toHaveBeenCalled();
-
-    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
-    // Expanding moved DOM focus to the button — the last proposed row is
-    // still the same DOM node (stable `candidateKey`), refocus it directly.
-    screen.getAllByRole("row").slice(1)[1].focus();
-    await userEvent.keyboard("{ArrowDown}");
-    expect(onSelect).toHaveBeenLastCalledWith(keyOf(a[0]));
   });
 
   it("Enter and Space select the focused row without submitting the enclosing form", async () => {
     const onSelect = vi.fn();
     const submitSpy = vi.fn((e: FormEvent) => e.preventDefault());
     const p = [cand(), cand()];
-    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
     render(
       <form onSubmit={submitSpy}>
         <SampleTable
+          rows={p}
+          kind="proposed"
+          allKeys={p.map(keyOf)}
+          reviewedKeys={new Set()}
           selection={snap(p, [])}
           streetView={null}
           streetViewEnabled={false}
           selectedKey={null}
           onSelect={onSelect}
+          onToggleInSample={noop}
         />
       </form>,
     );
@@ -300,85 +344,96 @@ describe("SampleTable", () => {
     expect(onSelect).toHaveBeenLastCalledWith(keyOf(p[0]));
     expect(submitSpy).not.toHaveBeenCalled();
   });
-  it("manual rejections are applied: a rejected proposed row disappears and the first alternate takes its place", () => {
-    const p = [cand(), cand()];
-    const a = [cand()];
-    const s = snap(p, a, {
-      manualRejections: [
-        {
-          transactionId: p[0].transactionId,
-          lokalId: p[0].lokalId,
-          reason: "building_older",
-          at: "2026-08-21T10:00:00Z",
-        },
-      ],
-    });
-    render(
-      <SampleTable
-        selection={s}
-        streetView={null}
-        streetViewEnabled={false}
-        selectedKey={null}
-        onSelect={() => {}}
-      />,
-    );
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(2);
-    expect(within(rows[1]).getByText(`${a[0].distanceM} m`)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Alternatywy/ })).toBeNull();
-  });
 
-  it("collapsing alternates clears the selection (onSelect(null)) when the selected row was an alternate no longer visible", async () => {
-    const onSelect = vi.fn();
-    const p = [cand(), cand()];
+  it("checkbox reflects `kind`: checked for proposed rows, unchecked for alternate rows, with the matching aria-label", () => {
+    const p = [cand()];
     const a = [cand()];
-    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
-    const flags = { [candidateKey(a[0])]: ["price_outlier" as const] };
     const { rerender } = render(
       <SampleTable
-        selection={snap(p, a, { flags })}
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set()}
+        selection={snap(p, [])}
         streetView={null}
         streetViewEnabled={false}
         selectedKey={null}
-        onSelect={onSelect}
+        onSelect={noop}
+        onToggleInSample={noop}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(rows).toHaveLength(3);
-    await userEvent.click(rows[2]);
-    expect(onSelect).toHaveBeenLastCalledWith(keyOf(a[0]));
+    const proposedCheckbox = screen.getByRole("checkbox", { name: "Usuń z próby" });
+    expect(proposedCheckbox).toBeChecked();
+    expect(proposedCheckbox).toHaveAttribute("type", "button");
 
     rerender(
       <SampleTable
-        selection={snap(p, a, { flags })}
+        rows={a}
+        kind="alternate"
+        allKeys={a.map(keyOf)}
+        reviewedKeys={new Set()}
+        selection={snap([], a)}
         streetView={null}
         streetViewEnabled={false}
-        selectedKey={keyOf(a[0])}
-        onSelect={onSelect}
+        selectedKey={null}
+        onSelect={noop}
+        onToggleInSample={noop}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
-    expect(onSelect).toHaveBeenLastCalledWith(null);
+    const alternateCheckbox = screen.getByRole("checkbox", { name: "Dodaj do próby" });
+    expect(alternateCheckbox).not.toBeChecked();
   });
 
-  it("collapsing alternates leaves a still-visible (proposed) selection untouched", async () => {
+  it("clicking a row's checkbox calls onToggleInSample and does NOT select the row (mouse) or submit the form (keyboard)", async () => {
     const onSelect = vi.fn();
-    const p = [cand(), cand()];
+    const onToggleInSample = vi.fn();
+    const submitSpy = vi.fn((e: FormEvent) => e.preventDefault());
     const a = [cand()];
-    const keyOf = (c: Candidate) => `${c.transactionId}|${c.lokalId}`;
-    const flags = { [candidateKey(a[0])]: ["price_outlier" as const] };
+    render(
+      <form onSubmit={submitSpy}>
+        <SampleTable
+          rows={a}
+          kind="alternate"
+          allKeys={a.map(keyOf)}
+          reviewedKeys={new Set()}
+          selection={snap([], a)}
+          streetView={null}
+          streetViewEnabled={false}
+          selectedKey={null}
+          onSelect={onSelect}
+          onToggleInSample={onToggleInSample}
+        />
+      </form>,
+    );
+    const checkbox = screen.getByRole("checkbox", { name: "Dodaj do próby" });
+    await userEvent.click(checkbox);
+    expect(onToggleInSample).toHaveBeenCalledWith(keyOf(a[0]), true);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    checkbox.focus();
+    await userEvent.keyboard("[Space]");
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(submitSpy).not.toHaveBeenCalled();
+  });
+
+  it("shows a ✓ (aria-label „przejrzane”) only for rows in reviewedKeys", () => {
+    const p = [cand(), cand()];
     render(
       <SampleTable
-        selection={snap(p, a, { flags })}
+        rows={p}
+        kind="proposed"
+        allKeys={p.map(keyOf)}
+        reviewedKeys={new Set([keyOf(p[1])])}
+        selection={snap(p, [])}
         streetView={null}
         streetViewEnabled={false}
-        selectedKey={keyOf(p[0])}
-        onSelect={onSelect}
+        selectedKey={null}
+        onSelect={noop}
+        onToggleInSample={noop}
       />,
     );
-    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
-    await userEvent.click(screen.getByRole("button", { name: /Alternatywy \(1\)/ }));
-    expect(onSelect).not.toHaveBeenCalled();
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(within(rows[0]).queryByLabelText("przejrzane")).toBeNull();
+    expect(within(rows[1]).getByLabelText("przejrzane")).toBeInTheDocument();
   });
 });

@@ -88,7 +88,8 @@ export const HELP_PAGES: HelpPage[] = [
    *
    * Źródła do sprawdzenia przy każdej zmianie kroku 3:
    *   apps/web/src/app/valuations/[id]/steps/sample-badges.ts        etykiety i warunki odznak (ten sam budynek / ta sama działka / inny obręb / p. N / >5 kond. / rynek? / prawdopodobnie deweloperska / cena odstająca)
-   *   apps/web/src/app/valuations/[id]/steps/sample-table.tsx        tabela propozycji, miniaturki, sekcja „Alternatywy (N)"
+   *   apps/web/src/app/valuations/[id]/steps/sample-sections.tsx     sekcje „W próbie (N)" / „Alternatywy (M)", stan zwinięcia
+   *   apps/web/src/app/valuations/[id]/steps/sample-table.tsx        tabela wierszy jednej sekcji, miniaturki, checkbox „w próbie", kolumna ✓
    *   apps/web/src/app/valuations/[id]/steps/sample-panel.tsx        panel boczny: zakładki Ulica / Mapa / Ortofoto, „Zostaw", „Odrzuć"
    *   apps/web/src/app/valuations/[id]/steps/sample-rejected.tsx     sekcja „Odrzucone (N)", grupowanie po powodzie, „Przywróć"
    *   apps/web/src/app/valuations/[id]/steps/rejected-groups.ts      REJECT_REASON_LABELS — etykiety powodów higieny/pasma w sekcji „Odrzucone"
