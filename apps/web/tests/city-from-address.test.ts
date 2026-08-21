@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeKcs, type KcsInput } from "../src/domain/kcs";
-import { buildDocumentModel, cityFromAddress } from "../src/domain/document-model";
+import { cityFromAddress } from "../src/domain/document-model";
 
 /**
  * Staging feedback 2026-08-20 (Łukasz): every row of the operat's Table 1 read
@@ -38,36 +37,13 @@ describe("cityFromAddress — both comma orders, postal code, no comma", () => {
   });
 });
 
-describe("Table 1 of the operat never shows the subject's street as a city", () => {
-  it("combobox-format address puts the city, not the street, in every comparable row", () => {
-    const inputs: KcsInput = {
-      area: 50,
-      comparables: Array.from({ length: 12 }, (_, i) => ({
-        pricePerM2: 10_000 + i * 100,
-        date: `2026-06-1${i % 10}`,
-        area: 45 + i,
-        source: "rcn" as const,
-        transactionId: `rcn-tx-${i}`,
-        status: "confirmed" as const,
-      })),
-      features: [{ name: "standard wykończenia", weight: 1, rating: "lepsza" as const }],
-      sampleMeta: null,
-      provenance: null,
-    };
-    const model = buildDocumentModel({
-      address: "Poznań, Heweliusza 3/43",
-      area: 50,
-      purpose: "sprzedaz",
-      kwNumber: "KW-TEST-1",
-      client: "p. Test",
-      inspectionDate: "2026-08-01",
-      approvedAt: new Date("2026-08-20T10:00:00Z"),
-      inputs,
-      kcs: computeKcs(inputs),
-      amountInWords: "sto tysięcy złotych zero groszy",
-    });
-    for (const row of model.transakcje) {
-      expect(row.miasto).toBe("Poznań");
-    }
-  });
-});
+// The "Table 1 of the operat never shows the subject's street as a city"
+// regression guard (staging feedback 2026-08-20, Łukasz) lived here and
+// asserted `model.transakcje[].miasto`. Slice 3 (Task 10, review PR #21)
+// removed the `miasto`/`ulica` columns entirely — Table 1 now prints each
+// row's own obręb/distance and never the subject's address at all, so the
+// bug class this guarded is structurally impossible rather than merely
+// fixed. Its replacement lives in tests/document-model-table1.test.ts
+// (`not.toContain("Poznań")`) and tests/f12-template-integrity.test.ts
+// (`{miasto}`/`{ulica}` forbidden literals). `cityFromAddress` itself is
+// untouched above — it still backs the §11 "rynek" prose sentence.

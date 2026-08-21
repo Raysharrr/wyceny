@@ -1,6 +1,7 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
+import { obrebLabel } from "./obreb-name";
 
 /**
  * Operat document model + professional-secrecy masking (F-12).
@@ -201,8 +202,8 @@ function polishFeatureList(names: string[]): string {
 
 export type TransactionRow = {
   data_msc: string;
-  miasto: string;
-  ulica: string;
+  obreb: string;
+  odleglosc: string;
   pow: string;
   cena_jedn: string;
 };
@@ -400,7 +401,6 @@ export function buildDocumentModel(
   opts?: { preview?: boolean },
 ): DocumentModel {
   const { kcs, inputs } = input;
-  const city = cityFromAddress(input.address);
   const subject = inputs.subject ?? null;
   // `{#mpzp}` only when a subject was fetched, MPZP isn't flagged absent, and
   // at least one plan field resolved — keeps it mutually exclusive with
@@ -528,15 +528,27 @@ export function buildDocumentModel(
     suma_ui: formatNumber(kcs.sumUi, 3),
     cena_1m2: formatPln(kcs.unitValue),
     kredyt: input.purpose === "zabezpieczenie_kredytu",
-    transakcje: inputs.comparables.map((c) => ({
-      data_msc: maskMonth(c.date),
-      miasto: city,
-      // ponytail: RCN comparables carry no street today — masked column shows
-      // a dash until a street-bearing source exists (masking then applies).
-      ulica: "—",
-      pow: c.area != null ? formatNumber(c.area, 2) : "—",
-      cena_jedn: formatPln(c.pricePerM2),
-    })),
+    transakcje: (() => {
+      const sel = inputs.sampleSelection;
+      const byTx = new Map(
+        (sel ? [...sel.proposed, ...sel.alternates] : []).map((c) => [c.transactionId, c] as const),
+      );
+      return inputs.comparables.map((c) => {
+        const candidate = c.transactionId ? byTx.get(c.transactionId) : undefined;
+        return {
+          data_msc: maskMonth(c.date),
+          // Slice 3: the row's own obręb and distance (review PR #21: the
+          // subject's city used to be printed for every row — false for
+          // neighbouring gminas). Manual rows and rows whose candidate
+          // fell out of the persisted snapshot (snapshot v2, edits) print
+          // dashes rather than guessing.
+          obreb: candidate ? obrebLabel(candidate.egib) : DASH,
+          odleglosc: candidate ? formatNumber(Math.round(candidate.distanceM), 0) : DASH,
+          pow: c.area != null ? formatNumber(c.area, 2) : DASH,
+          cena_jedn: formatPln(c.pricePerM2),
+        };
+      });
+    })(),
     cechy: activeUi.map((f) => ({
       nazwa: f.name,
       waga_pct: formatNumber(f.weight * 100, 0),
