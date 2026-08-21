@@ -9,7 +9,7 @@ Próba porównawcza pochodzi z rejestru cen nieruchomości (RCN) — publicznego
 
 **Automatycznie:** pula z rejestru, higiena, pasmo metrażu, wybór promienia, ranking podobieństwa, flagi (cena odstająca, rynek nieznany, prawdopodobnie deweloperska) i miniaturki budynków ze Street View.
 
-**Ręcznie, w [kroku 3](/pomoc/krok-3-proba):** przegląd fasad z propozycji, odrzucenie z powodem (wiek lub typ budynku, standard, odległość), zmiana promienia i dopisanie własnej transakcji.
+**Ręcznie, w [kroku 3](/pomoc/krok-3-proba):** przegląd fasad z propozycji, odrzucenie z powodem (wiek lub typ budynku, standard, odległość), ręczne dodanie alternatywy do próby (z pominięciem flag i limitu na budynek — patrz „Ile transakcji trafia do próby” niżej), zmiana promienia i dopisanie własnej transakcji.
 
 ## Skąd bierze się pula transakcji
 
@@ -76,6 +76,8 @@ Skutek dla rankingu nie jest jednakowy: **cena odstająca** i **prawdopodobnie d
 Z posortowanej listy dobór bierze **{DEFAULTS.proposedN}** transakcji jako próbę — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku, nadmiar z tego samego budynku spada do alternatyw z zachowaniem rankingu — a kolejne do {DEFAULTS.alternatesN} jako alternatywy.
 
 Gdy pula po higienie, paśmie i promieniu jest mniejsza niż {DEFAULTS.proposedN}, aplikacja pokazuje tyle, ile znalazła — nie ma progu, poniżej którego dobór odmawia zwrotu wyniku. Zatwierdzenie operatu zostaje mimo to zablokowane, dopóki cała próba (transakcje z RCN plus ewentualne wiersze wpisane ręcznie) nie osiągnie {REQUIRED_SAMPLE_SIZE} transakcji. To dwie niezależne stałe zapisane w dwóch miejscach — `DEFAULTS.proposedN` w domenie doboru i `REQUIRED_SAMPLE_SIZE` w progu zatwierdzenia — dziś równe, ale zmiana jednej nie rusza drugiej.
+
+Wszystko powyżej opisuje wyłącznie **automatyczny** dobór — ranking, {DEFAULTS.proposedN} i {DEFAULTS.maxPerBuilding} na budynek. W [kroku 3](/pomoc/krok-3-proba) rzeczoznawca może dodać do próby dowolną alternatywę ręcznie (checkbox „W próbie” albo przycisk „Dodaj do próby” w panelu bocznym) — taka propozycja wchodzi do próby OBOK tego, co dobrał ranking, z pominięciem obu limitów naraz, a sam ranking i kolejność pozostałych propozycji się przy tym nie zmieniają. Dlatego próba, którą widać w kroku 3, może liczyć więcej niż {DEFAULTS.proposedN} transakcji — bramka zatwierdzenia liczy wtedy po prostu więcej wierszy, wciąż względem tego samego progu {REQUIRED_SAMPLE_SIZE}.
 
 ## Skąd zdjęcia budynków
 

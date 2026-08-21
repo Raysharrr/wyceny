@@ -23,11 +23,11 @@ Zrzut pochodzi sprzed przebudowy kroku 3 — zostanie odświeżony po wdrożeniu
 
 Przycisk „Pobierz próbę z RCN” pobiera transakcje dobrane rankingiem podobieństwa w promieniu od {DEFAULTS.radiusStepsM[0]} m do {DEFAULTS.radiusStepsM[DEFAULTS.radiusStepsM.length - 1]} m wokół przedmiotu tej wyceny. Pobieranie trwa zwykle kilka do kilkunastu sekund — przycisk pokazuje wtedy „Pobieranie…”.
 
-- Do próby trafia najwyżej {DEFAULTS.proposedN} propozycji — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku — a kolejne, do {DEFAULTS.alternatesN}, wchodzą do zwijanej sekcji „Alternatywy”.
+- Do próby trafia najwyżej {DEFAULTS.proposedN} propozycji — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku — a kolejne, do {DEFAULTS.alternatesN}, wchodzą do zwijanej sekcji „Alternatywy”. To limit automatycznego doboru: ręcznie dodana alternatywa wchodzi do próby zawsze, ponad oba te limity — patrz „Jak przeglądać propozycje” niżej.
 - Każdy wiersz ma podgląd fasady, datę transakcji, obręb, odległość od przedmiotu, powierzchnię, cenę, piętro i odznaki: **ten sam budynek**, **ta sama działka**, **inny obręb**, **p. N** (piętro), **>5 kond.**, **rynek?**, **prawdopodobnie deweloperska**, **cena odstająca**. Skąd biorą się flagi i punktacja, opisuje [dobór próby z RCN](/pomoc/dobor-proby-rcn).
 - Podgląd fasady ma trzy stany: **miniaturka**, gdy Google ma zdjęcie i aplikacja zdążyła je pobrać; pusta ramka z podpisem **„brak zdjęcia ulicy”**, gdy Google nie ma tam panoramy — to może, ale nie musi, znaczyć budynek nowszy niż ostatni przejazd Google; pusta ramka z podpisem **„brak miniaturki”**, gdy pobranie nie zdążyło w budżecie {ENRICH_BUDGET_MS / 1000} s albo akurat zawiodło po stronie Google lub zapisu — kolejne „Pobierz próbę z RCN” dociąga brakujące. Brak zdjęcia sam w sobie nie jest dowodem wieku budynku — nie wybieraj na tej podstawie powodu „budynek nowszy”.
 - Nad tabelą jest mapa przeglądowa. Domyślnie to zwykła mapa z nazwami ulic (OpenStreetMap); przełącznikiem w prawym górnym rogu zmienisz tło na **Ortofoto** (GUGiK). Nakładka **Działki i budynki** (ewidencja gruntów) jest włączona od razu, ale rysuje się dopiero przy bliskim przybliżeniu — tym samym przełącznikiem możesz ją wyłączyć. Kółko myszy albo przyciski + / − przybliżają, przeciąganie przesuwa. Okręgi to promienie doboru, przy każdym stoi jego wartość w metrach: gruby ciągły — aktualny promień, cieńsze ciągłe — mniejsze, przerywane i bledsze — większe, które obejmą więcej transakcji po kliknięciu przycisku promienia; romb to przedmiot wyceny. Kropki: zielona — propozycja w próbie, szara — alternatywa, czerwona — odrzucona. Legenda w rogu mapy liczy „w próbie” i „alternatywy” tak jak tabela, a „odrzucone” — wszystkie odrzucenia, automatyczne i Twoje; ta liczba jest większa niż czerwonych kropek, bo mapa pokazuje tylko najbliższe {REJECTED_PER_REASON} odrzuconych z każdego powodu (te same, które widać w sekcji „Odrzucone”). Lokale z jednego budynku mają wspólny punkt, więc widzisz jeden znacznik z liczbą propozycji w kolorze najlepszego statusu: klik (albo Enter) rozkłada lokale wokół budynku, każdy na własnej odnodze; klik w tło mapy albo Escape (gdy mapa ma fokus) zwija. Klik w kropkę (poza czerwonymi) podświetla wiersz i otwiera panel tej propozycji, a wybór wiersza w tabeli rozkłada jego budynek na mapie. Gdy tło mapy chwilowo się nie wczyta, pod mapą pojawia się o tym notka — znaczniki i okręgi działają dalej, to nie jest błąd. Mapa nie używa klucza Google i nic nie kosztuje; tło OpenStreetMap jest rozwiązaniem na czas testów — przed szerszym wdrożeniem zmienimy dostawcę kafelków.
-- **Pobranie zastępuje całą dotychczasową zawartość tabeli, również wiersze wpisane ręcznie — i czyści zapamiętane ręczne odrzucenia z sekcji „Odrzucone”: Twoje odrzucenia trzeba wtedy zaznaczyć ponownie.**
+- **Pobranie zastępuje całą dotychczasową zawartość tabeli, również wiersze wpisane ręcznie — i czyści cały Twój ręczny ślad: odrzucenia z sekcji „Odrzucone”, ręcznie dodane alternatywy i znaczniki ✓ „przejrzane”. Wszystko to trzeba zaznaczyć ponownie.** Zmiana promienia (sekcja „Promień” niżej) tego nie robi — przelicza dobór na tej samej puli i zachowuje Twój ślad w całości.
 - Gdy pobranie się nie uda, zobaczysz komunikat z powodem, a próbę wpisujesz ręcznie.
 
 Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebadano N transakcji z RCN, data)”, a do tego liczbę alternatyw i odrzuconych: N to cała pula z rejestru w kwadracie ±3 km wokół przedmiotu, po złożeniu duplikatów i odrzuceniu rekordów bez współrzędnych; Y — ile z tej puli przeszło higienę i pasmo metrażu w promieniu R; R — promień, na którym dobór się zatrzymał. Gdy pobieranie przerwie się, zanim pula sięgnie pełnego okna czasowego — przez limit stron pobierania (8 × 5000 rekordów) albo budżet czasu (ok. 25 s) — pasek dokłada ostrzeżenie, że pula może być niepełna. Szkic sprzed tej wersji, w którym próba z RCN jest zapisana bez szczegółów doboru, dostaje zamiast liczników komunikat: „Próba z RCN z (data) zapisana bez szczegółów doboru — pobierz próbę z RCN ponownie, żeby zobaczyć promień i liczniki.”
@@ -36,12 +36,24 @@ Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin,
 
 ## Jak przeglądać propozycje
 
-Klik w wiersz albo strzałki ↑ / ↓ otwierają panel boczny tej propozycji. W panelu jest przełącznik podglądu — **Ulica** (Street View, z podpisem daty zdjęcia Google), **Mapa** i **Ortofoto** — oraz komplet pól rekordu: data transakcji, cena, cena za m², powierzchnia, piętro i liczba izb, rynek, sprzedający, udział, obręb, działka i budynek, odległość. Gdy Google nie ma panoramy tego budynku, zakładka „Ulica” jest nieaktywna i panel otwiera się od razu na „Ortofoto”.
+Propozycje są w dwóch sekcjach: **W próbie (N)** — to, co faktycznie wejdzie do kalkulacji — i zwijana **Alternatywy (M)** pod nią. Klik w wiersz w dowolnej z dwóch sekcji, strzałki ↑ / ↓ albo kropka na mapie otwierają panel boczny tej propozycji; ↑ / ↓ przechodzą między obiema sekcjami po kolei, nie tylko w obrębie jednej tabeli — ale tylko wśród propozycji i alternatyw: gdy panel pokazuje odrzuconą propozycję, strzałki nic nie robią, działa tylko Enter (patrz niżej). W panelu jest przełącznik podglądu — **Ulica** (Street View, z podpisem daty zdjęcia Google), **Mapa** i **Ortofoto** — oraz komplet pól rekordu: data transakcji, cena, cena za m², powierzchnia, piętro i liczba izb, rynek, sprzedający, udział, obręb, działka i budynek, odległość. Gdy Google nie ma panoramy tego budynku, zakładka „Ulica” jest nieaktywna i panel otwiera się od razu na „Ortofoto”.
 
-Dwie decyzje kończą przegląd propozycji:
+Pierwsza kolumna każdej tabeli to checkbox „W próbie”:
 
-- **Zostaw** (albo klawisz Enter) — propozycja zostaje w próbie, panel przechodzi do następnej.
-- **Odrzuć → powód** — wybierasz powód z listy poniżej i możesz dopisać notatkę:
+- **Odznaczenie** propozycji z sekcji „W próbie” to prośba o odrzucenie — panel otwiera się od razu z listą powodów (patrz niżej), zamiast czekać na osobny klik „Odrzuć”. Sam klik na checkboksie jeszcze niczego nie usuwa z próby — dopóki nie potwierdzisz powodu, propozycja tam zostaje.
+- **Zaznaczenie** propozycji z sekcji „Alternatywy” dodaje ją do próby od razu, bez podawania powodu — to samo robi przycisk „Dodaj do próby” w panelu, gdy panel jest otwarty na alternatywie.
+
+Dodana w ten sposób alternatywa wchodzi do próby OBOK dotychczasowych propozycji, nie zamiast nich — próba może więc liczyć więcej niż {DEFAULTS.proposedN} transakcji. Ranking i limit {DEFAULTS.maxPerBuilding} na budynek (opisane w [doborze próby](/pomoc/dobor-proby-rcn)) obowiązują tylko automatyczny dobór; ręczna decyzja rzeczoznawcy ma zawsze pierwszeństwo. Bramka zatwierdzenia niżej mimo to liczy **wszystkie** wiersze „Próby do kalkulacji” względem progu {REQUIRED_SAMPLE_SIZE} — sam próg nie rośnie razem z próbą, próba po prostu może go przekroczyć.
+
+Druga kolumna, ✓, znaczy „przejrzane” — sam fakt, że rzeczoznawca spojrzał na tę propozycję i podjął którąkolwiek z czterech decyzji panelu (niżej). To wyłącznie informacja porządkowa: nic nie blokuje ani nie waży kalkulacji. Licznik „przejrzane N/M” w pasku nad tabelą (M to propozycje, alternatywy i odrzucone razem) oraz sam znacznik ✓ przy wierszu przetrwają zapis szkicu i jego ponowne otwarcie.
+
+Panel boczny pokazuje inny komplet przycisków zależnie od tego, w której sekcji propozycja aktualnie jest:
+
+- **W próbie** — **Zostaw** (albo klawisz Enter) zostawia propozycję w próbie i przechodzi do następnej; **Odrzuć** otwiera listę powodów.
+- **Alternatywy** — **Dodaj do próby** (albo Enter) dodaje propozycję do próby, jak opisano wyżej; **Pomiń** oznacza propozycję jako przejrzaną i przechodzi dalej, bez dodawania jej.
+- **Odrzucone** — jedyny przycisk to **Przywróć** (albo Enter): propozycja wraca dokładnie tam, gdzie by trafiła bez ręcznego odrzucenia.
+
+Lista powodów odrzucenia:
 
 <ul>
   {MANUAL_REJECTION_REASONS.map((reason) => (
@@ -49,11 +61,15 @@ Dwie decyzje kończą przegląd propozycji:
   ))}
 </ul>
 
-Odrzucenie niczego nie kasuje — zapamiętuje decyzję. Odrzucona propozycja wypada z próby, a pierwsza pasująca alternatywa wchodzi na jej miejsce: nigdy propozycja z flagą „cena odstająca” ani „prawdopodobnie deweloperska”, i nigdy więcej niż {DEFAULTS.maxPerBuilding} propozycje z jednego budynku. Sekcja „Odrzucone” niżej ma przy każdym ręcznym odrzuceniu przycisk „Przywróć” — propozycja wraca do puli tak, jakby jej nigdy nie odrzucono.
+Wybierz powód, dopisz opcjonalną notatkę i potwierdź „Potwierdź odrzucenie” — albo „Anuluj”, żeby zamknąć listę bez odrzucania (propozycja zostaje dokładnie tam, gdzie była). Odrzucenie niczego nie kasuje — zapamiętuje decyzję. Odrzucona propozycja wypada z próby, a pierwsza pasująca alternatywa wchodzi na jej miejsce: nigdy propozycja z flagą „cena odstająca” ani „prawdopodobnie deweloperska”, i nigdy więcej niż {DEFAULTS.maxPerBuilding} propozycje z jednego budynku. Sekcja „Odrzucone” niżej ma przy każdym ręcznym odrzuceniu przycisk „Przywróć” — działa tak samo jak w panelu, propozycja wraca do próby tak, jakby jej nigdy nie odrzucono.
+
+Propozycja dodana ręcznie z „Alternatyw” nie dostaje żadnej specjalnej odznaki, dopóki mieści się w bieżącym promieniu — wygląda jak każda inna propozycja w próbie. Odznakę **„dodana ręcznie”** dostaje dopiero wtedy, gdy późniejsza zmiana promienia zawęzi pulę tak, że ta propozycja z niej wypadnie: zostaje w próbie mimo to (Twoja decyzja ma pierwszeństwo przed promieniem), tylko oznaczona, że już nie pochodzi z bieżącego doboru. Mapa przeglądowa koloruje ją tak samo jak każdą inną propozycję w próbie — na zielono.
 
 ## Promień
 
 Przyciski {DEFAULTS.radiusStepsM.join(" / ")} m przeliczają dobór na tej samej puli, którą „Pobierz próbę z RCN” już pobrało — bez ponownego zapytania do rejestru, więc przeliczenie jest natychmiastowe. Są aktywne od razu po pobraniu próby; dopiero pierwsze kliknięcie, które nie znajdzie zapamiętanej puli, blokuje je jednym z dwóch komunikatów: „Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.” (szkic sprzed tej wersji, bez zapamiętanej puli) albo „Dane przedmiotu zmieniły się od ostatniego pobrania — pobierz próbę z RCN ponownie.” (adres lub powierzchnia zmienione w kroku 1 od ostatniego pobrania). W obu przypadkach przyciski odblokowuje dopiero nowe „Pobierz próbę z RCN”.
+
+Zmiana promienia zachowuje cały Twój ręczny ślad: odrzucenia, ręcznie dodane alternatywy (razem z odznaką „dodana ręcznie”, jeśli po przeliczeniu wypadną poza nowy promień) i znaczniki ✓ „przejrzane”. Traci je wyłącznie nowe „Pobierz próbę z RCN” — bo to ono zastępuje całą pulę, nie samo przeliczenie promienia na tej, która już jest.
 
 ## Odrzucone
 
