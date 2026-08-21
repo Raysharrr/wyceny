@@ -1,3 +1,6 @@
+import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { DEFAULTS } from "@/domain/sample-selection";
+
 W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m², na których oprze się kalkulacja. Transakcje możesz pobrać z rejestru cen nieruchomości (RCN) albo wpisać ręcznie; oba źródła da się łączyć, bo każdy wiersz tabeli zostaje edytowalny.
 
 <img
@@ -13,17 +16,15 @@ W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m²,
 
 ## Co wypełnia się samo
 
-Przycisk „Pobierz próbę z RCN” pobiera transakcje dla adresu i powierzchni tej wyceny. Pobieranie trwa zwykle kilka do kilkunastu sekund — przycisk pokazuje wtedy „Pobieranie…”.
+Przycisk „Pobierz próbę z RCN” pobiera transakcje dobrane rankingiem podobieństwa w promieniu od {DEFAULTS.radiusStepsM[0]} m do {DEFAULTS.radiusStepsM[DEFAULTS.radiusStepsM.length - 1]} m wokół przedmiotu tej wyceny. Pobieranie trwa zwykle kilka do kilkunastu sekund — przycisk pokazuje wtedy „Pobieranie…”.
 
-- Do tabeli trafia najwyżej dwanaście transakcji: data, powierzchnia i cena zł/m².
+- Do tabeli trafia najwyżej {REQUIRED_SAMPLE_SIZE} transakcji: data, powierzchnia i cena zł/m².
 - **Pobranie zastępuje całą dotychczasową zawartość tabeli**, również wiersze wpisane ręcznie.
 - Gdy pobranie się nie uda, zobaczysz komunikat z powodem, a próbę wpisujesz ręcznie.
 
-Pobranie wybiera **dwanaście najnowszych** transakcji lokalami mieszkalnymi z prostokąta około 4 km na 4 km wokół adresu, o powierzchni różniącej się od wycenianego lokalu o nie więcej niż 30%, zawartych w ciągu ostatnich 24 miesięcy, po odrzuceniu cen skrajnych (to odrzucenie działa dopiero od ośmiu transakcji w puli). Dobór nie patrzy na obręb, dzielnicę ani odległość od wycenianego lokalu, choć rejestr niesie identyfikator z numerem obrębu i działki; nie odróżnia rynku pierwotnego od wtórnego, sprzedaży wolnorynkowej od innych rodzajów transakcji ani sprzedaży całego lokalu od sprzedaży udziału. Dla Poznania rejestr nie wypełnia pola adresu transakcji, a aplikacja tego pola i tak nie czyta — w tabeli nie ma więc jak sprawdzić, gdzie dokładnie leży lokal porównawczy. Każdy niepasujący wiersz usuwasz sam.
+Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebadano N transakcji z RCN, data)”: N to cała pula, jaką rejestr oddał w promieniu ±3 km wokół przedmiotu, Y — ile z niej przeszło higienę i pasmo metrażu, a R — promień, na którym dobór się zatrzymał. Gdy pobieranie trafia na limit stron rejestru, zanim pula sięgnie pełnego okna czasowego, pasek dokłada ostrzeżenie, że pula może być niepełna.
 
-Pasek „Pobrano 5000 transakcji z RCN” podaje limit zapytania do rejestru, a nie liczbę transakcji znalezionych w okolicy.
-
-Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty. [Metodę doboru próby](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
+Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty; [jak dobieramy próbę](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
 
 ## Co musisz uzupełnić ręcznie
 

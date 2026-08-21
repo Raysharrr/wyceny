@@ -1,66 +1,74 @@
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { DEFAULTS, DEFAULT_WEIGHTS } from "@/domain/sample-selection";
 
-Próba porównawcza pochodzi z rejestru cen nieruchomości (RCN) — publicznego zbioru danych o cenach transakcyjnych, udostępnianego usługą WFS Geoportalu pod adresem `https://mapy.geoportal.gov.pl/wss/service/rcn`. Rejestr podaje surowe transakcje; wszystko, co decyduje o tym, które z nich trafią do wyceny, dzieje się po naszej stronie, w module doboru próby workera (`apps/worker/app/rcn.py`). Poniżej opis tego doboru — z liczbami i z jawnym wskazaniem, skąd każda z nich pochodzi.
+Próba porównawcza pochodzi z rejestru cen nieruchomości (RCN) — publicznego zbioru danych o cenach transakcyjnych, udostępnianego usługą WFS Geoportalu (GUGiK). Rejestr podaje surowe transakcje; o tym, które z nich trafią do wyceny, decydują dwa moduły: worker (`apps/worker/app/rcn.py`, `apps/worker/app/main.py`) pobiera surową pulę z rejestru, a czysta domena (`apps/web/src/domain/sample-selection.ts`) ją filtruje i sortuje. Poniżej opis krok po kroku, z liczbami cytowanymi wprost z kodu — jeśli kiedyś się zmienią, zmieni się też ta strona.
 
 ## Skąd bierze się pula transakcji
 
-Pobranie przebiega w czterech krokach:
+- **Rejestr** — RCN przez usługę WFS Geoportalu, warstwa lokali.
+- **Obszar** — kwadrat ±3 km wokół punktu przedmiotu (`DEFAULT_RADIUS_M`, `apps/worker/app/main.py`). To promień zapytania do rejestru — szerszy od promieni rankingu opisanych w sekcji „Promień” niżej.
+- **Stronicowanie** — rekordy pobierane są stronami po 5000 (`PAGE_SIZE`, `apps/worker/app/rcn.py`), posortowane po dacie dokumentu i identyfikatorze transakcji malejąco (`SORT_BY`), aż pokryją {DEFAULTS.windowMonths} miesięcy wstecz (`DATE_WINDOW_MONTHS`, funkcja `fetch_pool`) — albo aż skończą się strony w rejestrze.
+- **Duplikaty** — ta sama transakcja i ten sam lokal potrafią wystąpić w rejestrze w kilku wersjach; worker składa je do jednej, zostawiając wersję o najwyższym numerze (`tran_wersja_id`).
 
-- **Geokodowanie adresu** — adres wyceny zamieniany jest na współrzędne przez Nominatim (OpenStreetMap). Zapytanie idzie najpierw w formie ustrukturyzowanej (ulica, miasto, kraj), a gdy nie zwróci wyniku — jako zapytanie swobodne ograniczone do Polski. Adres nierozpoznany oznacza brak pobrania. Jest to **inne narzędzie niż w kroku 1** (tam państwowy geokoder GUGiK), więc środek prostokąta może leżeć gdzie indziej niż działka ustalona w kroku 1.
-- **Prostokąt wyszukiwania** — wokół uzyskanego punktu budowany jest prostokąt ±0,018° szerokości i ±0,029° długości geograficznej (`apps/worker/app/main.py`). W szerokościach geograficznych Polski to około 4 km na 4 km, ze środkiem w geokodowanym adresie.
-- **Zapytanie do rejestru** — usługa WFS pytana jest o warstwę lokali z limitem 5000 rekordów i sortowaniem po dacie dokumentu malejąco. Ta kombinacja jest wynikiem spike'u, nie preferencją: mniejsze limity zwracają quasi-losowy podzbiór zdominowany przez rekordy sprzed lat.
-- **Odczyt rekordów** — z każdego rekordu bierzemy cenę brutto lokalu (pole `lok_cena_brutto`), powierzchnię użytkową lokalu (`lok_pow_uzyt`), datę dokumentu, funkcję lokalu i identyfikator transakcji. Cena jednostkowa to iloraz ceny brutto i powierzchni użytkowej. Rekordy bez ceny lub bez powierzchni, a także z wartością niedodatnią, są pomijane w całości.
+## Punkt przedmiotu
 
-## Kryteria wejścia do puli
+Kolejność prób ustalenia współrzędnych (`resolve_point`, `apps/worker/app/main.py`):
 
-Transakcja przechodzi dalej tylko wtedy, gdy spełnia wszystkie cztery warunki naraz:
+1. **Punkt z kroku 1**, jeśli wycena go już ma.
+2. **Geokoder GUGiK (UUG)** — ten sam, którego używa krok 1 — wywołany ponownie dla adresu wyceny, gdy punktu z kroku 1 brakuje.
+3. **Nominatim** (OpenStreetMap) — wyłącznie gdy oba powyższe zawiodą.
 
-- **funkcja lokalu równa `mieszkalna`** — dokładne dopasowanie wartości z rejestru, bez wariantów i bez pustych wartości,
-- **dodatnia cena jednostkowa**,
-- **miesiąc transakcji w oknie 24 miesięcy** wstecz od miesiąca bieżącego, włącznie z bieżącym (stała `DATE_WINDOW_MONTHS`),
-- **powierzchnia lokalu w paśmie ±30% powierzchni przedmiotu wyceny** (stała `AREA_BAND_PCT` = 0,30). Dla lokalu 71,63 m² pasmo obejmuje transakcje od 50,14 do 93,12 m².
+Sięgnięcie po Nominatim jest zdarzeniem, nie normą: zostaje zalogowane jako ostrzeżenie i widać je w śladzie wyceny (pole `geocoder` przy zdarzeniu pobrania próby).
 
-Pasmo metrażu jest jedynym kryterium podobieństwa fizycznego stosowanym na tym etapie. Rejestr nie zawiera danych o standardzie, piętrze czy stanie technicznym — te różnice bierze na siebie dopiero ocena cech w kalkulacji.
+## Higiena
 
-## Filtr poprawności dat
+Transakcja odpada, gdy trafi na którykolwiek z poniższych warunków (kod odrzucenia w nawiasie, `hygieneReasons`):
 
-RCN zawiera daty transakcji, których nie da się obronić. W danych produkcyjnych spotykamy zapisy takie jak `5201-07` czy `2913-04` — najpewniej literówki popełnione przy wprowadzaniu do rejestru źródłowego. Ponieważ pobranie sortuje rekordy od najnowszych, takie daty wypychają swoje transakcje na sam szczyt listy: bez filtru zajęłyby pierwsze miejsca w próbie i zdominowałyby wycenę.
+- brak ceny lub brak powierzchni lokalu (`no_price`),
+- funkcja lokalu inna niż `mieszkalna` (`not_residential`),
+- rodzaj transakcji inny niż `wolnyRynek` (`not_free_market`),
+- udział w lokalu inny niż całość, np. „1/2” (`share_not_whole`),
+- miesiąc transakcji poza oknem {DEFAULTS.windowMonths} miesięcy wstecz od miesiąca wyceny (`out_of_window`),
+- rynek pierwotny (`primary_market`) — sprzedaż od dewelopera nie wchodzi do próby porównań z rynkiem wtórnym,
+- powierzchnia poza pasmem ±{DEFAULTS.areaBandPct / 0.01}% powierzchni przedmiotu (`out_of_area_band`) — sprawdzane osobno, dopiero po higienie.
 
-Górna granica okna, czyli miesiąc bieżący, odcina te rekordy razem z całą przyszłością. Dolna granica, 24 miesiące wstecz, odcina transakcje zbyt stare, by opisywać dzisiejszy rynek. Miesiąc bieżący jest przy tym parametrem przekazywanym do rdzenia doboru, a nie odczytem zegara wewnątrz niego — dzięki temu ten sam zestaw danych z tą samą datą odniesienia zawsze daje ten sam wybór transakcji i da się go odtworzyć.
+Odrzucona transakcja zapamiętuje pierwszy pasujący powód z tej listy, ale też komplet powodów, które akurat zaszły — to widać dopiero w diagnostyce, nie w interfejsie kroku 3.
 
-## Przycinanie odstających metodą IQR
+## Promień
 
-Gdy po powyższych filtrach w puli zostaje **co najmniej osiem** transakcji, ceny jednostkowe są przycinane rozstępem ćwiartkowym:
+Dobór sprawdza kolejne promienie {DEFAULTS.radiusStepsM.join(" → ")} m i zatrzymuje się na pierwszym, w którym pula **po higienie i po paśmie metrażu** liczy co najmniej {DEFAULTS.minPoolAfterBand} transakcji. Gdy żaden krok tego progu nie osiąga, dobór zostaje przy ostatnim ({DEFAULTS.radiusStepsM[DEFAULTS.radiusStepsM.length - 1]} m) z tym, co akurat zebrał.
 
-- ceny są sortowane rosnąco,
-- Q1 to element o indeksie n/4, Q3 — element o indeksie 3n/4 (indeksy liczone od zera i całkowitoliczbowo, bez interpolacji między sąsiednimi obserwacjami),
-- IQR = Q3 − Q1,
-- w puli zostają transakcje o cenie z przedziału od Q1 − 1,5 × IQR do Q3 + 1,5 × IQR.
+Promień jest więc wynikiem gęstości okolicy, nie stałą wartością: zabudowane centrum potrafi zamknąć się na pierwszym kroku, rzadsza okolica — dopiero na ostatnim.
 
-Uwaga dla odtwarzających rachunek: kwartyle liczone pozycyjnie różnią się od kwartyli interpolowanych, które są domyślne w arkuszach kalkulacyjnych i pakietach statystycznych. Granice policzone standardową formułą mogą więc wypaść w innym miejscu niż nasze — przy próbie kilkunastu transakcji różnica bywa widoczna. Przy puli mniejszej niż osiem rekordów przycinanie jest pomijane w całości: na tak małym zbiorze granice IQR są niestabilne i wycinałyby obserwacje bez uzasadnienia.
+## Ranking podobieństwa
 
-## Ile transakcji trafia do wyceny
+Transakcje, które przejdą higienę i pasmo metrażu, dostają punktację (`scoreCandidate`):
 
-Po przycięciu pula jest sortowana malejąco po dacie i obcinana do **19** transakcji (stała `POOL_N`). Z tego, co zwróci worker, aplikacja wstawia do tabeli próby **12 najnowszych** — pozostałe nie są nigdzie używane. Są to więc dwa różne progi, zapisane w dwóch różnych miejscach: rozmiar puli po stronie workera i rozmiar próby po stronie aplikacji.
+`score` = {DEFAULT_WEIGHTS.sameBuilding}·(ten sam budynek) + {DEFAULT_WEIGHTS.sameParcel}·(ta sama działka) + {DEFAULT_WEIGHTS.sameObreb}·(ten sam obręb) − odległość (m) / {1 / DEFAULT_WEIGHTS.distancePerM}
 
-Gdy po wszystkich filtrach zostaje mniej niż 12 transakcji, worker w ogóle nie zwraca propozycji — odpowiada komunikatem „Za mało transakcji w okolicy" z liczbą znalezionych transakcji. Nie ma trybu, w którym pobranie oddaje niepełną próbę do uzupełnienia: albo dwanaście i więcej, albo nic.
+- Tożsamość liczona jest z identyfikatora EGiB lokalu z rejestru (obręb / arkusz / działka / budynek); dla przedmiotu wyceny ten sam identyfikator budynku pochodzi z GEOPOZ.
+- Wyższy poziom dopasowania zawsze bije niższy — być w tym samym budynku daje więcej punktów niż być bliżej, ale w innym budynku.
+- Remis w punktacji rozstrzyga nowsza data transakcji.
 
-## Próg {REQUIRED_SAMPLE_SIZE} transakcji przy zatwierdzeniu
+## Flagi, które nie odrzucają
 
-Próg zatwierdzenia obowiązuje niezależnie od źródła transakcji. Brama zatwierdzenia operatu wymaga próby liczącej co najmniej {REQUIRED_SAMPLE_SIZE} transakcji (stała `REQUIRED_SAMPLE_SIZE` w `apps/web/src/domain/provenance.ts`, importowana wprost do tej strony). Zgadza się on co do wartości z progiem, poniżej którego worker nie zwraca propozycji — ale są to, dokładnie jak para 19/12 wyżej, dwie niezależne liczby zapisane w dwóch runtime'ach: zmiana `REQUIRED_SAMPLE_SIZE` nie rusza progu po stronie workera. Szkic wyceny z mniejszą próbą da się zapisać i policzyć (dolną granicą zapisu są trzy transakcje), natomiast operat z niej nie powstanie.
+Trzy obserwacje przyczepiane są do transakcji, która przeszła higienę i pasmo metrażu, bez usuwania jej z puli:
 
-Próba poniżej progu domyka się ręcznie — transakcjami z innych źródeł niż RCN, wpisanymi przez rzeczoznawcę. Różnica nie jest tylko techniczna: za transakcję pobraną z rejestru odpowiada rejestr i wymaga ona potwierdzenia, za transakcję wpisaną ręcznie odpowiada rzeczoznawca i jest potwierdzona z definicji.
+- **cena odstająca** — cena jednostkowa poza rozstępem ćwiartkowym (IQR ×1,5), liczonym dopiero gdy w paśmie metrażu jest co najmniej {DEFAULTS.iqrMinN} transakcji,
+- **rynek nieznany** — pole rodzaju rynku w rejestrze jest puste; w danych ze spike'u ADR-015 dotyczyło to około 72% rekordów,
+- **prawdopodobnie deweloperska** — rynek nieznany **i** sprzedający to osoba prawna naraz; to najsilniejsza dostępna poszlaka sprzedaży pierwotnej tam, gdzie samo pole rynku milczy.
+
+Skutek dla rankingu nie jest jednakowy: **cena odstająca** i **prawdopodobnie deweloperska** wypychają transakcję z proponowanej {REQUIRED_SAMPLE_SIZE} do alternatyw, niezależnie od punktacji. Sam **rynek nieznany**, bez towarzyszącego sprzedającego-osoby-prawnej, nic nie zmienia — transakcja zostaje na miejscu wyznaczonym przez ranking. Krok 3 pokazuje dziś wyłącznie listę proponowaną; alternatywy razem z flagami będą widoczne od kolejnej wersji.
+
+## Ile transakcji trafia do próby
+
+Z posortowanej listy dobór bierze **{REQUIRED_SAMPLE_SIZE}** transakcji jako propozycję — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku, nadmiar z tego samego budynku spada do alternatyw z zachowaniem rankingu — a kolejne do {DEFAULTS.alternatesN} jako alternatywy.
+
+Gdy pula po higienie, paśmie i promieniu jest mniejsza niż {REQUIRED_SAMPLE_SIZE}, aplikacja pokazuje tyle, ile znalazła — nie ma progu, poniżej którego dobór odmawia zwrotu wyniku. Zatwierdzenie operatu zostaje mimo to zablokowane, dopóki cała próba (transakcje z RCN plus ewentualne wiersze wpisane ręcznie) nie osiągnie {REQUIRED_SAMPLE_SIZE} transakcji. To dwie niezależne stałe zapisane w dwóch miejscach — `DEFAULTS.proposedN` w domenie doboru i `REQUIRED_SAMPLE_SIZE` w progu zatwierdzenia — dziś równe, ale zmiana jednej nie rusza drugiej.
 
 ## Czego ten dobór nie robi
 
-Ograniczenia metody warto znać, zanim zapyta o nie ktoś inny:
-
-- **Nie koryguje cen ze względu na upływ czasu.** Transakcja sprzed dwóch lat wchodzi do średniej z tą samą wagą co sprzed miesiąca; jedynym zabezpieczeniem przed starym rynkiem jest okno 24 miesięcy.
-- **Nie różnicuje transakcji ze względu na odległość.** Cały prostokąt około 4 km na 4 km jest traktowany jednakowo, a w mieście obejmuje on lokalizacje bardzo różnej klasy. Korekta na lokalizację odbywa się dopiero przez odpowiednią cechę i jej ocenę.
-- **Nie koryguje samych cen.** Do rachunku wchodzi cena brutto z rejestru podzielona przez powierzchnię użytkową — bez korekt o warunki transakcji, udział w gruncie czy stan lokalu.
-- **Nie sięga poza funkcję `mieszkalna`.** Rekord z inną albo pustą wartością funkcji nie wejdzie do puli, nawet jeśli w rzeczywistości dotyczy lokalu mieszkalnego.
-- **Nie waliduje adresu poza geokodowaniem.** Punkt zwrócony przez Nominatim wyznacza środek prostokąta; błędny albo zbyt ogólny adres da próbę z niewłaściwej okolicy, a nie komunikat o błędzie.
-- **Nie sprawdza rodzaju transakcji.** Rejestr rozróżnia sprzedaż wolnorynkową od sprzedaży egzekucyjnej, przetargowej i bezprzetargowej, ale dobór tego pola nie czyta.
-- **Nie odróżnia rynku pierwotnego od wtórnego.** Sprzedaż od dewelopera wchodzi do próby na równi z odsprzedażą, choć analiza rynku w operacie mówi o rynku wtórnym; pole rynku w rejestrze jest wypełnione tylko w części rekordów.
-- **Nie odróżnia sprzedaży całego lokalu od sprzedaży udziału** i nie sprawdza, czy ta sama transakcja nie występuje w rejestrze dwukrotnie.
-- **Nie ocenia jakości transakcji.** Rejestr nie zawiera cech jakościowych lokali, więc dobór operuje wyłącznie na metrażu, dacie i cenie. Wszystko, co odróżnia wyceniany lokal od średniej z próby, musi zostać wyrażone w ocenach cech.
+- **Nie koryguje cen ze względu na upływ czasu.** Transakcja sprzed dwóch lat wchodzi do średniej z tą samą wagą co sprzed miesiąca; jedynym zabezpieczeniem przed starym rynkiem jest okno {DEFAULTS.windowMonths} miesięcy.
+- **Nie zna roku budowy.** Warstwa budynków GEOPOZ nie ma pola roku budowy, a rejestr RCN — tym bardziej. Spike ADR-015 pokazał to jako główny brakujący składnik podobieństwa, którego nie da się odtworzyć samym promieniem ani wagami rankingu.
+- **Nie pokazuje adresu lokalu porównawczego dla Poznania** — rejestr nie wypełnia tego pola dla tej gminy, więc adresu transakcji nie da się sprawdzić inaczej niż przez współrzędne i identyfikator EGiB.
+- **Nie ocenia standardu ani stanu technicznego lokalu.** Rejestr nie zawiera takich cech; różnice między wycenianym lokalem a próbą wyrażają dopiero oceny cech w kalkulacji.
