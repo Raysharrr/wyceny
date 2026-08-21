@@ -6,6 +6,7 @@ import "@testing-library/jest-dom/vitest";
 import type { Comparable, SampleMeta } from "@/domain/kcs";
 import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { Candidate } from "@/domain/sample-selection";
+import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
 // auto-cleanup never registers — without this each render leaks into the
@@ -131,6 +132,20 @@ function makeSampleSelection(
   };
 }
 
+/** A v3 `StreetViewSnapshot` (ADR-011, Slice 3) — one building's frozen lookup. */
+function makeStreetView(): StreetViewSnapshot {
+  return {
+    "0001.12.34.5": {
+      panoId: "PANO-1",
+      captureDate: "2023-07",
+      thumbnailKey: "streetview-0001.12.34~5.jpg",
+      heading: 90,
+      lat: 52.4,
+      lng: 16.9,
+    },
+  };
+}
+
 /**
  * The banner's own text is split across the outer `<AutoBanner>` container
  * and nested `<b>` tags — RTL's `getByText` only matches an element's DIRECT
@@ -164,7 +179,7 @@ describe("StepSample — defaults", () => {
 });
 
 describe("StepSample — RCN fetch", () => {
-  it("fetches the v3 proposal, replaces rows, shows the banner, and round-trips sampleSelection/sampleMeta on submit", async () => {
+  it("fetches the v3 proposal, replaces rows, shows the banner, and round-trips sampleSelection/sampleMeta/streetView on submit", async () => {
     const user = userEvent.setup();
     const proposal = {
       comparables: [
@@ -173,6 +188,7 @@ describe("StepSample — RCN fetch", () => {
       ],
       sampleSelection: makeSampleSelection(),
       sampleMeta: makeSampleMeta({ truncated: false }),
+      streetView: makeStreetView(),
     };
     getSampleProposal.mockResolvedValue({ proposal });
     saveSampleAction.mockResolvedValue({ ok: true });
@@ -225,12 +241,13 @@ describe("StepSample — RCN fetch", () => {
 
     await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
 
-    // (c) sampleSelection/sampleMeta round-trip into the save payload.
+    // (c) sampleSelection/sampleMeta/streetView round-trip into the save payload.
     await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
     const [id, payload] = saveSampleAction.mock.calls.at(-1) as [string, Record<string, unknown>];
     expect(id).toBe(VID);
     expect(payload.sampleSelection).toMatchObject({ radiusUsedM: 500 });
     expect(payload.sampleMeta).toMatchObject({ query: { truncated: false } });
+    expect(payload.streetView).toEqual(proposal.streetView);
     expect(payload.comparables).toHaveLength(3);
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith(`/valuations/${VID}?step=4`));
   });
@@ -371,7 +388,7 @@ describe("StepSample — submit", () => {
    * anything at all; an empty array would let a real schema/domain mismatch
    * through silently (no `errors.sampleSelection` is ever rendered).
    */
-  it("keeps a pre-existing sampleSelection prop (with a populated candidate) in the save payload without re-fetching", async () => {
+  it("keeps a pre-existing sampleSelection/streetView prop (with a populated candidate) in the save payload without re-fetching", async () => {
     const user = userEvent.setup();
     getSampleProposal.mockClear();
     saveSampleAction.mockResolvedValue({ ok: true });
@@ -379,6 +396,7 @@ describe("StepSample — submit", () => {
       radiusUsedM: 777,
       proposed: [makeCandidate()],
     });
+    const existingStreetView = makeStreetView();
 
     render(
       <StepSample
@@ -388,6 +406,7 @@ describe("StepSample — submit", () => {
         comparables={twelveComparables()}
         sampleMeta={makeSampleMeta()}
         sampleSelection={existingSelection}
+        streetView={existingStreetView}
       />,
     );
 
@@ -397,11 +416,15 @@ describe("StepSample — submit", () => {
     expect(getSampleProposal).not.toHaveBeenCalled();
     const [, payload] = saveSampleAction.mock.calls.at(-1) as [
       string,
-      { sampleSelection?: SampleSelectionSnapshot },
+      { sampleSelection?: SampleSelectionSnapshot; streetView?: StreetViewSnapshot },
     ];
     expect(payload.sampleSelection?.proposed).toHaveLength(1);
     expect(payload.sampleSelection?.proposed[0]).toMatchObject({ transactionId: "T-100" });
     expect(payload.sampleSelection).toMatchObject({ radiusUsedM: 777 });
+    // A save that never re-fetches must still send the PRE-EXISTING
+    // `streetView` snapshot too — same "omitting it wipes it to null" risk
+    // the sampleSelection assertions above guard against.
+    expect(payload.streetView).toEqual(existingStreetView);
   });
 });
 

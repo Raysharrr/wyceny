@@ -185,6 +185,9 @@ export function StepSample({
   // Watched so the candidate table's thumbnails reflect a fetch made in this
   // session, not only whatever `streetView` the page rendered with.
   const liveStreetView = useWatch({ control, name: "streetView" });
+  // Domain result + manual overlay (Task 1) — computed once here so the
+  // banner's alternates count and `<SampleTable>` below agree by construction.
+  const eff = sel ? effectiveSelection(sel) : null;
 
   const onFetchSample = async () => {
     setFetchSampleError(null);
@@ -246,7 +249,7 @@ export function StepSample({
           sub={`${comparablesCount} ${plural(comparablesCount, "transakcja", "transakcje", "transakcji")}`}
         >
           <div className="flex flex-col gap-3">
-            {liveSampleMeta && sel ? (
+            {liveSampleMeta && sel && eff ? (
               <AutoBanner>
                 Dobrano{" "}
                 <b>
@@ -258,7 +261,9 @@ export function StepSample({
                   ? " — pobieranie przerwano przed pokryciem 24 miesięcy (limit stron lub czasu), pula może być niepełna"
                   : null}
                 {" · "}
-                {effectiveSelection(sel).alternates.length} alternatyw · odrzucono{" "}
+                {eff.alternates.length}{" "}
+                {plural(eff.alternates.length, "alternatywa", "alternatywy", "alternatyw")} ·
+                odrzucono{" "}
                 {Object.values(sel.rejectedCounts ?? {}).reduce(
                   (total, count) => total + (count ?? 0),
                   0,
