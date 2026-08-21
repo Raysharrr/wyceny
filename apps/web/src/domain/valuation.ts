@@ -330,6 +330,13 @@ function comparableContentKey(c: Comparable): string {
  * excluded — that is the thing being recomputed, not part of what was
  * verified. ADD ANY NEW FIELD HERE: one left out means a row that changed on
  * screen still counts as unchanged and silently keeps its `confirmed` stamp.
+ *
+ * `lokalId` added (wave 4, 2026-08-21): this comment's own rule — a field
+ * `Comparable` gained after this function was written is exactly the case
+ * it warns about. Two lokale of one notarial act can otherwise share every
+ * OTHER field bucketed here (same `transactionId`, and content can coincide
+ * too), so omitting it risked carrying one lokal's `confirmed` stamp onto
+ * the other's row on a resync.
  */
 function sameComparable(a: Comparable, b: Comparable): boolean {
   return (
@@ -337,7 +344,8 @@ function sameComparable(a: Comparable, b: Comparable): boolean {
     a.date === b.date &&
     a.area === b.area &&
     a.source === b.source &&
-    a.transactionId === b.transactionId
+    a.transactionId === b.transactionId &&
+    a.lokalId === b.lokalId
   );
 }
 

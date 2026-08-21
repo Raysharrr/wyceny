@@ -79,8 +79,8 @@ describe("mapDots", () => {
   });
 });
 
-describe("mapDots — overlap spreading (final wave minor ii)", () => {
-  it("three dots at the exact same position get three distinct (px,py), each within 8 px of the original", () => {
+describe("mapDots — overlap spreading (final wave minor ii, wave 4)", () => {
+  it("three dots at the exact same position: the first stays exactly there, the other two land within 8 px of it", () => {
     const pos = { x: 1100, y: 1000 };
     // Baseline: one dot alone at `pos`, untouched by the spread (the whole
     // point — a position held by exactly one dot must not move).
@@ -115,8 +115,16 @@ describe("mapDots — overlap spreading (final wave minor ii)", () => {
     const positions = new Set(dots.map((d) => `${d.px},${d.py}`));
     expect(positions.size).toBe(3);
 
-    for (const d of dots) {
-      expect(Math.hypot(d.px - original.px, d.py - original.py)).toBeLessThanOrEqual(8);
+    // The FIRST dot at a shared position (P1, first in the array) is a
+    // marker AT the actual building — not displaced along with the ones
+    // sharing its spot (wave 4).
+    expect(dots[0].px).toBe(original.px);
+    expect(dots[0].py).toBe(original.py);
+    // The other two are nudged onto the ring — offset, but still close.
+    for (const d of dots.slice(1)) {
+      const dist = Math.hypot(d.px - original.px, d.py - original.py);
+      expect(dist).toBeGreaterThan(0);
+      expect(dist).toBeLessThanOrEqual(8);
     }
   });
 

@@ -18,8 +18,13 @@ const OVERLAP_RING_PX = 7;
  * lokale of one notarial act, whose candidates share a `pos`) onto a small
  * ring so every one of them stays individually clickable; two dots stacked
  * 1:1 leave only the top one reachable by click or keyboard (final wave
- * minor ii, team-lead 2026-08-21). The k-th dot at a shared position lands
- * at `angle = k · 2π/8` on a ring of {@link OVERLAP_RING_PX} — deterministic
+ * minor ii, team-lead 2026-08-21). The FIRST dot at a shared position stays
+ * at the true coordinate (wave 4: a marker AT the actual building, not
+ * displaced along with its overlapping siblings); the k-th dot AFTER it
+ * (k = 1, 2, 3, …) lands at `angle = ((k − 1) mod 8) · 2π/8` on ring
+ * `ceil(k / 8) · {@link OVERLAP_RING_PX}` — 8 positions per ring, 7 px for
+ * the 2nd–9th dot, 14 px for the 10th–17th, and so on, so an unlikely 9+-way
+ * overlap still spreads outward instead of crowding one ring. Deterministic
  * (no randomness) and order-preserving (a single left-to-right `map`, no
  * grouping/reordering). A position held by exactly one dot is untouched.
  */
@@ -35,11 +40,14 @@ function spreadOverlaps(dots: MapDot[]): MapDot[] {
     if ((totalAt.get(posKey) ?? 0) <= 1) return d;
     const k = seenAt.get(posKey) ?? 0;
     seenAt.set(posKey, k + 1);
-    const angle = k * ((2 * Math.PI) / 8);
+    if (k === 0) return d; // first dot at a shared position stays put
+    const ring = Math.ceil(k / 8);
+    const angle = ((k - 1) % 8) * ((2 * Math.PI) / 8);
+    const radius = ring * OVERLAP_RING_PX;
     return {
       ...d,
-      px: d.px + OVERLAP_RING_PX * Math.cos(angle),
-      py: d.py + OVERLAP_RING_PX * Math.sin(angle),
+      px: d.px + radius * Math.cos(angle),
+      py: d.py + radius * Math.sin(angle),
     };
   });
 }

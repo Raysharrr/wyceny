@@ -72,13 +72,15 @@ export function rcnRow(t: {
  * collapsed both onto whichever row a `Map` happened to keep last — every
  * row for that act then printed the SAME price/area. `currentRows` from an
  * OLDER draft (saved before `lokalId` existed on the form row) falls back to
- * a per-`transactionId` QUEUE, consumed one-by-one in effective-proposal
- * order (final wave addendum, C1 refinement): the pre-`lokalId` code always
- * wrote `comparables` as `nextEff.proposed.map(rcnRow)`, i.e. in EXACTLY
- * that order, so the Nth legacy row for a `transactionId` is the Nth
- * candidate for it here too — same correspondence it always had. This
- * preserves an edit on EITHER lokal of an old-style multi-lokal act, not
- * just the earlier "exactly one row" fallback's single-lokal case.
+ * {@link matchLegacyRow} — content, never position (wave 4, C1 root cause
+ * #2): an earlier per-`transactionId` FIFO queue assumed the Nth legacy row
+ * for an act was the Nth candidate for it in RANKING order, but ranking
+ * order can differ from the order the rows were originally written (e.g.
+ * after a first reject re-sorts the effective proposal) — the queue could
+ * hand candidate B a row that actually belonged to candidate A. Content
+ * matching only regenerates via `rcnRow` when there's genuine ambiguity
+ * (zero or 2+ legacy rows with identical date/area/price for that
+ * `transactionId`), never by guessing position.
  */
 function rebuildComparables(
   snap: SampleSelectionSnapshot,
@@ -95,23 +97,52 @@ function rebuildComparables(
         (c) => [candidateKey({ transactionId: c.transactionId, lokalId: c.lokalId }), c] as const,
       ),
   );
-  const legacyQueueByTransactionId = new Map<string, ComparableRow[]>();
-  for (const c of currentRcnRows) {
-    if (c.lokalId) continue; // matched via candidateKey above instead
-    const queue = legacyQueueByTransactionId.get(c.transactionId);
-    if (queue) queue.push(c);
-    else legacyQueueByTransactionId.set(c.transactionId, [c]);
-  }
+  const legacyRows = currentRcnRows.filter((c) => !c.lokalId);
   const manualRows = currentRows.filter((c) => c.source !== "rcn");
   return [
     ...nextEff.proposed.map(
-      (c) =>
-        byCandidateKey.get(candidateKey(c)) ??
-        legacyQueueByTransactionId.get(c.transactionId)?.shift() ??
-        rcnRow(c),
+      (c) => byCandidateKey.get(candidateKey(c)) ?? matchLegacyRow(c, legacyRows) ?? rcnRow(c),
     ),
     ...manualRows,
   ];
+}
+
+/** Same rounding `rcnRow` applies before a number ever reaches the form. */
+function roundedString(n: number): string {
+  return String(Math.round(n * 100) / 100);
+}
+
+/**
+ * Matches a LEGACY row (no `lokalId` — a draft saved before that field
+ * existed on the form row) to a candidate by transaction id + CONTENT, since
+ * position can't be trusted (see {@link rebuildComparables}'s doc comment).
+ * A legacy row counts as a match only when its `date`/`area`/`pricePerM2`
+ * strings are identical to what `rcnRow(candidate)` would itself produce
+ * (same rounding) — if exactly one legacy row for this `transactionId`
+ * matches, its OBJECT is reused (preserving whatever status it carries);
+ * with zero or 2+ matches the caller falls back to `rcnRow(candidate)`.
+ *
+ * Trade-off, accepted (only pre-`lokalId` drafts can hit it, and only for a
+ * multi-lokal act specifically): an EDITED legacy row's content no longer
+ * matches `rcnRow`'s fresh output, so it can never be content-matched — the
+ * candidate regenerates fresh and that edit is lost on the next resync.
+ * Never hands a candidate ANOTHER lokal's row just because a queue slot
+ * lined up, which is the exact shape of the original data-loss bug.
+ */
+export function matchLegacyRow(
+  candidate: { transactionId: string; date: string; area: number; pricePerM2: number },
+  legacyRows: readonly ComparableRow[],
+): ComparableRow | undefined {
+  const wantArea = roundedString(candidate.area);
+  const wantPrice = roundedString(candidate.pricePerM2);
+  const matches = legacyRows.filter(
+    (r) =>
+      r.transactionId === candidate.transactionId &&
+      r.date === candidate.date &&
+      r.area === wantArea &&
+      r.pricePerM2 === wantPrice,
+  );
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /**

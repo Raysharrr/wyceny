@@ -378,6 +378,41 @@ describe("applySampleUpdate — punktowe zdejmowanie potwierdzeń (Task 6)", () 
   });
 
   /**
+   * Two lokale of ONE notarial act can share `transactionId` (the bucket
+   * key) AND — coincidentally or because the fixture below says so — every
+   * other field `sameComparable` compares, differing only in `lokalId`.
+   * Without `lokalId` in `sameComparable` (wave 4, 2026-08-21), a content
+   * match inside the shared bucket picks whichever row comes first, so
+   * reordering the incoming rows (the domain re-ranks on every resync) can
+   * hand one lokal's `confirmed` stamp to the OTHER lokal's row.
+   */
+  it("two lokale of one act with identical date/area/price don't swap confirmation stamps when the incoming order changes — lokalId is part of sameComparable (wave 4)", () => {
+    const base = {
+      date: "2025-03",
+      area: 50,
+      pricePerM2: 10_000,
+      source: "rcn" as const,
+      transactionId: "T1",
+    };
+    const snapshotComparables: Comparable[] = [
+      { ...base, lokalId: "L1", status: "confirmed" },
+      { ...base, lokalId: "L2", status: "to_verify" },
+    ];
+    const confirmed = draftWith({ ...rcnInputs(), comparables: snapshotComparables });
+    // Neither row's OWN content changed, but the incoming order is reversed.
+    const incoming: Comparable[] = [
+      { ...base, lokalId: "L2" },
+      { ...base, lokalId: "L1" },
+    ];
+    const edited = applySampleUpdate(confirmed, {
+      comparables: incoming,
+      sampleMeta: confirmed.inputs!.sampleMeta ?? null,
+    });
+    expect(edited.inputs!.comparables[0].status).toBe("to_verify"); // L2's own status
+    expect(edited.inputs!.comparables[1].status).toBe("confirmed"); // L1's own status
+  });
+
+  /**
    * The matcher is only worth anything if the boundary preserves what it
    * matches on. This runs the REAL step-3 ACL over form-shaped rows, exactly
    * as `saveSampleAction` does — `assignSampleProvenance` re-derives every

@@ -143,6 +143,13 @@ export function StepSample({
             pricePerM2: String(c.pricePerM2),
             source: c.source,
             transactionId: c.transactionId,
+            // Wave 4 (C1 still open on the RELOADED-DRAFT path): without
+            // this, every RCN row hydrated from a SAVED draft looked
+            // "legacy" (no lokalId) even on drafts saved AFTER lokalId
+            // shipped — rebuildComparables then fell back to its
+            // content/position matching for every reject, not just true
+            // pre-lokalId drafts.
+            lokalId: c.lokalId,
           }))
         : [{ ...emptyComparable }, { ...emptyComparable }, { ...emptyComparable }],
       sampleMeta: sampleMeta ?? undefined,

@@ -998,12 +998,17 @@ describe("StepSample — manual rejection flow", () => {
     const proposed = [A, B, C];
     const alternates = [D, buildingCandidate(5)];
     const sel = makeSampleSelection({ proposed, alternates });
+    // lokalId carried through (wave 4): matches what `step-sample.tsx`'s
+    // hydration actually produces for a CURRENT draft — this test is about
+    // the happy path (A1), not the legacy pre-lokalId fallback, which has
+    // its own dedicated describe block below and cannot preserve an edit.
     const initialComparables: Comparable[] = proposed.map((c) => ({
       date: c.date,
       area: c.area,
       pricePerM2: c.pricePerM2,
       source: "rcn" as const,
       transactionId: c.transactionId,
+      lokalId: c.lokalId,
     }));
 
     const { container } = render(
@@ -1520,7 +1525,7 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     expect(container.querySelector("#comparable-price-2")).toBeNull();
   });
 
-  it("legacy rows (no lokalId, pre-fix draft) sharing one transactionId are matched via a per-transactionId QUEUE, in order — not collapsed (C1 refinement)", async () => {
+  it("legacy rows (no lokalId, pre-fix draft) sharing one transactionId are matched by CONTENT, not position — not collapsed (C1 refinement, updated wave 4)", async () => {
     const user = userEvent.setup();
     const lokalA = makeCandidate({
       transactionId: "ACT-LEGACY",
@@ -1547,8 +1552,9 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     const sel = makeSampleSelection({ proposed, alternates: [] });
     // LEGACY rows: source "rcn" + transactionId, but NO lokalId — simulates
     // a draft saved before this field existed on the form row. Two rows
-    // share ACT-LEGACY, exactly the shape the earlier "only when exactly
-    // one row" fallback could not disambiguate and regenerated instead.
+    // share ACT-LEGACY with DIFFERENT content (own price/area) — exactly
+    // what matchLegacyRow needs to tell them apart without lokalId or
+    // position (wave 4).
     const initialComparables: Comparable[] = proposed.map((c) => ({
       date: c.date,
       area: c.area,
@@ -1573,8 +1579,9 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
 
     // Reject "other" — forces a resync; the two legacy ACT-LEGACY rows must
-    // land back in ORDER (A's price at slot 0, B's at slot 1), never
-    // collapsed onto whichever one a transactionId-keyed Map kept last.
+    // land back correctly matched to their OWN content (A's price at slot
+    // 0, B's at slot 1), never collapsed onto whichever one happens to
+    // occupy a shared bucket.
     await user.click(candidateRows()[2]);
     await waitFor(() => expect(screen.getByText("Kandydatka 3 z 3")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
@@ -1587,6 +1594,256 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
         .getAllByPlaceholderText("zł/m²")
         .map((el) => (el as HTMLInputElement).value);
       expect(prices).toEqual(["7505.43", "7541.24"]);
+    });
+  });
+});
+
+/**
+ * Wave 4 — C1 was still open on the RELOADED-DRAFT path (Opus re-review,
+ * fixture heweliusza, act …439017 BUD.170/171). Root cause:
+ * `step-sample.tsx`'s hydration mapped `initialComparables` through an
+ * explicit 5-field literal that DROPPED `lokalId`, so after any page load
+ * every RCN row looked "legacy" and `rebuildComparables` fell to its
+ * position-sensitive fallback (the old per-transactionId FIFO queue) —
+ * which could hand a candidate the WRONG lokal's data specifically when the
+ * FIRST lokal of an act was rejected (repro: reject A → B's row got A's
+ * 50,63 m² / 7505,43 zł). Fixed both ends: `step-sample.tsx` now carries
+ * `lokalId` through hydration, and the legacy fallback matches by CONTENT
+ * (`matchLegacyRow`, `use-sample-review.test.ts`), never by position.
+ */
+describe("StepSample — reload path (wave 4): lokalId survives draft hydration", () => {
+  const setUp = () => {
+    const lokalA = makeCandidate({
+      transactionId: "ACT-RELOAD",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_A",
+      pricePerM2: 7505.43,
+      area: 50.63,
+      distanceM: 100,
+    });
+    const lokalB = makeCandidate({
+      transactionId: "ACT-RELOAD",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_B",
+      pricePerM2: 7541.24,
+      area: 38.19,
+      distanceM: 101,
+    });
+    const other = makeCandidate({
+      transactionId: "T-OTHER-RELOAD",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_C",
+      pricePerM2: 9000,
+      area: 45,
+      distanceM: 102,
+    });
+    const proposed = [lokalA, lokalB, other];
+    const sel = makeSampleSelection({ proposed, alternates: [] });
+    // NOT hand-adding lokalId here — `comparables` intentionally mirrors
+    // the SERVER's `{date, area, pricePerM2, transactionId}` shape
+    // (`StepSample`'s own prop type), the exact input hydration maps
+    // through. If the hydration fix regresses, this test regresses with it.
+    const initialComparables: Comparable[] = proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+      lokalId: c.lokalId,
+    }));
+    return { sel, initialComparables };
+  };
+
+  async function rejectPanelRow(user: ReturnType<typeof userEvent.setup>, index: number) {
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
+    await user.click(candidateRows()[index]);
+    await user.click(await screen.findByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+  }
+
+  it("edit B's price, then reject the FIRST lokal of the act (A) → B's EDIT survives on its OWN row, not A's fresh price (repro: reject A → B got A's 50,63/7505,43)", async () => {
+    const user = userEvent.setup();
+    const { sel, initialComparables } = setUp();
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+    // Only the candidateKey path (hydrated lokalId) can carry an EDIT
+    // through a resync — content-matching/regeneration can't (see the
+    // legacy describe block below), so editing B here is what actually
+    // discriminates "hydration carries lokalId" from "got the right price
+    // by chance". B is index 1 (A, B, other).
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(3\)/ }));
+    const priceB = container.querySelector("#comparable-price-1") as HTMLInputElement;
+    await user.clear(priceB);
+    await user.type(priceB, "88888");
+    await rejectPanelRow(user, 0); // lokalA
+    await waitFor(() => {
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      expect(prices).toEqual(["88888", "9000"]); // B's EDIT, never A's data
+    });
+  });
+
+  it("edit A's price, then reject the SECOND lokal of the act (B) instead — fresh render, symmetric case — A's EDIT survives on its OWN row, not B's fresh price", async () => {
+    const user = userEvent.setup();
+    const { sel, initialComparables } = setUp();
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(3\)/ }));
+    const priceA = container.querySelector("#comparable-price-0") as HTMLInputElement;
+    await user.clear(priceA);
+    await user.type(priceA, "77777");
+    await rejectPanelRow(user, 1); // lokalB
+    await waitFor(() => {
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      expect(prices).toEqual(["77777", "9000"]); // A's EDIT, never B's data
+    });
+  });
+});
+
+describe("StepSample — legacy draft path (wave 4): rows without lokalId are matched by content, never position", () => {
+  it("reject the FIRST lokal of a legacy act (A) → the SECOND (B) keeps its OWN area/price, matched by content — the exact repro this wave fixed", async () => {
+    const user = userEvent.setup();
+    const lokalA = makeCandidate({
+      transactionId: "ACT-LEGACY-2",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_A",
+      pricePerM2: 7505.43,
+      area: 50.63,
+      distanceM: 100,
+    });
+    const lokalB = makeCandidate({
+      transactionId: "ACT-LEGACY-2",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_B",
+      pricePerM2: 7541.24,
+      area: 38.19,
+      distanceM: 101,
+    });
+    const other = makeCandidate({
+      transactionId: "T-OTHER-LEGACY-2",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_C",
+      pricePerM2: 9000,
+      area: 45,
+      distanceM: 102,
+    });
+    const proposed = [lokalA, lokalB, other];
+    const sel = makeSampleSelection({ proposed, alternates: [] });
+    // LEGACY rows: no lokalId at all — the pre-lokalId draft shape.
+    const initialComparables: Comparable[] = proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
+    await user.click(candidateRows()[0]); // lokalA
+    await user.click(await screen.findByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(2\)/ }));
+    await waitFor(() => {
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      expect(prices).toEqual(["7541.24", "9000"]); // B's own price, never A's
+    });
+  });
+
+  it("an EDITED legacy row of a single-lokal act is REGENERATED (edit lost) on the next resync — accepted legacy trade-off: content-matching can't recover an edited row's identity without lokalId", async () => {
+    const user = userEvent.setup();
+    const single = makeCandidate({
+      transactionId: "ACT-SINGLE-LEGACY",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_S",
+      pricePerM2: 7000,
+      area: 40,
+      distanceM: 100,
+    });
+    const other = makeCandidate({
+      transactionId: "T-OTHER-LEGACY-3",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_D",
+      pricePerM2: 9000,
+      area: 45,
+      distanceM: 101,
+    });
+    const proposed = [single, other];
+    const sel = makeSampleSelection({ proposed, alternates: [] });
+    const initialComparables: Comparable[] = proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(2\)/ }));
+    const priceSingle = container.querySelector("#comparable-price-0") as HTMLInputElement;
+    await user.clear(priceSingle);
+    await user.type(priceSingle, "12345");
+
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
+    // Reject the OTHER candidate — forces a resync that touches every row,
+    // including "single"'s, even though "single" itself isn't the one
+    // rejected.
+    await user.click(candidateRows()[1]);
+    await user.click(await screen.findByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    await waitFor(() => {
+      // The edit ("12345") is GONE — regenerated to the candidate's own
+      // fresh price (7000). Documented, accepted loss: only a pre-lokalId
+      // draft can hit this, and matchLegacyRow has no way to tell an EDITED
+      // row apart from a stale/unrelated one without lokalId or position.
+      expect((container.querySelector("#comparable-price-0") as HTMLInputElement).value).toBe(
+        "7000",
+      );
     });
   });
 });
