@@ -453,6 +453,13 @@ export function useSampleReview({
         valuationId,
         radiusOverrideM: radiusM,
         manualRejections: sel.manualRejections ?? [],
+        // Carried the SAME way `manualRejections` is — `buildProposal`
+        // re-injects both into the fresh snapshot (Slice 3c, Task 5), so an
+        // out-of-radius inclusion stays in "W próbie" (re-attached, badged
+        // "dodana ręcznie") and the review trail survives a radius change
+        // instead of silently resetting "przejrzane N/M".
+        manualInclusions: sel.manualInclusions ?? [],
+        reviewed: sel.reviewed ?? [],
       });
       if ("error" in result) {
         if (result.code === "pool_missing" || result.code === "pool_stale") setPoolMissing(true);

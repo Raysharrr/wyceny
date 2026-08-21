@@ -37,6 +37,8 @@ export type SamplePanelProps = {
   initialRejecting?: boolean;
   /** The candidate's own manual rejection (reason + optional note) — only present for `status: "rejected"`. */
   rejection?: ManualRejection;
+  /** "przejrzane N" in the title (Task 5, `reviewStats.reviewed` at the caller) — appended only when passed, so every pre-Task-5 unit test's plain "Propozycja i z M" assertion keeps matching. */
+  reviewedCount?: number;
   onKeep(): void;
   onReject(r: { reason: ManualRejectionReason; note?: string }): void;
   /** "Dodaj do próby" (status: "alternate") — adds this candidate to `manualInclusions` (Task 5 wiring: `include(key)`). */
@@ -45,6 +47,8 @@ export type SamplePanelProps = {
   onSkip(): void;
   /** "Przywróć" (status: "rejected") — drops the manual rejection (Task 5 wiring: `restore(m)`). */
   onRestore(): void;
+  /** "Anuluj" inside the rejection-reasons block (Task 5) — lets the caller clear its own `panelInitialRejecting` so the SAME row doesn't reopen the reasons block if it's re-selected later. Purely a notification; the block itself always closes locally regardless of whether this is passed. */
+  onCancelRejecting?(): void;
   onClose(): void;
 };
 
@@ -109,11 +113,13 @@ export function SamplePanel({
   status,
   initialRejecting = false,
   rejection,
+  reviewedCount,
   onKeep,
   onReject,
   onInclude,
   onSkip,
   onRestore,
+  onCancelRejecting,
   onClose,
 }: SamplePanelProps) {
   const streetViewUsable = Boolean(embedKey) && streetViewEnabled;
@@ -146,6 +152,14 @@ export function SamplePanel({
     setRejecting(initialRejecting);
     setReason(null);
     setNote("");
+  }
+
+  /** "Anuluj" (Task 5) — closes the reasons block locally (never rejects) and notifies the caller so a `panelInitialRejecting` pointed at this row doesn't reopen it later. Also clears `reason`/`note`, same as switching candidates does — an aborted rejection shouldn't leave a half-filled form behind. */
+  function handleCancelRejecting() {
+    setRejecting(false);
+    setReason(null);
+    setNote("");
+    onCancelRejecting?.();
   }
 
   /** Enter's default action (no button/input focused) — the status's own primary action (Task 4). */
@@ -272,7 +286,10 @@ export function SamplePanel({
         // `panelStatus` derivation), so "Propozycja N z M" would misprint
         // "Propozycja 0 z M" — a distinct, non-ranked title instead.
         title={
-          status === "rejected" ? "Odrzucona propozycja" : `Propozycja ${index + 1} z ${total}`
+          status === "rejected"
+            ? "Odrzucona propozycja"
+            : `Propozycja ${index + 1} z ${total}` +
+              (reviewedCount !== undefined ? ` · przejrzane ${reviewedCount}` : "")
         }
         right={
           <Button
@@ -435,16 +452,21 @@ export function SamplePanel({
                 onChange={(e) => setNote(e.target.value)}
                 maxLength={500}
               />
-              <Button
-                type="button"
-                size="sm"
-                disabled={!reason}
-                onClick={() =>
-                  reason && onReject({ reason, ...(note.trim() ? { note: note.trim() } : {}) })
-                }
-              >
-                Potwierdź odrzucenie
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!reason}
+                  onClick={() =>
+                    reason && onReject({ reason, ...(note.trim() ? { note: note.trim() } : {}) })
+                  }
+                >
+                  Potwierdź odrzucenie
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={handleCancelRejecting}>
+                  Anuluj
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Odrzucona propozycja wypada z próby, następna alternatywa wchodzi. Powód trafia do
                 zapisu wyceny (snapshot) — proza „analiza rynku” go na razie nie czyta.

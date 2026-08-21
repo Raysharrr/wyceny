@@ -26,6 +26,8 @@ export type SampleTableProps = {
   /** Shared keyboard order across BOTH sections (proposed ∪ visible alternates) — owned by `SampleSections`, not derived locally. */
   allKeys: string[];
   reviewedKeys: ReadonlySet<string>;
+  /** Keys carrying the "dodana ręcznie" badge (Slice 3c, Task 5) — defaults to empty, so existing/older callers need not pass it. */
+  includedKeys?: ReadonlySet<string>;
   /** Only `flags` and `params.subjectEgib` are read off this — row membership comes from `rows`, not from re-deriving `effectiveSelection` here. */
   selection: SampleSelectionSnapshot;
   streetView: StreetViewSnapshot | null;
@@ -38,6 +40,8 @@ export type SampleTableProps = {
 
 const pln = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const m2 = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Stable default for the optional `includedKeys` prop — one shared empty `Set`, not a fresh one per render. */
+const NO_INCLUDED_KEYS: ReadonlySet<string> = new Set();
 
 function Thumb({
   c,
@@ -98,6 +102,7 @@ export function SampleTable({
   kind,
   allKeys,
   reviewedKeys,
+  includedKeys = NO_INCLUDED_KEYS,
   selection,
   streetView,
   streetViewEnabled,
@@ -201,6 +206,7 @@ export function SampleTable({
         <TableCell className="num text-center">{c.floor ?? "—"}</TableCell>
         <TableCell>
           <div className="flex flex-wrap gap-1">
+            {includedKeys.has(key) ? <Badge variant="secondary">dodana ręcznie</Badge> : null}
             {rowBadges(c, selection.flags[key] ?? [], subjectEgib).map((b) => (
               <Badge key={b.key} variant={b.tone}>
                 {b.label}
