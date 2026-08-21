@@ -303,4 +303,41 @@ describe("sampleSelectionSchema — v3 additive fields (Slice 3)", () => {
       }).success,
     ).toBe(true);
   });
+  it("streetViewSchema: storeysHint round-trips (present as a number, present as null, and absent for entries frozen before the field existed)", () => {
+    const withHint = streetViewSchema.parse({
+      "0039.22.13/82.1": {
+        panoId: "P1",
+        captureDate: "2023-07",
+        thumbnailKey: "streetview-0039.22.13~82.1.jpg",
+        heading: 90,
+        lat: 52.39,
+        lng: 16.87,
+        storeysHint: 7,
+      },
+    });
+    expect(withHint["0039.22.13/82.1"].storeysHint).toBe(7);
+    const withNullHint = streetViewSchema.parse({
+      "0039.22.13/82.2": {
+        panoId: null,
+        captureDate: null,
+        thumbnailKey: null,
+        heading: null,
+        lat: 52.39,
+        lng: 16.87,
+        storeysHint: null,
+      },
+    });
+    expect(withNullHint["0039.22.13/82.2"].storeysHint).toBeNull();
+    const withoutHint = streetViewSchema.parse({
+      "0039.22.13/82.3": {
+        panoId: null,
+        captureDate: null,
+        thumbnailKey: null,
+        heading: null,
+        lat: 52.39,
+        lng: 16.87,
+      },
+    });
+    expect(withoutHint["0039.22.13/82.3"].storeysHint).toBeUndefined();
+  });
 });

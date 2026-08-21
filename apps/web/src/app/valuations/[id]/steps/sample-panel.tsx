@@ -88,11 +88,11 @@ export function SamplePanel({
     if (e.key !== "Enter") return;
     const target = e.target as HTMLElement;
     if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-    // "Zostaw" already fires `onKeep` natively on Enter (a focused
-    // <button> does) — this branch only promotes Enter to "next" when
-    // focus is somewhere else in the panel, so it never double-fires.
-    if (target.tagName === "BUTTON" && target.dataset.keep !== "true") return;
-    if (target.dataset.keep === "true") return;
+    // Any focused BUTTON — including "Zostaw" itself — already answers
+    // Enter natively with its own click, so every button is excluded here;
+    // this only promotes Enter to "next" when focus is somewhere else in
+    // the panel, never double-firing `onKeep`.
+    if (target.tagName === "BUTTON") return;
     onKeep();
   }
 
@@ -220,13 +220,7 @@ export function SamplePanel({
           </dl>
 
           <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="default"
-              className="flex-1"
-              data-keep="true"
-              onClick={onKeep}
-            >
+            <Button type="button" variant="default" className="flex-1" onClick={onKeep}>
               Zostaw
             </Button>
             <Button

@@ -9,8 +9,9 @@ const THUMB_SIZE = "160x100";
  * second in practice. Kept short so a single stuck call can't eat much of
  * `_street-view-enrich.ts`'s `ENRICH_BUDGET_MS`/`MIN_BUDGET_MS` gate: worst
  * case for one building that's already started when the deadline passes is
- * one wave × (METADATA_TIMEOUT_MS + STATIC_TIMEOUT_MS) ≈ 9s, not the 18s a
- * looser bound would allow.
+ * two Metadata calls (the radius-120 second chance) + one Static call ≈
+ * 2×METADATA_TIMEOUT_MS + STATIC_TIMEOUT_MS ≈ 13s, not the 26s a looser
+ * bound would allow.
  */
 export const METADATA_TIMEOUT_MS = 4000;
 export const STATIC_TIMEOUT_MS = 5000;
