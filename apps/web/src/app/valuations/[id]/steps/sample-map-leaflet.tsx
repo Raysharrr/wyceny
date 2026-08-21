@@ -94,6 +94,12 @@ export function SampleMapLeaflet({
     relayout: () => {},
   });
   const applyHighlightRef = useRef<() => void>(() => {});
+  // The initial view: `fitBounds` needs a non-zero container size, which the
+  // container may not have yet (e.g. a hidden tab). If the `setView` fallback
+  // ran instead, `fittedRef` stays false so the ResizeObserver can retry once
+  // the container actually gains a size.
+  const viewRef = useRef<{ c: L.LatLng; halfM: number } | null>(null);
+  const fittedRef = useRef(false);
   // Latest `onSelect` without re-wiring every marker on each render.
   const onSelectRef = useRef(onSelect);
   useEffect(() => {
@@ -140,7 +146,12 @@ export function SampleMapLeaflet({
     });
     osm.addTo(map);
     egib.addTo(map);
-    osm.once("tileerror", () => setTilesFailed(true));
+    // Any layer's tile failure flags the banner; a later successful load
+    // (e.g. switching back to a working base layer) clears it again.
+    for (const layer of [osm, orto, egib]) {
+      layer.on("tileerror", () => setTilesFailed(true));
+      layer.on("load", () => setTilesFailed(false));
+    }
     const narrow =
       typeof window.matchMedia === "function" && window.matchMedia("(max-width: 640px)").matches;
     L.control
@@ -172,7 +183,22 @@ export function SampleMapLeaflet({
     el.addEventListener("keydown", onKeyDown);
 
     const ro =
-      typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => map.invalidateSize()) : null;
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            map.invalidateSize();
+            // Retry the initial fit once the container actually has a size —
+            // the mount may have happened while it was still zero-sized.
+            if (!fittedRef.current && viewRef.current) {
+              const size = map.getSize();
+              if (size.x > 0 && size.y > 0) {
+                map.fitBounds(viewRef.current.c.toBounds(2 * viewRef.current.halfM), {
+                  animate: false,
+                });
+                fittedRef.current = true;
+              }
+            }
+          })
+        : null;
     ro?.observe(el);
 
     return () => {
@@ -229,9 +255,15 @@ export function SampleMapLeaflet({
       keyboard: false,
       zIndexOffset: 500,
     }).addTo(rings);
+    viewRef.current = { c, halfM };
     const size = map.getSize();
-    if (size.x > 0 && size.y > 0) map.fitBounds(c.toBounds(2 * halfM), { animate: false });
-    else map.setView(c, 15, { animate: false });
+    if (size.x > 0 && size.y > 0) {
+      map.fitBounds(c.toBounds(2 * halfM), { animate: false });
+      fittedRef.current = true;
+    } else {
+      map.setView(c, 15, { animate: false });
+      fittedRef.current = false;
+    }
   }, [centerLat, centerLng, halfM, selection.radiusUsedM]);
 
   // Markers follow the snapshot: a plain dot for a lokal alone at its
@@ -343,16 +375,17 @@ export function SampleMapLeaflet({
     }
   }, [selection]);
 
-  // Selected-row highlight: the dot itself, its building (auto-spiderfied so
-  // the lokal is visible) and its siblings as "kin". `spiderfy` calls this
-  // back after laying out legs; it terminates because `spider.posKey` is set
-  // before the callback runs.
+  // Selected-row highlight: the dot itself, its building and its siblings as
+  // "kin". Only CLASS PAINTING goes on the ref (`spiderfy` calls it back after
+  // laying out legs); the auto-open of the selected lokal's building stays in
+  // the effect body — if it lived in the callback, opening ANY other building
+  // would immediately snap the spider back to the selected one (final review).
   useEffect(() => {
-    const apply = () => {
+    const applyClasses = () => {
       for (const [key, marker] of markersRef.current) {
         marker.getElement()?.classList.toggle("smap-dot--selected", key === selectedKey);
       }
-      for (const [key, b] of buildingsRef.current) {
+      for (const b of buildingsRef.current.values()) {
         const hit = selectedKey !== null && b.keys.includes(selectedKey);
         b.marker.getElement()?.classList.toggle("smap-dot--selected", hit);
         for (const k of b.keys) {
@@ -363,11 +396,18 @@ export function SampleMapLeaflet({
             ?.getElement()
             ?.classList.toggle("smap-dot--kin", hit && k !== selectedKey);
         }
-        if (hit && spiderRef.current.posKey !== key) spiderRef.current.open(key);
       }
     };
-    applyHighlightRef.current = apply;
-    apply();
+    applyHighlightRef.current = applyClasses;
+    applyClasses();
+    if (selectedKey !== null) {
+      for (const [key, b] of buildingsRef.current) {
+        if (b.keys.includes(selectedKey) && spiderRef.current.posKey !== key) {
+          spiderRef.current.open(key); // → spiderfy → applyClasses paints the legs
+          break;
+        }
+      }
+    }
   }, [selectedKey, selection]);
 
   const eff = effectiveSelection(selection);
@@ -409,9 +449,9 @@ export function SampleMapLeaflet({
 /**
  * One lokal as a divIcon dot. Clickable kinds get role/aria/keyboard;
  * rejected ones are hidden from assistive tech (native title only), exactly
- * as the old SVG map. Exported for Task 3 (spider legs reuse it).
+ * as the old SVG map. Reused for spider legs (onSpider=true).
  */
-export function addDotMarker(
+function addDotMarker(
   d: Dot,
   latlng: L.LatLng,
   target: L.LayerGroup,
