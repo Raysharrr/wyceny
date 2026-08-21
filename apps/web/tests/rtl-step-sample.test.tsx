@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import type { Comparable, SampleMeta } from "@/domain/kcs";
 import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
+import type { Candidate } from "@/domain/sample-selection";
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
 // auto-cleanup never registers — without this each render leaks into the
@@ -64,17 +65,50 @@ function makeSampleMeta(overrides: { truncated?: boolean } = {}): SampleMeta {
   };
 }
 
-/** A minimal v3 `SampleSelectionSnapshot` (ADR-015) — proposed/alternates empty, only counts/radius matter here. */
+/**
+ * A fully-populated `Candidate` (all 16 fields) — the shape `candidateSchema`
+ * actually validates on the client (`zodResolver(sampleStepSchema)` gates
+ * submit). Needed so at least one `sampleSelection` fixture below exercises
+ * that resolver with a real row, not an empty `proposed`/`alternates` array —
+ * an empty array can't reveal a schema/domain field mismatch that would
+ * silently block submit in production with no visible error (only
+ * `errors.comparables` is rendered, never `errors.sampleSelection`).
+ */
+function makeCandidate(overrides: Partial<Candidate> = {}): Candidate {
+  return {
+    transactionId: "T-100",
+    date: "2024-05",
+    area: 61,
+    pricePerM2: 11000,
+    priceTotal: 671000,
+    egib: { teryt: "306401", obreb: "0001", arkusz: "12", dzialka: "34", budynek: "5", lokal: "6" },
+    lokalId: "306401_1.0001.34_BUD_5_LOK_6",
+    distanceM: 120,
+    floor: 2,
+    rooms: 3,
+    market: "wtorny",
+    share: "1/1",
+    transType: "wolnyRynek",
+    function: "mieszkalna",
+    seller: "osobaFizyczna",
+    pos: { x: 100, y: 200 },
+    ...overrides,
+  };
+}
+
+/** A v3 `SampleSelectionSnapshot` (ADR-015). */
 function makeSampleSelection(
   overrides: {
     radiusUsedM?: number;
     counts?: Partial<SampleSelectionSnapshot["counts"]>;
+    proposed?: Candidate[];
+    alternates?: Candidate[];
   } = {},
 ): SampleSelectionSnapshot {
   return {
     version: 3,
-    proposed: [],
-    alternates: [],
+    proposed: overrides.proposed ?? [],
+    alternates: overrides.alternates ?? [],
     flags: {},
     rejectedCounts: {},
     radiusUsedM: overrides.radiusUsedM ?? 500,
@@ -317,13 +351,21 @@ describe("StepSample — submit", () => {
    * A save that never re-fetches (e.g. the appraiser only hand-edits a
    * price) must still send the PRE-EXISTING `sampleSelection` snapshot —
    * omitting it here would wipe the persisted selection to null even though
-   * nothing about the sample selection itself changed.
+   * nothing about the sample selection itself changed. The snapshot carries
+   * a FULLY-POPULATED `proposed` candidate (not an empty array) so this test
+   * also exercises `candidateSchema` on the client's `zodResolver` — the
+   * gate that actually decides whether "Zatwierdź próbę i dalej" does
+   * anything at all; an empty array would let a real schema/domain mismatch
+   * through silently (no `errors.sampleSelection` is ever rendered).
    */
-  it("keeps a pre-existing sampleSelection prop in the save payload without re-fetching", async () => {
+  it("keeps a pre-existing sampleSelection prop (with a populated candidate) in the save payload without re-fetching", async () => {
     const user = userEvent.setup();
     getSampleProposal.mockClear();
     saveSampleAction.mockResolvedValue({ ok: true });
-    const existingSelection = makeSampleSelection({ radiusUsedM: 777 });
+    const existingSelection = makeSampleSelection({
+      radiusUsedM: 777,
+      proposed: [makeCandidate()],
+    });
 
     render(
       <StepSample
@@ -344,6 +386,8 @@ describe("StepSample — submit", () => {
       string,
       { sampleSelection?: SampleSelectionSnapshot },
     ];
+    expect(payload.sampleSelection?.proposed).toHaveLength(1);
+    expect(payload.sampleSelection?.proposed[0]).toMatchObject({ transactionId: "T-100" });
     expect(payload.sampleSelection).toMatchObject({ radiusUsedM: 777 });
   });
 });
