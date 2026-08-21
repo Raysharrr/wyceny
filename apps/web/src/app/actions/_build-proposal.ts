@@ -12,7 +12,7 @@ import { selectSample } from "@/domain/sample-selection";
 import { storeysHintByBuilding } from "@/domain/street-view-framing";
 import { toSampleSelectionSnapshot, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import { deriveSubjectEgib } from "@/domain/egib-id";
-import type { ManualRejection } from "@/domain/sample-manual";
+import type { ManualInclusion, ManualRejection, ReviewedMark } from "@/domain/sample-manual";
 import type { SampleMeta } from "@/domain/kcs";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 import type { CandidatePool } from "@/ports/sample";
@@ -44,6 +44,10 @@ export async function buildProposal(
     valuation: Valuation;
     area: number;
     manualRejections?: ManualRejection[];
+    /** Appraiser's overlay (Slice 3c, Task 5) — carried across a radius change exactly like `manualRejections`, never recomputed here. */
+    manualInclusions?: ManualInclusion[];
+    /** Review trail (Slice 3c, Task 5) — informational only; carried the same way so "przejrzane N/M" survives a radius change. */
+    reviewed?: ReviewedMark[];
     session: { user: { id: string } };
     valuationId: string;
     startedAt: number;
@@ -60,7 +64,17 @@ export async function buildProposal(
   sampleMeta: SampleMeta;
   streetView: StreetViewSnapshot;
 }> {
-  const { pool, valuation, area, manualRejections, session, valuationId, startedAt } = args;
+  const {
+    pool,
+    valuation,
+    area,
+    manualRejections,
+    manualInclusions,
+    reviewed,
+    session,
+    valuationId,
+    startedAt,
+  } = args;
   // Only present for a reselect (the discriminated union above guarantees
   // it) — a fresh fetch always walks the domain's own radius steps.
   const radiusOverrideM = args.event === "proposal.reselect" ? args.radiusOverrideM : undefined;
@@ -80,6 +94,12 @@ export async function buildProposal(
     // Appraiser's overlay (Slice 3) — survives a radius change by candidateKey,
     // not recomputed here; `toSampleSelectionSnapshot` always writes `[]`.
     manualRejections: manualRejections ?? [],
+    // Re-injected the SAME way as `manualRejections` above (Slice 3c, Task
+    // 5) — `manualInclusions` re-attaches by its stored `candidate` when the
+    // new pool/radius no longer contains the key; `reviewed` is informational
+    // and would otherwise silently reset "przejrzane N/M" on every reselect.
+    manualInclusions: manualInclusions ?? [],
+    reviewed: reviewed ?? [],
   };
   const { candidates: _candidates, ...sampleMeta } = pool;
   const comparables = selection.proposed.map((c) => ({
