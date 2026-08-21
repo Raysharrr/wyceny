@@ -52,7 +52,11 @@ function makeSampleMeta(overrides: { truncated?: boolean } = {}): SampleMeta {
   return {
     point: { x: 100, y: 200, source: "subject" },
     maxRadiusM: 3000,
-    counts: { fetched: 9000, deduped: 8000, noPos: 10 },
+    // Deliberately DIFFERENT from `makeSampleSelection().counts.pool` (9000):
+    // the "przebadano" banner count must come from the v3 selection snapshot,
+    // not from sampleMeta — an assertion against 9000 alone couldn't tell the
+    // two apart when both fixtures happened to share the same number.
+    counts: { fetched: 9400, deduped: 8000, noPos: 10 },
     fetchedAt: "2026-07-23T10:00:00Z",
     source: "rcn-wfs-gugik",
     query: {
@@ -147,6 +151,7 @@ describe("StepSample — defaults", () => {
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -177,6 +182,7 @@ describe("StepSample — RCN fetch", () => {
         area={AREA}
         comparables={[]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -205,6 +211,7 @@ describe("StepSample — RCN fetch", () => {
     // (d) honest banner — counts/radius from the v3 selection snapshot.
     expect(bannerText(container)).toMatch(/Dobrano 2 z 48 pasujących w promieniu 500 m/);
     expect(bannerText(container)).toMatch(/przebadano 9000/);
+    expect(bannerText(container)).not.toMatch(/pula może być niepełna/);
 
     // The form still enforces "at least 3 comparables" (comparableSchema),
     // so a 2-row fetch alone can't reach submit — add a third row by hand,
@@ -249,6 +256,7 @@ describe("StepSample — RCN fetch", () => {
         area={AREA}
         comparables={[]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -281,6 +289,7 @@ describe("StepSample — RCN fetch", () => {
         area={AREA}
         comparables={[]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -308,6 +317,7 @@ describe("StepSample — submit", () => {
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -336,6 +346,7 @@ describe("StepSample — submit", () => {
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -417,6 +428,7 @@ describe("StepSample — a hand-typed row carries no transactionId", () => {
         area={AREA}
         comparables={fetched}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -441,6 +453,53 @@ describe("StepSample — a hand-typed row carries no transactionId", () => {
   });
 });
 
+/**
+ * A draft persisted before ADR-015 v3 shipped carries the old `sampleMeta`
+ * shape (`lat`/`lon` instead of `point`, no `maxRadiusM`/`counts`), which
+ * fails `sampleMetaSchema` on submit. Before this fix that error had no
+ * visible surface (only `errors.comparables` was ever rendered) — the
+ * appraiser saw the button do nothing.
+ */
+describe("StepSample — legacy v2 sampleMeta draft (item A)", () => {
+  it("surfaces the resolver error instead of a silently inert submit", async () => {
+    const user = userEvent.setup();
+    saveSampleAction.mockClear();
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[
+          { date: "2024-01", area: 60, pricePerM2: 10000, source: "manual" },
+          { date: "2024-02", area: 61, pricePerM2: 10100, source: "manual" },
+          { date: "2024-03", area: 62, pricePerM2: 10200, source: "manual" },
+        ]}
+        sampleMeta={
+          {
+            lat: 52.4,
+            lon: 16.9,
+            fetchedAt: "2026-07-14T10:00:00.000Z",
+            source: "rcn-wfs-gugik",
+            query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D" },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any
+        }
+        sampleSelection={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /ta próba pochodzi ze starszej wersji doboru/i,
+      ),
+    );
+    expect(saveSampleAction).not.toHaveBeenCalled();
+  });
+});
+
 describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR-015 v3 copy)", () => {
   it("shows Statystyki próby with Cmin/Cmax/Cśr and the V-ratio range for ≥2 comparable prices", () => {
     render(
@@ -453,6 +512,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
           { date: "2024-02", area: 61, pricePerM2: 12000, source: "manual" },
         ]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -471,6 +531,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         area={AREA}
         comparables={[]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -486,6 +547,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -500,10 +562,11 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={makeSampleMeta()}
+        sampleSelection={null}
       />,
     );
 
-    // No `sampleSelection` prop → falls back to `comparablesCount` (12) and "?".
+    // No matching `sampleSelection` → falls back to `comparablesCount` (12) and "?".
     expect(bannerText(container)).toMatch(/Dobrano 12 z \? pasujących w promieniu \? m/);
     expect(bannerText(container)).toMatch(/przebadano \? transakcji z RCN/);
   });
@@ -519,6 +582,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
           { date: "2024-02", area: 61, pricePerM2: 12000, source: "manual" },
         ]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -540,6 +604,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         area={AREA}
         comparables={twelveComparables()}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -569,6 +634,7 @@ describe("StepSample — validation", () => {
           { date: "2024-02", area: 61, pricePerM2: 10100, source: "manual" },
         ]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 
@@ -593,6 +659,7 @@ describe("StepSample — validation", () => {
           { date: "2024-05", area: 64, pricePerM2: 10400, source: "manual" },
         ]}
         sampleMeta={null}
+        sampleSelection={null}
       />,
     );
 

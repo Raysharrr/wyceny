@@ -18,7 +18,8 @@
  *      reject, but `price_outlier`/`primary_suspect` demote out of proposed
  *      (rule 5: stay in alternates);
  *   5. score = 100·sameBuilding + 60·sameParcel + 30·sameObreb − distanceM/100,
- *      tie → newer date, then transactionId (total order);
+ *      tie → newer date, then candidateKey (transactionId|lokalId — total
+ *      order even for several lokale of one act);
  *   6. proposed = top 12 (capped at 3 per building, rule 6), alternates = next 40.
  */
 import { padObreb } from "./egib-id";
@@ -228,7 +229,9 @@ function compareScored(a: Scored, b: Scored): number {
 export function iqrBounds(prices: number[], factor: number): { lo: number; hi: number } {
   const sorted = [...prices].sort((x, y) => x - y);
   const n = sorted.length;
-  // Same index quartiles as the v2 worker (rcn.py select_sample) — keeps the two comparable.
+  // Positional quartiles (sorted[floor(n/4)], sorted[floor(3n/4)]) — same
+  // definition the spike and F-14 snapshots were calibrated with;
+  // spreadsheets interpolate differently.
   const q1 = sorted[Math.floor(n / 4)];
   const q3 = sorted[Math.floor((3 * n) / 4)];
   const iqr = q3 - q1;

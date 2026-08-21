@@ -216,11 +216,18 @@ describe("selectSample — ADR-015 defaults", () => {
     expect(s.proposed).toHaveLength(3);
     expect(s.alternates).toHaveLength(2);
   });
-  it("candidates without parsable egib count as their own building (no cap collision), even when two share a transactionId", () => {
+  it("candidates without parsable egib count as their own building (no cap collision), even when four share a transactionId", () => {
+    // 4 of the 5 candidates share one transactionId (different lokalId via
+    // `n`) — the old `"?" + transactionId` fallback would have collapsed
+    // them into ONE building key, capping proposed at 3 (maxPerBuilding).
+    // buildingKey falling back to the full candidateKey (transactionId|lokalId)
+    // keeps every one of them its own building, so all 5 are still proposed.
     const shared = mk({ egib: null });
-    const sibling = mk({ egib: null, transactionId: shared.transactionId }); // same act, different lokal
-    const rest = [...Array(3)].map(() => mk({ egib: null }));
-    const pool = [shared, sibling, ...rest];
+    const siblings = [...Array(3)].map(() =>
+      mk({ egib: null, transactionId: shared.transactionId }),
+    ); // same act, different lokal
+    const other = mk({ egib: null });
+    const pool = [shared, ...siblings, other];
     expect(selectSample(pool, P).proposed).toHaveLength(5);
   });
   it("flags are keyed by transactionId|lokalId — two lokale of one act do not bleed", () => {

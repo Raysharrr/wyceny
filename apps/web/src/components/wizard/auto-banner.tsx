@@ -11,6 +11,7 @@ export function AutoBanner({
   return (
     <div
       data-kind={kind}
+      role="status"
       className={
         "flex items-center gap-3 rounded-lg border px-4 py-3 text-[13.5px] font-medium " +
         (warn

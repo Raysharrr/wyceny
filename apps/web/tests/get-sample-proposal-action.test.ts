@@ -151,6 +151,19 @@ describe("getSampleProposal (v3)", () => {
     });
   });
 
+  it("adapter throws a TimeoutError (AbortSignal.timeout) → generic Polish message + code, no English leak", async () => {
+    getMock.mockResolvedValue(valuation);
+    fetchPoolMock.mockRejectedValue(
+      Object.assign(new Error("The operation was aborted due to timeout"), {
+        name: "TimeoutError",
+      }),
+    );
+    const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
+    expect(r).toEqual({
+      error: expect.stringMatching(/^Nie udało się pobrać próby z RCN.*\(kod: [0-9a-f]{8}\)$/),
+    });
+  });
+
   it("adapter throws a real ZodError (trust-boundary parse failure) → generic Polish message + code, no JSON blob", async () => {
     getMock.mockResolvedValue(valuation);
     const zodError = z.object({ a: z.string() }).safeParse({}).error!;

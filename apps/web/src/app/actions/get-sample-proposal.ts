@@ -136,6 +136,16 @@ export async function getSampleProposal(
       // JSON-blob `message` — never fit for the appraiser's screen, so it
       // gets the generic message like any other non-worker failure.
       if (error instanceof z.ZodError) return { error: errorWithCode(GENERIC_ERROR) };
+      // AbortSignal.timeout() rejects with a DOMException-shaped Error whose
+      // `message` is English ("The operation was aborted due to timeout") and
+      // does not start with WORKER_RESPONDED_PREFIX, so it would otherwise
+      // pass through verbatim like the worker's own Polish `detail`.
+      if (
+        error instanceof Error &&
+        (error.name === "TimeoutError" || error.name === "AbortError")
+      ) {
+        return { error: errorWithCode(GENERIC_ERROR) };
+      }
       const message = error instanceof Error ? error.message : undefined;
       if (message && !message.startsWith(WORKER_RESPONDED_PREFIX)) {
         return { error: errorWithCode(message) };

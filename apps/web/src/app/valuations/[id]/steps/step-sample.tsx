@@ -84,14 +84,14 @@ export function StepSample({
   area,
   comparables: initialComparables,
   sampleMeta,
-  sampleSelection = null,
+  sampleSelection,
 }: {
   valuationId: string;
   address: string;
   area: number;
   comparables: Comparable[];
   sampleMeta: KcsInput["sampleMeta"];
-  sampleSelection?: KcsInput["sampleSelection"];
+  sampleSelection: KcsInput["sampleSelection"];
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -229,7 +229,7 @@ export function StepSample({
                 w promieniu <b>{sel?.radiusUsedM ?? "?"} m</b> (przebadano {sel?.counts.pool ?? "?"}{" "}
                 transakcji z RCN, {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
                 {liveSampleMeta.query.truncated
-                  ? " — rejestr zwrócił limit strony, pula może być niepełna"
+                  ? " — osiągnięto limit stron pobierania, pula może być niepełna"
                   : null}
               </AutoBanner>
             ) : null}
@@ -332,6 +332,13 @@ export function StepSample({
             {comparablesError ? (
               <p role="alert" className="text-sm text-destructive">
                 {comparablesError}
+              </p>
+            ) : null}
+
+            {errors.sampleMeta || errors.sampleSelection ? (
+              <p role="alert" className="text-sm text-destructive">
+                Ta próba pochodzi ze starszej wersji doboru — pobierz próbę z RCN ponownie, a potem
+                zatwierdź.
               </p>
             ) : null}
 

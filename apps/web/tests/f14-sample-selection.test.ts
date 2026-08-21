@@ -45,7 +45,6 @@ describe("F-14 — WR from the proposed sample vs the appraiser's operat", () =>
         delta: pct(wr, op.pdfWrRounded!),
       };
     });
-    // eslint-disable-next-line no-console
     console.table(rows);
   });
 
