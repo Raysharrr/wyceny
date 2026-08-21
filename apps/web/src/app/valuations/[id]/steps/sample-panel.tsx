@@ -70,6 +70,19 @@ function initialMode(entry: StreetViewEntry | undefined, streetViewUsable: boole
   return entry?.panoId && streetViewUsable ? "street" : "orto";
 }
 
+/**
+ * The keyboard hint under the mode tabs — status-aware (Task 4 fix round
+ * 1): Enter's action differs per status (`mainAction`, below), and ↑/↓ is a
+ * no-op for a rejected row (its key isn't in `SampleTable`'s `allKeys` — see
+ * that file's `move()` doc comment), so the hint drops the "↑ ↓" part
+ * entirely for `rejected` rather than promise navigation that doesn't work.
+ */
+function keyboardHint(status: SamplePanelProps["status"]): string {
+  if (status === "alternate") return "↑ ↓ zmiana propozycji · Enter = Dodaj do próby";
+  if (status === "rejected") return "Enter = Przywróć";
+  return "↑ ↓ zmiana propozycji · Enter = następna";
+}
+
 /** One record field row — `dl`/`dt`/`dd` (as `flex` divs, since `dl` doesn't lay children out on its own). */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -330,9 +343,7 @@ export function SamplePanel({
                 Ortofoto
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              ↑ ↓ zmiana propozycji · Enter = następna
-            </p>
+            <p className="text-xs text-muted-foreground">{keyboardHint(status)}</p>
           </div>
 
           <dl className="text-sm">
