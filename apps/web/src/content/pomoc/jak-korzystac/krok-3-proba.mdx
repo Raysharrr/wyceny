@@ -36,7 +36,7 @@ Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin,
 
 ## Jak przeglądać propozycje
 
-Propozycje są w dwóch sekcjach: **W próbie (N)** — to, co faktycznie wejdzie do kalkulacji — i zwijana **Alternatywy (M)** pod nią. Klik w wiersz w dowolnej z dwóch sekcji, strzałki ↑ / ↓ albo kropka na mapie otwierają panel boczny tej propozycji; ↑ / ↓ przechodzą między obiema sekcjami po kolei, nie tylko w obrębie jednej tabeli — ale tylko wśród propozycji i alternatyw: gdy panel pokazuje odrzuconą propozycję, strzałki nic nie robią, działa tylko Enter (patrz niżej). W panelu jest przełącznik podglądu — **Ulica** (Street View, z podpisem daty zdjęcia Google), **Mapa** i **Ortofoto** — oraz komplet pól rekordu: data transakcji, cena, cena za m², powierzchnia, piętro i liczba izb, rynek, sprzedający, udział, obręb, działka i budynek, odległość. Gdy Google nie ma panoramy tego budynku, zakładka „Ulica” jest nieaktywna i panel otwiera się od razu na „Ortofoto”.
+Propozycje są w dwóch sekcjach: **W próbie (N)** — to, co faktycznie wejdzie do kalkulacji — i zwijana **Alternatywy (M)** pod nią. Klik w wiersz w dowolnej z dwóch sekcji, strzałki ↑ / ↓ albo kropka na mapie otwierają panel boczny tej propozycji; ↑ / ↓ przechodzą między obiema sekcjami po kolei (gdy sekcja „Alternatywy” jest rozwinięta), nie tylko w obrębie jednej tabeli — ale tylko wśród propozycji i alternatyw: gdy panel pokazuje odrzuconą propozycję, strzałki nic nie robią, działa tylko Enter (patrz niżej). W panelu jest przełącznik podglądu — **Ulica** (Street View, z podpisem daty zdjęcia Google), **Mapa** i **Ortofoto** — oraz komplet pól rekordu: data transakcji, cena, cena za m², powierzchnia, piętro i liczba izb, rynek, sprzedający, udział, obręb, działka i budynek, odległość. Gdy Google nie ma panoramy tego budynku, zakładka „Ulica” jest nieaktywna i panel otwiera się od razu na „Ortofoto”.
 
 Pierwsza kolumna każdej tabeli to checkbox „W próbie”:
 
@@ -45,7 +45,7 @@ Pierwsza kolumna każdej tabeli to checkbox „W próbie”:
 
 Dodana w ten sposób alternatywa wchodzi do próby OBOK dotychczasowych propozycji, nie zamiast nich — próba może więc liczyć więcej niż {DEFAULTS.proposedN} transakcji. Ranking i limit {DEFAULTS.maxPerBuilding} na budynek (opisane w [doborze próby](/pomoc/dobor-proby-rcn)) obowiązują tylko automatyczny dobór; ręczna decyzja rzeczoznawcy ma zawsze pierwszeństwo. Bramka zatwierdzenia niżej mimo to liczy **wszystkie** wiersze „Próby do kalkulacji” względem progu {REQUIRED_SAMPLE_SIZE} — sam próg nie rośnie razem z próbą, próba po prostu może go przekroczyć.
 
-Druga kolumna, ✓, znaczy „przejrzane” — sam fakt, że rzeczoznawca spojrzał na tę propozycję i podjął którąkolwiek z czterech decyzji panelu (niżej). To wyłącznie informacja porządkowa: nic nie blokuje ani nie waży kalkulacji. Licznik „przejrzane N/M” w pasku nad tabelą (M to propozycje, alternatywy i odrzucone razem) oraz sam znacznik ✓ przy wierszu przetrwają zapis szkicu i jego ponowne otwarcie.
+Druga kolumna, ✓, znaczy „przejrzane” — sam fakt, że rzeczoznawca spojrzał na tę propozycję i podjął którąkolwiek z decyzji panelu (niżej). To wyłącznie informacja porządkowa: nic nie blokuje ani nie waży kalkulacji. Licznik „przejrzane N/M” w pasku nad tabelą (M to propozycje, alternatywy i Twoje ręczne odrzucenia razem — automatyczne odrzucenia z sekcji „Odrzucone” do M się nie liczą) oraz sam znacznik ✓ przy wierszu przetrwają zapis szkicu i jego ponowne otwarcie.
 
 Panel boczny pokazuje inny komplet przycisków zależnie od tego, w której sekcji propozycja aktualnie jest:
 
@@ -61,19 +61,19 @@ Lista powodów odrzucenia:
   ))}
 </ul>
 
-Wybierz powód, dopisz opcjonalną notatkę i potwierdź „Potwierdź odrzucenie” — albo „Anuluj”, żeby zamknąć listę bez odrzucania (propozycja zostaje dokładnie tam, gdzie była). Odrzucenie niczego nie kasuje — zapamiętuje decyzję. Odrzucona propozycja wypada z próby, a pierwsza pasująca alternatywa wchodzi na jej miejsce: nigdy propozycja z flagą „cena odstająca” ani „prawdopodobnie deweloperska”, i nigdy więcej niż {DEFAULTS.maxPerBuilding} propozycje z jednego budynku. Sekcja „Odrzucone” niżej ma przy każdym ręcznym odrzuceniu przycisk „Przywróć” — działa tak samo jak w panelu, propozycja wraca do próby tak, jakby jej nigdy nie odrzucono.
+Wybierz powód, dopisz opcjonalną notatkę i potwierdź „Potwierdź odrzucenie” — albo „Anuluj”, żeby zamknąć listę bez odrzucania (propozycja zostaje dokładnie tam, gdzie była). Odrzucenie niczego nie kasuje — zapamiętuje decyzję. Odrzucona propozycja wypada z próby, a pierwsza pasująca alternatywa wchodzi na jej miejsce: nigdy propozycja z flagą „cena odstająca” ani „prawdopodobnie deweloperska”, i nigdy więcej niż {DEFAULTS.maxPerBuilding} propozycje z jednego budynku. Sekcja „Odrzucone” niżej ma przy każdym ręcznym odrzuceniu przycisk „Przywróć” — działa tak samo jak w panelu, propozycja wraca dokładnie tam, gdzie by trafiła bez ręcznego odrzucenia.
 
-Propozycja dodana ręcznie z „Alternatyw” nie dostaje żadnej specjalnej odznaki, dopóki mieści się w bieżącym promieniu — wygląda jak każda inna propozycja w próbie. Odznakę **„dodana ręcznie”** dostaje dopiero wtedy, gdy późniejsza zmiana promienia zawęzi pulę tak, że ta propozycja z niej wypadnie: zostaje w próbie mimo to (Twoja decyzja ma pierwszeństwo przed promieniem), tylko oznaczona, że już nie pochodzi z bieżącego doboru. Mapa przeglądowa koloruje ją tak samo jak każdą inną propozycję w próbie — na zielono.
+Propozycja dodana ręcznie z „Alternatyw” nie dostaje żadnej specjalnej odznaki, dopóki mieści się w bieżącym promieniu — wygląda jak każda inna propozycja w próbie. Odznakę **„dodana ręcznie”** dostaje dopiero wtedy, gdy późniejsza zmiana promienia przeliczy dobór tak, że ta propozycja wypadnie z bieżącej listy propozycji i alternatyw: zostaje w próbie mimo to (Twoja decyzja ma pierwszeństwo przed promieniem), tylko oznaczona, że już nie pochodzi z bieżącego doboru. Mapa przeglądowa koloruje ją tak samo jak każdą inną propozycję w próbie — na zielono.
 
 ## Promień
 
 Przyciski {DEFAULTS.radiusStepsM.join(" / ")} m przeliczają dobór na tej samej puli, którą „Pobierz próbę z RCN” już pobrało — bez ponownego zapytania do rejestru, więc przeliczenie jest natychmiastowe. Są aktywne od razu po pobraniu próby; dopiero pierwsze kliknięcie, które nie znajdzie zapamiętanej puli, blokuje je jednym z dwóch komunikatów: „Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.” (szkic sprzed tej wersji, bez zapamiętanej puli) albo „Dane przedmiotu zmieniły się od ostatniego pobrania — pobierz próbę z RCN ponownie.” (adres lub powierzchnia zmienione w kroku 1 od ostatniego pobrania). W obu przypadkach przyciski odblokowuje dopiero nowe „Pobierz próbę z RCN”.
 
-Zmiana promienia zachowuje cały Twój ręczny ślad: odrzucenia, ręcznie dodane alternatywy (razem z odznaką „dodana ręcznie”, jeśli po przeliczeniu wypadną poza nowy promień) i znaczniki ✓ „przejrzane”. Traci je wyłącznie nowe „Pobierz próbę z RCN” — bo to ono zastępuje całą pulę, nie samo przeliczenie promienia na tej, która już jest.
+Zmiana promienia zachowuje cały Twój ręczny ślad: odrzucenia, ręcznie dodane alternatywy (razem z odznaką „dodana ręcznie”, jeśli po przeliczeniu wypadną z bieżącego doboru) i znaczniki ✓ „przejrzane”. Traci je wyłącznie nowe „Pobierz próbę z RCN” — bo to ono zastępuje całą pulę, nie samo przeliczenie promienia na tej, która już jest.
 
 ## Odrzucone
 
-Nagłówek sekcji „Odrzucone (N)” liczy wszystkie odrzucenia — automatyczne (higiena i pasmo metrażu z [doboru próby](/pomoc/dobor-proby-rcn)) oraz Twoje ręczne — to zawsze pełny licznik. Wewnątrz odrzucenia są pogrupowane po powodzie; gdy w danym powodzie jest więcej propozycji niż {REJECTED_PER_REASON}, grupa pokazuje tylko najbliższe {REJECTED_PER_REASON} z podpisem „najbliższe X z Y” — reszta istnieje wyłącznie w liczniku. Ręczne odrzucenia mają dopisaną notatkę, jeśli ją zostawiłeś, i przycisk „Przywróć”.
+Nagłówek sekcji „Odrzucone (N)” liczy wszystkie odrzucenia — automatyczne (higiena i pasmo metrażu z [doboru próby](/pomoc/dobor-proby-rcn)) oraz Twoje ręczne — to zawsze pełny licznik. Wewnątrz odrzucenia są pogrupowane po powodzie; gdy w danym powodzie jest więcej propozycji niż {REJECTED_PER_REASON}, grupa pokazuje tylko najbliższe {REJECTED_PER_REASON} z podpisem „najbliższe X z Y” — reszta istnieje wyłącznie w liczniku. Ręczne odrzucenia mają dopisaną notatkę, jeśli ją zostawiłeś, i przycisk „Przywróć”. Klik w ręcznie odrzucony wiersz otwiera jego panel (z przyciskiem „Przywróć”).
 
 ## Próba do kalkulacji
 
@@ -83,7 +83,7 @@ Pod tabelą propozycji jest zwijana sekcja „Próba do kalkulacji (N) — edytu
 - **Data transakcji** i **powierzchnia (m²)** — przy pobraniu z RCN wypełniają się same; przy wpisie ręcznym są opcjonalne przy zapisie, ale powierzchnie z próby są używane w kroku 4 przy definicjach cech.
 - Przycisk „Dodaj transakcję” dokłada pusty wiersz. „Usuń” kasuje wiersz, ale tabela nie zejdzie poniżej trzech wierszy — przy trzech przycisk jest nieaktywny.
 
-Wiersze z RCN są po każdym odrzuceniu, przywróceniu i zmianie promienia przeliczane z propozycji, ale Twoje poprawki wartości w istniejących wierszach RCN zostają; wiersze dopisane ręcznie też zostają.
+Wiersze z RCN są po każdym odrzuceniu, przywróceniu, dodaniu alternatywy do próby i zmianie promienia przeliczane z propozycji, ale Twoje poprawki wartości w istniejących wierszach RCN zostają; wiersze dopisane ręcznie też zostają.
 
 ## Co blokuje przejście dalej
 
