@@ -281,6 +281,11 @@ describe("SamplePanel — status-aware actions (Task 4)", () => {
     expect(screen.queryByRole("button", { name: "Przywróć" })).toBeNull();
     expect(screen.queryByText("alternatywa")).toBeNull();
     expect(screen.queryByText("odrzucona")).toBeNull();
+    // Fix round 1: keyboard hint is status-aware — "proposed" keeps the
+    // original ↑ ↓/Enter=następna copy, never the other statuses' hints.
+    expect(screen.getByText("↑ ↓ zmiana propozycji · Enter = następna")).toBeInTheDocument();
+    expect(screen.queryByText(/Enter = Dodaj do próby/)).toBeNull();
+    expect(screen.queryByText(/Enter = Przywróć/)).toBeNull();
   });
 
   it("status 'alternate': Dodaj do próby (calls onInclude) / Pomiń (calls onSkip), 'alternatywa' badge, and the more-than-proposedN note", async () => {
@@ -293,6 +298,12 @@ describe("SamplePanel — status-aware actions (Task 4)", () => {
     expect(
       screen.getByText(new RegExp(`więcej\\s+niż ${DEFAULTS.proposedN} transakcji`)),
     ).toBeInTheDocument();
+    // Fix round 1: "alternate"'s hint names its own main action, never the
+    // other statuses' — and keeps ↑ ↓ (navigation still works for a visible
+    // alternate row, unlike a rejected one).
+    expect(screen.getByText("↑ ↓ zmiana propozycji · Enter = Dodaj do próby")).toBeInTheDocument();
+    expect(screen.queryByText(/Enter = następna/)).toBeNull();
+    expect(screen.queryByText(/Enter = Przywróć/)).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "Dodaj do próby" }));
     expect(onInclude).toHaveBeenCalledTimes(1);
@@ -325,6 +336,13 @@ describe("SamplePanel — status-aware actions (Task 4)", () => {
     expect(screen.queryByRole("button", { name: "Pomiń" })).toBeNull();
     expect(screen.getByText("za daleko")).toBeInTheDocument();
     expect(screen.getByText(/zbyt daleko od centrum/)).toBeInTheDocument();
+    // Fix round 1: "rejected"'s hint drops the "↑ ↓" part entirely (a
+    // rejected row's key isn't in `allKeys`, so ↑ ↓ is a no-op there) and
+    // names only its own main action.
+    expect(screen.getByText("Enter = Przywróć")).toBeInTheDocument();
+    expect(screen.queryByText(/↑ ↓/)).toBeNull();
+    expect(screen.queryByText(/Enter = następna/)).toBeNull();
+    expect(screen.queryByText(/Enter = Dodaj do próby/)).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "Przywróć" }));
     expect(onRestore).toHaveBeenCalledTimes(1);
