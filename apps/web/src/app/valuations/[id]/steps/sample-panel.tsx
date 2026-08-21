@@ -325,7 +325,7 @@ export function SamplePanel({
               </Button>
               <p className="text-xs text-muted-foreground">
                 Odrzucona kandydatka wypada z propozycji, następna alternatywa wchodzi. Powód trafia
-                do snapshotu i do prozy „analiza rynku”.
+                do zapisu wyceny (snapshot) — proza „analiza rynku” go na razie nie czyta.
               </p>
             </div>
           ) : null}

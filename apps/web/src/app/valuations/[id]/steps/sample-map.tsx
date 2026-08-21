@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { candidateKey } from "@/domain/sample-selection";
 import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import { kiegWmsUrl, ortoWmsUrl } from "./embed-urls";
 import { mapDots, type MapDot } from "./map-dots";
@@ -32,22 +33,33 @@ function dotTitle(date: string, pricePerM2: number): string {
   return `${date} · ${priceFmt.format(Math.round(pricePerM2))} zł/m²`;
 }
 
-/** "kandydatka date · price" for the clickable dot's `aria-label`. */
-function dotAriaLabel(date: string, pricePerM2: number): string {
-  return `kandydatka ${dotTitle(date, pricePerM2)}`;
+/**
+ * "kandydatka date · price · distance · propozycja|alternatywa" for the
+ * clickable dot's `aria-label` (final wave A2/B2) — the SVG carries
+ * `role="group"`, not `role="img"`, so each dot's own label is what makes
+ * it discoverable to assistive tech, not one caption on the whole overlay.
+ */
+function dotAriaLabel(
+  date: string,
+  pricePerM2: number,
+  distanceM: number,
+  kind: "proposed" | "alternate",
+): string {
+  const kindLabel = kind === "proposed" ? "propozycja" : "alternatywa";
+  return `kandydatka ${dotTitle(date, pricePerM2)} · ${Math.round(distanceM)} m · ${kindLabel}`;
 }
 
-/** date/pricePerM2 for every dot key, built once per render (proposed/alternates/removed + the sampled rejected rows). */
+/** date/pricePerM2/distanceM for every dot key, built once per render (proposed/alternates/removed + the sampled rejected rows). Keyed via the shared `candidateKey` (final wave B2), not a hand-rolled `${transactionId}|${lokalId}` — the exact key `mapDots` builds each dot with. */
 function buildDotInfo(
   selection: SampleSelectionSnapshot,
-): Map<string, { date: string; pricePerM2: number }> {
+): Map<string, { date: string; pricePerM2: number; distanceM: number }> {
   const eff = effectiveSelection(selection);
-  const info = new Map<string, { date: string; pricePerM2: number }>();
+  const info = new Map<string, { date: string; pricePerM2: number; distanceM: number }>();
   for (const c of [...eff.proposed, ...eff.alternates, ...eff.removed]) {
-    info.set(`${c.transactionId}|${c.lokalId}`, { date: c.date, pricePerM2: c.pricePerM2 });
+    info.set(candidateKey(c), { date: c.date, pricePerM2: c.pricePerM2, distanceM: c.distanceM });
   }
   for (const r of selection.rejected ?? []) {
-    info.set(`${r.transactionId}|${r.lokalId}`, { date: r.date, pricePerM2: r.pricePerM2 });
+    info.set(candidateKey(r), { date: r.date, pricePerM2: r.pricePerM2, distanceM: r.distanceM });
   }
   return info;
 }
@@ -119,7 +131,7 @@ export function SampleMap({
         <svg
           viewBox={`0 0 ${PX} ${PX}`}
           className="absolute inset-0 h-full w-full"
-          role="img"
+          role="group"
           aria-label="Kandydatki na mapie"
         >
           {rings.map((r) => (
@@ -163,8 +175,19 @@ export function SampleMap({
                 data-testid={`dot-${d.kind}`}
                 role={clickable ? "button" : undefined}
                 tabIndex={clickable ? 0 : undefined}
+                // Rejected dots carry no interaction and no label of their
+                // own — hidden from assistive tech entirely (A2) rather than
+                // an empty stop on the tab order or an unlabeled node.
+                aria-hidden={clickable ? undefined : true}
                 aria-label={
-                  clickable && found ? dotAriaLabel(found.date, found.pricePerM2) : undefined
+                  clickable && found
+                    ? dotAriaLabel(
+                        found.date,
+                        found.pricePerM2,
+                        found.distanceM,
+                        d.kind as "proposed" | "alternate",
+                      )
+                    : undefined
                 }
                 onClick={clickable ? () => onSelect(d.key) : undefined}
                 onKeyDown={

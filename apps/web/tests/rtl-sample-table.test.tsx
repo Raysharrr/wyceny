@@ -153,6 +153,46 @@ describe("SampleTable", () => {
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.queryByText(/brak zdjęcia ulicy/)).toBeNull();
   });
+  it("no panorama WITH a capture date joins 'brak zdjęcia ulicy · Google z RRRR' with a middle dot, not a <br/> (final wave B11)", () => {
+    const p = [cand()];
+    const key = `0039.22.13/82.${p[0].egib!.budynek}`;
+    render(
+      <SampleTable
+        selection={snap(p, [])}
+        streetView={{
+          [key]: {
+            panoId: null,
+            captureDate: "2023-07",
+            thumbnailKey: null,
+            heading: null,
+            lat: 1,
+            lng: 2,
+          },
+        }}
+        streetViewEnabled
+        selectedKey={null}
+        onSelect={() => {}}
+      />,
+    );
+    // A single text node, not "brak zdjęcia ulicy" and "Google z 2023" split
+    // across a <br/> — getByText's default (whole-node) matcher only finds
+    // it if the two halves are joined in one string.
+    expect(screen.getByText("brak zdjęcia ulicy · Google z 2023")).toBeInTheDocument();
+  });
+  it("NO street-view entry at all for the building (enrichment skipped/failed) → 'brak miniaturki', not a blank caption (final wave B11)", () => {
+    const p = [cand()];
+    render(
+      <SampleTable
+        selection={snap(p, [])}
+        streetView={{}}
+        streetViewEnabled
+        selectedKey={null}
+        onSelect={() => {}}
+      />,
+    );
+    expect(screen.getByText("brak miniaturki")).toBeInTheDocument();
+    expect(screen.queryByText(/brak zdjęcia ulicy/)).toBeNull();
+  });
   it("click selects a row; the parent re-rendering with the new selectedKey marks it data-state=selected", async () => {
     const onSelect = vi.fn();
     const p = [cand(), cand(), cand()];

@@ -40,8 +40,15 @@ export function groupRejected(snap: SampleSelectionSnapshot): RejectedGroup[] {
     });
     auto.set(r.reason, rows);
   }
+  // Sort by the CENSUS (`rejectedCounts`), not by the sampled row count —
+  // `rejected` caps at REJECTED_PER_REASON (50) per reason, so two reasons
+  // both at the cap (50 rows each) can still have wildly different true
+  // totals (final wave, T7 #6); a group with no census entry (pre-Slice-3
+  // snapshot) falls back to its own row count.
+  const census = (reason: RejectReason, rows: RejectedGroup["rows"]): number =>
+    snap.rejectedCounts?.[reason] ?? rows.length;
   const groups: RejectedGroup[] = [...auto.entries()]
-    .sort((a, b) => b[1].length - a[1].length)
+    .sort(([reasonA, rowsA], [reasonB, rowsB]) => census(reasonB, rowsB) - census(reasonA, rowsA))
     .map(([reason, rows]) => ({ key: reason, label: REJECT_REASON_LABELS[reason], rows }));
   const all = new Map(
     [...snap.proposed, ...snap.alternates].map((c) => [candidateKey(c), c] as const),
@@ -49,17 +56,26 @@ export function groupRejected(snap: SampleSelectionSnapshot): RejectedGroup[] {
   for (const reason of MANUAL_REJECTION_REASONS) {
     const rows = (snap.manualRejections ?? [])
       .filter((m) => m.reason === reason)
-      .map((m) => {
+      .flatMap((m) => {
         const c = all.get(`${m.transactionId}|${m.lokalId}`);
-        return {
-          key: `${m.transactionId}|${m.lokalId}`,
-          date: c?.date ?? "",
-          area: c?.area ?? 0,
-          pricePerM2: c?.pricePerM2 ?? 0,
-          distanceM: c?.distanceM ?? 0,
-          ...(m.note ? { note: m.note } : {}),
-          manual: true,
-        };
+        // A carried manualRejection whose candidate matches NEITHER the
+        // current `proposed` NOR `alternates` (e.g. it fell out of both
+        // after a radius change) has nothing real to show — skip it rather
+        // than render a "0,00 zł/m²" ghost row (final wave, T8 #1). The
+        // header count (census + manualRejections.length) is unaffected —
+        // it never reads this function's output.
+        if (!c) return [];
+        return [
+          {
+            key: `${m.transactionId}|${m.lokalId}`,
+            date: c.date,
+            area: c.area,
+            pricePerM2: c.pricePerM2,
+            distanceM: c.distanceM,
+            ...(m.note ? { note: m.note } : {}),
+            manual: true,
+          },
+        ];
       });
     if (rows.length)
       groups.push({ key: `manual:${reason}`, label: MANUAL_REJECTION_LABELS[reason], rows });

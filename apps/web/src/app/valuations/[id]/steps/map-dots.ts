@@ -34,7 +34,7 @@ export function mapDots(
     const p = frame.toPx(pos);
     dots.push({ key, px: p.px, py: p.py, kind });
   };
-  for (const r of snap.rejected ?? []) push(`${r.transactionId}|${r.lokalId}`, r.pos, "rejected");
+  for (const r of snap.rejected ?? []) push(candidateKey(r), r.pos, "rejected");
   for (const c of eff.removed) push(candidateKey(c), c.pos, "rejected");
   for (const c of eff.alternates) push(candidateKey(c), c.pos, "alternate");
   for (const c of eff.proposed) push(candidateKey(c), c.pos, "proposed");

@@ -53,22 +53,19 @@ function Thumb({
       />
     );
   }
+  // No entry at all (enrichment skipped/failed for this building) vs. an
+  // entry that ran but found no panorama (`panoId === null`) — two distinct
+  // captions (final wave B11), the second one joined with " · " like
+  // `sample-panel.tsx`'s own "brak zdjęcia ulicy" message, not a `<br/>`.
+  const caption = !e
+    ? "brak miniaturki"
+    : `brak zdjęcia ulicy${e.captureDate ? ` · Google z ${e.captureDate.slice(0, 4)}` : ""}`;
   return (
     <div className="flex items-center gap-2">
       <div className="grid h-10 w-16 place-items-center rounded-md border border-dashed bg-muted text-muted-foreground">
         <Camera className="size-4" />
       </div>
-      {e ? (
-        <span className="text-[11px] leading-tight text-muted-foreground">
-          brak zdjęcia ulicy
-          {e.captureDate ? (
-            <>
-              <br />
-              Google z {e.captureDate.slice(0, 4)}
-            </>
-          ) : null}
-        </span>
-      ) : null}
+      <span className="text-[11px] leading-tight text-muted-foreground">{caption}</span>
     </div>
   );
 }

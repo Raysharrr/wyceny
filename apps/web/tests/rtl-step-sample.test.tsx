@@ -897,9 +897,208 @@ describe("StepSample — manual rejection flow", () => {
     await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
     const [, payload2] = saveSampleAction.mock.calls.at(-1) as [
       string,
-      { sampleSelection?: SampleSelectionSnapshot },
+      {
+        sampleSelection?: SampleSelectionSnapshot;
+        comparables: Array<{ source?: string; transactionId?: string }>;
+      },
     ];
     expect(payload2.sampleSelection?.manualRejections).toEqual([]);
+    // Restore re-asserts `comparables` too (T7 #1–#3), not just the
+    // selection snapshot — back to the original 3 proposed rows, the
+    // backfilled alternate gone.
+    expect(payload2.comparables).toHaveLength(3);
+    expect(new Set(payload2.comparables.map((c) => c.transactionId))).toEqual(
+      new Set(proposed.map((c) => c.transactionId)),
+    );
+  });
+
+  it("post-reject selection follows the SAME ranking slot to whoever backfilled it ('Kandydatka 1 z 4' after rejecting the first of 5)", async () => {
+    const user = userEvent.setup();
+    const proposed = [buildingCandidate(1), buildingCandidate(2), buildingCandidate(3)];
+    const alternates = [buildingCandidate(4), buildingCandidate(5)];
+    const sel = makeSampleSelection({ proposed, alternates });
+    const initialComparables: Comparable[] = proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
+    // Reject the FIRST proposed row (index 0 of 5 total).
+    await user.click(candidateRows()[0]);
+    await waitFor(() => expect(screen.getByText("Kandydatka 1 z 5")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    // Total drops from 5 to 4 (the rejected candidate leaves both lists);
+    // the panel stays on the SAME slot (index 0), now showing whoever
+    // backfilled it.
+    await waitFor(() => expect(screen.getByText("Kandydatka 1 z 4")).toBeInTheDocument());
+  });
+
+  it("'Zostaw' (and Enter, which routes to the identical onKeep callback — see rtl-sample-panel.test.tsx) advances through the ranking and closes the panel past the last candidate", async () => {
+    const user = userEvent.setup();
+    const sel = makeSampleSelection({
+      proposed: [makeCandidate({ transactionId: "T-ONLY-1" })],
+      alternates: [
+        makeCandidate({ transactionId: "T-ONLY-2", lokalId: "306401_1.0001.34_BUD_5_LOK_9" }),
+      ],
+    });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    await user.click(within(candidateTable()).getAllByRole("row").slice(1)[0]);
+    await waitFor(() => expect(screen.getByText("Kandydatka 1 z 2")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Zostaw" }));
+    await waitFor(() => expect(screen.getByText("Kandydatka 2 z 2")).toBeInTheDocument());
+
+    // Past the last candidate: the panel closes rather than showing a
+    // dangling "Kandydatka 3 z 2".
+    await user.click(screen.getByRole("button", { name: "Zostaw" }));
+    await waitFor(() => expect(screen.queryByText(/Kandydatka \d+ z \d+/)).toBeNull());
+    expect(screen.queryByRole("button", { name: "Zostaw" })).toBeNull();
+  });
+
+  it("an edited RCN row's price survives reject, restore, and a radius change (final wave A1)", async () => {
+    const user = userEvent.setup();
+    reselectSample.mockReset();
+
+    const A = buildingCandidate(1);
+    const B = buildingCandidate(2);
+    const C = buildingCandidate(3);
+    const D = buildingCandidate(4);
+    const proposed = [A, B, C];
+    const alternates = [D, buildingCandidate(5)];
+    const sel = makeSampleSelection({ proposed, alternates });
+    const initialComparables: Comparable[] = proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    // Expand the editable table and edit row A's (index 0) price.
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(3\)/ }));
+    const priceA = container.querySelector("#comparable-price-0") as HTMLInputElement;
+    await user.clear(priceA);
+    await user.type(priceA, "77777");
+    expect(priceA.value).toBe("77777");
+
+    // Reject row B — scoped to the CANDIDATE table (distinct from the
+    // now-expanded editable table, which also has role="row" elements).
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
+    await user.click(candidateRows()[1]);
+    await waitFor(() => expect(screen.getByText("Kandydatka 2 z 5")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    // A's edit survives the resync; the backfilled alternate (D) prints its own RCN price.
+    await waitFor(() =>
+      expect((container.querySelector("#comparable-price-0") as HTMLInputElement).value).toBe(
+        "77777",
+      ),
+    );
+    expect((container.querySelector("#comparable-price-1") as HTMLInputElement).value).toBe(
+      String(C.pricePerM2),
+    );
+    expect((container.querySelector("#comparable-price-2") as HTMLInputElement).value).toBe(
+      String(D.pricePerM2),
+    );
+
+    // Restore B — A's edit still survives; B comes back with its own (never
+    // edited) RCN price; D drops out — it LEFT the proposal, so it isn't
+    // kept as a stray extra row.
+    await user.click(screen.getByRole("button", { name: /Odrzucone \(1\)/ }));
+    await user.click(screen.getByRole("button", { name: /Przywróć/i }));
+
+    await waitFor(() =>
+      expect((container.querySelector("#comparable-price-0") as HTMLInputElement).value).toBe(
+        "77777",
+      ),
+    );
+    expect((container.querySelector("#comparable-price-1") as HTMLInputElement).value).toBe(
+      String(B.pricePerM2),
+    );
+    expect((container.querySelector("#comparable-price-2") as HTMLInputElement).value).toBe(
+      String(C.pricePerM2),
+    );
+    expect(container.querySelector("#comparable-price-3")).toBeNull();
+
+    // A (mocked) radius click: A's edit still survives; a brand-new
+    // candidate (F, never seen before) prints its own fresh RCN price.
+    const F = buildingCandidate(6);
+    const sel2 = makeSampleSelection({ proposed: [A, C, F], radiusUsedM: 1000 });
+    reselectSample.mockResolvedValue({
+      proposal: {
+        comparables: [A, C, F].map((c) => ({
+          date: c.date,
+          area: c.area,
+          pricePerM2: c.pricePerM2,
+          transactionId: c.transactionId,
+        })),
+        sampleSelection: sel2,
+        sampleMeta: makeSampleMeta(),
+        streetView: null,
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: "1000 m" }));
+    await waitFor(() => expect(reselectSample).toHaveBeenCalled());
+
+    await waitFor(() =>
+      expect((container.querySelector("#comparable-price-0") as HTMLInputElement).value).toBe(
+        "77777",
+      ),
+    );
+    expect((container.querySelector("#comparable-price-1") as HTMLInputElement).value).toBe(
+      String(C.pricePerM2),
+    );
+    expect((container.querySelector("#comparable-price-2") as HTMLInputElement).value).toBe(
+      String(F.pricePerM2),
+    );
   });
 });
 

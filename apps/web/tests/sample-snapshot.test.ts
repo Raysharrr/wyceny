@@ -110,8 +110,21 @@ describe("toSampleSelectionSnapshot", () => {
       const kept = heavySnap.rejected!.filter((r) => r.reason === reason);
       expect(kept.length).toBeLessThanOrEqual(50);
       if (bucket.length > 50) {
+        // Mirrors `compareForCap` (sample-snapshot.ts) exactly, including
+        // the date tie-break — a naive distance-only sort would rely on
+        // Array.prototype.sort's stability (original fixture order) to
+        // break ties, which can silently diverge from production the next
+        // time the `koscielna` fixture is regenerated (final wave, B8).
         const nearest50 = [...bucket]
-          .sort((a, b) => a.candidate.distanceM - b.candidate.distanceM)
+          .sort((a, b) => {
+            if (a.candidate.distanceM !== b.candidate.distanceM) {
+              return a.candidate.distanceM - b.candidate.distanceM;
+            }
+            if (a.candidate.date !== b.candidate.date) {
+              return a.candidate.date > b.candidate.date ? -1 : 1;
+            }
+            return 0;
+          })
           .slice(0, 50)
           .map((r) => `${r.candidate.transactionId}|${r.candidate.lokalId}`);
         expect(new Set(kept.map((r) => `${r.transactionId}|${r.lokalId}`))).toEqual(

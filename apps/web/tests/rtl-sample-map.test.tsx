@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { SampleMap } from "@/app/valuations/[id]/steps/sample-map";
 import { kiegWmsUrl, ortoWmsUrl } from "@/app/valuations/[id]/steps/embed-urls";
 import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { Candidate } from "@/domain/sample-selection";
+
+const NBSP = " "; // non-breaking space — pl-PL Intl.NumberFormat's thousands separator
 
 afterEach(cleanup);
 
@@ -118,7 +120,7 @@ describe("SampleMap", () => {
     expect(legend?.textContent).toMatch(/odrzucone 3/);
   });
 
-  it("legend's rejected count also folds in manual rejections", () => {
+  it("legend's rejected count also folds in manual rejections; propozycja/alternatywy read the EFFECTIVE lists, not the raw snapshot", () => {
     const sel = makeSelection({
       manualRejections: [
         { transactionId: "P1", lokalId: "LP1", reason: "too_far", at: "2026-08-21T10:00:00Z" },
@@ -128,6 +130,16 @@ describe("SampleMap", () => {
       <SampleMap selection={sel} center={CENTER} selectedKey={null} onSelect={vi.fn()} />,
     );
     expect(container.querySelector("figcaption")?.textContent).toMatch(/odrzucone 4/);
+    // Raw snapshot: proposed=[P1,P2] (2), alternates=[A1] (1). After the
+    // manual rejection of P1, A1 stays demoted (price_outlier) rather than
+    // backfilling — effective proposed=[P2] (1), alternates=[A1] (1). Both
+    // the legend text and the dot counts must read the EFFECTIVE lists.
+    expect(container.querySelector("figcaption")?.textContent).toMatch(/propozycja 1/);
+    expect(container.querySelector("figcaption")?.textContent).toMatch(/alternatywy 1/);
+    expect(screen.getAllByTestId("dot-proposed")).toHaveLength(1);
+    expect(screen.getAllByTestId("dot-alternate")).toHaveLength(1);
+    // P1 left the proposal (manually rejected) — it now draws as rejected.
+    expect(screen.getAllByTestId("dot-rejected")).toHaveLength(2);
   });
 
   it("clicking a proposed or alternate dot selects it; a rejected dot is not clickable", () => {
@@ -169,7 +181,7 @@ describe("SampleMap", () => {
     expect(onSelect).toHaveBeenCalledWith("A1|LA1");
   });
 
-  it("the SVG overlay is an accessible image with a role and label", () => {
+  it("the SVG overlay is an accessible GROUP (role=img would hide the dots from assistive tech), and every clickable dot has its own non-empty name", () => {
     render(
       <SampleMap
         selection={makeSelection()}
@@ -178,6 +190,51 @@ describe("SampleMap", () => {
         onSelect={vi.fn()}
       />,
     );
-    expect(screen.getByRole("img", { name: "Kandydatki na mapie" })).toBeInTheDocument();
+    const group = screen.getByRole("group", { name: "Kandydatki na mapie" });
+    expect(group).toBeInTheDocument();
+    // Every clickable dot is reachable inside the group with its own accessible name.
+    const buttons = within(group).getAllByRole("button");
+    expect(buttons).toHaveLength(3); // 2 proposed + 1 alternate
+    for (const b of buttons) {
+      expect(b.getAttribute("aria-label")).toBeTruthy();
+    }
+  });
+
+  it("a clickable dot's aria-label reads date · price · distance · propozycja|alternatywa (A2/B2)", () => {
+    render(
+      <SampleMap
+        selection={makeSelection()}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    // P1: date 2026-05-01, price 12000, distanceM 100 (fixture default), proposed.
+    const proposedDot = screen.getAllByTestId("dot-proposed")[0];
+    expect(proposedDot).toHaveAttribute(
+      "aria-label",
+      `kandydatka 2026-05-01 · 12${NBSP}000 zł/m² · 100 m · propozycja`,
+    );
+    // A1: same date/price/distance, alternate.
+    const alternateDot = screen.getByTestId("dot-alternate");
+    expect(alternateDot).toHaveAttribute(
+      "aria-label",
+      `kandydatka 2026-05-01 · 12${NBSP}000 zł/m² · 100 m · alternatywa`,
+    );
+  });
+
+  it("a rejected dot is aria-hidden and not focusable", () => {
+    render(
+      <SampleMap
+        selection={makeSelection()}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const rejectedDot = screen.getByTestId("dot-rejected");
+    expect(rejectedDot).toHaveAttribute("aria-hidden", "true");
+    expect(rejectedDot).not.toHaveAttribute("role");
+    expect(rejectedDot).not.toHaveAttribute("tabindex");
   });
 });

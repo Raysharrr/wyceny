@@ -80,4 +80,59 @@ describe("groupRejected", () => {
   it("snapshot without `rejected` (pre-Slice 3) → only manual groups (counts stay in rejectedCounts for the header)", () => {
     expect(groupRejected(snap({ rejectedCounts: { no_price: 4 } }))).toEqual([]);
   });
+
+  it("sorts automatic groups by the CENSUS (rejectedCounts), not by the capped sample size (T7 #6)", () => {
+    // Both reasons are capped at 50 sampled rows, but primary_market's TRUE
+    // census (174) dwarfs out_of_area_band's (60) — the census must decide
+    // the order, not the tied row counts.
+    const fiftyOf = (reason: RejectedRow["reason"], prefix: string) =>
+      Array.from({ length: 50 }, (_, i): RejectedRow => ({
+        ...row(reason, i),
+        transactionId: `${prefix}${i}`,
+        lokalId: `${prefix}L${i}`,
+      }));
+    const g = groupRejected(
+      snap({
+        rejectedCounts: { out_of_area_band: 60, primary_market: 174 },
+        rejected: [...fiftyOf("out_of_area_band", "B"), ...fiftyOf("primary_market", "M")],
+      }),
+    );
+    expect(g.map((x) => x.label)).toEqual(["rynek pierwotny", "poza pasmem metrażu"]);
+    expect(g.map((x) => x.rows.length)).toEqual([50, 50]);
+  });
+
+  it("skips a manual rejection whose candidate matches nothing in proposed/alternates — no 0,00 zł/m² ghost row (T8 #1)", () => {
+    const g = groupRejected(
+      snap({
+        manualRejections: [
+          {
+            transactionId: "GHOST",
+            lokalId: "GHOST-L",
+            reason: "too_far",
+            at: "2026-08-21T10:00:00Z",
+          },
+        ],
+      }),
+    );
+    expect(g).toEqual([]);
+  });
+
+  it("keeps a manual rejection with a real matching candidate next to a skipped ghost of the same reason", () => {
+    const g = groupRejected(
+      snap({
+        manualRejections: [
+          { transactionId: "P1", lokalId: "PL1", reason: "too_far", at: "2026-08-21T10:00:00Z" },
+          {
+            transactionId: "GHOST",
+            lokalId: "GHOST-L",
+            reason: "too_far",
+            at: "2026-08-21T10:01:00Z",
+          },
+        ],
+      }),
+    );
+    expect(g).toHaveLength(1);
+    expect(g[0].rows).toHaveLength(1);
+    expect(g[0].rows[0].key).toBe("P1|PL1");
+  });
 });

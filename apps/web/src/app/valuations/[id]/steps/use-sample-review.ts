@@ -52,14 +52,35 @@ export function rcnRow(t: {
  * "rcn"`, which silently deleted a hand-added row still missing its
  * `source` (e.g. right after "Dodaj transakcję", before any save round-trip
  * gives it one) on every radius click.
+ *
+ * For each effective proposed candidate, an EXISTING `currentRows` entry
+ * with the same `transactionId` (and `source === "rcn"`) is kept as-is —
+ * not rebuilt from `rcnRow(c)` — so a price/date/area the appraiser typed
+ * into that row survives a reject/restore/radius resync (final wave, A1:
+ * data loss = PR gate). A candidate with no such row (freshly backfilled
+ * from alternates, or new after a radius change) gets a fresh `rcnRow(c)`.
+ * A row that LEAVES the effective proposal (rejected, or bumped back to
+ * alternates) is dropped here exactly as before — it's neither in
+ * `nextEff.proposed` nor `source !== "rcn"`, so nothing carries it forward.
  */
 function rebuildComparables(
   snap: SampleSelectionSnapshot,
   currentRows: ComparableRow[],
 ): ComparableRow[] {
   const nextEff = effectiveSelection(snap);
+  const currentRcnByTransactionId = new Map(
+    currentRows
+      .filter(
+        (c): c is ComparableRow & { transactionId: string } =>
+          c.source === "rcn" && !!c.transactionId,
+      )
+      .map((c) => [c.transactionId, c] as const),
+  );
   const manualRows = currentRows.filter((c) => c.source !== "rcn");
-  return [...nextEff.proposed.map(rcnRow), ...manualRows];
+  return [
+    ...nextEff.proposed.map((c) => currentRcnByTransactionId.get(c.transactionId) ?? rcnRow(c)),
+    ...manualRows,
+  ];
 }
 
 /**
