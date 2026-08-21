@@ -146,11 +146,10 @@ export function SampleMapLeaflet({
     });
     osm.addTo(map);
     egib.addTo(map);
-    // Any layer's tile failure flags the banner; a later successful load
-    // (e.g. switching back to a working base layer) clears it again.
+    // Not cleared on `load` — Leaflet fires it once ALL tiles settle, errors
+    // included, so it would clear the banner in the all-tiles-failed case.
     for (const layer of [osm, orto, egib]) {
       layer.on("tileerror", () => setTilesFailed(true));
-      layer.on("load", () => setTilesFailed(false));
     }
     const narrow =
       typeof window.matchMedia === "function" && window.matchMedia("(max-width: 640px)").matches;
@@ -163,6 +162,7 @@ export function SampleMapLeaflet({
       .addTo(map);
     map.on("baselayerchange", (e) => {
       el.classList.toggle("smap--orto", e.layer === orto);
+      setTilesFailed(false);
     });
     const rings = L.layerGroup().addTo(map);
     const dots = L.layerGroup().addTo(map);
