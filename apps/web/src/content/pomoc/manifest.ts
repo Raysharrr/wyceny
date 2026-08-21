@@ -93,7 +93,8 @@ export const HELP_PAGES: HelpPage[] = [
    *   apps/web/src/app/valuations/[id]/steps/sample-rejected.tsx     sekcja „Odrzucone (N)", grupowanie po powodzie, „Przywróć"
    *   apps/web/src/app/valuations/[id]/steps/rejected-groups.ts      REJECT_REASON_LABELS — etykiety powodów higieny/pasma w sekcji „Odrzucone"
    *   apps/web/src/app/valuations/[id]/steps/sample-radius.tsx       przyciski promienia, stan disabled
-   *   apps/web/src/app/valuations/[id]/steps/sample-map.tsx          mapa przeglądowa, kolory kropek, fallback ORTO -> ewidencyjna
+   *   apps/web/src/app/valuations/[id]/steps/sample-map-leaflet.tsx  mapa przeglądowa (Leaflet): warstwy OSM / Ortofoto / EGiB, znacznik budynku + rozkładanie lokali, podpis pod mapą
+   *   apps/web/src/app/valuations/[id]/steps/map-markers.ts          kolory i rodzaje kropek, etykiety „propozycja … · w próbie / alternatywa", „budynek: N propozycji…", promienie pierścieni
    *   apps/web/src/app/valuations/[id]/steps/step-sample.tsx         sekcja „Próba do kalkulacji", pasek liczników, komunikat o starym szkicu
    *   apps/web/src/domain/sample-manual.ts                           MANUAL_REJECTION_REASONS/LABELS (IMPORTOWANE do MDX), reguła promocji alternatywy
    *   apps/web/src/domain/sample-snapshot.ts:42                      REJECTED_PER_REASON = 50 (IMPORTOWANE do MDX)

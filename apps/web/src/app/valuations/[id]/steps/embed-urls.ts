@@ -76,11 +76,10 @@ export const ortoWmsUrl = (pos: { x: number; y: number }, halfM = 150, px = 600)
  * 144-byte PNG, confirmed by curl (same BBOX at 1280×1280 → a 264 KB
  * drawing; at 640×640 → empty). `mapFrame`'s `bbox` comes from `pos`/`halfM`
  * alone (`domain/geo.ts`), never `px`, so doubling WIDTH/HEIGHT here
- * doesn't move the BBOX at all — `mapDots`/the SVG `viewBox` mapping (both
- * built from the SAME `pos`/`halfM`/`px` the caller passes) stays exact;
- * only the requested pixel density (and therefore the WMS scale
- * denominator) changes. The `<img>` itself is still laid out at `px` via
- * CSS, so this is bytes-for-legibility only, not a visible size change.
+ * doesn't move the BBOX at all — only the requested pixel density (and
+ * therefore the WMS scale denominator) changes. The `<img>` itself is
+ * still laid out at `px` via CSS, so this is bytes-for-legibility only,
+ * not a visible size change.
  */
 export const kiegWmsUrl = (pos: { x: number; y: number }, halfM = 150, px = 600) =>
   wmsGetMapUrl(KIEG_WMS, "dzialki,numery_dzialek,budynki,obreby", pos, halfM, px * 2, "image/png");

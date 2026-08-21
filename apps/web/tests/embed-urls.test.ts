@@ -52,7 +52,7 @@ describe("embed-urls", () => {
     expect(u.searchParams.get("FORMAT")).toBe("image/jpeg");
     expect(u.searchParams.get("LAYERS")).toBe("Raster");
   });
-  it("kieg WMS: requested at 2x pixel density (WIDTH/HEIGHT = px*2) so GUGiK's cadastral layers clear the scale threshold, but the SAME bbox as orto's — mapDots/viewBox stays exact", () => {
+  it("kieg WMS: requested at 2x pixel density (WIDTH/HEIGHT = px*2) so GUGiK's cadastral layers clear the scale threshold, but the SAME bbox as orto's — only pixel density differs", () => {
     const pos = { x: 355285, y: 505324 };
     // The overview map's usual frame: radius 500 m → halfM 600 → 640 px,
     // the exact density that returned an empty KIEG PNG before this fix.
