@@ -177,7 +177,7 @@ export const HELP_PAGES: HelpPage[] = [
     load: () => import("./metodyka/metoda-kcs.mdx"),
   },
   /**
-   * Uwaga dla utrzymujących treść: od ADR-015 („Dobór próby v3") ranking
+   * Uwaga dla utrzymujących treść: od ADR-015 („Dobór próby v3”) ranking
    * podobieństwa i jego stałe żyją w czystej domenie TS
    * (`DEFAULTS`, `DEFAULT_WEIGHTS` w `@/domain/sample-selection`) —
    * `dobor-proby-rcn.mdx` i `krok-3-proba.mdx` importują je wprost, więc z

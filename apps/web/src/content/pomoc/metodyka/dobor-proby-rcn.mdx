@@ -29,10 +29,11 @@ Transakcja odpada, gdy trafi na którykolwiek z poniższych warunków (kod odrzu
 - rodzaj transakcji inny niż `wolnyRynek` (`not_free_market`),
 - udział w lokalu inny niż całość, np. „1/2” (`share_not_whole`),
 - miesiąc transakcji poza oknem {DEFAULTS.windowMonths} miesięcy wstecz od miesiąca wyceny (`out_of_window`),
-- rynek pierwotny (`primary_market`) — sprzedaż od dewelopera nie wchodzi do próby porównań z rynkiem wtórnym,
-- powierzchnia poza pasmem ±{DEFAULTS.areaBandPct / 0.01}% powierzchni przedmiotu (`out_of_area_band`) — sprawdzane osobno, dopiero po higienie.
+- rynek pierwotny (`primary_market`) — sprzedaż od dewelopera nie wchodzi do próby porównań z rynkiem wtórnym.
 
 Odrzucona transakcja zapamiętuje pierwszy pasujący powód z tej listy, ale też komplet powodów, które akurat zaszły — to widać dopiero w diagnostyce, nie w interfejsie kroku 3.
+
+Dopiero transakcje, które przejdą higienę, trafiają do osobnego, drugiego filtra — pasma metrażu: odpada z niego powierzchnia poza pasmem ±{DEFAULTS.areaBandPct / 0.01}% powierzchni przedmiotu (`out_of_area_band`).
 
 ## Promień
 
@@ -47,7 +48,8 @@ Transakcje, które przejdą higienę i pasmo metrażu, dostają punktację (`sco
 `score` = {DEFAULT_WEIGHTS.sameBuilding}·(ten sam budynek) + {DEFAULT_WEIGHTS.sameParcel}·(ta sama działka) + {DEFAULT_WEIGHTS.sameObreb}·(ten sam obręb) − odległość (m) / {1 / DEFAULT_WEIGHTS.distancePerM}
 
 - Tożsamość liczona jest z identyfikatora EGiB lokalu z rejestru (obręb / arkusz / działka / budynek); dla przedmiotu wyceny ten sam identyfikator budynku pochodzi z GEOPOZ.
-- Wyższy poziom dopasowania zawsze bije niższy — być w tym samym budynku daje więcej punktów niż być bliżej, ale w innym budynku.
+- Poziomy dopasowania się kumulują — ten sam budynek to zarazem ta sama działka i ten sam obręb, więc razem daje to {DEFAULT_WEIGHTS.sameBuilding + DEFAULT_WEIGHTS.sameParcel + DEFAULT_WEIGHTS.sameObreb} punktów (sama działka, bez budynku — {DEFAULT_WEIGHTS.sameParcel + DEFAULT_WEIGHTS.sameObreb}).
+- Wyższy poziom dopasowania bije niższy — być bliżej, ale w innym budynku, nie nadrabia bycia w tym samym budynku.
 - Remis w punktacji rozstrzyga nowsza data transakcji.
 
 ## Flagi, które nie odrzucają
@@ -58,13 +60,13 @@ Trzy obserwacje przyczepiane są do transakcji, która przeszła higienę i pasm
 - **rynek nieznany** — pole rodzaju rynku w rejestrze jest puste; w danych ze spike'u ADR-015 dotyczyło to około 72% rekordów,
 - **prawdopodobnie deweloperska** — rynek nieznany **i** sprzedający to osoba prawna naraz; to najsilniejsza dostępna poszlaka sprzedaży pierwotnej tam, gdzie samo pole rynku milczy.
 
-Skutek dla rankingu nie jest jednakowy: **cena odstająca** i **prawdopodobnie deweloperska** wypychają transakcję z proponowanej {REQUIRED_SAMPLE_SIZE} do alternatyw, niezależnie od punktacji. Sam **rynek nieznany**, bez towarzyszącego sprzedającego-osoby-prawnej, nic nie zmienia — transakcja zostaje na miejscu wyznaczonym przez ranking. Krok 3 pokazuje dziś wyłącznie listę proponowaną; alternatywy razem z flagami będą widoczne od kolejnej wersji.
+Skutek dla rankingu nie jest jednakowy: **cena odstająca** i **prawdopodobnie deweloperska** wypychają transakcję z listy proponowanej do alternatyw, niezależnie od punktacji. Sam **rynek nieznany**, bez towarzyszącego sprzedającego-osoby-prawnej, nic nie zmienia — transakcja zostaje na miejscu wyznaczonym przez ranking. Krok 3 pokazuje dziś wyłącznie listę proponowaną; alternatywy razem z flagami będą widoczne od kolejnej wersji.
 
 ## Ile transakcji trafia do próby
 
-Z posortowanej listy dobór bierze **{REQUIRED_SAMPLE_SIZE}** transakcji jako propozycję — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku, nadmiar z tego samego budynku spada do alternatyw z zachowaniem rankingu — a kolejne do {DEFAULTS.alternatesN} jako alternatywy.
+Z posortowanej listy dobór bierze **{DEFAULTS.proposedN}** transakcji jako propozycję — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku, nadmiar z tego samego budynku spada do alternatyw z zachowaniem rankingu — a kolejne do {DEFAULTS.alternatesN} jako alternatywy.
 
-Gdy pula po higienie, paśmie i promieniu jest mniejsza niż {REQUIRED_SAMPLE_SIZE}, aplikacja pokazuje tyle, ile znalazła — nie ma progu, poniżej którego dobór odmawia zwrotu wyniku. Zatwierdzenie operatu zostaje mimo to zablokowane, dopóki cała próba (transakcje z RCN plus ewentualne wiersze wpisane ręcznie) nie osiągnie {REQUIRED_SAMPLE_SIZE} transakcji. To dwie niezależne stałe zapisane w dwóch miejscach — `DEFAULTS.proposedN` w domenie doboru i `REQUIRED_SAMPLE_SIZE` w progu zatwierdzenia — dziś równe, ale zmiana jednej nie rusza drugiej.
+Gdy pula po higienie, paśmie i promieniu jest mniejsza niż {DEFAULTS.proposedN}, aplikacja pokazuje tyle, ile znalazła — nie ma progu, poniżej którego dobór odmawia zwrotu wyniku. Zatwierdzenie operatu zostaje mimo to zablokowane, dopóki cała próba (transakcje z RCN plus ewentualne wiersze wpisane ręcznie) nie osiągnie {REQUIRED_SAMPLE_SIZE} transakcji. To dwie niezależne stałe zapisane w dwóch miejscach — `DEFAULTS.proposedN` w domenie doboru i `REQUIRED_SAMPLE_SIZE` w progu zatwierdzenia — dziś równe, ale zmiana jednej nie rusza drugiej.
 
 ## Czego ten dobór nie robi
 
