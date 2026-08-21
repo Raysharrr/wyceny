@@ -358,4 +358,44 @@ describe("SampleMapLeaflet — building markers + spiderfy", () => {
     expect(screen.getByTestId("building-proposed")).not.toHaveClass("smap-dot--selected");
     expect(screen.queryAllByTestId("dot-proposed")).toHaveLength(0);
   });
+
+  it("moving the selection to a sibling on an open spider drops the stale kin class", () => {
+    // Same `sel` object across renders: the markers effect (dep [selection])
+    // must NOT re-run, so the spider legs from the first render persist.
+    const sel = makeBuildingSelection();
+    const { rerender } = render(
+      <SampleMapLeaflet selection={sel} center={CENTER} selectedKey="P1|LP1" onSelect={vi.fn()} />,
+    );
+    const byKey = (key: string) => document.querySelector(`[data-key="${key}"]`);
+    expect(byKey("P1|LP1")).toHaveClass("smap-dot--selected");
+    expect(byKey("P2|LP2")).toHaveClass("smap-dot--kin");
+
+    rerender(
+      <SampleMapLeaflet selection={sel} center={CENTER} selectedKey="P2|LP2" onSelect={vi.fn()} />,
+    );
+    expect(byKey("P2|LP2")).toHaveClass("smap-dot--selected");
+    expect(byKey("P2|LP2")).not.toHaveClass("smap-dot--kin");
+    expect(byKey("P1|LP1")).toHaveClass("smap-dot--kin");
+    expect(byKey("P1|LP1")).not.toHaveClass("smap-dot--selected");
+  });
+
+  it("a click on the map background folds an open spider", () => {
+    const { container } = render(
+      <SampleMapLeaflet
+        selection={makeBuildingSelection()}
+        center={CENTER}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const building = screen.getByTestId("building-proposed");
+    fireEvent.click(building);
+    expect(building).toHaveAttribute("aria-expanded", "true");
+    expect(container.querySelectorAll(".smap-leg")).toHaveLength(3);
+
+    const mapEl = container.querySelector(".leaflet-container")!;
+    fireEvent.click(mapEl);
+    expect(building).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelectorAll(".smap-leg")).toHaveLength(0);
+  });
 });
