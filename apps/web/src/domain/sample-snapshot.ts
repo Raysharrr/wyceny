@@ -8,7 +8,12 @@ import {
   type SelectionParams,
 } from "./sample-selection";
 import type { SubjectEgib } from "./egib-id";
-import { applyManualRejections, type ManualRejection } from "./sample-manual";
+import {
+  applyManualOverlay,
+  type ManualInclusion,
+  type ManualRejection,
+  type ReviewedMark,
+} from "./sample-manual";
 
 /** Compact row for the "Odrzucone" section and the overview map (decision a, 2026-08-21): no full Candidate. */
 export type RejectedRow = {
@@ -95,6 +100,10 @@ export type SampleSelectionSnapshot = {
   rejected?: RejectedRow[];
   /** Appraiser's overlay (Slice 3). Effective lists = {@link effectiveSelection}. Optional for the same reason. */
   manualRejections?: ManualRejection[];
+  /** Appraiser's explicit additions outside the domain's proposal (Slice 3c). Full record per row — see {@link ManualInclusion}. Optional: pre-Slice-3c snapshots lack it. */
+  manualInclusions?: ManualInclusion[];
+  /** Review trail — informational only, never affects the sample (Slice 3c). Optional: pre-Slice-3c snapshots lack it. */
+  reviewed?: ReviewedMark[];
   radiusUsedM: number;
   radiusWalk: Selection["radiusWalk"];
   counts: Selection["counts"];
@@ -137,6 +146,8 @@ export function toSampleSelectionSnapshot(
     rejectedCounts,
     rejected: capRejected(s.rejected),
     manualRejections: [],
+    manualInclusions: [],
+    reviewed: [],
     radiusUsedM: s.radiusUsedM,
     radiusWalk: s.radiusWalk,
     counts: s.counts,
@@ -149,7 +160,32 @@ export function toSampleSelectionSnapshot(
   };
 }
 
-/** The lists step 3 shows and `comparables` is assembled from: domain result + manual overlay. */
+/** The lists step 3 shows and `comparables` is assembled from: domain result + manual overlay (rejections and inclusions). */
 export function effectiveSelection(snap: SampleSelectionSnapshot) {
-  return applyManualRejections(snap, snap.manualRejections ?? []);
+  return applyManualOverlay(snap, {
+    rejections: snap.manualRejections ?? [],
+    inclusions: snap.manualInclusions ?? [],
+  });
+}
+
+/**
+ * Review-trail counters for the "Przejrzano X z Y" indicator. `total` is the
+ * EFFECTIVE row count (proposed + alternates + removed, after the manual
+ * overlay) — not the raw domain output. `reviewed` counts only `snap.reviewed`
+ * keys that still exist among those rows; a mark for a row the appraiser
+ * later rejected/re-radiused away no longer counts. Purely informational —
+ * never gates anything.
+ */
+export function reviewStats(snap: SampleSelectionSnapshot): {
+  reviewed: number;
+  total: number;
+  reviewedKeys: Set<string>;
+} {
+  const eff = effectiveSelection(snap);
+  const effKeys = new Set([...eff.proposed, ...eff.alternates, ...eff.removed].map(candidateKey));
+  const total = eff.proposed.length + eff.alternates.length + eff.removed.length;
+  const reviewedKeys = new Set(
+    (snap.reviewed ?? []).map(candidateKey).filter((k) => effKeys.has(k)),
+  );
+  return { reviewed: reviewedKeys.size, total, reviewedKeys };
 }

@@ -29,6 +29,32 @@ export type ManualRejection = {
   at: string;
 };
 
+/**
+ * Appraiser's explicit addition of a row outside the domain's proposal (Slice
+ * 3c). Carries the full {@link Candidate} at inclusion time — not just a key
+ * — so the addition survives a later radius change: `applyManualOverlay`
+ * re-attaches it from `candidate` when its key is no longer in the current
+ * `proposed`/`alternates` lists.
+ */
+export type ManualInclusion = {
+  transactionId: string;
+  lokalId: string;
+  /** ISO timestamp — the UI's clock, never the domain's. */
+  at: string;
+  candidate: Candidate;
+};
+
+/**
+ * Review trail entry — marks that the appraiser has looked at this row.
+ * Purely informational (UI badge): it never gates or changes the sample.
+ */
+export type ReviewedMark = {
+  transactionId: string;
+  lokalId: string;
+  /** ISO timestamp — the UI's clock, never the domain's. */
+  at: string;
+};
+
 /** Flags that keep a row out of `proposed` (ADR-015 rules 5 and 7) — mirrors selectSample's own demotion. */
 const DEMOTING: readonly Flag[] = ["price_outlier", "primary_suspect"];
 
@@ -70,4 +96,57 @@ export function applyManualRejections(
     }
   }
   return { proposed, alternates: rest, removed };
+}
+
+/**
+ * Overlay of BOTH the appraiser's manual rejections AND manual inclusions on
+ * the domain's result (Slice 3c). Rejections are applied first, exactly as
+ * in {@link applyManualRejections} (untouched base behaviour); inclusions
+ * are layered on top and are an explicit override — they bypass `DEMOTING`
+ * flags, `maxPerBuilding` and `proposedN` entirely (the appraiser's choice
+ * wins). Rejection beats inclusion for the same key. An inclusion already
+ * present in the base `proposed` is a no-op; duplicate inclusion keys count
+ * once. An inclusion whose row is still in `alternates` is spliced into
+ * `proposed` in ranking order; one that has fallen out of both lists (e.g. a
+ * smaller radius) is re-attached from its stored `candidate`, appended at
+ * the end. `removed` is unaffected by inclusions.
+ */
+export function applyManualOverlay(
+  sel: { proposed: Candidate[]; alternates: Candidate[]; flags: Record<string, Flag[]> },
+  overlay: { rejections: readonly ManualRejection[]; inclusions: readonly ManualInclusion[] },
+  opts: { proposedN?: number; maxPerBuilding?: number } = {},
+): { proposed: Candidate[]; alternates: Candidate[]; removed: Candidate[]; included: Candidate[] } {
+  const base = applyManualRejections(sel, overlay.rejections, opts);
+  const rejectedKeys = new Set(overlay.rejections.map((r) => candidateKey(r)));
+  const baseProposedKeys = new Set(base.proposed.map(candidateKey));
+  const baseAlternatesByKey = new Map(base.alternates.map((c) => [candidateKey(c), c]));
+
+  const fromAlternatesKeys = new Set<string>();
+  const reattached: Candidate[] = [];
+  const seen = new Set<string>();
+  for (const inclusion of overlay.inclusions) {
+    const key = candidateKey(inclusion);
+    if (rejectedKeys.has(key) || seen.has(key) || baseProposedKeys.has(key)) continue;
+    seen.add(key);
+    if (baseAlternatesByKey.has(key)) {
+      fromAlternatesKeys.add(key);
+    } else {
+      reattached.push(inclusion.candidate);
+    }
+  }
+
+  // Ranking order for the from-alternates group — mirrors `removed`'s
+  // ordering above (filter the ranked concat, don't re-sort).
+  const fromAlternates = [...sel.proposed, ...sel.alternates].filter((c) =>
+    fromAlternatesKeys.has(candidateKey(c)),
+  );
+  const included = [...fromAlternates, ...reattached];
+  const includedKeys = new Set(included.map(candidateKey));
+
+  return {
+    proposed: [...base.proposed, ...included],
+    alternates: base.alternates.filter((c) => !includedKeys.has(candidateKey(c))),
+    removed: base.removed,
+    included,
+  };
 }
