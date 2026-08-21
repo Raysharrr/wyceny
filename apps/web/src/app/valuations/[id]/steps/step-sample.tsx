@@ -26,7 +26,9 @@ import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import type { Comparable, KcsInput } from "@/domain/kcs";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { DEFAULTS } from "@/domain/sample-selection";
 import { SamplePanel } from "./sample-panel";
+import { SampleRadius } from "./sample-radius";
 import { SampleRejected } from "./sample-rejected";
 import { SampleTable } from "./sample-table";
 import { rcnRow, useSampleReview } from "./use-sample-review";
@@ -209,7 +211,19 @@ export function StepSample({
     next,
     reject,
     restore,
-  } = useSampleReview({ sel, comparables, setValue, replaceComparables, liveStreetView });
+    isReselecting,
+    poolMissing,
+    setPoolMissing,
+    reselectError,
+    onRadius,
+  } = useSampleReview({
+    valuationId,
+    sel,
+    comparables,
+    setValue,
+    replaceComparables,
+    liveStreetView,
+  });
 
   const onFetchSample = async () => {
     setFetchSampleError(null);
@@ -246,6 +260,9 @@ export function StepSample({
       // on a candidate from the PREVIOUS pool would show stale data (or a
       // key that no longer resolves to anything).
       setSelectedKey(null);
+      // A fresh fetch re-populates the pool cache `reselectSample` reads —
+      // clears whatever "pobierz ponownie" gate a previous radius click hit.
+      setPoolMissing(false);
     } finally {
       setIsFetchingSample(false);
     }
@@ -306,6 +323,22 @@ export function StepSample({
 
             {sel ? (
               <>
+                <SampleRadius
+                  value={sel.radiusUsedM}
+                  steps={DEFAULTS.radiusStepsM}
+                  busy={isReselecting}
+                  disabledReason={
+                    poolMissing
+                      ? "Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie."
+                      : null
+                  }
+                  onChange={onRadius}
+                />
+                {reselectError ? (
+                  <p role="alert" className="text-sm text-destructive">
+                    {reselectError}
+                  </p>
+                ) : null}
                 <SampleTable
                   selection={sel}
                   streetView={liveStreetView ?? null}

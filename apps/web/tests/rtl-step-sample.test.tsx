@@ -33,6 +33,11 @@ vi.mock("@/app/actions/get-sample-proposal", () => ({
   getSampleProposal: (...args: unknown[]) => getSampleProposal(...args),
 }));
 
+const reselectSample = vi.fn();
+vi.mock("@/app/actions/reselect-sample", () => ({
+  reselectSample: (...args: unknown[]) => reselectSample(...args),
+}));
+
 import { StepSample } from "@/app/valuations/[id]/steps/step-sample";
 
 const VID = "11111111-2222-3333-4444-555555555555";
@@ -861,5 +866,227 @@ describe("StepSample — manual rejection flow", () => {
       { sampleSelection?: SampleSelectionSnapshot },
     ];
     expect(payload2.sampleSelection?.manualRejections).toEqual([]);
+  });
+});
+
+describe("StepSample — radius buttons (Task 8)", () => {
+  beforeEach(() => {
+    reselectSample.mockReset();
+    getSampleProposal.mockClear();
+  });
+
+  it("clicking a radius calls reselectSample with radiusOverrideM + the form's manualRejections, then replaces sampleSelection/sampleMeta/streetView and keeps the manual row", async () => {
+    const user = userEvent.setup();
+    const initialProposed = [
+      makeCandidate({ transactionId: "T-OLD-1", pricePerM2: 11000 }),
+      makeCandidate({
+        transactionId: "T-OLD-2",
+        lokalId: "306401_1.0001.34_BUD_5_LOK_7",
+        pricePerM2: 11500,
+      }),
+    ];
+    const sel = makeSampleSelection({ proposed: initialProposed, radiusUsedM: 500 });
+    const initialComparables: Comparable[] = [
+      ...initialProposed.map((c) => ({
+        date: c.date,
+        area: c.area,
+        pricePerM2: c.pricePerM2,
+        source: "rcn" as const,
+        transactionId: c.transactionId,
+      })),
+      // A hand-added row, explicitly `source: "manual"` — must survive a
+      // radius change untouched (decision 4, 2026-08-21).
+      { date: "2020-01", area: 50, pricePerM2: 9000, source: "manual" as const },
+    ];
+
+    const newProposed = [
+      makeCandidate({ transactionId: "T-NEW-1", pricePerM2: 12000 }),
+      makeCandidate({
+        transactionId: "T-NEW-2",
+        lokalId: "306401_1.0001.34_BUD_5_LOK_8",
+        pricePerM2: 12500,
+      }),
+    ];
+    const sel2 = makeSampleSelection({
+      proposed: newProposed,
+      radiusUsedM: 1000,
+      counts: { pool: 9000, afterBand: 90 },
+    });
+    reselectSample.mockResolvedValue({
+      proposal: {
+        comparables: newProposed.map((c) => ({
+          date: c.date,
+          area: c.area,
+          pricePerM2: c.pricePerM2,
+          transactionId: c.transactionId,
+        })),
+        sampleSelection: sel2,
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "500 m" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "1000 m" }));
+
+    await waitFor(() =>
+      expect(reselectSample).toHaveBeenCalledWith({
+        valuationId: VID,
+        radiusOverrideM: 1000,
+        manualRejections: [],
+      }),
+    );
+
+    // Banner reflects the new snapshot's radius/counts.
+    await waitFor(() => expect(bannerText(container)).toMatch(/w promieniu 1000 m/));
+    expect(screen.getByRole("button", { name: "1000 m" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "500 m" })).toHaveAttribute("aria-pressed", "false");
+
+    // The candidate table now shows the NEW rows (T-NEW-1/2), not the old ones.
+    expect(screen.getAllByRole("row").slice(1)).toHaveLength(2);
+
+    // The manual row survives untouched — expand the editable table to see it.
+    await user.click(screen.getByRole("button", { name: /próba do kalkulacji.*edytuj wartości/i }));
+    const prices = screen
+      .getAllByPlaceholderText("zł/m²")
+      .map((el) => (el as HTMLInputElement).value);
+    expect(prices).toEqual(["12000", "12500", "9000"]);
+  });
+
+  it("carries manualRejections from the response into the effective (post-rejection) rows saved to the form", async () => {
+    const user = userEvent.setup();
+    const sel = makeSampleSelection({ radiusUsedM: 500 });
+    const initialComparables: Comparable[] = sel.proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    const tNew1 = makeCandidate({ transactionId: "T-NEW-1", pricePerM2: 12000 });
+    const tNew2 = makeCandidate({
+      transactionId: "T-NEW-2",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_8",
+      pricePerM2: 12500,
+    });
+    const tNew3 = makeCandidate({
+      transactionId: "T-NEW-3",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_9",
+      pricePerM2: 13000,
+    });
+    const sel2: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ proposed: [tNew1, tNew2], alternates: [tNew3], radiusUsedM: 1000 }),
+      // T-NEW-1 was manually rejected in a PREVIOUS round and carried over —
+      // the effective proposal backfills from alternates (T-NEW-3).
+      manualRejections: [
+        {
+          transactionId: "T-NEW-1",
+          lokalId: tNew1.lokalId,
+          reason: "too_far",
+          at: "2026-08-21T09:00:00Z",
+        },
+      ],
+    };
+    reselectSample.mockResolvedValue({
+      proposal: {
+        comparables: [tNew1, tNew2].map((c) => ({
+          date: c.date,
+          area: c.area,
+          pricePerM2: c.pricePerM2,
+          transactionId: c.transactionId,
+        })),
+        sampleSelection: sel2,
+        sampleMeta: makeSampleMeta(),
+        streetView: null,
+      },
+    });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "1000 m" }));
+    await waitFor(() => expect(reselectSample).toHaveBeenCalled());
+
+    await user.click(
+      await screen.findByRole("button", { name: /próba do kalkulacji.*edytuj wartości/i }),
+    );
+    await waitFor(() => {
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      // T-NEW-1 (rejected) is absent; T-NEW-2 and the backfilled T-NEW-3 are present.
+      expect(prices).toEqual(["12500", "13000"]);
+    });
+  });
+
+  it("a pool_missing response disables the radius buttons and shows the reason as an alert", async () => {
+    const user = userEvent.setup();
+    const sel = makeSampleSelection({ radiusUsedM: 500 });
+    reselectSample.mockResolvedValue({
+      error: "Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.",
+      code: "pool_missing",
+    });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "1000 m" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/pobierz próbę z rcn ponownie/i),
+    );
+    for (const r of [500, 1000, 2000, 3000]) {
+      expect(screen.getByRole("button", { name: `${r} m` })).toBeDisabled();
+    }
+
+    // A fresh, successful "Pobierz próbę z RCN" clears the pool_missing gate.
+    const freshSel = makeSampleSelection({ radiusUsedM: 500 });
+    getSampleProposal.mockResolvedValue({
+      proposal: {
+        comparables: freshSel.proposed.map((c) => ({
+          date: c.date,
+          area: c.area,
+          pricePerM2: c.pricePerM2,
+          transactionId: c.transactionId,
+        })),
+        sampleSelection: freshSel,
+        sampleMeta: makeSampleMeta(),
+        streetView: {},
+      },
+    });
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "500 m" })).not.toBeDisabled());
   });
 });

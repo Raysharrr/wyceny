@@ -4,10 +4,14 @@ import { useState } from "react";
 import type { UseFormSetValue } from "react-hook-form";
 import type { z } from "zod";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
+import { reselectSample } from "@/app/actions/reselect-sample";
 import { buildingKey, candidateKey, type Candidate } from "@/domain/sample-selection";
 import type { ManualRejection, ManualRejectionReason } from "@/domain/sample-manual";
 import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
+
+/** `reselectSample`'s radius union — mirrors `ReselectSampleInput["radiusOverrideM"]` in `@/app/actions/reselect-sample`. */
+type RadiusM = 500 | 1000 | 2000 | 3000;
 
 type FormInput = z.input<typeof sampleStepSchema>;
 type ComparableRow = FormInput["comparables"][number];
@@ -47,12 +51,14 @@ export function rcnRow(t: {
  * general-purpose one.
  */
 export function useSampleReview({
+  valuationId,
   sel,
   comparables,
   setValue,
   replaceComparables,
   liveStreetView,
 }: {
+  valuationId: string;
   sel: SampleSelectionSnapshot | null | undefined;
   comparables: ComparableRow[] | undefined;
   setValue: UseFormSetValue<FormInput>;
@@ -60,6 +66,13 @@ export function useSampleReview({
   liveStreetView: StreetViewSnapshot | null | undefined;
 }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [isReselecting, setIsReselecting] = useState(false);
+  // Missing pool cache (draft predates Slice 3, or storage cleared) — the
+  // radius buttons stay disabled until a fresh "Pobierz próbę z RCN" fetch
+  // re-populates it (team-lead condition 1, 2026-08-21: never a silent
+  // re-selection on an empty pool).
+  const [poolMissing, setPoolMissing] = useState(false);
+  const [reselectError, setReselectError] = useState<string | null>(null);
 
   // Domain result + manual overlay (Task 1).
   const eff = sel ? effectiveSelection(sel) : null;
@@ -143,6 +156,51 @@ export function useSampleReview({
     syncComparables(newSel);
   };
 
+  /**
+   * Radius button (Task 8) — re-runs the DOMAIN selection on the pool
+   * `getSampleProposal` already cached (`reselectSample`, no second WFS
+   * call), carrying the CURRENT `manualRejections` so they survive the
+   * radius change (same candidateKey). `comparables` is rebuilt from the
+   * EFFECTIVE new proposal (domain result + `sampleSelection2.manualRejections`)
+   * — NOT from `proposal.comparables` (the raw domain output) — so a carried
+   * rejection whose key still matches a row in the new `proposed` is
+   * excluded here exactly as it is in the banner/table (both read via
+   * `effectiveSelection`); the manual (non-RCN) rows are kept after them,
+   * mirroring `syncComparables` but excluding rows with no `source` at all
+   * (the 3 default empty rows a fresh draft starts with — they must not be
+   * treated as "manual" and resurrected here).
+   */
+  const onRadius = async (radiusM: RadiusM) => {
+    if (!sel) return;
+    setIsReselecting(true);
+    setReselectError(null);
+    try {
+      const result = await reselectSample({
+        valuationId,
+        radiusOverrideM: radiusM,
+        manualRejections: sel.manualRejections ?? [],
+      });
+      if ("error" in result) {
+        if (result.code === "pool_missing") setPoolMissing(true);
+        setReselectError(result.error);
+        return;
+      }
+      setPoolMissing(false);
+      const newSel = result.proposal.sampleSelection;
+      setValue("sampleSelection", newSel, { shouldDirty: true });
+      setValue("sampleMeta", result.proposal.sampleMeta, { shouldDirty: true });
+      setValue("streetView", result.proposal.streetView, { shouldDirty: true });
+      const nextEff = effectiveSelection(newSel);
+      const manualRows = (comparables ?? []).filter((c) => c.source && c.source !== "rcn");
+      replaceComparables([...nextEff.proposed.map(rcnRow), ...manualRows]);
+      // A fresh selection may no longer contain the candidate the panel was
+      // showing — mirrors `onFetchSample` closing the panel on a new pool.
+      setSelectedKey(null);
+    } finally {
+      setIsReselecting(false);
+    }
+  };
+
   return {
     eff,
     combined,
@@ -155,5 +213,10 @@ export function useSampleReview({
     next,
     reject,
     restore,
+    isReselecting,
+    poolMissing,
+    setPoolMissing,
+    reselectError,
+    onRadius,
   };
 }
