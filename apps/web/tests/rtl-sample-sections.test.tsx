@@ -107,6 +107,11 @@ describe("SampleSections", () => {
     expect(screen.getByText("W próbie (2)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Alternatywy \(3\)/ })).toBeInTheDocument();
     expect(screen.getAllByRole("table")).toHaveLength(2);
+    // Each section's `<table>` carries its own accessible name (Opus
+    // review, fix round 1) — lets a query target one section's table
+    // directly instead of indexing into `getAllByRole("table")`.
+    expect(screen.getByRole("table", { name: "W próbie" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Alternatywy" })).toBeInTheDocument();
   });
 
   it("checkbox is checked in 'W próbie' and unchecked in 'Alternatywy'", () => {
@@ -124,8 +129,14 @@ describe("SampleSections", () => {
         defaultAlternatesOpen
       />,
     );
-    expect(screen.getByRole("checkbox", { name: "Usuń z próby" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Dodaj do próby" })).not.toBeChecked();
+    const proposedCheckbox = screen.getByRole("checkbox", { name: /^Usuń z próby/ });
+    const alternateCheckbox = screen.getByRole("checkbox", { name: /^Dodaj do próby/ });
+    expect(proposedCheckbox).toBeChecked();
+    expect(alternateCheckbox).not.toBeChecked();
+    // The accessible name carries the row's own identity (distance here) —
+    // otherwise it's identical across every row and ambiguous once more
+    // than one row is on screen (Opus review, fix round 1).
+    expect(proposedCheckbox).toHaveAccessibleName(new RegExp(`${Math.round(p[0].distanceM)} m`));
   });
 
   it("clicking the alternate row's checkbox calls onToggleInSample(key, true) and does NOT select the row", async () => {
@@ -145,7 +156,7 @@ describe("SampleSections", () => {
         defaultAlternatesOpen
       />,
     );
-    await userEvent.click(screen.getByRole("checkbox", { name: "Dodaj do próby" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Dodaj do próby/ }));
     expect(onToggleInSample).toHaveBeenCalledWith(keyOf(a[0]), true);
     expect(onSelect).not.toHaveBeenCalled();
   });
@@ -166,7 +177,7 @@ describe("SampleSections", () => {
         defaultAlternatesOpen={false}
       />,
     );
-    await userEvent.click(screen.getByRole("checkbox", { name: "Usuń z próby" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /^Usuń z próby/ }));
     expect(onToggleInSample).toHaveBeenCalledWith(keyOf(p[0]), false);
     expect(onSelect).not.toHaveBeenCalled();
   });
