@@ -774,6 +774,40 @@ describe("StepSample — candidate table (Slice 3)", () => {
   });
 });
 
+describe("StepSample — overview map (Task 9)", () => {
+  it("renders between the radius buttons and the candidate table when a v3 selection carries a subject point", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection({ proposed: [makeCandidate()] })}
+        streetView={null}
+      />,
+    );
+
+    expect(screen.getByAltText("Ortofotomapa GUGiK z kandydatkami")).toBeInTheDocument();
+  });
+
+  it("is absent without a persisted sampleMeta (no subject point to centre it on)", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={null}
+        sampleSelection={null}
+        streetView={null}
+      />,
+    );
+
+    expect(screen.queryByAltText("Ortofotomapa GUGiK z kandydatkami")).toBeNull();
+  });
+});
+
 describe("StepSample — manual rejection flow", () => {
   // All five share one building (`maxPerBuilding` = 3, the domain default) —
   // that's what keeps the two extras as ALTERNATES rather than being

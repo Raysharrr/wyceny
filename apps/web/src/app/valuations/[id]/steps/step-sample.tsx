@@ -27,6 +27,7 @@ import { SectionCard } from "@/components/wizard/section-card";
 import type { Comparable, KcsInput } from "@/domain/kcs";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 import { DEFAULTS } from "@/domain/sample-selection";
+import { SampleMap } from "./sample-map";
 import { SamplePanel } from "./sample-panel";
 import { SampleRadius } from "./sample-radius";
 import { SampleRejected } from "./sample-rejected";
@@ -342,6 +343,14 @@ export function StepSample({
                   <p role="alert" className="text-sm text-destructive">
                     {reselectError}
                   </p>
+                ) : null}
+                {liveSampleMeta?.point ? (
+                  <SampleMap
+                    selection={sel}
+                    center={{ x: liveSampleMeta.point.x, y: liveSampleMeta.point.y }}
+                    selectedKey={selectedKey}
+                    onSelect={setSelectedKey}
+                  />
                 ) : null}
                 <SampleTable
                   selection={sel}
