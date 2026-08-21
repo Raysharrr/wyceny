@@ -106,6 +106,35 @@ describe("applyManualRejections — overlay on the domain result, never inside i
     expect(out.proposed.filter((c) => c.egib?.budynek === "B")).toHaveLength(3);
     expect(out.proposed).toHaveLength(12);
   });
+  it("inverse of rule 6 — freeing a full building's slot admits its own demoted alternate", () => {
+    // Same setup as the previous test: 3 proposed rows share building "B",
+    // the 4th "B" candidate sits demoted as the first alternate.
+    const egibB = {
+      teryt: "306401_1",
+      obreb: "0021",
+      arkusz: "10",
+      dzialka: "27",
+      budynek: "B",
+      lokal: "x",
+    };
+    const sameB = [1, 2, 3, 4].map((i) =>
+      mk({ distanceM: i, egib: { ...egibB, lokal: String(i) } }),
+    );
+    const others = Array.from({ length: 12 }, (_, i) => mk({ distanceM: 50 + i }));
+    const sel2 = selectSample([...sameB, ...others], P);
+    const fromB = (c: Candidate) => c.egib?.budynek === "B";
+    expect(sel2.proposed.filter(fromB)).toHaveLength(3);
+    const fourthFromB = sel2.alternates.find(fromB)!;
+    expect(fourthFromB).toBeDefined();
+
+    // Reject one of the three proposed "B" rows — the building's count drops
+    // to 2, freeing the slot the demoted 4th "B" alternate can now fill.
+    const victim = sel2.proposed.find(fromB)!;
+    const out = applyManualRejections(sel2, [rej(victim)]);
+    expect(out.proposed.filter(fromB)).toHaveLength(3);
+    expect(out.proposed.map(candidateKey)).toContain(candidateKey(fourthFromB));
+    expect(out.proposed).toHaveLength(12);
+  });
   it("unknown keys are ignored; duplicates count once", () => {
     const ghost: ManualRejection = {
       transactionId: "nope",

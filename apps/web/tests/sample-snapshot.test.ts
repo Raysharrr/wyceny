@@ -51,8 +51,10 @@ describe("toSampleSelectionSnapshot", () => {
     expect(snap.version).toBe(3);
     expect(snap.proposed).toEqual(sel.proposed);
     expect(snap.alternates).toEqual(sel.alternates);
+    expect(snap.counts).toEqual(sel.counts);
+    expect(snap.radiusUsedM).toBe(sel.radiusUsedM);
     expect("ranking" in snap).toBe(false);
-    expect(snap.rejected).toHaveLength(sel.rejected.length);
+    expect(snap.rejected!.length).toBeLessThanOrEqual(sel.rejected.length);
     const first = snap.rejected![0];
     expect(Object.keys(first).sort()).toEqual([
       "allReasons",
@@ -75,8 +77,53 @@ describe("toSampleSelectionSnapshot", () => {
       sel.rejected.length,
     );
   });
-  it("stays small enough for a jsonb column (< 1 MB for a 3 km pool, compact rejected rows)", () => {
-    expect(JSON.stringify(snap).length).toBeLessThan(1_000_000);
+  it("stays small enough for a jsonb column on heavy pools (< 250 kB, capped rejected rows)", () => {
+    for (const [slug, p] of [
+      ["koscielna", { subjectArea: 71.63, todayMonth: "2026-03" }],
+      ["starolecka", { subjectArea: 50, todayMonth: "2026-08" }],
+    ] as const) {
+      const heavy = loadSnapshot(slug);
+      const heavySel = selectSample(heavy.candidates, p);
+      const heavySnap = toSampleSelectionSnapshot(heavySel, p);
+      expect(JSON.stringify(heavySnap).length).toBeLessThan(250_000);
+    }
+  });
+  it("caps rejected at 50 nearest rows per reason; rejectedCounts stays the full census", () => {
+    // koscielna is the heavy fixture guaranteed to push at least one reason
+    // past the 50-row cap — heweliusza's `sel`/`snap` above are too small to
+    // exercise the interesting (> 50) branch.
+    const heavy = loadSnapshot("koscielna");
+    const p = { subjectArea: 71.63, todayMonth: "2026-03" };
+    const heavySel = selectSample(heavy.candidates, p);
+    const heavySnap = toSampleSelectionSnapshot(heavySel, p);
+
+    const byReason = new Map<string, typeof heavySel.rejected>();
+    for (const r of heavySel.rejected) {
+      const bucket = byReason.get(r.reason);
+      if (bucket) bucket.push(r);
+      else byReason.set(r.reason, [r]);
+    }
+    expect(byReason.size).toBeGreaterThan(0);
+    expect([...byReason.values()].some((bucket) => bucket.length > 50)).toBe(true);
+    expect(heavySnap.rejected!.length).toBeLessThanOrEqual(7 * 50);
+    for (const [reason, bucket] of byReason) {
+      const kept = heavySnap.rejected!.filter((r) => r.reason === reason);
+      expect(kept.length).toBeLessThanOrEqual(50);
+      if (bucket.length > 50) {
+        const nearest50 = [...bucket]
+          .sort((a, b) => a.candidate.distanceM - b.candidate.distanceM)
+          .slice(0, 50)
+          .map((r) => `${r.candidate.transactionId}|${r.candidate.lokalId}`);
+        expect(new Set(kept.map((r) => `${r.transactionId}|${r.lokalId}`))).toEqual(
+          new Set(nearest50),
+        );
+      } else {
+        expect(kept).toHaveLength(bucket.length);
+      }
+    }
+    expect(Object.values(heavySnap.rejectedCounts).reduce((a, b) => a + (b ?? 0), 0)).toBe(
+      heavySel.rejected.length,
+    );
   });
   it("params record what the appraiser would need to re-run the choice", () => {
     expect(snap.params).toEqual({

@@ -38,6 +38,41 @@ export function toRejectedRow(r: Rejected): RejectedRow {
   };
 }
 
+/** Cap on `rejected` rows kept PER REASON (jsonb size guard) — `rejectedCounts` stays the full census. */
+export const REJECTED_PER_REASON = 50;
+
+/** Nearest first (smallest `distanceM`); ties broken by newer `date` first. */
+function compareForCap(a: Rejected, b: Rejected): number {
+  if (a.candidate.distanceM !== b.candidate.distanceM) {
+    return a.candidate.distanceM - b.candidate.distanceM;
+  }
+  if (a.candidate.date !== b.candidate.date) {
+    return a.candidate.date > b.candidate.date ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * Bounds `rejected` to the {@link REJECTED_PER_REASON} nearest rows per
+ * reason — the "Odrzucone" section shows a representative sample, not the
+ * whole 3 km pool; `rejectedCounts` (built from the untrimmed list) is the
+ * census.
+ */
+function capRejected(rejected: Rejected[]): RejectedRow[] {
+  const byReason = new Map<RejectReason, Rejected[]>();
+  for (const r of rejected) {
+    const bucket = byReason.get(r.reason);
+    if (bucket) bucket.push(r);
+    else byReason.set(r.reason, [r]);
+  }
+  const kept: RejectedRow[] = [];
+  for (const bucket of byReason.values()) {
+    const nearest = [...bucket].sort(compareForCap).slice(0, REJECTED_PER_REASON);
+    for (const r of nearest) kept.push(toRejectedRow(r));
+  }
+  return kept;
+}
+
 /**
  * What step 3 persists in `inputs.sampleSelection` (D7, ADR-015): enough to
  * show badges and re-run the appraiser's choice, NOT the whole 3 km pool
@@ -51,7 +86,12 @@ export type SampleSelectionSnapshot = {
   /** Keyed by `candidateKey` — only for rows in `proposed` ∪ `alternates`. */
   flags: Record<string, Flag[]>;
   rejectedCounts: Partial<Record<RejectReason, number>>;
-  /** Rows rejected by hygiene/band inside `radiusUsedM` (decision a). Optional: pre-Slice-3 snapshots lack it. */
+  /**
+   * Rows rejected by hygiene/band inside `radiusUsedM` (decision a).
+   * `rejected` is a bounded sample for the "Odrzucone" section (nearest 50
+   * per reason); `rejectedCounts` is the census. Optional: pre-Slice-3
+   * snapshots lack it.
+   */
   rejected?: RejectedRow[];
   /** Appraiser's overlay (Slice 3). Effective lists = {@link effectiveSelection}. Optional for the same reason. */
   manualRejections?: ManualRejection[];
@@ -69,11 +109,12 @@ export type SampleSelectionSnapshot = {
 
 /**
  * Trims a `Selection` (domain/sample-selection.ts) down to what the wizard
- * persists: drops the full `ranking` (band-passing pool); keeps a COMPACT
- * `rejected` list — the appraiser's proposed/alternate rows plus enough
- * context (flags, radius, counts, params, rejected) to show badges and
- * re-run the choice later, without carrying the whole 3 km pool into a jsonb
- * column.
+ * persists: drops the full `ranking` (band-passing pool); keeps a COMPACT,
+ * CAPPED `rejected` sample (nearest {@link REJECTED_PER_REASON} per reason —
+ * see {@link capRejected}) — the appraiser's proposed/alternate rows plus
+ * enough context (flags, radius, counts, params, rejected) to show badges
+ * and re-run the choice later, without carrying the whole 3 km pool into a
+ * jsonb column.
  */
 export function toSampleSelectionSnapshot(
   s: Selection,
@@ -94,7 +135,7 @@ export function toSampleSelectionSnapshot(
     alternates: s.alternates,
     flags,
     rejectedCounts,
-    rejected: s.rejected.map(toRejectedRow),
+    rejected: capRejected(s.rejected),
     manualRejections: [],
     radiusUsedM: s.radiusUsedM,
     radiusWalk: s.radiusWalk,

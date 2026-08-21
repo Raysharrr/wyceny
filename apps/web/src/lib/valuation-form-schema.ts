@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
+import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
 
 /**
  * Shared validation for the valuation form — used by BOTH the client
@@ -137,14 +138,7 @@ const rejectedRowSchema = z.object({
 export const manualRejectionSchema = z.object({
   transactionId: z.string(),
   lokalId: z.string(),
-  reason: z.enum([
-    "building_older",
-    "building_newer",
-    "different_building_type",
-    "different_standard",
-    "too_far",
-    "other",
-  ]),
+  reason: z.enum(MANUAL_REJECTION_REASONS),
   note: z.string().max(500).optional(),
   at: z.string(),
 });
