@@ -19,6 +19,11 @@ export const comparableSchema = z.object({
   // validating exactly as before.
   source: z.enum(["rcn", "manual"]).optional(),
   transactionId: z.string().optional(),
+  // One notarial act (transactionId) can carry several lokale — this
+  // distinguishes them (mirrors Candidate.lokalId/candidateKey in
+  // domain/sample-selection.ts). Optional: older drafts saved before this
+  // field existed keep validating exactly as before.
+  lokalId: z.string().optional(),
 });
 
 export const featureDefinitionsSchema = z.object({

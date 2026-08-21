@@ -49,6 +49,14 @@ export type Comparable = {
   /** RCN transaction id when source === "rcn" — display/audit metadata only. */
   transactionId?: string;
   /**
+   * RCN lokal id when source === "rcn" — one notarial act (`transactionId`)
+   * can carry SEVERAL lokale; this distinguishes them (mirrors
+   * `Candidate.lokalId`/`candidateKey` in `domain/sample-selection.ts`).
+   * Additive, optional: older drafts saved before this field existed keep
+   * parsing. Display/audit metadata only, like `transactionId`.
+   */
+  lokalId?: string;
+  /**
    * Provenance status (F-4) — assigned ONLY at the web ACL on draft save
    * (rcn rows enter as "to_verify", manual as "confirmed"); flipped to
    * "confirmed" by the confirm-sample mutation. Optional so legacy

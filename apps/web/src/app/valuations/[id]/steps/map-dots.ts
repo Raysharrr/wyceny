@@ -10,6 +10,40 @@ export type MapDot = {
 };
 export type MapRing = { radiusM: number; rPx: number; active: boolean };
 
+/** Ring radius (px) a duplicate dot is nudged onto — final wave minor ii. */
+const OVERLAP_RING_PX = 7;
+
+/**
+ * Nudges dots that land on the EXACT same pixel (same building — e.g. two
+ * lokale of one notarial act, whose candidates share a `pos`) onto a small
+ * ring so every one of them stays individually clickable; two dots stacked
+ * 1:1 leave only the top one reachable by click or keyboard (final wave
+ * minor ii, team-lead 2026-08-21). The k-th dot at a shared position lands
+ * at `angle = k · 2π/8` on a ring of {@link OVERLAP_RING_PX} — deterministic
+ * (no randomness) and order-preserving (a single left-to-right `map`, no
+ * grouping/reordering). A position held by exactly one dot is untouched.
+ */
+function spreadOverlaps(dots: MapDot[]): MapDot[] {
+  const totalAt = new Map<string, number>();
+  for (const d of dots) {
+    const posKey = `${d.px},${d.py}`;
+    totalAt.set(posKey, (totalAt.get(posKey) ?? 0) + 1);
+  }
+  const seenAt = new Map<string, number>();
+  return dots.map((d) => {
+    const posKey = `${d.px},${d.py}`;
+    if ((totalAt.get(posKey) ?? 0) <= 1) return d;
+    const k = seenAt.get(posKey) ?? 0;
+    seenAt.set(posKey, k + 1);
+    const angle = k * ((2 * Math.PI) / 8);
+    return {
+      ...d,
+      px: d.px + OVERLAP_RING_PX * Math.cos(angle),
+      py: d.py + OVERLAP_RING_PX * Math.sin(angle),
+    };
+  });
+}
+
 /**
  * Everything the overview SVG draws (Task 9), in pixels of a `px`-wide
  * square frame (linear in EPSG:2180, `mapFrame` from Task 2). `rejected`
@@ -41,5 +75,5 @@ export function mapDots(
   const rings: MapRing[] = DEFAULTS.radiusStepsM
     .filter((r) => r <= halfM)
     .map((r) => ({ radiusM: r, rPx: r / frame.mPerPx, active: r === snap.radiusUsedM }));
-  return { dots, rings, subject: frame.toPx(center) };
+  return { dots: spreadOverlaps(dots), rings, subject: frame.toPx(center) };
 }

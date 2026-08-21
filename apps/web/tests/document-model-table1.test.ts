@@ -54,4 +54,45 @@ describe("Tabela 1 — Obręb | Odległość (Slice 3)", () => {
     expect(JSON.stringify(m.transakcje)).not.toContain("T1");
     expect("miasto" in m.transakcje[0]).toBe(false);
   });
+
+  it("two lokale of ONE notarial act (same transactionId) print their OWN distance/obręb, never one lokal's data twice (final wave runtime fix, Heweliusza 3/43)", () => {
+    const input = syntheticDocumentInput();
+    input.address = "ul. Heweliusza 3, Poznań";
+    const lokalA = cand("ACT1", "306401_1", "0039", 100);
+    const lokalB = cand("ACT1", "302104_2", "0006", 200);
+    input.inputs.comparables = [
+      {
+        date: "2026-05-10",
+        area: 50.63,
+        pricePerM2: 7505.43,
+        source: "rcn",
+        transactionId: "ACT1",
+        lokalId: lokalA.lokalId,
+      },
+      {
+        date: "2026-05-10",
+        area: 38.19,
+        pricePerM2: 7541.24,
+        source: "rcn",
+        transactionId: "ACT1",
+        lokalId: lokalB.lokalId,
+      },
+    ] as typeof input.inputs.comparables;
+    input.inputs.sampleSelection = {
+      version: 3,
+      proposed: [lokalA, lokalB],
+      alternates: [],
+      flags: {},
+      rejectedCounts: {},
+      radiusUsedM: 3000,
+      radiusWalk: [],
+      counts: { pool: 0, inRadius: 0, afterHygiene: 0, afterBand: 0, proposed: 2 },
+      params: { subjectArea: 50, todayMonth: "2026-08" },
+    };
+    const m = buildDocumentModel(input);
+    expect(m.transakcje.map((r) => [r.obreb, r.odleglosc])).toEqual([
+      ["0039 Łazarz", "100"],
+      ["0006 · gm. 302104", "200"],
+    ]);
+  });
 });

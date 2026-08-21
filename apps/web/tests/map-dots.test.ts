@@ -78,3 +78,53 @@ describe("mapDots", () => {
     expect(wide.rings.map((r) => r.radiusM)).toEqual([500, 1000, 2000]);
   });
 });
+
+describe("mapDots — overlap spreading (final wave minor ii)", () => {
+  it("three dots at the exact same position get three distinct (px,py), each within 8 px of the original", () => {
+    const pos = { x: 1100, y: 1000 };
+    // Baseline: one dot alone at `pos`, untouched by the spread (the whole
+    // point — a position held by exactly one dot must not move).
+    const solo: SampleSelectionSnapshot = {
+      ...snap,
+      proposed: [c("SOLO", pos)],
+      alternates: [],
+      rejected: [],
+      manualRejections: [],
+      flags: {},
+    };
+    const original = mapDots(solo, { x: 1000, y: 1000 }, 600, 600).dots.find(
+      (d) => d.key === "SOLO|LSOLO",
+    )!;
+    expect(original).toBeDefined();
+
+    // Three candidates sharing the SAME `pos` (one building — e.g. three
+    // lokale of one notarial act) previously stacked 1:1, leaving only the
+    // top one clickable.
+    const trio: SampleSelectionSnapshot = {
+      ...snap,
+      proposed: [c("P1", pos), c("P2", pos)],
+      alternates: [c("A1", pos)],
+      rejected: [],
+      manualRejections: [],
+      flags: {},
+    };
+    const out = mapDots(trio, { x: 1000, y: 1000 }, 600, 600);
+    const dots = ["P1|LP1", "P2|LP2", "A1|LA1"].map((k) => out.dots.find((d) => d.key === k)!);
+    expect(dots.every(Boolean)).toBe(true);
+
+    const positions = new Set(dots.map((d) => `${d.px},${d.py}`));
+    expect(positions.size).toBe(3);
+
+    for (const d of dots) {
+      expect(Math.hypot(d.px - original.px, d.py - original.py)).toBeLessThanOrEqual(8);
+    }
+  });
+
+  it("a lone dot at a position is left exactly where it was (no spurious offset)", () => {
+    // The default `snap` fixture's dots (A, P-as-rejected, R) all sit at
+    // distinct positions — unaffected by spreadOverlaps.
+    const out = mapDots(snap, { x: 1000, y: 1000 }, 600, 600);
+    expect(out.dots.find((d) => d.key === "A|LA")).toMatchObject({ px: 300, py: 250 });
+    expect(out.dots.find((d) => d.key === "R|LR")).toMatchObject({ px: 250, py: 300 });
+  });
+});

@@ -2,6 +2,7 @@ import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 import { obrebLabel } from "./obreb-name";
+import { candidateKey } from "./sample-selection";
 
 /**
  * Operat document model + professional-secrecy masking (F-12).
@@ -530,11 +531,29 @@ export function buildDocumentModel(
     kredyt: input.purpose === "zabezpieczenie_kredytu",
     transakcje: (() => {
       const sel = inputs.sampleSelection;
-      const byTx = new Map(
-        (sel ? [...sel.proposed, ...sel.alternates] : []).map((c) => [c.transactionId, c] as const),
-      );
+      const candidates = sel ? [...sel.proposed, ...sel.alternates] : [];
+      // Primary key: transactionId+lokalId (candidateKey) — one notarial
+      // act can carry SEVERAL lokale (runtime bug, team-lead 2026-08-21,
+      // Heweliusza 3/43: a transactionId-only join printed the SAME
+      // obręb/distance for every lokal of one act). A comparable saved
+      // before `lokalId` existed on the row falls back to matching by
+      // transactionId alone, first candidate found — the only information
+      // those legacy rows carry.
+      const byCandidateKey = new Map(candidates.map((c) => [candidateKey(c), c] as const));
+      const byFirstTransactionId = new Map<string, (typeof candidates)[number]>();
+      for (const c of candidates) {
+        if (!byFirstTransactionId.has(c.transactionId))
+          byFirstTransactionId.set(c.transactionId, c);
+      }
       return inputs.comparables.map((c) => {
-        const candidate = c.transactionId ? byTx.get(c.transactionId) : undefined;
+        const candidate =
+          c.transactionId && c.lokalId
+            ? byCandidateKey.get(
+                candidateKey({ transactionId: c.transactionId, lokalId: c.lokalId }),
+              )
+            : c.transactionId
+              ? byFirstTransactionId.get(c.transactionId)
+              : undefined;
         return {
           data_msc: maskMonth(c.date),
           // Slice 3: the row's own obręb and distance (review PR #21: the

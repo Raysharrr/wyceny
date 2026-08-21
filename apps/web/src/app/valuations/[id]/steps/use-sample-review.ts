@@ -30,6 +30,7 @@ export function rcnRow(t: {
   area: number;
   pricePerM2: number;
   transactionId: string;
+  lokalId: string;
 }): ComparableRow {
   return {
     date: t.date,
@@ -37,6 +38,7 @@ export function rcnRow(t: {
     pricePerM2: String(Math.round(t.pricePerM2 * 100) / 100),
     source: "rcn" as const,
     transactionId: t.transactionId,
+    lokalId: t.lokalId,
   };
 }
 
@@ -54,31 +56,59 @@ export function rcnRow(t: {
  * gives it one) on every radius click.
  *
  * For each effective proposed candidate, an EXISTING `currentRows` entry
- * with the same `transactionId` (and `source === "rcn"`) is kept as-is —
- * not rebuilt from `rcnRow(c)` — so a price/date/area the appraiser typed
- * into that row survives a reject/restore/radius resync (final wave, A1:
- * data loss = PR gate). A candidate with no such row (freshly backfilled
- * from alternates, or new after a radius change) gets a fresh `rcnRow(c)`.
- * A row that LEAVES the effective proposal (rejected, or bumped back to
- * alternates) is dropped here exactly as before — it's neither in
- * `nextEff.proposed` nor `source !== "rcn"`, so nothing carries it forward.
+ * for the SAME lokal (and `source === "rcn"`) is kept as-is — not rebuilt
+ * from `rcnRow(c)` — so a price/date/area the appraiser typed into that row
+ * survives a reject/restore/radius resync (final wave, A1: data loss = PR
+ * gate). A candidate with no such row (freshly backfilled from alternates,
+ * or new after a radius change) gets a fresh `rcnRow(c)`. A row that LEAVES
+ * the effective proposal (rejected, or bumped back to alternates) is
+ * dropped here exactly as before — it's neither in `nextEff.proposed` nor
+ * `source !== "rcn"`, so nothing carries it forward.
+ *
+ * "Same lokal" is `candidateKey` (`transactionId|lokalId`), NOT
+ * `transactionId` alone (runtime bug, team-lead 2026-08-21, Heweliusza
+ * 3/43): one notarial act can carry SEVERAL lokale (`proposed[1]`/`[2]` two
+ * different units of the same act), and a `transactionId`-only key
+ * collapsed both onto whichever row a `Map` happened to keep last — every
+ * row for that act then printed the SAME price/area. `currentRows` from an
+ * OLDER draft (saved before `lokalId` existed on the form row) falls back
+ * to matching by `transactionId` alone, but ONLY when it is the SINGLE
+ * current row carrying that id — with two or more (the exact multi-lokal
+ * shape this bug hit), which one belongs to which candidate is genuinely
+ * unknown, so both regenerate via `rcnRow` rather than guessing.
  */
 function rebuildComparables(
   snap: SampleSelectionSnapshot,
   currentRows: ComparableRow[],
 ): ComparableRow[] {
   const nextEff = effectiveSelection(snap);
-  const currentRcnByTransactionId = new Map(
-    currentRows
-      .filter(
-        (c): c is ComparableRow & { transactionId: string } =>
-          c.source === "rcn" && !!c.transactionId,
-      )
+  const currentRcnRows = currentRows.filter(
+    (c): c is ComparableRow & { transactionId: string } => c.source === "rcn" && !!c.transactionId,
+  );
+  const byCandidateKey = new Map(
+    currentRcnRows
+      .filter((c): c is typeof c & { lokalId: string } => !!c.lokalId)
+      .map(
+        (c) => [candidateKey({ transactionId: c.transactionId, lokalId: c.lokalId }), c] as const,
+      ),
+  );
+  const countByTransactionId = new Map<string, number>();
+  for (const c of currentRcnRows) {
+    countByTransactionId.set(c.transactionId, (countByTransactionId.get(c.transactionId) ?? 0) + 1);
+  }
+  const byUnambiguousTransactionId = new Map(
+    currentRcnRows
+      .filter((c) => !c.lokalId && countByTransactionId.get(c.transactionId) === 1)
       .map((c) => [c.transactionId, c] as const),
   );
   const manualRows = currentRows.filter((c) => c.source !== "rcn");
   return [
-    ...nextEff.proposed.map((c) => currentRcnByTransactionId.get(c.transactionId) ?? rcnRow(c)),
+    ...nextEff.proposed.map(
+      (c) =>
+        byCandidateKey.get(candidateKey(c)) ??
+        byUnambiguousTransactionId.get(c.transactionId) ??
+        rcnRow(c),
+    ),
     ...manualRows,
   ];
 }

@@ -40,6 +40,13 @@ function sellerLabel(seller: string | null): string {
   return "—";
 }
 
+/** Raw RCN market value → Polish label (final wave minor i) — "wtorny" has no diacritic in the source data. */
+function marketLabel(market: Candidate["market"]): string {
+  if (market === "wtorny") return "wtórny";
+  if (market === "pierwotny") return "pierwotny";
+  return "nieznany";
+}
+
 function initialMode(entry: StreetViewEntry | undefined, streetViewUsable: boolean): Mode {
   return entry?.panoId && streetViewUsable ? "street" : "orto";
 }
@@ -267,7 +274,7 @@ export function SamplePanel({
             <Field label="Piętro / izby">
               {candidate.floor ?? "—"} / {candidate.rooms ?? "—"}
             </Field>
-            <Field label="Rynek">{candidate.market ?? "nieznany"}</Field>
+            <Field label="Rynek">{marketLabel(candidate.market)}</Field>
             <Field label="Sprzedający">{sellerLabel(candidate.seller)}</Field>
             <Field label="Udział">{candidate.share}</Field>
             <Field label="Obręb">{obrebLabel(candidate.egib)}</Field>

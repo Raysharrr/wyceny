@@ -25,7 +25,13 @@ export type GetSampleProposalInput = { valuationId: string; address: string; are
 export type GetSampleProposalResult =
   | {
       proposal: {
-        comparables: { date: string; area: number; pricePerM2: number; transactionId: string }[];
+        comparables: {
+          date: string;
+          area: number;
+          pricePerM2: number;
+          transactionId: string;
+          lokalId: string;
+        }[];
         sampleSelection: SampleSelectionSnapshot;
         sampleMeta: SampleMeta;
         streetView: StreetViewSnapshot;

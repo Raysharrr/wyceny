@@ -73,6 +73,14 @@ describe("SamplePanel", () => {
       expect.stringContaining("/maps/embed/v1/view"),
     );
   });
+  it("Rynek field maps the raw RCN value to a Polish label (final wave minor i)", () => {
+    const { rerender } = render(<SamplePanel {...base} candidate={{ ...c, market: "wtorny" }} />);
+    expect(screen.getByText("wtórny")).toBeInTheDocument();
+    rerender(<SamplePanel {...base} candidate={{ ...c, market: "pierwotny" }} />);
+    expect(screen.getByText("pierwotny")).toBeInTheDocument();
+    rerender(<SamplePanel {...base} candidate={{ ...c, market: null }} />);
+    expect(screen.getByText("nieznany")).toBeInTheDocument();
+  });
   it("no panorama → Ulica disabled, no iframe ever, caption visible in every mode, starts in Ortofoto; Mapa stays enabled (works by location)", async () => {
     render(
       <SamplePanel

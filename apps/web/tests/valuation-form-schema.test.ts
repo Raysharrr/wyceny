@@ -164,6 +164,29 @@ describe("valuationFormSchema — RCN provenance (F-5)", () => {
     expect(valuationFormSchema.safeParse({ ...valid, comparables }).success).toBe(true);
   });
 
+  it("accepts a lokalId on a comparable (multi-lokal act, final wave); still validates without one", () => {
+    const withLokalId = [
+      ...valid.comparables.slice(0, 2),
+      {
+        ...valid.comparables[2],
+        source: "rcn",
+        transactionId: "abc-123",
+        lokalId: "306401_1.0039.AR_22.13-82.1_BUD.1_LOK",
+      },
+    ];
+    expect(valuationFormSchema.safeParse({ ...valid, comparables: withLokalId }).success).toBe(
+      true,
+    );
+    // No lokalId at all — legacy/manual rows keep validating.
+    const withoutLokalId = [
+      ...valid.comparables.slice(0, 2),
+      { ...valid.comparables[2], source: "rcn", transactionId: "abc-123" },
+    ];
+    expect(valuationFormSchema.safeParse({ ...valid, comparables: withoutLokalId }).success).toBe(
+      true,
+    );
+  });
+
   it("rejects an unknown source value", () => {
     const comparables = [
       ...valid.comparables.slice(0, 2),

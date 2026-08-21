@@ -48,7 +48,13 @@ export async function buildProposal(
     startedAt: number;
   } & ({ event: "proposal.sample" } | { event: "proposal.reselect"; radiusOverrideM: number }),
 ): Promise<{
-  comparables: { date: string; area: number; pricePerM2: number; transactionId: string }[];
+  comparables: {
+    date: string;
+    area: number;
+    pricePerM2: number;
+    transactionId: string;
+    lokalId: string;
+  }[];
   sampleSelection: SampleSelectionSnapshot;
   sampleMeta: SampleMeta;
   streetView: StreetViewSnapshot;
@@ -80,6 +86,10 @@ export async function buildProposal(
     area: c.area,
     pricePerM2: c.pricePerM2,
     transactionId: c.transactionId,
+    // Distinguishes lokale of one notarial act (final wave, runtime bug fix
+    // — multi-lokal Heweliusza 3/43 collapsed to one lokal's data under a
+    // transactionId-only key). See `rebuildComparables` and `document-model.ts`.
+    lokalId: c.lokalId,
   }));
 
   // Keyed by POSITION, never by transactionId: that id is masked out of the

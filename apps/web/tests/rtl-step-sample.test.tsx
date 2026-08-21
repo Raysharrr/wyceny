@@ -1417,3 +1417,106 @@ describe("StepSample — radius buttons (Task 8)", () => {
     expect(areas.at(-1)).toBe("50");
   });
 });
+
+describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/43)", () => {
+  it("two lokale sharing one transactionId keep their OWN area/price across a reject; editing one leaves the other untouched", async () => {
+    const user = userEvent.setup();
+    // Same building (default `makeCandidate` egib) so all four candidates
+    // compete for the same maxPerBuilding=3 slots — lokalA/lokalB share ONE
+    // transactionId (one notarial act carrying two lokale), "other" and
+    // "backfill" are separate acts.
+    const lokalA = makeCandidate({
+      transactionId: "ACT-SHARED",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_A",
+      pricePerM2: 7505.43,
+      area: 50.63,
+      distanceM: 100,
+    });
+    const lokalB = makeCandidate({
+      transactionId: "ACT-SHARED",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_B",
+      pricePerM2: 7541.24,
+      area: 38.19,
+      distanceM: 101,
+    });
+    const other = makeCandidate({
+      transactionId: "T-OTHER",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_C",
+      pricePerM2: 9000,
+      area: 45,
+      distanceM: 102,
+    });
+    const backfill = makeCandidate({
+      transactionId: "T-BACKFILL",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_D",
+      pricePerM2: 8800,
+      area: 44,
+      distanceM: 103,
+    });
+    const proposed = [lokalA, lokalB, other];
+    const alternates = [backfill];
+    const sel = makeSampleSelection({ proposed, alternates });
+    const initialComparables: Comparable[] = proposed.map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+      lokalId: c.lokalId,
+    }));
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
+
+    // Reject the THIRD candidate ("other") — lokalA/lokalB (the shared act)
+    // must BOTH keep their own price/area, never collapse onto one of them.
+    await user.click(candidateRows()[2]);
+    await waitFor(() => expect(screen.getByText("Kandydatka 3 z 4")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(3\)/ }));
+    await waitFor(() => {
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      expect(prices).toEqual(["7505.43", "7541.24", String(backfill.pricePerM2)]);
+    });
+
+    // Edit lokal A's price, then reject the backfilled candidate — A keeps
+    // its edit, B is untouched (not overwritten by A's edit, not reset).
+    const priceA = container.querySelector("#comparable-price-0") as HTMLInputElement;
+    await user.clear(priceA);
+    await user.type(priceA, "99999");
+
+    await user.click(candidateRows()[2]); // the backfilled candidate now occupies slot 3
+    await waitFor(() => expect(screen.getByText("Kandydatka 3 z 3")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+
+    await waitFor(() =>
+      expect((container.querySelector("#comparable-price-0") as HTMLInputElement).value).toBe(
+        "99999",
+      ),
+    );
+    expect((container.querySelector("#comparable-price-1") as HTMLInputElement).value).toBe(
+      "7541.24",
+    );
+    // The rejected backfill left the proposal — not kept as a stray row.
+    expect(container.querySelector("#comparable-price-2")).toBeNull();
+  });
+});
