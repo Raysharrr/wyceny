@@ -115,6 +115,8 @@ function makeSampleSelection(
     alternates: overrides.alternates ?? [],
     flags: {},
     rejectedCounts: {},
+    rejected: [],
+    manualRejections: [],
     radiusUsedM: overrides.radiusUsedM ?? 500,
     radiusWalk: [],
     counts: {
@@ -668,5 +670,50 @@ describe("StepSample — validation", () => {
 
     const hint = screen.getByText(/wymaga co najmniej 12 transakcji/i);
     expect(hint.textContent).toMatch(/masz 5/i);
+  });
+});
+
+describe("StepSample — candidate table (Slice 3)", () => {
+  it("renders SampleTable when a v3 selection is present and keeps the editable table collapsed; expands on click", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection({ proposed: [makeCandidate()] })}
+      />,
+    );
+
+    // The candidate table renders — its own column header is a reliable,
+    // unambiguous marker (the editable table has no "Fasada" column).
+    expect(screen.getByText("Fasada")).toBeInTheDocument();
+
+    // Collapsed by default: the editable table's own columns/inputs are
+    // absent from the DOM, not merely hidden.
+    expect(screen.queryByText("Data transakcji")).toBeNull();
+    expect(container.querySelector("#comparable-price-0")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(12\)/ }));
+
+    expect(screen.getByText("Data transakcji")).toBeInTheDocument();
+    expect(container.querySelector("#comparable-price-0")).not.toBeNull();
+  });
+
+  it("keeps the RCN fetch button visible even while the editable section is collapsed", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection({ proposed: [makeCandidate()] })}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /pobierz próbę z rcn/i })).toBeVisible();
   });
 });

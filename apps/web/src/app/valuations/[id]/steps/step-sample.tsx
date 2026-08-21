@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Scale, Table2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Scale, Table2 } from "lucide-react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import type { z } from "zod";
@@ -26,6 +26,15 @@ import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import type { Comparable, KcsInput } from "@/domain/kcs";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { effectiveSelection } from "@/domain/sample-snapshot";
+import { SampleTable } from "./sample-table";
+
+// `NEXT_PUBLIC_*` vars are inlined at build time (Next.js) or read from the
+// real process env (vitest/node) — mirrors the same check in
+// `app/valuations/_deps.ts`'s `streetView` adapter selection. CI e2e sets
+// this to "off" so the smoke test never depends on Google Street View being
+// reachable.
+export const NEXT_PUBLIC_STREET_VIEW_OFF = process.env.NEXT_PUBLIC_STREET_VIEW === "off";
 
 type FormInput = z.input<typeof sampleStepSchema>;
 type FormOutput = z.output<typeof sampleStepSchema>;
@@ -85,6 +94,7 @@ export function StepSample({
   comparables: initialComparables,
   sampleMeta,
   sampleSelection,
+  streetView = null,
 }: {
   valuationId: string;
   address: string;
@@ -92,11 +102,21 @@ export function StepSample({
   comparables: Comparable[];
   sampleMeta: KcsInput["sampleMeta"];
   sampleSelection: KcsInput["sampleSelection"];
+  streetView?: KcsInput["streetView"];
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isFetchingSample, setIsFetchingSample] = useState(false);
   const [fetchSampleError, setFetchSampleError] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // Collapsed by default once a v3 selection snapshot already exists (the
+  // candidate table above takes over) — expanded when it doesn't (manual
+  // sample, legacy v2 draft), so the Playwright smoke and the pre-Slice-3
+  // RTL tests keep seeing the editable table without touching a toggle.
+  // Keyed off the PROP (the draft as loaded), not the live watched value —
+  // a fetch during this session must not auto-collapse a section the
+  // appraiser may have opened on purpose.
+  const [showEditable, setShowEditable] = useState(!sampleSelection);
 
   const {
     control,
@@ -117,6 +137,7 @@ export function StepSample({
         : [{ ...emptyComparable }, { ...emptyComparable }, { ...emptyComparable }],
       sampleMeta: sampleMeta ?? undefined,
       sampleSelection: sampleSelection ?? undefined,
+      streetView: streetView ?? undefined,
     },
   });
 
@@ -161,6 +182,9 @@ export function StepSample({
   // Watched (not the raw `sampleMeta` prop) so the banner reacts live to a
   // fetch in this session, not only to whatever the page rendered with.
   const liveSampleMeta = useWatch({ control, name: "sampleMeta" });
+  // Watched so the candidate table's thumbnails reflect a fetch made in this
+  // session, not only whatever `streetView` the page rendered with.
+  const liveStreetView = useWatch({ control, name: "streetView" });
 
   const onFetchSample = async () => {
     setFetchSampleError(null);
@@ -195,6 +219,9 @@ export function StepSample({
       // on save would wipe the persisted snapshot to null even for a plain
       // price edit that never re-fetches (see the "hidden round-trip" RTL test).
       setValue("sampleSelection", result.proposal.sampleSelection, { shouldDirty: true });
+      // Same round-trip requirement as sampleSelection above — the fresh
+      // Street View lookup must persist alongside it.
+      setValue("streetView", result.proposal.streetView, { shouldDirty: true });
     } finally {
       setIsFetchingSample(false);
     }
@@ -230,6 +257,12 @@ export function StepSample({
                 {liveSampleMeta.query.truncated
                   ? " — pobieranie przerwano przed pokryciem 24 miesięcy (limit stron lub czasu), pula może być niepełna"
                   : null}
+                {" · "}
+                {effectiveSelection(sel).alternates.length} alternatyw · odrzucono{" "}
+                {Object.values(sel.rejectedCounts ?? {}).reduce(
+                  (total, count) => total + (count ?? 0),
+                  0,
+                )}
               </AutoBanner>
             ) : liveSampleMeta ? (
               // A persisted `sampleMeta` without its v3 selection snapshot (a
@@ -242,100 +275,135 @@ export function StepSample({
               </AutoBanner>
             ) : null}
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data transakcji</TableHead>
-                  <TableHead>Powierzchnia (m²)</TableHead>
-                  <TableHead>Cena (zł/m²)</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {comparableFields.map((field, index) => (
-                  <TableRow key={field.id}>
-                    <TableCell>
-                      <Controller
-                        control={control}
-                        name={`comparables.${index}.date`}
-                        render={({ field: dateField }) => (
-                          <Input
-                            id={`comparable-date-${index}`}
-                            placeholder="2024-07"
-                            {...dateField}
+            {sel ? (
+              <SampleTable
+                selection={sel}
+                streetView={liveStreetView ?? null}
+                streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
+                selectedKey={selectedKey}
+                onSelect={setSelectedKey}
+              />
+            ) : null}
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-fit"
+              aria-expanded={showEditable}
+              onClick={() => setShowEditable((v) => !v)}
+            >
+              {showEditable ? <ChevronDown /> : <ChevronRight />}
+              Próba do kalkulacji ({comparablesCount}) — edytuj wartości lub dopisz ręcznie
+            </Button>
+
+            {showEditable ? (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data transakcji</TableHead>
+                      <TableHead>Powierzchnia (m²)</TableHead>
+                      <TableHead>Cena (zł/m²)</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {comparableFields.map((field, index) => (
+                      <TableRow key={field.id}>
+                        <TableCell>
+                          <Controller
+                            control={control}
+                            name={`comparables.${index}.date`}
+                            render={({ field: dateField }) => (
+                              <Input
+                                id={`comparable-date-${index}`}
+                                placeholder="2024-07"
+                                {...dateField}
+                              />
+                            )}
                           />
-                        )}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Controller
-                        control={control}
-                        name={`comparables.${index}.area`}
-                        render={({ field: areaField, fieldState }) => (
-                          <>
-                            <Input
-                              id={`comparable-area-${index}`}
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              inputMode="decimal"
-                              placeholder="m²"
-                              name={areaField.name}
-                              onBlur={areaField.onBlur}
-                              ref={areaField.ref}
-                              value={toInputValue(areaField.value)}
-                              onChange={(e) =>
-                                areaField.onChange(
-                                  e.target.value === "" ? undefined : e.target.value,
-                                )
-                              }
-                              aria-invalid={!!fieldState.error}
-                            />
-                            <FieldError errors={[fieldState.error]} />
-                          </>
-                        )}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Controller
-                        control={control}
-                        name={`comparables.${index}.pricePerM2`}
-                        render={({ field: priceField, fieldState }) => (
-                          <>
-                            <Input
-                              id={`comparable-price-${index}`}
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              inputMode="decimal"
-                              placeholder="zł/m²"
-                              aria-invalid={!!fieldState.error}
-                              name={priceField.name}
-                              onBlur={priceField.onBlur}
-                              ref={priceField.ref}
-                              value={toInputValue(priceField.value)}
-                              onChange={(e) => priceField.onChange(e.target.value)}
-                            />
-                            <FieldError errors={[fieldState.error]} />
-                          </>
-                        )}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={comparableFields.length <= 3}
-                        onClick={() => removeComparable(index)}
-                      >
-                        Usuń
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                        </TableCell>
+                        <TableCell>
+                          <Controller
+                            control={control}
+                            name={`comparables.${index}.area`}
+                            render={({ field: areaField, fieldState }) => (
+                              <>
+                                <Input
+                                  id={`comparable-area-${index}`}
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  inputMode="decimal"
+                                  placeholder="m²"
+                                  name={areaField.name}
+                                  onBlur={areaField.onBlur}
+                                  ref={areaField.ref}
+                                  value={toInputValue(areaField.value)}
+                                  onChange={(e) =>
+                                    areaField.onChange(
+                                      e.target.value === "" ? undefined : e.target.value,
+                                    )
+                                  }
+                                  aria-invalid={!!fieldState.error}
+                                />
+                                <FieldError errors={[fieldState.error]} />
+                              </>
+                            )}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Controller
+                            control={control}
+                            name={`comparables.${index}.pricePerM2`}
+                            render={({ field: priceField, fieldState }) => (
+                              <>
+                                <Input
+                                  id={`comparable-price-${index}`}
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  inputMode="decimal"
+                                  placeholder="zł/m²"
+                                  aria-invalid={!!fieldState.error}
+                                  name={priceField.name}
+                                  onBlur={priceField.onBlur}
+                                  ref={priceField.ref}
+                                  value={toInputValue(priceField.value)}
+                                  onChange={(e) => priceField.onChange(e.target.value)}
+                                />
+                                <FieldError errors={[fieldState.error]} />
+                              </>
+                            )}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={comparableFields.length <= 3}
+                            onClick={() => removeComparable(index)}
+                          >
+                            Usuń
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-fit"
+                  onClick={() => appendComparable({ ...emptyComparable })}
+                >
+                  Dodaj transakcję
+                </Button>
+              </>
+            ) : null}
 
             {comparablesError ? (
               <p role="alert" className="text-sm text-destructive">
@@ -350,26 +418,16 @@ export function StepSample({
               </p>
             ) : null}
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-fit"
-                onClick={() => appendComparable({ ...emptyComparable })}
-              >
-                Dodaj transakcję
-              </Button>
-              <Button
-                type="button"
-                id="fetch-sample"
-                variant="outline"
-                className="w-fit"
-                disabled={isFetchingSample}
-                onClick={onFetchSample}
-              >
-                {isFetchingSample ? "Pobieranie…" : "Pobierz próbę z RCN"}
-              </Button>
-            </div>
+            <Button
+              type="button"
+              id="fetch-sample"
+              variant="outline"
+              className="w-fit"
+              disabled={isFetchingSample}
+              onClick={onFetchSample}
+            >
+              {isFetchingSample ? "Pobieranie…" : "Pobierz próbę z RCN"}
+            </Button>
 
             {fetchSampleError ? (
               <p role="alert" className="text-sm text-destructive">
