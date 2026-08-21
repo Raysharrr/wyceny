@@ -222,6 +222,19 @@ function makeBuildingSelection(
   };
 }
 
+// A second building, distinct from BUILDING, holding P3 and P4.
+const BUILDING_2 = { x: 355280, y: 505350 };
+function makeTwoBuildingsSelection(): SampleSelectionSnapshot {
+  return makeBuildingSelection({
+    proposed: [
+      c("P1", BUILDING),
+      c("P2", BUILDING, { floor: 3 }),
+      c("P3", BUILDING_2),
+      c("P4", BUILDING_2, { floor: 2 }),
+    ],
+  });
+}
+
 describe("SampleMapLeaflet — building markers + spiderfy", () => {
   it("folds lokale sharing a coordinate into ONE building marker with a count badge", () => {
     render(
@@ -397,5 +410,26 @@ describe("SampleMapLeaflet — building markers + spiderfy", () => {
     fireEvent.click(mapEl);
     expect(building).toHaveAttribute("aria-expanded", "false");
     expect(container.querySelectorAll(".smap-leg")).toHaveLength(0);
+  });
+
+  it("opening another building keeps it open while a lokal of a different building is selected", () => {
+    render(
+      <SampleMapLeaflet
+        selection={makeTwoBuildingsSelection()}
+        center={CENTER}
+        selectedKey="P1|LP1"
+        onSelect={vi.fn()}
+      />,
+    );
+    // BUILDING holds P1 (the selection) — auto-opened on mount.
+    const buildingWithSelection = document.querySelector('[data-pos-key="355320.9,505342.7"]')!;
+    // BUILDING_2 holds P3/P4 only — unrelated to the current selection.
+    const otherBuilding = document.querySelector('[data-pos-key="355280,505350"]')!;
+    expect(buildingWithSelection).toHaveAttribute("aria-expanded", "true");
+    expect(otherBuilding).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(otherBuilding);
+    expect(otherBuilding).toHaveAttribute("aria-expanded", "true");
+    expect(buildingWithSelection).toHaveAttribute("aria-expanded", "false");
   });
 });
