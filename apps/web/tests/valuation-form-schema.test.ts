@@ -309,24 +309,31 @@ describe("sampleSelectionSchema — v3 additive fields (Slice 3)", () => {
     });
     expect(bad.success).toBe(false);
   });
-  it("accepts manualInclusions and reviewed (Slice 3c); parses back without stripping them", () => {
+  it("accepts manualInclusions and reviewed (Slice 3c); parses back without stripping them (nested candidate included)", () => {
     const candidate = {
       transactionId: "T3",
       date: "2026-05-10",
       area: 50,
       pricePerM2: 12000,
       priceTotal: 600000,
-      egib: null,
+      egib: {
+        teryt: "306401_1",
+        obreb: "0021",
+        arkusz: "10",
+        dzialka: "27",
+        budynek: "3",
+        lokal: "3",
+      },
       lokalId: "L3",
       distanceM: 500,
-      floor: null,
-      rooms: null,
-      market: null,
+      floor: 2,
+      rooms: 3,
+      market: "wtorny" as const,
       share: "1/1",
       transType: "wolnyRynek",
       function: "mieszkalna",
-      seller: null,
-      pos: null,
+      seller: "osobaFizyczna",
+      pos: { x: 123.45, y: 678.9 },
     };
     const parsed = sampleSelectionSchema.safeParse({
       ...base,
@@ -339,6 +346,9 @@ describe("sampleSelectionSchema — v3 additive fields (Slice 3)", () => {
     if (!parsed.success) throw parsed.error;
     expect(parsed.data.manualInclusions).toHaveLength(1);
     expect(parsed.data.reviewed).toHaveLength(1);
+    // Nested-strip guard: egib and pos are objects nested inside candidateSchema —
+    // confirms zod isn't silently dropping their fields on the way through.
+    expect(parsed.data.manualInclusions![0].candidate).toEqual(candidate);
 
     const bad = sampleSelectionSchema.safeParse({
       ...base,

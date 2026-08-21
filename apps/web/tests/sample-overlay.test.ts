@@ -129,4 +129,41 @@ describe("applyManualOverlay — inclusions on top of rejections", () => {
       out.proposed.filter((c) => candidateKey(c) === candidateKey(alreadyProposed)),
     ).toHaveLength(1);
   });
+
+  it("a rejected re-attached inclusion (candidate absent from proposed/alternates) lands in removed, not silently dropped", () => {
+    const far = mk({ distanceM: 7000 });
+    const out = applyManualOverlay(sel, {
+      rejections: [rej(far)],
+      inclusions: [{ ...inc(far), candidate: far }],
+    });
+    expect(out.removed.filter((c) => candidateKey(c) === candidateKey(far))).toHaveLength(1);
+    expect(out.proposed.map(candidateKey)).not.toContain(candidateKey(far));
+    expect(out.alternates.map(candidateKey)).not.toContain(candidateKey(far));
+    expect(out.included).toEqual([]);
+  });
+
+  it("a key already in removed (rejected base row) is not duplicated by a losing inclusion for the same key", () => {
+    const victim = sel.proposed[0];
+    const out = applyManualOverlay(sel, {
+      rejections: [rej(victim)],
+      inclusions: [inc(victim)],
+    });
+    expect(out.removed.filter((c) => candidateKey(c) === candidateKey(victim))).toHaveLength(1);
+  });
+
+  it("inclusion bypasses maxPerBuilding: a 4th candidate from a building already at the domain's cap (3 in proposed) is still included", () => {
+    const sharedEgib = { teryt: "306401_1", obreb: "0021", arkusz: "10", dzialka: "27" };
+    const building = Array.from({ length: 4 }, (_, i) =>
+      mk({ distanceM: 10 + i, egib: { ...sharedEgib, budynek: "shared", lokal: String(i) } }),
+    );
+    const others = Array.from({ length: 16 }, (_, i) => mk({ distanceM: 100 + i }));
+    const localSel = selectSample([...building, ...others], P);
+    const fourth = building[3];
+    // Sanity: selectSample's own maxPerBuilding cap (3) demotes the 4th same-building row to alternates.
+    expect(localSel.proposed.map(candidateKey)).not.toContain(candidateKey(fourth));
+    expect(localSel.alternates.map(candidateKey)).toContain(candidateKey(fourth));
+
+    const out = applyManualOverlay(localSel, { rejections: [], inclusions: [inc(fourth)] });
+    expect(out.proposed.map(candidateKey)).toContain(candidateKey(fourth));
+  });
 });
