@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  kiegWmsUrl,
   mapEmbedUrl,
   ortoWmsUrl,
   streetViewEmbedUrl,
@@ -50,5 +51,20 @@ describe("embed-urls", () => {
     expect(u.searchParams.get("HEIGHT")).toBe("600");
     expect(u.searchParams.get("FORMAT")).toBe("image/jpeg");
     expect(u.searchParams.get("LAYERS")).toBe("Raster");
+  });
+  it("kieg WMS: requested at 2x pixel density (WIDTH/HEIGHT = px*2) so GUGiK's cadastral layers clear the scale threshold, but the SAME bbox as orto's — mapDots/viewBox stays exact", () => {
+    const pos = { x: 355285, y: 505324 };
+    // The overview map's usual frame: radius 500 m → halfM 600 → 640 px,
+    // the exact density that returned an empty KIEG PNG before this fix.
+    const orto = new URL(ortoWmsUrl(pos, 600, 640));
+    const kieg = new URL(kiegWmsUrl(pos, 600, 640));
+    expect(kieg.origin + kieg.pathname).toBe(
+      "https://integracja.gugik.gov.pl/cgi-bin/KrajowaIntegracjaEwidencjiGruntow",
+    );
+    expect(kieg.searchParams.get("WIDTH")).toBe("1280");
+    expect(kieg.searchParams.get("HEIGHT")).toBe("1280");
+    expect(kieg.searchParams.get("BBOX")).toBe(orto.searchParams.get("BBOX"));
+    expect(kieg.searchParams.get("LAYERS")).toBe("dzialki,numery_dzialek,budynki,obreby");
+    expect(kieg.searchParams.get("FORMAT")).toBe("image/png");
   });
 });

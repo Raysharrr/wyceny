@@ -67,5 +67,20 @@ export function wmsGetMapUrl(
 }
 export const ortoWmsUrl = (pos: { x: number; y: number }, halfM = 150, px = 600) =>
   wmsGetMapUrl(ORTO_WMS, "Raster", pos, halfM, px, "image/jpeg");
+/**
+ * Requested at 2× pixel density (`WIDTH`/`HEIGHT` = `px * 2`), the ORTHO
+ * fallback isn't — GUGiK's KIEG dzialki/budynki/numery_dzialek/obreby
+ * layers are vector-rendered with a SCALE THRESHOLD: at the overview map's
+ * usual density (e.g. radius 500 m → halfM 600 → 1200 m / 640 px) the
+ * requested scale falls below it and the layers draw NOTHING — an empty
+ * 144-byte PNG, confirmed by curl (same BBOX at 1280×1280 → a 264 KB
+ * drawing; at 640×640 → empty). `mapFrame`'s `bbox` comes from `pos`/`halfM`
+ * alone (`domain/geo.ts`), never `px`, so doubling WIDTH/HEIGHT here
+ * doesn't move the BBOX at all — `mapDots`/the SVG `viewBox` mapping (both
+ * built from the SAME `pos`/`halfM`/`px` the caller passes) stays exact;
+ * only the requested pixel density (and therefore the WMS scale
+ * denominator) changes. The `<img>` itself is still laid out at `px` via
+ * CSS, so this is bytes-for-legibility only, not a visible size change.
+ */
 export const kiegWmsUrl = (pos: { x: number; y: number }, halfM = 150, px = 600) =>
-  wmsGetMapUrl(KIEG_WMS, "dzialki,numery_dzialek,budynki,obreby", pos, halfM, px, "image/png");
+  wmsGetMapUrl(KIEG_WMS, "dzialki,numery_dzialek,budynki,obreby", pos, halfM, px * 2, "image/png");
