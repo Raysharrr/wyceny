@@ -4,6 +4,7 @@ import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ChevronDown, ChevronRight, Scale, Table2 } from "lucide-react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,19 @@ export const NEXT_PUBLIC_STREET_VIEW_OFF = process.env.NEXT_PUBLIC_STREET_VIEW =
 // read it straight off `process.env`, so both the app and the RTL tests see
 // the same value without threading it through props.
 const EMBED_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY ?? null;
+
+// SPIKE flag (2026-08-21, `spike/leaflet-map`): `NEXT_PUBLIC_MAP_LEAFLET=1`
+// swaps the single-image overview map for the Leaflet prototype. Loaded
+// client-only — Leaflet touches `window` at import time, so it must never be
+// part of the server render.
+const MAP_LEAFLET = process.env.NEXT_PUBLIC_MAP_LEAFLET === "1";
+const SampleMapLeaflet = dynamic(
+  () => import("./sample-map-leaflet").then((m) => m.SampleMapLeaflet),
+  {
+    ssr: false,
+    loading: () => <figure aria-busy="true" className="aspect-square rounded-lg border bg-muted" />,
+  },
+);
 
 type FormInput = z.input<typeof sampleStepSchema>;
 type FormOutput = z.output<typeof sampleStepSchema>;
@@ -352,12 +366,21 @@ export function StepSample({
                   </p>
                 ) : null}
                 {liveSampleMeta?.point ? (
-                  <SampleMap
-                    selection={sel}
-                    center={{ x: liveSampleMeta.point.x, y: liveSampleMeta.point.y }}
-                    selectedKey={selectedKey}
-                    onSelect={setSelectedKey}
-                  />
+                  MAP_LEAFLET ? (
+                    <SampleMapLeaflet
+                      selection={sel}
+                      center={{ x: liveSampleMeta.point.x, y: liveSampleMeta.point.y }}
+                      selectedKey={selectedKey}
+                      onSelect={setSelectedKey}
+                    />
+                  ) : (
+                    <SampleMap
+                      selection={sel}
+                      center={{ x: liveSampleMeta.point.x, y: liveSampleMeta.point.y }}
+                      selectedKey={selectedKey}
+                      onSelect={setSelectedKey}
+                    />
+                  )
                 ) : null}
                 <SampleTable
                   selection={sel}

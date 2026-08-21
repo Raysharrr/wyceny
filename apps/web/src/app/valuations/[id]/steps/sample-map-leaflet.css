@@ -1,0 +1,85 @@
+/* SPIKE 2026-08-21 — styles for sample-map-leaflet.tsx (throwaway). */
+
+.smap {
+  z-index: 0;
+  font-family: inherit;
+}
+
+.smap-dot {
+  box-sizing: border-box;
+  border-radius: 9999px;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.smap-dot--proposed {
+  background: #1f7a5c;
+  cursor: pointer;
+}
+.smap-dot--alternate {
+  background: #9a978f;
+  cursor: pointer;
+}
+.smap-dot--rejected {
+  background: #e7000b;
+  opacity: 0.85;
+}
+.smap-dot--selected {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #1f7a5c;
+}
+.smap-dot:focus-visible {
+  outline: 2px solid #1f7a5c;
+  outline-offset: 2px;
+}
+
+.smap-subject {
+  background: transparent;
+}
+.smap-subject-diamond {
+  display: block;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin: 2px;
+  background: #1a1a1a;
+  border: 1.5px solid #fff;
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.smap-ring {
+  stroke: #1f2937;
+  stroke-opacity: 0.9;
+}
+.smap--orto .smap-ring {
+  stroke: #fff;
+}
+
+.smap-ring-label {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f2937;
+  text-shadow:
+    0 0 2px #fff,
+    0 0 2px #fff,
+    0 0 3px #fff;
+}
+.smap-ring-label::before {
+  display: none;
+}
+.smap--orto .smap-ring-label {
+  color: #fff;
+  text-shadow:
+    0 0 2px #000,
+    0 0 2px #000,
+    0 0 3px #000;
+}
+
+.smap .leaflet-control-layers {
+  font-size: 12px;
+}
