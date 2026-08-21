@@ -154,6 +154,26 @@ export function SamplePanel({
     setNote("");
   }
 
+  // Re-open sync (Opus review round 1, I1): the block above only reacts to
+  // a CANDIDATE change (`currentKey !== forKey`) — it misses a false→true
+  // flip of `initialRejecting` on the SAME candidate (uncheck A while the
+  // panel is already open on A; or uncheck A again after "Anuluj" closed
+  // it). Tracks the LAST `initialRejecting` value acted on and re-opens
+  // (with a fresh reason/note) whenever the caller's prop actually changes,
+  // regardless of whether the candidate did. Render-phase, same pattern as
+  // the block above — not `useEffect` (an extra commit/paint before it
+  // runs) and not a `key={selectedKey}` remount (would also reset mode/
+  // street-view-tab state on every ordinary re-select, not just this one).
+  const [rejectingRequested, setRejectingRequested] = useState(initialRejecting);
+  if (initialRejecting !== rejectingRequested) {
+    setRejectingRequested(initialRejecting);
+    if (initialRejecting) {
+      setRejecting(true);
+      setReason(null);
+      setNote("");
+    }
+  }
+
   /** "Anuluj" (Task 5) — closes the reasons block locally (never rejects) and notifies the caller so a `panelInitialRejecting` pointed at this row doesn't reopen it later. Also clears `reason`/`note`, same as switching candidates does — an aborted rejection shouldn't leave a half-filled form behind. */
   function handleCancelRejecting() {
     setRejecting(false);

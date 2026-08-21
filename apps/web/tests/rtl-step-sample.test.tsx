@@ -869,7 +869,9 @@ describe("StepSample — manual rejection flow", () => {
     expect(screen.getAllByTestId("proposed-row")).toHaveLength(3);
 
     await user.click(screen.getAllByTestId("proposed-row")[0]);
-    await waitFor(() => expect(screen.getByText("Propozycja 1 z 5")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 1 z 5 · przejrzane 0")).toBeInTheDocument(),
+    );
 
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
@@ -920,7 +922,7 @@ describe("StepSample — manual rejection flow", () => {
     );
   });
 
-  it("post-reject selection follows the SAME ranking slot to whoever backfilled it ('Propozycja 1 z 4' after rejecting the first of 5)", async () => {
+  it("post-reject selection follows the SAME ranking slot to whoever backfilled it ('Propozycja 1 z 4 · przejrzane 1' after rejecting the first of 5)", async () => {
     const user = userEvent.setup();
     const proposed = [buildingCandidate(1), buildingCandidate(2), buildingCandidate(3)];
     const alternates = [buildingCandidate(4), buildingCandidate(5)];
@@ -948,7 +950,9 @@ describe("StepSample — manual rejection flow", () => {
     // Reject the FIRST proposed row ("W próbie" section, testid-scoped —
     // Slice 3c splits the candidate table into two sections).
     await user.click(screen.getAllByTestId("proposed-row")[0]);
-    await waitFor(() => expect(screen.getByText("Propozycja 1 z 5")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 1 z 5 · przejrzane 0")).toBeInTheDocument(),
+    );
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
@@ -986,7 +990,9 @@ describe("StepSample — manual rejection flow", () => {
 
     const candidateTable = () => screen.getByText("Fasada").closest("table")!;
     await user.click(within(candidateTable()).getAllByRole("row").slice(1)[0]);
-    await waitFor(() => expect(screen.getByText("Propozycja 1 z 2")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 1 z 2 · przejrzane 0")).toBeInTheDocument(),
+    );
 
     await user.click(screen.getByRole("button", { name: "Zostaw" }));
     // "Zostaw" marks the row reviewed before advancing (Slice 3c, Task 5) —
@@ -1049,7 +1055,9 @@ describe("StepSample — manual rejection flow", () => {
     // from both the now-expanded editable table AND the "Alternatywy"
     // section, which also has role="row" elements).
     await user.click(screen.getAllByTestId("proposed-row")[1]);
-    await waitFor(() => expect(screen.getByText("Propozycja 2 z 5")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 2 z 5 · przejrzane 0")).toBeInTheDocument(),
+    );
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
@@ -1504,7 +1512,9 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     // two sections) — proposed stays at 3 rows both before and after the
     // reject below, so index 2 keeps meaning "the third proposed row".
     await user.click(screen.getAllByTestId("proposed-row")[2]);
-    await waitFor(() => expect(screen.getByText("Propozycja 3 z 4")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 3 z 4 · przejrzane 0")).toBeInTheDocument(),
+    );
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
@@ -1602,7 +1612,9 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
     // 0, B's at slot 1), never collapsed onto whichever one happens to
     // occupy a shared bucket.
     await user.click(candidateRows()[2]);
-    await waitFor(() => expect(screen.getByText("Propozycja 3 z 3")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Propozycja 3 z 3 · przejrzane 0")).toBeInTheDocument(),
+    );
     await user.click(screen.getByRole("button", { name: "Odrzuć" }));
     await user.click(screen.getByLabelText(/budynek starszy/i));
     await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
@@ -2197,9 +2209,15 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
     await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
     const [, payload] = saveSampleAction.mock.calls.at(-1) as [
       string,
-      { sampleSelection?: SampleSelectionSnapshot },
+      {
+        sampleSelection?: SampleSelectionSnapshot;
+        comparables: Array<{ transactionId?: string }>;
+      },
     ];
     expect(payload.sampleSelection?.reviewed).toHaveLength(2);
+    // p1 truly left the sample — 3 comparables, none of them p1's.
+    expect(payload.comparables).toHaveLength(3);
+    expect(payload.comparables.some((c) => c.transactionId === "T-P1")).toBe(false);
   });
 
   it("(c) 'Pomiń' on an alternate (from the panel) marks it reviewed — ✓ in the table, sample unchanged, banner shows przejrzane 1/N", async () => {
@@ -2301,7 +2319,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
       flags: { [candidateKey(alt1)]: ["price_outlier"] },
     };
 
-    render(
+    const { container } = render(
       <StepSample
         valuationId={VID}
         address={ADDRESS}
@@ -2362,6 +2380,9 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
     await waitFor(() => expect(screen.getByText("W próbie (3)")).toBeInTheDocument());
     const proposedTable = screen.getByRole("table", { name: "W próbie" });
     expect(within(proposedTable).getByText("dodana ręcznie")).toBeInTheDocument();
+    // The reviewed mark on alt1 (carried by the mocked reselect response,
+    // same as manualInclusions) survives the radius change too.
+    expect(bannerText(container)).toMatch(/przejrzane 1\/3/);
 
     saveSampleAction.mockResolvedValue({ ok: true });
     await user.click(screen.getByRole("button", { name: /zatwierdź próbę i dalej/i }));
@@ -2587,5 +2608,76 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
     await user.click(screen.getAllByTestId("proposed-row")[0]);
     await waitFor(() => expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull();
+  });
+
+  it("uncheck A's OWN row after the panel is already open on it (opened via a plain click, not the checkbox) — reasons block opens (Opus review round 1, I1)", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const p2 = makeCandidate({ transactionId: "T-P2", lokalId: "L-P2" });
+    const sel = makeSampleSelection({ proposed: [p1, p2], alternates: [] });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, p2].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    // Select row A (p1) via a plain row click — panel opens, NOT rejecting.
+    await user.click(screen.getAllByTestId("proposed-row")[0]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull();
+
+    // Now uncheck THAT SAME row's "w próbie" checkbox — `initialRejecting`
+    // flips false→true for the candidate ALREADY selected (no candidate
+    // change), which the mount/candidate-change reset alone would miss.
+    const proposedTable = screen.getByRole("table", { name: "W próbie" });
+    await user.click(within(proposedTable).getAllByRole("checkbox")[0]);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Potwierdź odrzucenie/i })).toBeInTheDocument(),
+    );
+  });
+
+  it("uncheck A → Anuluj → uncheck A again — reasons block re-opens (Opus review round 1, I1)", async () => {
+    const user = userEvent.setup();
+    const p1 = makeCandidate({ transactionId: "T-P1", lokalId: "L-P1" });
+    const p2 = makeCandidate({ transactionId: "T-P2", lokalId: "L-P2" });
+    const sel = makeSampleSelection({ proposed: [p1, p2], alternates: [] });
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[p1, p2].map(rcnComparable)}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    const proposedTable = screen.getByRole("table", { name: "W próbie" });
+    const checkbox = () => within(proposedTable).getAllByRole("checkbox")[0];
+
+    await user.click(checkbox());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Potwierdź odrzucenie/i })).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Anuluj" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull(),
+    );
+
+    // Uncheck the SAME row again — must re-open, not stay dead.
+    await user.click(checkbox());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Potwierdź odrzucenie/i })).toBeInTheDocument(),
+    );
   });
 });

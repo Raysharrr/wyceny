@@ -455,6 +455,19 @@ describe("SamplePanel — status-aware actions (Task 4)", () => {
     expect(onCancelRejecting).toHaveBeenCalledTimes(1);
   });
 
+  it("`initialRejecting` flipping false→true on the SAME candidate re-opens the reasons block (Opus review round 1, I1)", () => {
+    // Repro: click a row (panel opens, `initialRejecting` false) → uncheck
+    // its OWN "w próbie" checkbox (caller flips `initialRejecting` true for
+    // the SAME candidate) — the mount-time/candidate-change reset alone
+    // never observes this, since neither `useState`'s initializer nor the
+    // `currentKey !== forKey` block re-runs for a same-candidate rerender.
+    const { rerender } = render(<SamplePanel {...base} initialRejecting={false} />);
+    expect(screen.queryByRole("button", { name: "Potwierdź odrzucenie" })).toBeNull();
+
+    rerender(<SamplePanel {...base} initialRejecting />);
+    expect(screen.getByRole("button", { name: "Potwierdź odrzucenie" })).toBeInTheDocument();
+  });
+
   it("`initialRejecting` applies only to the candidate it was passed for — switching candidates resets it", () => {
     const candidateB = { ...c, transactionId: "T2" };
     // Candidate A, no initialRejecting — reasons block closed.
