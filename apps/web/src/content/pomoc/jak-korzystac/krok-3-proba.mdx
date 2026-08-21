@@ -2,7 +2,7 @@ import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 import { DEFAULTS } from "@/domain/sample-selection";
 import { MANUAL_REJECTION_REASONS, MANUAL_REJECTION_LABELS } from "@/domain/sample-manual";
 import { REJECTED_PER_REASON } from "@/domain/sample-snapshot";
-import { STREET_VIEW_TTL_DAYS } from "@/app/actions/_street-view-enrich";
+import { STREET_VIEW_TTL_DAYS, ENRICH_BUDGET_MS } from "@/app/actions/_street-view-enrich";
 
 W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m², na których oprze się kalkulacja. „Pobierz próbę z RCN” proponuje kandydatki z rejestru: przeglądasz je z podglądem budynku i odrzucasz niepasujące, podając powód. Transakcje możesz też wpisać ręcznie — oba źródła się łączą, bo ostateczna tabela zostaje edytowalna.
 
@@ -24,12 +24,13 @@ Zrzut pochodzi sprzed przebudowy kroku 3 — zostanie odświeżony po wdrożeniu
 Przycisk „Pobierz próbę z RCN” pobiera transakcje dobrane rankingiem podobieństwa w promieniu od {DEFAULTS.radiusStepsM[0]} m do {DEFAULTS.radiusStepsM[DEFAULTS.radiusStepsM.length - 1]} m wokół przedmiotu tej wyceny. Pobieranie trwa zwykle kilka do kilkunastu sekund — przycisk pokazuje wtedy „Pobieranie…”.
 
 - Do propozycji trafia najwyżej {DEFAULTS.proposedN} kandydatek — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku — a kolejne, do {DEFAULTS.alternatesN}, wchodzą do zwijanej sekcji „Alternatywy”.
-- Każdy wiersz ma miniaturkę fasady ze Street View (albo „brak zdjęcia ulicy · Google z RRRR”, gdy Google nie ma tam panoramy — zwykle znaczy to budynek nowszy niż ostatni przejazd Google), datę transakcji, obręb, odległość od przedmiotu, powierzchnię, cenę, piętro i odznaki: **ten sam budynek**, **ta sama działka**, **inny obręb**, **p. N** (piętro), **>5 kond.**, **rynek?**, **prawdopodobnie deweloperska**, **cena odstająca**. Skąd biorą się flagi i punktacja, opisuje [dobór próby z RCN](/pomoc/dobor-proby-rcn).
-- Nad tabelą jest mapa przeglądowa (ortofotomapa GUGiK; gdy akurat nie odpowie, aplikacja po cichu pokazuje mapę ewidencyjną — to nie jest błąd) z okręgami promieni i kropkami: zielona to propozycja, szara alternatywa, czerwona odrzucona. Klik w kropkę otwiera panel tej kandydatki.
-- **Pobranie zastępuje całą dotychczasową propozycję**, ale nie rusza wierszy dopisanych ręcznie w sekcji „Próba do kalkulacji” niżej.
+- Każdy wiersz ma podgląd fasady, datę transakcji, obręb, odległość od przedmiotu, powierzchnię, cenę, piętro i odznaki: **ten sam budynek**, **ta sama działka**, **inny obręb**, **p. N** (piętro), **>5 kond.**, **rynek?**, **prawdopodobnie deweloperska**, **cena odstająca**. Skąd biorą się flagi i punktacja, opisuje [dobór próby z RCN](/pomoc/dobor-proby-rcn).
+- Podgląd fasady ma trzy stany: **miniaturka**, gdy Google ma zdjęcie i aplikacja zdążyła je pobrać; **„brak zdjęcia ulicy · Google z RRRR”**, gdy Google nie ma tam panoramy — to może, ale nie musi, znaczyć budynek nowszy niż ostatni przejazd Google; **pusta ramka bez podpisu („brak miniaturki”)**, gdy pobranie nie zdążyło w budżecie {ENRICH_BUDGET_MS / 1000} s albo akurat zawiodło po stronie Google lub zapisu — kolejne „Pobierz próbę z RCN” dociąga brakujące. Brak zdjęcia sam w sobie nie jest dowodem wieku budynku — nie wybieraj na tej podstawie powodu „budynek nowszy”.
+- Nad tabelą jest mapa przeglądowa (ortofotomapa GUGiK; gdy akurat nie odpowie, aplikacja po cichu pokazuje mapę ewidencyjną — to nie jest błąd) z okręgami promieni i kropkami: zielona to propozycja, szara alternatywa, czerwona odrzucona. Klik w kropkę (poza czerwonymi) otwiera panel tej kandydatki.
+- **Pobranie zastępuje całą dotychczasową zawartość tabeli, również wiersze wpisane ręcznie.**
 - Gdy pobranie się nie uda, zobaczysz komunikat z powodem, a próbę wpisujesz ręcznie.
 
-Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebadano N transakcji z RCN, data)”, a do tego liczbę alternatyw i odrzuconych: N to cała pula z rejestru w kwadracie ±3 km wokół przedmiotu, po złożeniu duplikatów i odrzuceniu rekordów bez współrzędnych; Y — ile z tej puli przeszło higienę i pasmo metrażu w promieniu R; R — promień, na którym dobór się zatrzymał. Gdy pobieranie przerwie się, zanim pula sięgnie pełnego okna czasowego — przez limit stron pobierania (8 × 5000 rekordów) albo budżet czasu (ok. 25 s) — pasek dokłada ostrzeżenie, że pula może być niepełna. Szkic sprzed tej wersji, w którym próba z RCN jest zapisana bez szczegółów doboru, dostaje zamiast liczników komunikat: „Próba z RCN zapisana bez szczegółów doboru — pobierz próbę z RCN ponownie, żeby zobaczyć promień i liczniki.”
+Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebadano N transakcji z RCN, data)”, a do tego liczbę alternatyw i odrzuconych: N to cała pula z rejestru w kwadracie ±3 km wokół przedmiotu, po złożeniu duplikatów i odrzuceniu rekordów bez współrzędnych; Y — ile z tej puli przeszło higienę i pasmo metrażu w promieniu R; R — promień, na którym dobór się zatrzymał. Gdy pobieranie przerwie się, zanim pula sięgnie pełnego okna czasowego — przez limit stron pobierania (8 × 5000 rekordów) albo budżet czasu (ok. 25 s) — pasek dokłada ostrzeżenie, że pula może być niepełna. Szkic sprzed tej wersji, w którym próba z RCN jest zapisana bez szczegółów doboru, dostaje zamiast liczników komunikat: „Próba z RCN z (data) zapisana bez szczegółów doboru — pobierz próbę z RCN ponownie, żeby zobaczyć promień i liczniki.”
 
 Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty; [jak dobieramy próbę](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
 
@@ -40,7 +41,7 @@ Klik w wiersz albo strzałki ↑ / ↓ otwierają panel boczny tej kandydatki. W
 Dwie decyzje kończą przegląd kandydatki:
 
 - **Zostaw** (albo klawisz Enter) — kandydatka zostaje w propozycji, panel przechodzi do następnej.
-- **Odrzuć → powód** — wybierasz jeden z sześciu powodów i możesz dopisać notatkę:
+- **Odrzuć → powód** — wybierasz powód z listy poniżej i możesz dopisać notatkę:
 
 <ul>
   {MANUAL_REJECTION_REASONS.map((reason) => (
@@ -52,7 +53,7 @@ Odrzucenie niczego nie kasuje — zapamiętuje decyzję. Odrzucona kandydatka wy
 
 ## Promień
 
-Przyciski {DEFAULTS.radiusStepsM.join(" / ")} m przeliczają dobór na tej samej puli, którą „Pobierz próbę z RCN” już pobrało — bez ponownego zapytania do rejestru, więc przeliczenie jest natychmiastowe. Gdy wracasz do starego szkicu bez zapamiętanej puli albo od ostatniego pobrania zmieniłeś adres lub powierzchnię w kroku 1, przyciski są nieaktywne z komunikatem, żeby pobrać próbę z RCN ponownie.
+Przyciski {DEFAULTS.radiusStepsM.join(" / ")} m przeliczają dobór na tej samej puli, którą „Pobierz próbę z RCN” już pobrało — bez ponownego zapytania do rejestru, więc przeliczenie jest natychmiastowe. Są aktywne od razu po pobraniu próby; dopiero pierwsze kliknięcie, które nie znajdzie zapamiętanej puli, blokuje je jednym z dwóch komunikatów: „Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.” (szkic sprzed tej wersji, bez zapamiętanej puli) albo „Dane przedmiotu zmieniły się od ostatniego pobrania — pobierz próbę z RCN ponownie.” (adres lub powierzchnia zmienione w kroku 1 od ostatniego pobrania). W obu przypadkach przyciski odblokowuje dopiero nowe „Pobierz próbę z RCN”.
 
 ## Odrzucone
 
@@ -66,7 +67,7 @@ Pod tabelą kandydatek jest zwijana sekcja „Próba do kalkulacji (N) — edytu
 - **Data transakcji** i **powierzchnia (m²)** — przy pobraniu z RCN wypełniają się same; przy wpisie ręcznym są opcjonalne przy zapisie, ale powierzchnie z próby są używane w kroku 4 przy definicjach cech.
 - Przycisk „Dodaj transakcję” dokłada pusty wiersz. „Usuń” kasuje wiersz, ale tabela nie zejdzie poniżej trzech wierszy — przy trzech przycisk jest nieaktywny.
 
-Wiersze pochodzące z RCN są tu przeliczane od nowa po każdym odrzuceniu kandydatki i po każdej zmianie promienia — ręcznie dopisane wiersze przeżywają obie operacje bez zmian.
+Wiersze z RCN są po każdym odrzuceniu, przywróceniu i zmianie promienia przeliczane z propozycji, ale Twoje poprawki wartości w istniejących wierszach RCN zostają; wiersze dopisane ręcznie też zostają.
 
 ## Co blokuje przejście dalej
 

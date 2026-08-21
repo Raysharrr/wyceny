@@ -240,15 +240,15 @@ export const HELP_PAGES: HelpPage[] = [
    * i tak wywala różnicę.
    *
    * Źródła do sprawdzenia przy każdej zmianie doboru:
-   *   apps/web/src/domain/sample-selection.ts:92  DEFAULT_WEIGHTS (wagi rankingu, importowane wprost do MDX)
-   *   apps/web/src/domain/sample-selection.ts:99  DEFAULTS (promień, okno, pasmo metrażu, IQR, importowane wprost do MDX)
-   *   apps/worker/app/rcn.py:21   DATE_WINDOW_MONTHS = 24
-   *   apps/worker/app/rcn.py:22   PAGE_SIZE = 5000
-   *   apps/worker/app/rcn.py:23   SORT_BY = "dok_data D,tran_lokalny_id_iip D"
-   *   apps/worker/app/rcn.py:187  fetch_pool — paginacja aż do pokrycia okna albo max_pages
-   *   apps/worker/app/main.py:180 DEFAULT_RADIUS_M = 3000.0 (promień zapytania do rejestru, ±3 km)
-   *   apps/worker/app/main.py:186 resolve_point — kolejność geokoderów: punkt z kroku 1 → UUG (GUGiK) → Nominatim
-   *   apps/web/src/app/actions/get-sample-proposal.ts:50 getSampleProposal — spina pulę z workera (fetchPool) z domeną (selectSample)
+   *   apps/web/src/domain/sample-selection.ts:93  DEFAULT_WEIGHTS (wagi rankingu, importowane wprost do MDX)
+   *   apps/web/src/domain/sample-selection.ts:100 DEFAULTS (promień, okno, pasmo metrażu, IQR, importowane wprost do MDX)
+   *   apps/worker/app/rcn.py:22   DATE_WINDOW_MONTHS = 24
+   *   apps/worker/app/rcn.py:23   PAGE_SIZE = 5000
+   *   apps/worker/app/rcn.py:24   SORT_BY = "dok_data D,tran_lokalny_id_iip D"
+   *   apps/worker/app/rcn.py:188  fetch_pool — paginacja aż do pokrycia okna albo max_pages
+   *   apps/worker/app/main.py:181 DEFAULT_RADIUS_M = 3000.0 (promień zapytania do rejestru, ±3 km)
+   *   apps/worker/app/main.py:187 resolve_point — kolejność geokoderów: punkt z kroku 1 → UUG (GUGiK) → Nominatim
+   *   apps/web/src/app/actions/get-sample-proposal.ts:57 getSampleProposal — spina pulę z workera (fetchPool) z domeną (selectSample)
    *   apps/web/src/domain/sample-manual.ts                MANUAL_REJECTION_REASONS — słownik powodów ręcznego odrzucenia
    *   apps/web/src/app/actions/_street-view-enrich.ts     STREET_VIEW_TTL_DAYS (IMPORTOWANE do MDX), ENRICH_BUDGET_MS, Metadata → Static, jedna miniaturka per budynek
    *   apps/web/src/adapters/street-view-google.ts         wywołania Google — do serwisu trafia wyłącznie współrzędna budynku
