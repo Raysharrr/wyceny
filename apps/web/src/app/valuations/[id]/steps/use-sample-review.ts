@@ -80,7 +80,10 @@ export function rcnRow(t: {
  * hand candidate B a row that actually belonged to candidate A. Content
  * matching only regenerates via `rcnRow` when there's genuine ambiguity
  * (zero or 2+ legacy rows with identical date/area/price for that
- * `transactionId`), never by guessing position.
+ * `transactionId`), never by guessing position. Legacy rows are claimed
+ * from a pool CONSUMED as `nextEff.proposed` is walked (wave 6) — proposal
+ * order is claim order, and a row `matchLegacyRow` returns is spliced out
+ * immediately, so the SAME row object can never satisfy two candidates.
  */
 function rebuildComparables(
   snap: SampleSelectionSnapshot,
@@ -97,12 +100,30 @@ function rebuildComparables(
         (c) => [candidateKey({ transactionId: c.transactionId, lokalId: c.lokalId }), c] as const,
       ),
   );
-  const legacyRows = currentRcnRows.filter((c) => !c.lokalId);
+  // Mutable pool, CONSUMED as rows are claimed (wave 6) — one legacy row
+  // can never be handed to two candidates. Static per-transactionId
+  // candidate counts (from the PROPOSAL, not the shrinking pool) decide
+  // whether the "one row, safe to reuse without a content check" shortcut
+  // even applies for a given transactionId — see matchLegacyRow's doc.
+  const unclaimedLegacyRows: ComparableRow[] = currentRcnRows.filter((c) => !c.lokalId);
+  const candidatesForTx = new Map<string, number>();
+  for (const c of nextEff.proposed) {
+    candidatesForTx.set(c.transactionId, (candidatesForTx.get(c.transactionId) ?? 0) + 1);
+  }
   const manualRows = currentRows.filter((c) => c.source !== "rcn");
   return [
-    ...nextEff.proposed.map(
-      (c) => byCandidateKey.get(candidateKey(c)) ?? matchLegacyRow(c, legacyRows) ?? rcnRow(c),
-    ),
+    ...nextEff.proposed.map((c) => {
+      const byKey = byCandidateKey.get(candidateKey(c));
+      if (byKey) return byKey;
+      const matched = matchLegacyRow(
+        c,
+        unclaimedLegacyRows,
+        candidatesForTx.get(c.transactionId) ?? 0,
+      );
+      if (!matched) return rcnRow(c);
+      unclaimedLegacyRows.splice(unclaimedLegacyRows.indexOf(matched), 1);
+      return matched;
+    }),
     ...manualRows,
   ];
 }
@@ -116,30 +137,40 @@ function roundedString(n: number): string {
  * Matches a LEGACY row (no `lokalId` — a draft saved before that field
  * existed on the form row) to a candidate by transaction id + CONTENT, since
  * position can't be trusted (see {@link rebuildComparables}'s doc comment).
+ *
  * A SINGLE legacy row for this `transactionId` cannot belong to another
  * lokal — there is no other row to confuse it with — so it is reused
- * AS-IS, edits included, no content check needed (wave 5: a single-lokal
- * act's edited price was being lost on every resync, because the earlier
- * version demanded a content match even here). Content only has to
- * arbitrate once 2+ legacy rows share the `transactionId` (a genuine
- * multi-lokal act): a row counts as a match only when its
- * `date`/`area`/`pricePerM2` strings are identical to what
- * `rcnRow(candidate)` would itself produce (same rounding) — exactly one
- * match reuses that object, zero or 2+ falls back to `rcnRow(candidate)`.
+ * AS-IS, edits included, no content check needed (wave 5). BUT that
+ * shortcut only holds when the transactionId is ALSO unambiguous on the
+ * CANDIDATE side: `candidatesForTx` (how many candidates of this
+ * `transactionId` sit in the effective proposal, precomputed by the
+ * caller) must be exactly 1 too (wave 6) — one saved row plus TWO
+ * candidates of the same act is still ambiguous (which of the two does it
+ * belong to?), and the caller calls `matchLegacyRow` once per candidate
+ * from a SHARED, CONSUMED pool, so an unconditional single-row shortcut
+ * would have handed the SAME row object to both (the exact C1 shape:
+ * B prints A's data). Content decides whenever either side has 2+:
+ * a row counts as a match only when its `date`/`area`/`pricePerM2` strings
+ * are identical to what `rcnRow(candidate)` would itself produce (same
+ * rounding) — exactly one match reuses that object, zero or 2+ falls back
+ * to `rcnRow(candidate)`.
  *
  * Trade-off, accepted (only pre-`lokalId` drafts can hit it, and only for
- * an AMBIGUOUS multi-lokal act — never a single-lokal act): an EDITED row
- * inside a 2+-row group no longer content-matches, so that edit is lost on
+ * an AMBIGUOUS multi-lokal act — never a single-lokal, single-candidate
+ * act): an EDITED row that content-matching can no longer place is lost on
  * the next resync. Never hands a candidate ANOTHER lokal's row just
  * because a queue slot lined up, which is the exact shape of the original
- * data-loss bug.
+ * data-loss bug — the caller's row-consumption on top of this function
+ * closes the last gap where the SAME row could satisfy two independent
+ * calls.
  */
 export function matchLegacyRow(
   candidate: { transactionId: string; date: string; area: number; pricePerM2: number },
   legacyRows: readonly ComparableRow[],
+  candidatesForTx: number,
 ): ComparableRow | undefined {
   const sameTx = legacyRows.filter((r) => r.transactionId === candidate.transactionId);
-  if (sameTx.length === 1) return sameTx[0];
+  if (sameTx.length === 1 && candidatesForTx === 1) return sameTx[0];
   const wantArea = roundedString(candidate.area);
   const wantPrice = roundedString(candidate.pricePerM2);
   const matches = sameTx.filter(

@@ -1920,3 +1920,148 @@ describe("StepSample — legacy draft path (wave 4): rows without lokalId are ma
     });
   });
 });
+
+/**
+ * Wave 6 — the Opus re-review proved a gap in wave 5's single-row shortcut:
+ * ONE legacy row for an act, but TWO candidates of that act in the
+ * effective proposal — the shortcut fired for BOTH independent
+ * `matchLegacyRow` calls (each saw the same 1-row array), so both
+ * candidates received the SAME row object (B printed A's data — the
+ * original C1 shape). Fixed by (1) disabling the shortcut whenever 2+
+ * candidates share a transactionId (content decides instead) and (2)
+ * consuming a claimed row from a shared pool so it can never satisfy a
+ * second candidate either way.
+ */
+describe("StepSample — legacy draft path (wave 6): one legacy row, two candidates of the same act", () => {
+  async function rejectOther(user: ReturnType<typeof userEvent.setup>, index: number) {
+    const candidateTable = () => screen.getByText("Fasada").closest("table")!;
+    const candidateRows = () => within(candidateTable()).getAllByRole("row").slice(1);
+    await user.click(candidateRows()[index]);
+    await user.click(await screen.findByRole("button", { name: "Odrzuć" }));
+    await user.click(screen.getByLabelText(/budynek starszy/i));
+    await user.click(screen.getByRole("button", { name: /Potwierdź odrzucenie/i }));
+  }
+
+  it("A first in the proposal: the single legacy row (A's own content) goes to A; B — never seeing that row — regenerates its OWN data, never A's", async () => {
+    const user = userEvent.setup();
+    const A = makeCandidate({
+      transactionId: "ACT-1ROW-2CAND",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_A",
+      pricePerM2: 7505.43,
+      area: 50.63,
+      distanceM: 100,
+    });
+    const B = makeCandidate({
+      transactionId: "ACT-1ROW-2CAND",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_B",
+      pricePerM2: 7541.24,
+      area: 38.19,
+      distanceM: 101,
+    });
+    const other = makeCandidate({
+      transactionId: "T-OTHER-1ROW",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_C",
+      pricePerM2: 9000,
+      area: 45,
+      distanceM: 102,
+    });
+    const proposed = [A, B, other];
+    const sel = makeSampleSelection({ proposed, alternates: [] });
+    // LEGACY, and only ONE row for the shared act — simulates a draft
+    // saved when only A was in the proposal; B has since entered it too
+    // (e.g. a radius/reselect change). No lokalId on either row.
+    const initialComparables: Comparable[] = [A, other].map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    // Reject "other" — forces a resync where nextEff.proposed = [A, B],
+    // both sharing ACT-1ROW-2CAND, with only ONE legacy row for it.
+    await rejectOther(user, 2);
+
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(2\)/ }));
+    await waitFor(() => {
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      expect(prices).toEqual(["7505.43", "7541.24"]); // A's own row, B's own fresh data
+      expect(prices[0]).not.toBe(prices[1]); // never the same value/object twice
+    });
+  });
+
+  it("B first in the proposal (symmetric order) — the same single legacy row still finds A by content, never B; order doesn't change which candidate is correct", async () => {
+    const user = userEvent.setup();
+    const A = makeCandidate({
+      transactionId: "ACT-1ROW-2CAND-B",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_A2",
+      pricePerM2: 7505.43,
+      area: 50.63,
+      distanceM: 100,
+    });
+    const B = makeCandidate({
+      transactionId: "ACT-1ROW-2CAND-B",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_B2",
+      pricePerM2: 7541.24,
+      area: 38.19,
+      distanceM: 101,
+    });
+    const other = makeCandidate({
+      transactionId: "T-OTHER-1ROW-B",
+      lokalId: "306401_1.0001.34_BUD_5_LOK_C2",
+      pricePerM2: 9000,
+      area: 45,
+      distanceM: 102,
+    });
+    // B ranks AHEAD of A this time — the domain's own ordering, not test bias.
+    const proposed = [B, A, other];
+    const sel = makeSampleSelection({ proposed, alternates: [] });
+    const initialComparables: Comparable[] = [A, other].map((c) => ({
+      date: c.date,
+      area: c.area,
+      pricePerM2: c.pricePerM2,
+      source: "rcn" as const,
+      transactionId: c.transactionId,
+    }));
+
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={initialComparables}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+    await rejectOther(user, 2);
+
+    await user.click(screen.getByRole("button", { name: /Próba do kalkulacji \(2\)/ }));
+    await waitFor(() => {
+      const prices = screen
+        .getAllByPlaceholderText("zł/m²")
+        .map((el) => (el as HTMLInputElement).value);
+      // B is processed FIRST now (proposal order = claim order), but the
+      // row's content is A's — B still regenerates its own fresh data,
+      // A still gets the row. Same correct outcome, opposite order.
+      expect(prices).toEqual(["7541.24", "7505.43"]); // B first, then A
+      expect(prices[0]).not.toBe(prices[1]);
+    });
+  });
+});
