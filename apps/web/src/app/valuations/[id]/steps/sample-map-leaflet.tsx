@@ -89,7 +89,13 @@ export function SampleMapLeaflet({
       renderer: new L.SVG(),
       zoomSnap: 0.5,
     });
-    const osm = L.tileLayer(OSM_TILES, { maxZoom: 19, attribution: OSM_ATTRIBUTION });
+    // OSM serves tiles up to z19; scale them (maxNativeZoom) instead of dropping the
+    // background at z20–21, where the ORTO/EGiB layers (maxZoom 21) still draw.
+    const osm = L.tileLayer(OSM_TILES, {
+      maxNativeZoom: 19,
+      maxZoom: 21,
+      attribution: OSM_ATTRIBUTION,
+    });
     const orto = L.tileLayer.wms(ORTO_WMS, {
       layers: "Raster",
       format: "image/jpeg",
@@ -97,8 +103,9 @@ export function SampleMapLeaflet({
       maxZoom: 21,
       attribution: "Ortofotomapa &copy; GUGiK",
     });
+    // Same layer set as the panel's kiegWmsUrl (old map parity — obreby kept).
     const egib = L.tileLayer.wms(KIEG_WMS, {
-      layers: "dzialki,numery_dzialek,budynki",
+      layers: "dzialki,numery_dzialek,budynki,obreby",
       format: "image/png",
       transparent: true,
       version: "1.3.0",
@@ -199,7 +206,9 @@ export function SampleMapLeaflet({
     }
   }, [selection]);
 
-  // Selected-row highlight.
+  // Selected-row highlight. `selection` is a deliberate dependency: the dots
+  // effect above rebuilds all markers on a new snapshot, so the selected
+  // class must be re-applied to the freshly created elements.
   useEffect(() => {
     for (const [key, marker] of markersRef.current) {
       marker.getElement()?.classList.toggle("smap-dot--selected", key === selectedKey);
