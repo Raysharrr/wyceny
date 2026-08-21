@@ -7,23 +7,32 @@ export const OBREBY_POZNAN: Readonly<Record<string, string>> = Object.fromEntrie
 );
 export const POZNAN_TERYT_PREFIX = "3064";
 
+/** True for a well-formed obręb code (non-empty, digits only) — guards `padObreb`, which assumes both. */
+function isObrebCode(obreb: string): boolean {
+  return obreb.length > 0 && /^\d+$/.test(obreb);
+}
+
+/** "gm. <TERYT prefix>" — the gmina TERYT stands in for a name where no per-gmina obręb map exists. */
+function gminaOf(teryt: string): string {
+  return `gm. ${teryt.split("_")[0]}`;
+}
+
 /**
  * Bare obręb name, or null when we can't give one — never invents a name.
- * Poznań with a known name → "Łazarz"; outside Poznań → "gm. 302104" (no
- * per-gmina obręb map exists, so the gmina TERYT stands in for a name);
- * Poznań code missing from the map, or no egib → null.
+ * Poznań with a known name → "Łazarz"; outside Poznań → "gm. 302104";
+ * Poznań code missing from the map, malformed `obreb`, or no egib → null.
  */
 export function obrebName(egib: { teryt: string; obreb: string } | null): string | null {
-  if (!egib) return null;
-  if (!egib.teryt.startsWith(POZNAN_TERYT_PREFIX)) return `gm. ${egib.teryt.split("_")[0]}`;
+  if (!egib || !isObrebCode(egib.obreb)) return null;
+  if (!egib.teryt.startsWith(POZNAN_TERYT_PREFIX)) return gminaOf(egib.teryt);
   return OBREBY_POZNAN[padObreb(egib.obreb)] ?? null;
 }
 
 /** Label for the step-3 table and the operat's Table 1: never invents a name. */
 export function obrebLabel(egib: { teryt: string; obreb: string } | null): string {
-  if (!egib) return "—";
+  if (!egib || !isObrebCode(egib.obreb)) return "—";
   const code = padObreb(egib.obreb);
-  const name = obrebName(egib);
-  if (!egib.teryt.startsWith(POZNAN_TERYT_PREFIX)) return `${code} · ${name}`;
+  if (!egib.teryt.startsWith(POZNAN_TERYT_PREFIX)) return `${code} · ${gminaOf(egib.teryt)}`;
+  const name = OBREBY_POZNAN[code];
   return name ? `${code} ${name}` : code;
 }

@@ -15,6 +15,12 @@ describe("obrebLabel", () => {
   it("no egib → em dash", () => {
     expect(obrebLabel(null)).toBe("—");
   });
+  it("unpadded obreb → padded before lookup", () => {
+    expect(obrebLabel({ teryt: "306401_1", obreb: "39" })).toBe("0039 Łazarz");
+  });
+  it("empty obreb → em dash (guarded before padObreb, never a guess)", () => {
+    expect(obrebLabel({ teryt: "306401_1", obreb: "" })).toBe("—");
+  });
   it("the map has the coverage the 7 pools' F-14 candidates actually yield (24 distinct Poznań obręby, all resolved by GEOPOZ — zero misses)", () => {
     expect(Object.keys(OBREBY_POZNAN).length).toBe(24);
     for (const [code, name] of Object.entries(OBREBY_POZNAN)) {
@@ -36,5 +42,8 @@ describe("obrebName", () => {
   });
   it("no egib → null", () => {
     expect(obrebName(null)).toBeNull();
+  });
+  it("empty obreb → null (guarded before padObreb, never a guess)", () => {
+    expect(obrebName({ teryt: "306401_1", obreb: "" })).toBeNull();
   });
 });

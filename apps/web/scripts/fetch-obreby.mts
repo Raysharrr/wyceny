@@ -42,7 +42,7 @@ for (const [code, { x, y }] of [...points.entries()].sort()) {
     I: "128",
     J: "128",
     INFO_FORMAT: "text/xml",
-    FEATURE_COUNT: "10",
+    FEATURE_COUNT: "1",
   });
   const xml = await (await fetch(`${GEOPOZ}?${q}`)).text();
   const m = /<NAZWA_OBREBU>([^<]*)<\/NAZWA_OBREBU>/.exec(xml);
@@ -52,13 +52,15 @@ for (const [code, { x, y }] of [...points.entries()].sort()) {
     console.warn(`obręb ${code}: brak NAZWA_OBREBU (punkt ${x},${y})`);
     continue;
   }
+  if (codeInXml && codeInXml[1].padStart(4, "0") !== code) {
+    console.warn(`obręb ${code}: GEOPOZ zwrócił ${codeInXml[1]} — sprawdź, nie zapisano`);
+    continue;
+  }
   const name = m[1]
     .trim()
     .replace(/\s+/g, " ")
     .toLowerCase()
     .replace(/(^|[\s-])\S/g, (s) => s.toUpperCase());
-  if (codeInXml && codeInXml[1].padStart(4, "0") !== code)
-    console.warn(`obręb ${code}: GEOPOZ zwrócił ${codeInXml[1]} — sprawdź`);
   out[code] = name;
   console.log(code, name);
   await new Promise((r) => setTimeout(r, 150));
