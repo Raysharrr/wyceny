@@ -1636,10 +1636,10 @@ describe("StepSample — reload path (wave 4): lokalId survives draft hydration"
     });
     const proposed = [lokalA, lokalB, other];
     const sel = makeSampleSelection({ proposed, alternates: [] });
-    // NOT hand-adding lokalId here — `comparables` intentionally mirrors
-    // the SERVER's `{date, area, pricePerM2, transactionId}` shape
-    // (`StepSample`'s own prop type), the exact input hydration maps
-    // through. If the hydration fix regresses, this test regresses with it.
+    // `comparables` mirrors the SERVER's `Comparable` shape (`StepSample`'s
+    // own prop type) — lokalId included, exactly what a CURRENT draft's
+    // saved row carries. If `step-sample.tsx`'s hydration ever dropped
+    // lokalId again, this test would regress right along with it.
     const initialComparables: Comparable[] = proposed.map((c) => ({
       date: c.date,
       area: c.area,
