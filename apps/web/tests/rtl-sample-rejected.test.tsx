@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import { SampleRejected } from "@/app/valuations/[id]/steps/sample-rejected";
@@ -73,7 +73,7 @@ describe("SampleRejected", () => {
         },
       ],
     });
-    render(<SampleRejected selection={s} onRestore={onRestore} />);
+    render(<SampleRejected selection={s} onRestore={onRestore} onSelect={vi.fn()} />);
 
     const toggle = screen.getByRole("button", { name: /Odrzucone \(3\)/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -102,7 +102,7 @@ describe("SampleRejected", () => {
       rejected: [row("out_of_area_band", 1), row("out_of_area_band", 2)],
       rejectedCounts: { out_of_area_band: 174 },
     });
-    render(<SampleRejected selection={s} onRestore={vi.fn()} />);
+    render(<SampleRejected selection={s} onRestore={vi.fn()} onSelect={vi.fn()} />);
 
     const toggle = screen.getByRole("button", { name: /Odrzucone \(174\)/ });
     await userEvent.click(toggle);
@@ -111,7 +111,7 @@ describe("SampleRejected", () => {
 
   it("pre-Slice-3 snapshot without `rejected` shows only rejectedCounts badges + a re-fetch hint", async () => {
     const s = snap({ rejectedCounts: { no_price: 4 } });
-    render(<SampleRejected selection={s} onRestore={vi.fn()} />);
+    render(<SampleRejected selection={s} onRestore={vi.fn()} onSelect={vi.fn()} />);
 
     const toggle = screen.getByRole("button", { name: /Odrzucone \(4\)/ });
     await userEvent.click(toggle);
@@ -120,5 +120,44 @@ describe("SampleRejected", () => {
       screen.getByText(/lista odrzuconych dostępna po ponownym pobraniu próby/i),
     ).toBeInTheDocument();
     expect(screen.getByText("brak ceny lub powierzchni · 4")).toBeInTheDocument();
+  });
+
+  it("clicking a manually-rejected row calls onSelect with its candidateKey (transactionId|lokalId); census rows are not buttons (Task 4)", async () => {
+    const onSelect = vi.fn();
+    const s = snap({
+      rejected: [row("out_of_area_band", 1)],
+      rejectedCounts: { out_of_area_band: 1 },
+      manualRejections: [
+        {
+          transactionId: "P1",
+          lokalId: "PL1",
+          reason: "building_older",
+          note: "1905",
+          at: "2026-08-21T10:00:00Z",
+        },
+      ],
+    });
+    render(<SampleRejected selection={s} onRestore={vi.fn()} onSelect={onSelect} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Odrzucone \(2\)/ }));
+
+    // Manual row's content is a real button — clicking it opens the panel.
+    // `aria-label` (purpose prefix + row identity, mirrors the "w próbie"
+    // checkbox fix) is the accessible name, not the visible note text.
+    const manualRowButton = screen.getByRole("button", {
+      name: /Podgląd odrzuconej propozycji — 2026-05/,
+    });
+    await userEvent.click(manualRowButton);
+    expect(onSelect).toHaveBeenCalledWith("P1|PL1");
+    expect(onSelect).toHaveBeenCalledTimes(1);
+
+    // The automatic-census row (`row("out_of_area_band", 1)`: 40,00 m² ·
+    // 9000,00 zł/m² · 100 m, distinct from the manual row's own numbers)
+    // stays plain text — no button anywhere in its own <li>, so it can
+    // never call onSelect. (pl-PL's "min2" grouping omits the thousands
+    // separator below 10 000 — see `pln.format(9000)` vs `pln.format(12000)`
+    // in the manual row above.)
+    const censusItem = screen.getByText(/9000,00/).closest("li")!;
+    expect(within(censusItem).queryByRole("button")).toBeNull();
   });
 });

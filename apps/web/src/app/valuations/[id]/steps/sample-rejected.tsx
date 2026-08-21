@@ -12,6 +12,8 @@ import { groupRejected, REJECT_REASON_LABELS } from "./rejected-groups";
 export type SampleRejectedProps = {
   selection: SampleSelectionSnapshot;
   onRestore(r: ManualRejection): void;
+  /** Opens the side panel on a manually-rejected row (Task 4) — never called for an automatic-census row (no full `Candidate` to show). */
+  onSelect(key: string): void;
 };
 
 const pln = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -28,7 +30,7 @@ const m2 = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFra
  * pre-Slice-3 snapshot (no `rejected` persisted) falls back to counts-only
  * badges per reason plus a hint to re-fetch for the row-level list.
  */
-export function SampleRejected({ selection, onRestore }: SampleRejectedProps) {
+export function SampleRejected({ selection, onRestore, onSelect }: SampleRejectedProps) {
   const [open, setOpen] = useState(false);
   const autoTotal = Object.values(selection.rejectedCounts ?? {}).reduce(
     (sum, count) => sum + (count ?? 0),
@@ -86,30 +88,56 @@ export function SampleRejected({ selection, onRestore }: SampleRejectedProps) {
                   </span>
                 </h4>
                 <ul className="text-sm text-muted-foreground">
-                  {g.rows.map((r) => (
-                    <li key={r.key} className="flex flex-wrap items-center gap-1.5 py-0.5">
-                      <span>
+                  {g.rows.map((r) => {
+                    const rowContent = (
+                      <>
                         <span className="num">{r.date.slice(0, 7)}</span> ·{" "}
                         <span className="num">{m2.format(r.area)}</span> m² ·{" "}
                         <span className="num">{pln.format(r.pricePerM2)}</span> zł/m² ·{" "}
                         <span className="num">{Math.round(r.distanceM)}</span> m
                         {r.note ? <> · „{r.note}”</> : null}
-                      </span>
-                      {r.manual ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="xs"
-                          onClick={() => {
-                            const m = manualByKey.get(r.key);
-                            if (m) onRestore(m);
-                          }}
-                        >
-                          Przywróć
-                        </Button>
-                      ) : null}
-                    </li>
-                  ))}
+                      </>
+                    );
+                    return (
+                      <li key={r.key} className="flex flex-wrap items-center gap-1.5 py-0.5">
+                        {r.manual ? (
+                          // Manually-rejected rows carry a full `Candidate` (via
+                          // `manualRejections`) — clickable, opens the side panel
+                          // (Task 4). Automatic-census rows below stay plain text:
+                          // no full `Candidate` to show (`statusOf` returns `null`
+                          // for them — Controller ruling, Task 2 review).
+                          <button
+                            type="button"
+                            className="cursor-pointer text-left underline-offset-2 hover:underline"
+                            // Mirrors `sample-table.tsx`'s "w próbie" checkbox
+                            // fix (Task 3 review): the mandated purpose text is
+                            // the PREFIX, the row identity suffix disambiguates
+                            // — the row's own numbers alone would make the
+                            // accessible name ambiguous across rows.
+                            aria-label={`Podgląd odrzuconej propozycji — ${r.date.slice(0, 7)}, ${Math.round(r.distanceM)} m, ${pln.format(r.pricePerM2)} zł/m²`}
+                            onClick={() => onSelect(r.key)}
+                          >
+                            {rowContent}
+                          </button>
+                        ) : (
+                          <span>{rowContent}</span>
+                        )}
+                        {r.manual ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => {
+                              const m = manualByKey.get(r.key);
+                              if (m) onRestore(m);
+                            }}
+                          >
+                            Przywróć
+                          </Button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             );
