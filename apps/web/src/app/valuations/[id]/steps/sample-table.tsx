@@ -123,7 +123,11 @@ export function SampleTable({
     const next = allKeys[i + delta];
     if (!next) return;
     onSelect(next);
-    document.querySelector<HTMLElement>(`[data-key="${next}"]`)?.focus();
+    // `tr[…]`, not `[…]`: the overview map stamps the SAME `data-key` on its
+    // marker elements (Slice 3b `addDotMarker`) and renders before the tables,
+    // so a document-wide lookup focused a map dot — the selection moved once
+    // and every following arrow key went nowhere (runtime bug, 2026-08-22).
+    document.querySelector<HTMLElement>(`tr[data-key="${next}"]`)?.focus();
   };
 
   const row = (c: Candidate) => {
