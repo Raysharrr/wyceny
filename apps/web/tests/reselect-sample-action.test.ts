@@ -139,6 +139,38 @@ describe("reselectSample", () => {
     });
   });
 
+  it("(d1) a radius change keeps the streets — reselect never calls the worker (Slice 3d)", async () => {
+    // This is the scenario the persisted `streetIndex` exists for: re-selection runs on
+    // the CACHED pool, so if the addresses did not survive the cache, every row would
+    // lose its street after a radius change and the UI would explain it with the wrong
+    // reason.
+    getMock.mockResolvedValue(valuation);
+    const withStreets: CandidatePool = {
+      ...pool,
+      candidates: pool.candidates.map((c) => ({
+        ...c,
+        street: "ul. Heweliusza",
+        streetNumber: "3",
+        city: "Poznań",
+      })),
+      streetIndex: { status: "ready", cutoff: "2026-08-13", generatedAt: "2026-08-22T10:00:00Z" },
+    };
+    await savePool(storage, VALUATION_ID, withStreets, SAVED_FOR);
+
+    const r = await reselectSample({
+      valuationId: VALUATION_ID,
+      radiusOverrideM: 1000,
+      manualRejections: [],
+    });
+    if ("error" in r) throw new Error(r.error);
+
+    expect(r.proposal.sampleSelection.proposed.length).toBeGreaterThan(0);
+    expect(r.proposal.sampleSelection.proposed.every((c) => c.street === "ul. Heweliusza")).toBe(
+      true,
+    );
+    expect(r.proposal.sampleMeta.streetIndex).toEqual(withStreets.streetIndex);
+  });
+
   it("(d) with a cached pool: re-runs the domain at the given radius, carries manualRejections 1:1, logs proposal.reselect with numbers/fields-only meta (F-13)", async () => {
     getMock.mockResolvedValue(valuation);
     await savePool(storage, VALUATION_ID, pool, SAVED_FOR);

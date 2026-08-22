@@ -2,7 +2,7 @@ import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
-import { operatStreet } from "./street-name";
+import { DASH, operatStreet } from "./street-name";
 import { candidateKey } from "./sample-selection";
 
 /**
@@ -52,7 +52,7 @@ export const LEVEL_LABEL: Record<FeatureRating, string> = {
 const LEVEL_ORDER: FeatureRating[] = ["lepsza", "przecietna", "gorsza"];
 
 const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
-const DASH = "—";
+
 const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 
 /** `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych na podstawie: …"). */
