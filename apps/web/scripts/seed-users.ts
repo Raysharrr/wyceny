@@ -38,6 +38,30 @@ const SEED_USERS = [
     email: "zenon@wyceny.test",
     passwordEnvVar: "SEED_APPRAISER_PASSWORD",
   },
+  // Testers who review the app on staging (2026-08-22). Same shape as the two
+  // above: the address identifies the account, the password comes from the
+  // environment so it can be rotated without a commit. `appraiser`, not
+  // `admin` — each of them works on their OWN valuations, which is what the
+  // reviewers are testing; `admin` additionally sees everyone else's list
+  // (valuation-drizzle.ts:36) and would blur exactly that.
+  {
+    role: "appraiser",
+    name: "Łukasz",
+    email: "lukasz@wyceny.test",
+    passwordEnvVar: "SEED_LUKASZ_PASSWORD",
+  },
+  {
+    role: "appraiser",
+    name: "Monika",
+    email: "monika@wyceny.test",
+    passwordEnvVar: "SEED_MONIKA_PASSWORD",
+  },
+  {
+    role: "appraiser",
+    name: "Adam",
+    email: "adam@wyceny.test",
+    passwordEnvVar: "SEED_ADAM_PASSWORD",
+  },
 ] as const satisfies readonly (Omit<SeedUser, "password"> & { passwordEnvVar: string })[];
 
 export function resolveSeedUsers(
