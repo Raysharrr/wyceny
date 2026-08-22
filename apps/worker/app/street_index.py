@@ -20,12 +20,17 @@ RCN_Lokal and RCN_Dokument side by side, wired with `xlink:href` over `gml:id`.
 import gzip
 import io
 import json
+import os
+import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
+
+from app.logging_setup import log
 
 NS = "urn:gugik:specyfikacje:gmlas:rejestrcennieruchomosci:1.0"
 _Q = "{" + NS + "}"
@@ -33,6 +38,7 @@ _HREF = "{http://www.w3.org/1999/xlink}href"
 _GML_ID = "{http://www.opengis.net/gml/3.2}id"
 
 StreetIndex = dict[str, dict[str, str]]
+Status = Literal["ready", "building", "unavailable"]
 
 
 def parse_street_index(path: str | Path) -> tuple[StreetIndex, str]:
@@ -182,3 +188,83 @@ def load_cached(cache_dir: Path, expected_signature: str) -> StreetIndexSnapshot
         signature=payload["signature"],
         generated_at=payload["generatedAt"],
     )
+
+
+# --------------------------------------------------------------------- serwis
+# Modułowy stan zamiast klasy: testy podmieniają `status`/`lookup` przez
+# `monkeypatch.setattr(street_index, ...)`, jak resztę I/O w tym workerze.
+
+CACHE_DIR = Path(os.environ.get("STREET_INDEX_CACHE_DIR", "/tmp"))
+
+_lock = threading.Lock()
+_snapshot: StreetIndexSnapshot | None = None
+_status: Status = "unavailable"
+
+
+def status() -> Status:
+    """`ready` gdy indeks obsługuje zapytania, `building` w trakcie budowy,
+    `unavailable` gdy ostatnia próba się nie powiodła."""
+    return _status
+
+
+def cutoff() -> str | None:
+    return _snapshot.cutoff if _snapshot else None
+
+
+def generated_at() -> str | None:
+    return _snapshot.generated_at if _snapshot else None
+
+
+def lookup(lokal_id: str) -> dict[str, str] | None:
+    """Address of one lokal, or None — a transaction outside Poznań, a lokal without an
+    address in the export, or an index that is not ready yet. The caller renders a dash
+    for all three; only the `status` above tells them apart."""
+    return _snapshot.streets.get(lokal_id) if _snapshot else None
+
+
+def _build_now(fetch=_http_get, head=_http_signature) -> None:
+    """Runs INSIDE a worker thread — `urllib` and `iterparse` are synchronous and
+    CPU-bound, so on uvicorn's event loop they would stall the healthcheck and every
+    in-flight request for the ~7 s the build takes."""
+    global _snapshot, _status
+    started = time.monotonic()
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        signature = remote_signature(head)
+        snapshot = load_cached(CACHE_DIR, signature)
+        source = "cache"
+        if snapshot is None:
+            snapshot = build_snapshot(CACHE_DIR, fetch=fetch, head=head)
+            save_cached(CACHE_DIR, snapshot)
+            source = "download"
+        _snapshot, _status = snapshot, "ready"
+        # F-13: liczby i klasy, nigdy adres.
+        log.info(
+            "street_index_ready",
+            source=source,
+            entries=len(snapshot.streets),
+            cutoff=snapshot.cutoff,
+            took_ms=round((time.monotonic() - started) * 1000),
+        )
+    except Exception as exc:  # noqa: BLE001 — brak indeksu to kreska w UI, nie awaria próby
+        _status = "unavailable"
+        log.warning(
+            "street_index_failed",
+            err_type=type(exc).__name__,
+            took_ms=round((time.monotonic() - started) * 1000),
+        )
+    finally:
+        _lock.release()
+
+
+def ensure_started(fetch=_http_get, head=_http_signature) -> None:
+    """Start a build unless one is running or finished. Idempotent — called both on
+    startup and from the request path, so a restart mid-month costs a cache read and a
+    cold worker still answers the first request (without streets)."""
+    global _status
+    if _status == "ready" or not _lock.acquire(blocking=False):
+        return
+    _status = "building"
+    threading.Thread(
+        target=_build_now, kwargs={"fetch": fetch, "head": head}, name="street-index", daemon=True
+    ).start()

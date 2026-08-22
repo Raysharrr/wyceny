@@ -11,6 +11,7 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Literal, NamedTuple
 
@@ -19,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 import app.rcn as rcn
+import app.street_index as street_index
 import app.subject as subject
 from app import kw as kw_core
 import app.maps as maps
@@ -31,7 +33,19 @@ from app.logging_setup import log as logger
 
 configure_logging()
 
-app = FastAPI(title="wyceny-worker")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Budowa indeksu adresów rusza od razu po starcie, w osobnym wątku — pobranie
+    i parsowanie są synchroniczne, więc na pętli zdarzeń zablokowałyby healthcheck
+    i wszystkie żądania w locie na ~7 s. Pierwszy rzeczoznawca zwykle przychodzi
+    później niż te 7 s i zastaje adresy gotowe; jeśli trafi wcześniej, dostanie pulę
+    bez ulic i odznakę, nigdy błąd."""
+    street_index.ensure_started()
+    yield
+
+
+app = FastAPI(title="wyceny-worker", lifespan=lifespan)
 app.add_middleware(RequestIdMiddleware)
 
 # CORS: the KW upload posts directly from the browser (Vercel 4.5 MB body
@@ -146,6 +160,12 @@ class Candidate(BaseModel):
     function: str
     seller: str | None
     pos: CandidatePos | None
+    # Adres z miesięcznego eksportu GEOPOZ (Slice 3d) — `None` dla transakcji spoza
+    # Poznania, lokalu bez adresu w eksporcie i indeksu, który jeszcze się buduje.
+    # `streetIndex.status` w odpowiedzi mówi, który to przypadek.
+    street: str | None = None
+    streetNumber: str | None = None
+    city: str | None = None
 
 
 class PoolPoint(BaseModel):
@@ -168,6 +188,16 @@ class PoolQuery(BaseModel):
     truncated: bool
 
 
+class StreetIndexState(BaseModel):
+    """Stan indeksu adresów w chwili budowania puli — wędruje z pulą do cache'u i do
+    migawki, bo `reselectSample` po stronie web nie woła już workera i inaczej nie
+    odróżniłby „brak adresu dla tej transakcji” od „pula pobrana bez indeksu”."""
+
+    status: Literal["ready", "building", "unavailable"]
+    cutoff: str | None
+    generatedAt: str | None
+
+
 class CandidatePoolResponse(BaseModel):
     point: PoolPoint
     maxRadiusM: float
@@ -176,6 +206,7 @@ class CandidatePoolResponse(BaseModel):
     fetchedAt: str
     source: Literal["rcn-wfs-gugik"]
     query: PoolQuery
+    streetIndex: StreetIndexState
 
 
 DEFAULT_RADIUS_M = 3000.0
@@ -221,13 +252,33 @@ def sample_proposal(request: SampleProposalRequest) -> CandidatePoolResponse:
         raise HTTPException(status_code=502, detail=SAMPLE_FAILED_DETAIL) from exc
     kept, deduped = rcn.dedupe_pair(pool["raw"])
     with_pos = [c for c in kept if c["pos"] is not None]
-    candidates = [Candidate(**{k: v for k, v in c.items() if k != "versionId"}) for c in with_pos]
+    # Adres z eksportu GEOPOZ (Slice 3d): lookup po `lokalId`, tym samym kluczu, którym
+    # dedupujemy pulę. Spike 2026-08-22: 0 błędów dopasowania, więc żadnej normalizacji.
+    street_index.ensure_started()
+    streets_hit = 0
+    candidates = []
+    for c in with_pos:
+        address = street_index.lookup(c["lokalId"])
+        if address:
+            streets_hit += 1
+        candidates.append(
+            Candidate(
+                **{k: v for k, v in c.items() if k != "versionId"},
+                street=address["ulica"] if address else None,
+                streetNumber=address["nr"] if address else None,
+                city=address["miejscowosc"] if address else None,
+            )
+        )
     logger.info(
         "sample_proposal_pool",
         fetched=len(pool["raw"]),
         deduped=deduped,
         pages=pool["pages"],
         truncated=pool["truncated"],
+        # F-13: liczniki adresów, nigdy sam adres.
+        streets_hit=streets_hit,
+        streets_missing=len(candidates) - streets_hit,
+        street_index=street_index.status(),
     )
     return CandidatePoolResponse(
         point=PoolPoint(x=x, y=y, source=source),
@@ -235,6 +286,11 @@ def sample_proposal(request: SampleProposalRequest) -> CandidatePoolResponse:
         candidates=candidates,
         counts=PoolCounts(
             fetched=len(pool["raw"]), deduped=deduped, noPos=len(kept) - len(with_pos)
+        ),
+        streetIndex=StreetIndexState(
+            status=street_index.status(),
+            cutoff=street_index.cutoff(),
+            generatedAt=street_index.generated_at(),
         ),
         fetchedAt=datetime.now(UTC).isoformat(),
         source="rcn-wfs-gugik",
