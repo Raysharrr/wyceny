@@ -202,7 +202,42 @@ describe("SampleSections", () => {
     proposedRows[1].focus();
     await userEvent.keyboard("{ArrowDown}");
     expect(onSelect).toHaveBeenLastCalledWith(keyOf(a[0]));
-    expect(document.querySelector(`[data-key="${keyOf(a[0])}"]`)).toHaveFocus();
+    expect(document.querySelector(`tr[data-key="${keyOf(a[0])}"]`)).toHaveFocus();
+  });
+
+  /**
+   * The overview map stamps `data-key` on its marker elements too (Slice 3b,
+   * `addDotMarker`), and it renders BEFORE the tables — a document-wide
+   * `[data-key=…]` lookup therefore focused a map dot, and the next arrow key
+   * went nowhere because focus had left the list (runtime bug, team-lead
+   * 2026-08-22: ↑/↓ moved the selection exactly once).
+   */
+  it("↓ focuses the table row even when another element carries the same data-key", async () => {
+    const onSelect = vi.fn();
+    const p = [cand(), cand()];
+    const a = [cand()];
+    const decoy = document.createElement("div");
+    decoy.tabIndex = 0;
+    decoy.dataset.key = keyOf(a[0]);
+    document.body.prepend(decoy);
+    render(
+      <SampleSections
+        selection={snap(p, a, { flags: flagsFor(a) })}
+        streetView={null}
+        streetViewEnabled={false}
+        selectedKey={keyOf(p[1])}
+        onSelect={onSelect}
+        onToggleInSample={noop}
+        reviewedKeys={new Set()}
+        defaultAlternatesOpen
+      />,
+    );
+    const proposedRows = within(screen.getAllByRole("table")[0]).getAllByRole("row").slice(1);
+    proposedRows[1].focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.querySelector(`tr[data-key="${keyOf(a[0])}"]`)).toHaveFocus();
+    expect(decoy).not.toHaveFocus();
+    decoy.remove();
   });
 
   it("↓ from the last 'W próbie' row is a no-op while alternates are collapsed", async () => {
