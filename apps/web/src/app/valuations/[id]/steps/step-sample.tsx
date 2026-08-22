@@ -432,6 +432,7 @@ export function StepSample({
                   selection={sel}
                   streetView={liveStreetView ?? null}
                   streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
+                  streetIndex={liveSampleMeta?.streetIndex}
                   selectedKey={selectedKey}
                   onSelect={selectCandidate}
                   reviewedKeys={reviewStats.reviewedKeys}
@@ -628,6 +629,7 @@ export function StepSample({
               entry={streetViewEntryFor(panelCandidate)}
               embedKey={EMBED_KEY}
               streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
+              streetIndex={liveSampleMeta?.streetIndex}
               status={panelStatus}
               rejection={selectedRejection}
               // Unconditional, like the banner's own counter (team-lead
