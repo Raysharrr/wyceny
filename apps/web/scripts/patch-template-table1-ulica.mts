@@ -29,20 +29,49 @@ if (rowStart < 0 || rowEnd < 0) throw new Error("nie znaleziono pętli {#transak
 const headerStart = xml.lastIndexOf("Data transakcji", rowStart);
 if (headerStart < 0) throw new Error("nie znaleziono nagłówka Tabeli 1");
 
-const before = xml.slice(0, headerStart);
 const header = xml.slice(headerStart, rowStart);
 const row = xml.slice(rowStart, rowEnd);
 const after = xml.slice(rowEnd);
 
-if (row.includes("{miasto}")) {
+const WIDTH_CITY = 1276; // było „Odległość [m]" — miastu wystarczy 2,3 cm
+const WIDTH_STREET = 2628; // było „Obręb" — nazwa ulicy bywa 30-znakowa
+
+/**
+ * Column widths follow the TEXT, not the position: after the swap "Miasto" sits where
+ * "Obręb" was (4,6 cm) and "Ulica" where "Odległość [m]" was (2,3 cm) — exactly backwards.
+ * "Jana Henryka Dąbrowskiego" or "Bohaterów II Wojny Światowej" would wrap onto three
+ * lines in 2,3 cm while "Poznań" idled in 4,6. Total table width is unchanged.
+ */
+function swapWidths(fragment: string): string {
+  const MARK = "\u0000";
+  return fragment
+    .replace(new RegExp(`w:w="${WIDTH_STREET}"`, "g"), `w:w="${MARK}"`)
+    .replace(new RegExp(`w:w="${WIDTH_CITY}"`, "g"), `w:w="${WIDTH_STREET}"`)
+    .replace(new RegExp(`w:w="${MARK}"`, "g"), `w:w="${WIDTH_CITY}"`);
+}
+
+const alreadyPatched = row.includes("{miasto}");
+const patchedHeader = alreadyPatched
+  ? header
+  : swapWidths(
+      header
+        .replace("<w:t>Obręb</w:t>", "<w:t>Miasto</w:t>")
+        .replace("<w:t>Odległość [m]</w:t>", "<w:t>Ulica</w:t>"),
+    );
+const patchedRow = alreadyPatched
+  ? row
+  : swapWidths(row.replace("{obreb}", "{miasto}").replace("{odleglosc}", "{ulica}"));
+
+// Also the <w:tblGrid> that precedes the header row.
+const gridStart = xml.lastIndexOf("<w:tblGrid>", headerStart);
+const gridEnd = xml.indexOf("</w:tblGrid>", gridStart) + "</w:tblGrid>".length;
+const grid = xml.slice(gridStart, gridEnd);
+const patchedGrid = alreadyPatched ? grid : swapWidths(grid);
+
+if (alreadyPatched) {
   console.log("szablon już spatchowany — nic do zrobienia");
   process.exit(0);
 }
-
-const patchedHeader = header
-  .replace("<w:t>Obręb</w:t>", "<w:t>Miasto</w:t>")
-  .replace("<w:t>Odległość [m]</w:t>", "<w:t>Ulica</w:t>");
-const patchedRow = row.replace("{obreb}", "{miasto}").replace("{odleglosc}", "{ulica}");
 
 for (const [what, patched, original] of [
   ["nagłówek", patchedHeader, header],
@@ -51,8 +80,16 @@ for (const [what, patched, original] of [
   if (patched === original) throw new Error(`${what} Tabeli 1 nie został zmieniony — sprawdź szablon`);
 }
 
-zip.file("word/document.xml", before + patchedHeader + patchedRow + after);
+zip.file(
+  "word/document.xml",
+  xml.slice(0, gridStart) +
+    patchedGrid +
+    xml.slice(gridEnd, headerStart) +
+    patchedHeader +
+    patchedRow +
+    after,
+);
 const out = zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
 fs.writeFileSync(TEMPLATE, out);
-console.log("Tabela 1: Obręb → Miasto, Odległość [m] → Ulica");
+console.log("Tabela 1: Obręb → Miasto, Odległość [m] → Ulica (szerokości zamienione)");
 console.log("nowy TEMPLATE_SHA256 =", createHash("sha256").update(out).digest("hex"));

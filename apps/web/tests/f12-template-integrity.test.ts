@@ -26,7 +26,7 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * `scripts/patch-template-table1-ulica.mts` — {obreb}/{odleglosc} out of the loop,
  * {miasto}/{ulica} back in.
  */
-const TEMPLATE_SHA256 = "4e08a927ad3d97ac2da87cf6af02817061cec99e9e2183064d4638dabe5453ae";
+const TEMPLATE_SHA256 = "abae1aa49f91478a28847f9faa0806aac019001d213e4f40c7225553ec88ba2a";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
