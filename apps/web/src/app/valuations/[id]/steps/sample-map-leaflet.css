@@ -1,0 +1,151 @@
+/* Styles for sample-map-leaflet.tsx (step 3 overview map). Colours are the
+   same literal hex the old SVG map used: #1f7a5c in próbie, #9a978f
+   alternatywa, #e7000b odrzucona. */
+
+.smap {
+  z-index: 0;
+  font-family: inherit;
+}
+
+.smap-dot {
+  box-sizing: border-box;
+  border-radius: 9999px;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.smap-dot--proposed {
+  background: #1f7a5c;
+  cursor: pointer;
+}
+.smap-dot--alternate {
+  background: #9a978f;
+  cursor: pointer;
+}
+.smap-dot--rejected {
+  background: #e7000b;
+  opacity: 0.85;
+}
+.smap-dot--selected {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #1f7a5c;
+}
+.smap-dot:focus-visible {
+  outline: 2px solid #1f7a5c;
+  outline-offset: 2px;
+}
+
+/* Building marker: several lokale on one coordinate; badge = count; colour = best status. */
+.smap-bld {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+.smap-bld--proposed {
+  background: #1f7a5c;
+}
+.smap-bld--alternate {
+  background: #9a978f;
+}
+.smap-bld--rejected {
+  background: #e7000b;
+  opacity: 0.85;
+  cursor: default;
+}
+.smap-bld-badge {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.smap-bld--open {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px rgba(31, 122, 92, 0.45);
+}
+.smap-bld.smap-dot--selected {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #1f7a5c;
+}
+.smap-bld:focus-visible {
+  outline: 2px solid #1f7a5c;
+  outline-offset: 2px;
+}
+/* Spider legs + sibling ("kin") lokale of the selected one. */
+.smap-leg {
+  stroke: #1f2937;
+  stroke-opacity: 0.75;
+}
+.smap--orto .smap-leg {
+  stroke: #fff;
+}
+.smap-dot--kin {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 3px rgba(31, 122, 92, 0.55);
+}
+
+.smap-subject {
+  background: transparent;
+}
+/* The rotation lives on the INNER span — Leaflet positions the icon element
+   itself with an inline translate3d() that would override rotate(45deg). */
+.smap-subject-diamond {
+  display: block;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin: 2px;
+  background: #1a1a1a;
+  border: 1.5px solid #fff;
+  transform: rotate(45deg);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.smap-ring {
+  stroke: #1f2937;
+  stroke-opacity: 0.9;
+}
+.smap-ring--outer {
+  stroke-opacity: 0.4;
+}
+.smap--orto .smap-ring {
+  stroke: #fff;
+}
+.smap-ring-label--outer {
+  opacity: 0.6;
+}
+
+.smap-ring-label {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f2937;
+  text-shadow:
+    0 0 2px #fff,
+    0 0 2px #fff,
+    0 0 3px #fff;
+}
+.smap-ring-label::before {
+  display: none;
+}
+.smap--orto .smap-ring-label {
+  color: #fff;
+  text-shadow:
+    0 0 2px #000,
+    0 0 2px #000,
+    0 0 3px #000;
+}
+
+.smap .leaflet-control-layers {
+  font-size: 12px;
+}

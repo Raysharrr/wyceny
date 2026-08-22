@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
+import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
+import type { CandidatePool } from "@/ports/sample";
 
 /**
  * Shared validation for the valuation form — used by BOTH the client
@@ -17,6 +19,11 @@ export const comparableSchema = z.object({
   // validating exactly as before.
   source: z.enum(["rcn", "manual"]).optional(),
   transactionId: z.string().optional(),
+  // One notarial act (transactionId) can carry several lokale — this
+  // distinguishes them (mirrors Candidate.lokalId/candidateKey in
+  // domain/sample-selection.ts). Optional: older drafts saved before this
+  // field existed keep validating exactly as before.
+  lokalId: z.string().optional(),
 });
 
 export const featureDefinitionsSchema = z.object({
@@ -61,9 +68,9 @@ export const poolQuerySchema = z.object({
 /**
  * `CandidatePool` minus `candidates` (ADR-015 "Dobor proby v3") — the RCN
  * pool fetch's provenance for the whole sample (F-5), persisted alongside
- * `sampleSelection` in `inputs.sampleMeta`. `adapters/sample-http.ts`'s
- * `candidatePoolSchema` extends this with `candidates` rather than
- * redefining the shared fields, so the two stay in lockstep.
+ * `sampleSelection` in `inputs.sampleMeta`. `candidatePoolSchema` (below,
+ * this module) extends this with `candidates` rather than redefining the
+ * shared fields, so the two stay in lockstep.
  */
 export const sampleMetaSchema = z.object({
   point: poolPointSchema,
@@ -87,7 +94,7 @@ export const egibSchema = z.object({
 /**
  * Mirrors `Candidate` from `@/domain/sample-selection` — one RCN transaction
  * in the sample pool fetched via `PortSampleProposal` (ADR-015). Exported
- * separately from `candidatePoolSchema` (adapters/sample-http.ts) so the
+ * separately from `candidatePoolSchema` (below, this module) so the
  * subject-snapshot schema can reuse it without importing an adapter (F-10).
  */
 export const candidateSchema = z.object({
@@ -110,6 +117,85 @@ export const candidateSchema = z.object({
 });
 
 /**
+ * Runtime validation for `CandidatePool` at the trust boundary — the worker
+ * is a separate process/deploy, so a shape drift must fail loudly rather
+ * than propagate an `as`-cast lie into the ranking/selection logic. Also
+ * used by `_pool-cache.ts` (Task 8) to validate the gzip pool cache read
+ * back from `PortStorage` — a corrupt cache must throw, never silently
+ * become `null` (only a genuinely missing key does that). Composed from
+ * `sampleMetaSchema` (`CandidatePool` minus `candidates`) plus
+ * `candidateSchema` above, both defined in this module — not redefined in
+ * `adapters/sample-http.ts`, so the adapter's pool validation and the pool
+ * cache's re-validation share one definition (F-10: adapters may import
+ * from `lib`, but nothing outside `app/`/`adapters/` may import an adapter).
+ */
+export const candidatePoolSchema = sampleMetaSchema.extend({
+  candidates: z.array(candidateSchema),
+}) satisfies z.ZodType<CandidatePool>;
+
+/** Mirrors `RejectReason` from `@/domain/sample-selection`. */
+const rejectReasonSchema = z.enum([
+  "share_not_whole",
+  "not_free_market",
+  "not_residential",
+  "no_price",
+  "out_of_window",
+  "out_of_area_band",
+  "primary_market",
+]);
+
+/** Mirrors `RejectedRow` from `@/domain/sample-snapshot` — the compact "Odrzucone" row (Slice 3). */
+const rejectedRowSchema = z.object({
+  transactionId: z.string(),
+  lokalId: z.string(),
+  reason: rejectReasonSchema,
+  allReasons: z.array(rejectReasonSchema),
+  date: z.string(),
+  area: z.number(),
+  pricePerM2: z.number(),
+  distanceM: z.number(),
+  pos: z.object({ x: z.number(), y: z.number() }).nullable(),
+});
+
+/** Mirrors `ManualRejection` from `@/domain/sample-manual` — the appraiser's manual rejection overlay (Slice 3). */
+export const manualRejectionSchema = z.object({
+  transactionId: z.string(),
+  lokalId: z.string(),
+  reason: z.enum(MANUAL_REJECTION_REASONS),
+  note: z.string().max(500).optional(),
+  at: z.string(),
+});
+
+/** Mirrors `ManualInclusion` from `@/domain/sample-manual` — the appraiser's manual inclusion overlay (Slice 3c); carries the full candidate so it survives a radius change. */
+export const manualInclusionSchema = z.object({
+  transactionId: z.string(),
+  lokalId: z.string(),
+  at: z.string(),
+  candidate: candidateSchema,
+});
+
+/** Mirrors `ReviewedMark` from `@/domain/sample-manual` — review trail, informational only (Slice 3c). */
+export const reviewedMarkSchema = z.object({
+  transactionId: z.string(),
+  lokalId: z.string(),
+  at: z.string(),
+});
+
+/** Mirrors `StreetViewSnapshot` from `@/domain/street-view-snapshot` — frozen Street View per building (Slice 3, ADR-011). */
+export const streetViewSchema = z.record(
+  z.string(),
+  z.object({
+    panoId: z.string().nullable(),
+    captureDate: z.string().nullable(),
+    thumbnailKey: z.string().nullable(),
+    heading: z.number().nullable(),
+    lat: z.number(),
+    lng: z.number(),
+    storeysHint: z.number().nullable().optional(),
+  }),
+);
+
+/**
  * Mirrors `SampleSelectionSnapshot` from `@/domain/sample-snapshot` — what
  * step 3's domain call persists in `inputs.sampleSelection` (ADR-015 "Dobor
  * proby v3"): the appraiser's proposed/alternate rows plus enough context
@@ -124,6 +210,14 @@ export const sampleSelectionSchema = z.object({
     z.array(z.enum(["price_outlier", "market_unknown", "primary_suspect"])),
   ),
   rejectedCounts: z.record(z.string(), z.number()),
+  /** Rows rejected by hygiene/band inside `radiusUsedM` (decision a). Optional: pre-Slice-3 snapshots lack it. */
+  rejected: z.array(rejectedRowSchema).optional(),
+  /** Appraiser's overlay (Slice 3). Optional for the same reason. */
+  manualRejections: z.array(manualRejectionSchema).optional(),
+  /** Appraiser's explicit additions (Slice 3c). Optional: pre-Slice-3c snapshots lack it. */
+  manualInclusions: z.array(manualInclusionSchema).optional(),
+  /** Review trail (Slice 3c). Optional: pre-Slice-3c snapshots lack it. */
+  reviewed: z.array(reviewedMarkSchema).optional(),
   radiusUsedM: z.number(),
   radiusWalk: z.array(
     z.object({
@@ -251,6 +345,7 @@ export const valuationFormObject = z.object({
     ),
   sampleMeta: sampleMetaSchema.optional(),
   sampleSelection: sampleSelectionSchema.optional(),
+  streetView: streetViewSchema.optional(),
   subject: subjectSchema.optional(),
   subjectMeta: subjectMetaSchema.optional(),
   kw: kwSchema.optional(),

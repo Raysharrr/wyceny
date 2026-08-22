@@ -45,6 +45,8 @@ export default defineConfig({
       NEXT_PUBLIC_KW_UPLOAD: "off",
       NEXT_PUBLIC_PHOTO_UPLOAD: "off",
       NEXT_PUBLIC_PROSE: "off",
+      // Slice 3: keeps Street View thumbnails/iframe off so the smoke stays network-free and key-free.
+      NEXT_PUBLIC_STREET_VIEW: "off",
       // Runtime (not NEXT_PUBLIC_), read by the approve action via `_deps.ts`.
       // CI sets it job-wide; without it a LOCAL run takes the live-Geoportal
       // path CI never exercises, and approve fails with a 502 that looks like

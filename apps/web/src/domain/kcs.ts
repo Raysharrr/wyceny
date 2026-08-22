@@ -23,6 +23,7 @@ import type { SubjectMetaSnapshot, SubjectSnapshot } from "./subject-snapshot";
 import type { InspectionSnapshot } from "./inspection";
 import type { ProseSnapshot } from "./prose-snapshot";
 import type { SampleSelectionSnapshot } from "./sample-snapshot";
+import type { StreetViewSnapshot } from "./street-view-snapshot";
 
 /**
  * The RCN pool fetch's provenance for the whole sample (F-5) — `CandidatePool`
@@ -47,6 +48,14 @@ export type Comparable = {
   source?: "rcn" | "manual";
   /** RCN transaction id when source === "rcn" — display/audit metadata only. */
   transactionId?: string;
+  /**
+   * RCN lokal id when source === "rcn" — one notarial act (`transactionId`)
+   * can carry SEVERAL lokale; this distinguishes them (mirrors
+   * `Candidate.lokalId`/`candidateKey` in `domain/sample-selection.ts`).
+   * Additive, optional: older drafts saved before this field existed keep
+   * parsing. Display/audit metadata only, like `transactionId`.
+   */
+  lokalId?: string;
   /**
    * Provenance status (F-4) — assigned ONLY at the web ACL on draft save
    * (rcn rows enter as "to_verify", manual as "confirmed"); flipped to
@@ -82,6 +91,8 @@ export type KcsInput = {
    * at the web ACL).
    */
   sampleSelection?: SampleSelectionSnapshot | null;
+  /** Frozen Street View per building (Slice 3, ADR-011) — display only; computeKcs never reads this. */
+  streetView?: StreetViewSnapshot | null;
   /** Scalar provenance map (F-4) — see domain/provenance.ts. Optional: legacy snapshots lack it. */
   provenance?: InputsProvenance | null;
   /** Auto-fetched EGiB/MPZP subject snapshot — display/audit metadata only; computeKcs never reads this. */

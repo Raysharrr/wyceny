@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import PizZip from "pizzip";
 import { OPERAT_SECTIONS } from "../src/domain/operat-sections";
 
@@ -13,6 +14,16 @@ import { OPERAT_SECTIONS } from "../src/domain/operat-sections";
  * repo scan can NOT see inside it — this test is the enforcement.
  */
 const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
+
+/**
+ * Pin on the committed template's bytes (Slice 3, Task 10 — team-lead
+ * condition): update this pin in the SAME commit as any template change, so
+ * every edit to the binary is a deliberate, reviewed event rather than a
+ * silent drift. Final wave B7: Table 1's Obręb/Odległość [m] column widths
+ * swapped (`scripts/patch-template-table1.mts`) — content-only change, no
+ * placeholder/text delta.
+ */
+const TEMPLATE_SHA256 = "146b7759610ee44085bb32f88ad1d12b8ee858a667a4533559e13ace15dca6be";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -112,6 +123,10 @@ const FORBIDDEN_LITERALS = [
   "W toku analizy odrzucono", // §11 rejected-transactions paragraph
   "odbywa się komunikacją miejską", // §8.1 — the source flat's own transit fact
   "mieści się w zbiorze", // §13 justification paragraph
+  // Slice 3 (Task 10, review PR #21): Table 1 prints the row's own obręb and
+  // distance, never the subject city — {miasto}/{ulica} must never come back.
+  "{miasto}",
+  "{ulica}",
 ];
 
 const REQUIRED_PLACEHOLDERS = [
@@ -142,8 +157,13 @@ const REQUIRED_PLACEHOLDERS = [
   "{#opis_przedmiot}",
   "{#kredyt}",
   "{/kredyt}",
-  // Task 7: EGiB facts block (8.2) + MPZP variants (9)
+  // Task 7: EGiB facts block (8.2) + MPZP variants (9). Slice 3 (Task 10)
+  // reuses the tag name "obreb" a second time, INSIDE {#transakcje}, for
+  // each comparable's own obręb label — docxtemplater scopes tags per loop,
+  // so the two coexist: {obreb} at top level is the subject's §8.2 code,
+  // {obreb} inside the loop is transakcje[i].obreb. {odleglosc} is new here.
   "{obreb}",
+  "{odleglosc}",
   "{arkusz}",
   "{nr_dzialki}",
   "{pow_dzialki}",
@@ -247,6 +267,12 @@ const REQUIRED_PLACEHOLDERS = [
 ];
 
 describe("F-12: template integrity (operat-szablon.docx)", () => {
+  it("template bytes are the reviewed ones (update the pin in the same commit as the template)", () => {
+    expect(createHash("sha256").update(fs.readFileSync(TEMPLATE)).digest("hex")).toBe(
+      TEMPLATE_SHA256,
+    );
+  });
+
   it("contains no PESEL-like or KW-shaped strings anywhere in the XML", () => {
     const xml = templateXml();
     expect(xml).not.toMatch(/\d{11}/);

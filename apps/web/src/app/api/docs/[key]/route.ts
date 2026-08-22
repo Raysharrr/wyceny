@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/auth/session";
 import { storage, valuationRepository } from "@/app/valuations/_deps";
+import { isThumbnailKey } from "@/app/actions/_street-view-enrich";
 
 const TEXT_HEADERS = { "Content-Type": "text/plain; charset=utf-8" };
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -53,6 +54,13 @@ function successHeaders(key: string): Record<string, string> {
  * Valuation (doesn't exist, or exists but isn't theirs) → 404 in both
  * cases, deliberately — distinguishing them would leak existence of other
  * users' docs.
+ *
+ * Street View thumbnails (Slice 3) are a THIRD branch, gated by session
+ * only (like the photo branch) but with no ownership check — the key is
+ * derived from a public EGiB building id, carries no valuation data. Keys
+ * are slash-free by construction (`isThumbnailKey`, next to `thumbnailKey`
+ * in `_street-view-enrich.ts`) so this `[key]` route segment never has to
+ * rely on `%2F` surviving decode — same convention as the photo keys above.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
@@ -73,6 +81,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ key
     try {
       const data = await storage.get(key);
       return new NextResponse(new Uint8Array(data), { status: 200, headers: PHOTO_HEADERS });
+    } catch {
+      return new NextResponse("Nie znaleziono dokumentu.", { status: 404, headers: TEXT_HEADERS });
+    }
+  }
+
+  if (isThumbnailKey(key)) {
+    try {
+      const data = await storage.get(key);
+      return new NextResponse(new Uint8Array(data), {
+        status: 200,
+        headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=86400" },
+      });
     } catch {
       return new NextResponse("Nie znaleziono dokumentu.", { status: 404, headers: TEXT_HEADERS });
     }

@@ -112,6 +112,7 @@ export default async function ValuationViewPage({
             comparables={valuation.inputs?.comparables ?? []}
             sampleMeta={valuation.inputs?.sampleMeta ?? null}
             sampleSelection={valuation.inputs?.sampleSelection ?? null}
+            streetView={valuation.inputs?.streetView ?? null}
           />
         ) : step === 4 ? (
           <StepFeatures

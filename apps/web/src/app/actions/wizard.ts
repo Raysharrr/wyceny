@@ -264,6 +264,7 @@ export async function saveSampleAction(
         comparables,
         sampleMeta: parsed.data.sampleMeta ?? null,
         sampleSelection: parsed.data.sampleSelection ?? null,
+        streetView: parsed.data.streetView ?? undefined,
       });
       if (!updated) {
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };

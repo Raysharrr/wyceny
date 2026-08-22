@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Scale, Table2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Scale, Table2 } from "lucide-react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import type { z } from "zod";
@@ -26,6 +26,26 @@ import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import type { Comparable, KcsInput } from "@/domain/kcs";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
+import { candidateKey, DEFAULTS } from "@/domain/sample-selection";
+import { SampleMap } from "./sample-map";
+import { SamplePanel } from "./sample-panel";
+import { SampleRadius } from "./sample-radius";
+import { SampleRejected } from "./sample-rejected";
+import { SampleSections } from "./sample-sections";
+import { rcnRow, useSampleReview } from "./use-sample-review";
+
+// `NEXT_PUBLIC_*` vars are inlined at build time (Next.js) or read from the
+// real process env (vitest/node) — mirrors the same check in
+// `app/valuations/_deps.ts`'s `streetView` adapter selection. CI e2e sets
+// this to "off" so the smoke test never depends on Google Street View being
+// reachable.
+export const NEXT_PUBLIC_STREET_VIEW_OFF = process.env.NEXT_PUBLIC_STREET_VIEW === "off";
+
+// Same "read once at module scope" pattern as `NEXT_PUBLIC_STREET_VIEW_OFF`
+// above — Next.js inlines `NEXT_PUBLIC_*` at build time, and vitest/node
+// read it straight off `process.env`, so both the app and the RTL tests see
+// the same value without threading it through props.
+const EMBED_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY ?? null;
 
 type FormInput = z.input<typeof sampleStepSchema>;
 type FormOutput = z.output<typeof sampleStepSchema>;
@@ -85,6 +105,7 @@ export function StepSample({
   comparables: initialComparables,
   sampleMeta,
   sampleSelection,
+  streetView,
 }: {
   valuationId: string;
   address: string;
@@ -92,11 +113,20 @@ export function StepSample({
   comparables: Comparable[];
   sampleMeta: KcsInput["sampleMeta"];
   sampleSelection: KcsInput["sampleSelection"];
+  streetView: KcsInput["streetView"];
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isFetchingSample, setIsFetchingSample] = useState(false);
   const [fetchSampleError, setFetchSampleError] = useState<string | null>(null);
+  // Collapsed by default once a v3 selection snapshot already exists (the
+  // candidate table above takes over) — expanded when it doesn't (manual
+  // sample, legacy v2 draft), so the Playwright smoke and the pre-Slice-3
+  // RTL tests keep seeing the editable table without touching a toggle.
+  // Keyed off the PROP (the draft as loaded), not the live watched value —
+  // a fetch during this session must not auto-collapse a section the
+  // appraiser may have opened on purpose.
+  const [showEditable, setShowEditable] = useState(!sampleSelection);
 
   const {
     control,
@@ -113,10 +143,18 @@ export function StepSample({
             pricePerM2: String(c.pricePerM2),
             source: c.source,
             transactionId: c.transactionId,
+            // Wave 4 (C1 still open on the RELOADED-DRAFT path): without
+            // this, every RCN row hydrated from a SAVED draft looked
+            // "legacy" (no lokalId) even on drafts saved AFTER lokalId
+            // shipped — rebuildComparables then fell back to its
+            // content/position matching for every reject, not just true
+            // pre-lokalId drafts.
+            lokalId: c.lokalId,
           }))
         : [{ ...emptyComparable }, { ...emptyComparable }, { ...emptyComparable }],
       sampleMeta: sampleMeta ?? undefined,
       sampleSelection: sampleSelection ?? undefined,
+      streetView: streetView ?? undefined,
     },
   });
 
@@ -161,6 +199,91 @@ export function StepSample({
   // Watched (not the raw `sampleMeta` prop) so the banner reacts live to a
   // fetch in this session, not only to whatever the page rendered with.
   const liveSampleMeta = useWatch({ control, name: "sampleMeta" });
+  // Watched so the candidate table's thumbnails reflect a fetch made in this
+  // session, not only whatever `streetView` the page rendered with.
+  const liveStreetView = useWatch({ control, name: "streetView" });
+
+  // Candidate-review state (Task 7): which row the side panel shows, the
+  // domain result + manual overlay it's derived from, and the
+  // reject/restore/next handlers — pulled into its own hook purely to keep
+  // this file's length down (see `use-sample-review.ts`).
+  const {
+    eff,
+    combined,
+    selectedKey,
+    setSelectedKey,
+    selectedIndex,
+    selectedCandidate,
+    selectedStatus,
+    streetViewEntryFor,
+    next,
+    reject,
+    restore,
+    include,
+    skip,
+    keep,
+    reviewStats,
+    isReselecting,
+    poolMissing,
+    setPoolMissing,
+    reselectError,
+    clearReselectError,
+    onRadius,
+  } = useSampleReview({
+    valuationId,
+    sel,
+    comparables,
+    setValue,
+    replaceComparables,
+    liveStreetView,
+  });
+
+  // Manually-rejected rows aren't in `combined` (proposed ∪ alternates) —
+  // "Odrzucone" opening the panel on one (Task 4) needs `eff.removed`
+  // instead, since `selectedCandidate` (from `combined`) is null for them.
+  // `panelStatus` falls back to "proposed" only for TypeScript's sake: a
+  // `null` `selectedStatus` means `panelCandidate` is ALSO null (neither
+  // lookup found the key), so the panel never actually renders with the
+  // fallback in effect.
+  const rejectedCandidate =
+    eff && selectedKey ? eff.removed.find((c) => candidateKey(c) === selectedKey) : undefined;
+  const panelCandidate = selectedCandidate ?? rejectedCandidate ?? null;
+  const panelStatus = selectedStatus ?? "proposed";
+  const selectedRejection = selectedKey
+    ? (sel?.manualRejections ?? []).find((m) => candidateKey(m) === selectedKey)
+    : undefined;
+
+  // Which candidate the "w próbie" checkbox's uncheck path pre-opens the
+  // rejection-reasons block for (Task 5) — compared against `selectedKey`
+  // rather than stored as a boolean. Cleared explicitly on "Anuluj" (the
+  // panel's own cancel button) AND on every ordinary selection (see
+  // `selectCandidate` below) — comparing against `selectedKey` alone only
+  // covers "a DIFFERENT row is now selected"; re-selecting the SAME row
+  // later (a click, an arrow key, "Przywróć" from Odrzucone) would otherwise
+  // still satisfy `panelInitialRejecting === selectedKey` and reopen the
+  // reasons block even though the appraiser never unchecked it again.
+  const [panelInitialRejecting, setPanelInitialRejecting] = useState<string | null>(null);
+
+  // Every ordinary "select this row" path (row click, ↑/↓, a map dot, an
+  // "Odrzucone" row) goes through this — NOT the checkbox's uncheck path,
+  // which sets `panelInitialRejecting` itself right after calling
+  // `setSelectedKey` directly.
+  const selectCandidate = (key: string | null) => {
+    setSelectedKey(key);
+    setPanelInitialRejecting(null);
+  };
+
+  // "Dodana ręcznie" badge (Task 5) — keys the appraiser added BEYOND the
+  // ranked list (`eff.included`, never `sel.manualInclusions` — an inclusion
+  // the domain's own refill already promoted into `proposed` is a no-op and
+  // isn't in `eff.included`) that are no longer part of the raw domain's
+  // `alternates` — a row still sitting in `sel.alternates` was only just
+  // promoted THIS render (e.g. the checkbox's own optimistic re-render) and
+  // isn't the "survived a radius change" case the badge exists for.
+  const alternateKeys = new Set((sel?.alternates ?? []).map(candidateKey));
+  const includedKeys = new Set(
+    (eff?.included ?? []).filter((c) => !alternateKeys.has(candidateKey(c))).map(candidateKey),
+  );
 
   const onFetchSample = async () => {
     setFetchSampleError(null);
@@ -178,15 +301,10 @@ export function StepSample({
       // here so the value the user sees and accepts in the input is the same
       // value that feeds the valuation engine. No `.slice(0, 12)` here — the
       // domain's `selectSample` already caps `proposed` at 12 (ADR-015 rule 6).
-      replaceComparables(
-        result.proposal.comparables.map((t) => ({
-          date: t.date,
-          area: String(Math.round(t.area * 100) / 100),
-          pricePerM2: String(Math.round(t.pricePerM2 * 100) / 100),
-          source: "rcn" as const,
-          transactionId: t.transactionId,
-        })),
-      );
+      // A fresh proposal has no `manualRejections` yet, so this is the same
+      // result `syncComparables` would produce — going through it here would
+      // just add a needless extra read of the (not-yet-updated) form state.
+      replaceComparables(result.proposal.comparables.map(rcnRow));
       setValue("sampleMeta", result.proposal.sampleMeta, {
         shouldDirty: true,
         shouldValidate: true,
@@ -195,6 +313,19 @@ export function StepSample({
       // on save would wipe the persisted snapshot to null even for a plain
       // price edit that never re-fetches (see the "hidden round-trip" RTL test).
       setValue("sampleSelection", result.proposal.sampleSelection, { shouldDirty: true });
+      // Same round-trip requirement as sampleSelection above — the fresh
+      // Street View lookup must persist alongside it.
+      setValue("streetView", result.proposal.streetView, { shouldDirty: true });
+      // A fresh fetch replaces the whole candidate pool — a panel left open
+      // on a candidate from the PREVIOUS pool would show stale data (or a
+      // key that no longer resolves to anything).
+      setSelectedKey(null);
+      setPanelInitialRejecting(null);
+      // A fresh fetch re-populates the pool cache `reselectSample` reads —
+      // clears whatever "pobierz ponownie" gate a previous radius click hit,
+      // and any leftover error message from that click.
+      setPoolMissing(false);
+      clearReselectError();
     } finally {
       setIsFetchingSample(false);
     }
@@ -219,17 +350,35 @@ export function StepSample({
           sub={`${comparablesCount} ${plural(comparablesCount, "transakcja", "transakcje", "transakcji")}`}
         >
           <div className="flex flex-col gap-3">
-            {liveSampleMeta && sel ? (
+            {liveSampleMeta && sel && eff ? (
               <AutoBanner>
                 Dobrano{" "}
                 <b>
-                  {sel.counts.proposed} z {sel.counts.afterBand} pasujących
+                  {eff.proposed.length} z {sel.counts.afterBand} pasujących
                 </b>{" "}
                 w promieniu <b>{sel.radiusUsedM} m</b> (przebadano {sel.counts.pool} transakcji z
                 RCN, {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
                 {liveSampleMeta.query.truncated
                   ? " — pobieranie przerwano przed pokryciem 24 miesięcy (limit stron lub czasu), pula może być niepełna"
                   : null}
+                {" · "}
+                {eff.alternates.length}{" "}
+                {plural(eff.alternates.length, "alternatywa", "alternatywy", "alternatyw")} ·
+                odrzucono{" "}
+                {Object.values(sel.rejectedCounts ?? {}).reduce(
+                  (total, count) => total + (count ?? 0),
+                  0,
+                )}
+                {" · przejrzane "}
+                {reviewStats.reviewed}/{reviewStats.total}
+                {(sel.manualRejections?.length ?? 0) > 0
+                  ? ` · Twoich odrzuceń: ${sel.manualRejections?.length}`
+                  : null}
+                {/* `eff.included.length` (never `sel.manualInclusions.length`
+                    — controller ruling, Task 5) — an inclusion the domain's
+                    own refill already promoted into `proposed` is a no-op
+                    and would overcount. */}
+                {eff.included.length > 0 ? ` · dodanych: ${eff.included.length}` : null}
               </AutoBanner>
             ) : liveSampleMeta ? (
               // A persisted `sampleMeta` without its v3 selection snapshot (a
@@ -242,100 +391,193 @@ export function StepSample({
               </AutoBanner>
             ) : null}
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data transakcji</TableHead>
-                  <TableHead>Powierzchnia (m²)</TableHead>
-                  <TableHead>Cena (zł/m²)</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {comparableFields.map((field, index) => (
-                  <TableRow key={field.id}>
-                    <TableCell>
-                      <Controller
-                        control={control}
-                        name={`comparables.${index}.date`}
-                        render={({ field: dateField }) => (
-                          <Input
-                            id={`comparable-date-${index}`}
-                            placeholder="2024-07"
-                            {...dateField}
+            {sel ? (
+              <>
+                <SampleRadius
+                  value={sel.radiusUsedM}
+                  steps={DEFAULTS.radiusStepsM}
+                  busy={isReselecting}
+                  // The alert below is the single VISIBLE copy of the reason
+                  // (minor #3) — `disabledReason` here only drives `disabled`
+                  // + the `title` tooltip, so it reuses the SAME text
+                  // `reselectSample` returned rather than a second, possibly
+                  // drifting, hardcoded string.
+                  disabledReason={poolMissing ? reselectError : null}
+                  // Also clears `panelInitialRejecting` (local UI state,
+                  // final wave M2) — a radius change replaces the whole
+                  // candidate pool (`onRadius` itself resets `selectedKey` to
+                  // null on success), so a stale value here pointed at a row
+                  // from the OLD pool must not survive to reopen the
+                  // reasons block unbidden, same reasoning as the "Potwierdź
+                  // odrzucenie" and "Pobierz próbę z RCN" clears above.
+                  onChange={(radiusM: Parameters<typeof onRadius>[0]) => {
+                    setPanelInitialRejecting(null);
+                    onRadius(radiusM);
+                  }}
+                />
+                {reselectError ? (
+                  <p role="alert" className="text-sm text-destructive">
+                    {reselectError}
+                  </p>
+                ) : null}
+                {liveSampleMeta?.point ? (
+                  <SampleMap
+                    selection={sel}
+                    center={{ x: liveSampleMeta.point.x, y: liveSampleMeta.point.y }}
+                    selectedKey={selectedKey}
+                    onSelect={selectCandidate}
+                  />
+                ) : null}
+                <SampleSections
+                  selection={sel}
+                  streetView={liveStreetView ?? null}
+                  streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
+                  selectedKey={selectedKey}
+                  onSelect={selectCandidate}
+                  reviewedKeys={reviewStats.reviewedKeys}
+                  includedKeys={includedKeys}
+                  defaultAlternatesOpen={reviewStats.reviewed === 0}
+                  // "w próbie" checkbox (Task 3 wires the prop): unchecking a
+                  // proposed row selects it AND pre-opens the panel's
+                  // rejection-reasons block (`panelInitialRejecting`) — the
+                  // appraiser reaches "Potwierdź odrzucenie" in one click
+                  // instead of select-then-"Odrzuć". Checking an alternate
+                  // needs no reason — `include` is unconditional.
+                  onToggleInSample={(key, inSample) => {
+                    if (inSample) {
+                      include(key);
+                    } else {
+                      setSelectedKey(key);
+                      setPanelInitialRejecting(key);
+                    }
+                  }}
+                />
+                <SampleRejected selection={sel} onRestore={restore} onSelect={selectCandidate} />
+              </>
+            ) : null}
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-fit"
+              aria-expanded={showEditable}
+              onClick={() => setShowEditable((v) => !v)}
+            >
+              {showEditable ? <ChevronDown /> : <ChevronRight />}
+              Próba do kalkulacji ({comparablesCount}) — edytuj wartości lub dopisz ręcznie
+            </Button>
+
+            {/* A validation error on `comparables` must never be hidden behind
+                a collapsed section — the appraiser needs to see it to fix it,
+                even when they collapsed the section themselves. */}
+            {showEditable || !!errors.comparables ? (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data transakcji</TableHead>
+                      <TableHead>Powierzchnia (m²)</TableHead>
+                      <TableHead>Cena (zł/m²)</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {comparableFields.map((field, index) => (
+                      <TableRow key={field.id}>
+                        <TableCell>
+                          <Controller
+                            control={control}
+                            name={`comparables.${index}.date`}
+                            render={({ field: dateField }) => (
+                              <Input
+                                id={`comparable-date-${index}`}
+                                placeholder="2024-07"
+                                {...dateField}
+                              />
+                            )}
                           />
-                        )}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Controller
-                        control={control}
-                        name={`comparables.${index}.area`}
-                        render={({ field: areaField, fieldState }) => (
-                          <>
-                            <Input
-                              id={`comparable-area-${index}`}
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              inputMode="decimal"
-                              placeholder="m²"
-                              name={areaField.name}
-                              onBlur={areaField.onBlur}
-                              ref={areaField.ref}
-                              value={toInputValue(areaField.value)}
-                              onChange={(e) =>
-                                areaField.onChange(
-                                  e.target.value === "" ? undefined : e.target.value,
-                                )
-                              }
-                              aria-invalid={!!fieldState.error}
-                            />
-                            <FieldError errors={[fieldState.error]} />
-                          </>
-                        )}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Controller
-                        control={control}
-                        name={`comparables.${index}.pricePerM2`}
-                        render={({ field: priceField, fieldState }) => (
-                          <>
-                            <Input
-                              id={`comparable-price-${index}`}
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              inputMode="decimal"
-                              placeholder="zł/m²"
-                              aria-invalid={!!fieldState.error}
-                              name={priceField.name}
-                              onBlur={priceField.onBlur}
-                              ref={priceField.ref}
-                              value={toInputValue(priceField.value)}
-                              onChange={(e) => priceField.onChange(e.target.value)}
-                            />
-                            <FieldError errors={[fieldState.error]} />
-                          </>
-                        )}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={comparableFields.length <= 3}
-                        onClick={() => removeComparable(index)}
-                      >
-                        Usuń
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                        </TableCell>
+                        <TableCell>
+                          <Controller
+                            control={control}
+                            name={`comparables.${index}.area`}
+                            render={({ field: areaField, fieldState }) => (
+                              <>
+                                <Input
+                                  id={`comparable-area-${index}`}
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  inputMode="decimal"
+                                  placeholder="m²"
+                                  name={areaField.name}
+                                  onBlur={areaField.onBlur}
+                                  ref={areaField.ref}
+                                  value={toInputValue(areaField.value)}
+                                  onChange={(e) =>
+                                    areaField.onChange(
+                                      e.target.value === "" ? undefined : e.target.value,
+                                    )
+                                  }
+                                  aria-invalid={!!fieldState.error}
+                                />
+                                <FieldError errors={[fieldState.error]} />
+                              </>
+                            )}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Controller
+                            control={control}
+                            name={`comparables.${index}.pricePerM2`}
+                            render={({ field: priceField, fieldState }) => (
+                              <>
+                                <Input
+                                  id={`comparable-price-${index}`}
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  inputMode="decimal"
+                                  placeholder="zł/m²"
+                                  aria-invalid={!!fieldState.error}
+                                  name={priceField.name}
+                                  onBlur={priceField.onBlur}
+                                  ref={priceField.ref}
+                                  value={toInputValue(priceField.value)}
+                                  onChange={(e) => priceField.onChange(e.target.value)}
+                                />
+                                <FieldError errors={[fieldState.error]} />
+                              </>
+                            )}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={comparableFields.length <= 3}
+                            onClick={() => removeComparable(index)}
+                          >
+                            Usuń
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-fit"
+                  onClick={() => appendComparable({ ...emptyComparable })}
+                >
+                  Dodaj transakcję
+                </Button>
+              </>
+            ) : null}
 
             {comparablesError ? (
               <p role="alert" className="text-sm text-destructive">
@@ -350,26 +592,16 @@ export function StepSample({
               </p>
             ) : null}
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-fit"
-                onClick={() => appendComparable({ ...emptyComparable })}
-              >
-                Dodaj transakcję
-              </Button>
-              <Button
-                type="button"
-                id="fetch-sample"
-                variant="outline"
-                className="w-fit"
-                disabled={isFetchingSample}
-                onClick={onFetchSample}
-              >
-                {isFetchingSample ? "Pobieranie…" : "Pobierz próbę z RCN"}
-              </Button>
-            </div>
+            <Button
+              type="button"
+              id="fetch-sample"
+              variant="outline"
+              className="w-fit"
+              disabled={isFetchingSample}
+              onClick={onFetchSample}
+            >
+              {isFetchingSample ? "Pobieranie…" : "Pobierz próbę z RCN"}
+            </Button>
 
             {fetchSampleError ? (
               <p role="alert" className="text-sm text-destructive">
@@ -388,6 +620,53 @@ export function StepSample({
         </SectionCard>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
+          {panelCandidate ? (
+            <SamplePanel
+              candidate={panelCandidate}
+              index={selectedIndex}
+              total={combined.length}
+              entry={streetViewEntryFor(panelCandidate)}
+              embedKey={EMBED_KEY}
+              streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
+              status={panelStatus}
+              rejection={selectedRejection}
+              // Unconditional, like the banner's own counter (team-lead
+              // condition 2, Opus review round 1 I2) — the header always
+              // shows "przejrzane N", 0 included; `reviewedCount` stays
+              // OPTIONAL on `SamplePanel` itself so its own pre-Task-5 unit
+              // tests (which never pass it) keep their plain title.
+              reviewedCount={reviewStats.reviewed}
+              onKeep={keep}
+              // Confirming the rejection also clears `panelInitialRejecting`
+              // (local UI state, not a `sampleSelection` write — safe to sit
+              // next to `reject(...)`). Without this, a stale
+              // `panelInitialRejecting` pointed at THIS row's key can survive
+              // the confirm (reject() moves `selectedKey` to whoever
+              // backfills the rank slot, not to this row) and later reopen
+              // the reasons block unbidden if the selection ever lands back
+              // on this exact key without going through `selectCandidate`
+              // (Task 6, folded code item, post-T5 re-review).
+              onReject={(r) => {
+                reject(r);
+                setPanelInitialRejecting(null);
+              }}
+              // Uncheck path (checkbox on a proposed row) pre-opens the
+              // reasons block for THAT candidate only — comparing against
+              // `selectedKey` (not a bare boolean) means switching the panel
+              // to any other row naturally stops pre-opening it.
+              initialRejecting={panelInitialRejecting === selectedKey}
+              onCancelRejecting={() => setPanelInitialRejecting(null)}
+              onInclude={() => selectedKey && include(selectedKey)}
+              onSkip={() => {
+                if (!selectedKey) return;
+                skip(selectedKey);
+                next();
+              }}
+              onRestore={() => selectedRejection && restore(selectedRejection)}
+              onClose={() => selectCandidate(null)}
+            />
+          ) : null}
+
           <SectionCard icon={Scale} title="Statystyki próby">
             <div className="flex flex-col gap-2 text-sm">
               <p>

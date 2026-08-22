@@ -4,6 +4,7 @@ import {
   subjectSchema,
   valuationFormSchema,
 } from "../src/lib/valuation-form-schema";
+import { sampleSelectionSchema, streetViewSchema } from "../src/lib/valuation-form-schema";
 
 const valid = {
   address: "ul. Kościelna 33A, Poznań",
@@ -163,6 +164,29 @@ describe("valuationFormSchema — RCN provenance (F-5)", () => {
     expect(valuationFormSchema.safeParse({ ...valid, comparables }).success).toBe(true);
   });
 
+  it("accepts a lokalId on a comparable (multi-lokal act, final wave); still validates without one", () => {
+    const withLokalId = [
+      ...valid.comparables.slice(0, 2),
+      {
+        ...valid.comparables[2],
+        source: "rcn",
+        transactionId: "abc-123",
+        lokalId: "306401_1.0039.AR_22.13-82.1_BUD.1_LOK",
+      },
+    ];
+    expect(valuationFormSchema.safeParse({ ...valid, comparables: withLokalId }).success).toBe(
+      true,
+    );
+    // No lokalId at all — legacy/manual rows keep validating.
+    const withoutLokalId = [
+      ...valid.comparables.slice(0, 2),
+      { ...valid.comparables[2], source: "rcn", transactionId: "abc-123" },
+    ];
+    expect(valuationFormSchema.safeParse({ ...valid, comparables: withoutLokalId }).success).toBe(
+      true,
+    );
+  });
+
   it("rejects an unknown source value", () => {
     const comparables = [
       ...valid.comparables.slice(0, 2),
@@ -234,5 +258,156 @@ describe("subjectSchema — mpzpData (Fix B)", () => {
   it("accepts an empty or absent mpzpData", () => {
     expect(subjectSchema.safeParse({ mpzpData: "" }).success).toBe(true);
     expect(subjectSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe("sampleSelectionSchema — v3 additive fields (Slice 3)", () => {
+  const base = {
+    version: 3,
+    proposed: [],
+    alternates: [],
+    flags: {},
+    rejectedCounts: {},
+    radiusUsedM: 500,
+    radiusWalk: [],
+    counts: { pool: 1, inRadius: 1, afterHygiene: 1, afterBand: 1, proposed: 0 },
+    params: { subjectArea: 50, todayMonth: "2026-08" },
+  };
+  it("accepts a pre-Slice-3 snapshot (no rejected / manualRejections)", () => {
+    expect(sampleSelectionSchema.safeParse(base).success).toBe(true);
+  });
+  it("accepts compact rejected rows and manual rejections; rejects an unknown reason", () => {
+    const ok = sampleSelectionSchema.safeParse({
+      ...base,
+      rejected: [
+        {
+          transactionId: "T1",
+          lokalId: "L1",
+          reason: "no_price",
+          allReasons: ["no_price"],
+          date: "2026-01-02",
+          area: 50,
+          pricePerM2: 0,
+          distanceM: 10,
+          pos: null,
+        },
+      ],
+      manualRejections: [
+        {
+          transactionId: "T2",
+          lokalId: "L2",
+          reason: "building_older",
+          note: "kamienica 1905",
+          at: "2026-08-21T10:00:00Z",
+        },
+      ],
+    });
+    expect(ok.success).toBe(true);
+    const bad = sampleSelectionSchema.safeParse({
+      ...base,
+      manualRejections: [{ transactionId: "T2", lokalId: "L2", reason: "ugly", at: "x" }],
+    });
+    expect(bad.success).toBe(false);
+  });
+  it("accepts manualInclusions and reviewed (Slice 3c); parses back without stripping them (nested candidate included)", () => {
+    const candidate = {
+      transactionId: "T3",
+      date: "2026-05-10",
+      area: 50,
+      pricePerM2: 12000,
+      priceTotal: 600000,
+      egib: {
+        teryt: "306401_1",
+        obreb: "0021",
+        arkusz: "10",
+        dzialka: "27",
+        budynek: "3",
+        lokal: "3",
+      },
+      lokalId: "L3",
+      distanceM: 500,
+      floor: 2,
+      rooms: 3,
+      market: "wtorny" as const,
+      share: "1/1",
+      transType: "wolnyRynek",
+      function: "mieszkalna",
+      seller: "osobaFizyczna",
+      pos: { x: 123.45, y: 678.9 },
+    };
+    const parsed = sampleSelectionSchema.safeParse({
+      ...base,
+      manualInclusions: [
+        { transactionId: "T3", lokalId: "L3", at: "2026-08-21T10:00:00Z", candidate },
+      ],
+      reviewed: [{ transactionId: "T1", lokalId: "L1", at: "2026-08-21T10:00:00Z" }],
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) throw parsed.error;
+    expect(parsed.data.manualInclusions).toHaveLength(1);
+    expect(parsed.data.reviewed).toHaveLength(1);
+    // Nested-strip guard: egib and pos are objects nested inside candidateSchema —
+    // confirms zod isn't silently dropping their fields on the way through.
+    expect(parsed.data.manualInclusions![0].candidate).toEqual(candidate);
+
+    const bad = sampleSelectionSchema.safeParse({
+      ...base,
+      manualInclusions: [{ transactionId: "T3", lokalId: "L3", at: "x" }], // missing candidate
+    });
+    expect(bad.success).toBe(false);
+  });
+  it("still pins version 3", () => {
+    expect(sampleSelectionSchema.safeParse({ ...base, version: 2 }).success).toBe(false);
+  });
+  it("streetViewSchema: record of frozen entries, nulls allowed", () => {
+    expect(
+      streetViewSchema.safeParse({
+        "0039.22.13/82.1": {
+          panoId: null,
+          captureDate: null,
+          thumbnailKey: null,
+          heading: null,
+          lat: 52.39,
+          lng: 16.87,
+        },
+      }).success,
+    ).toBe(true);
+  });
+  it("streetViewSchema: storeysHint round-trips (present as a number, present as null, and absent for entries frozen before the field existed)", () => {
+    const withHint = streetViewSchema.parse({
+      "0039.22.13/82.1": {
+        panoId: "P1",
+        captureDate: "2023-07",
+        thumbnailKey: "streetview-0039.22.13~82.1.jpg",
+        heading: 90,
+        lat: 52.39,
+        lng: 16.87,
+        storeysHint: 7,
+      },
+    });
+    expect(withHint["0039.22.13/82.1"].storeysHint).toBe(7);
+    const withNullHint = streetViewSchema.parse({
+      "0039.22.13/82.2": {
+        panoId: null,
+        captureDate: null,
+        thumbnailKey: null,
+        heading: null,
+        lat: 52.39,
+        lng: 16.87,
+        storeysHint: null,
+      },
+    });
+    expect(withNullHint["0039.22.13/82.2"].storeysHint).toBeNull();
+    const withoutHint = streetViewSchema.parse({
+      "0039.22.13/82.3": {
+        panoId: null,
+        captureDate: null,
+        thumbnailKey: null,
+        heading: null,
+        lat: 52.39,
+        lng: 16.87,
+      },
+    });
+    expect(withoutHint["0039.22.13/82.3"].storeysHint).toBeUndefined();
   });
 });

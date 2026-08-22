@@ -1,6 +1,5 @@
-import { z } from "zod";
 import type { CandidatePool, PortSampleProposal, SamplePoolRequest } from "../ports/sample";
-import { candidateSchema, sampleMetaSchema } from "../lib/valuation-form-schema";
+import { candidatePoolSchema } from "../lib/valuation-form-schema";
 import { traceHeaders } from "../lib/trace";
 
 /**
@@ -11,19 +10,6 @@ import { traceHeaders } from "../lib/trace";
  * duplicating the literal — keeps the two in sync if the wording changes.
  */
 export const WORKER_RESPONDED_PREFIX = "worker /sample-proposal responded";
-
-/**
- * Runtime validation for `CandidatePool` at the trust boundary — the worker
- * is a separate process/deploy, so a shape drift must fail loudly here
- * rather than propagate an `as`-cast lie into the ranking/selection logic.
- * Composed from `sampleMetaSchema` (`CandidatePool` minus `candidates`) plus
- * `candidateSchema`, both from `lib/valuation-form-schema` — not redefined
- * here, so Task 7's `inputs.sampleMeta` schema shares one definition with
- * this adapter's pool validation.
- */
-export const candidatePoolSchema = sampleMetaSchema.extend({
-  candidates: z.array(candidateSchema),
-}) satisfies z.ZodType<CandidatePool>;
 
 // Worker stops starting new WFS pages after 25 s (`fetch_pool` time budget) and one page takes up to 20 s,
 // so ~45 s is its worst case — inside this timeout and Vercel's 60 s. Deeper pools come back `truncated`.

@@ -48,6 +48,7 @@ export const sampleStepSchema = valuationFormObject.pick({
   comparables: true,
   sampleMeta: true,
   sampleSelection: true,
+  streetView: true,
 });
 export const featuresStepSchema = valuationFormObject.pick({ features: true });
 

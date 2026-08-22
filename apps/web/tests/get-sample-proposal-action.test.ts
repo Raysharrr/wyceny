@@ -1,18 +1,67 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import type { PortStreetView } from "../src/ports/street-view";
 
 vi.mock("@/auth/session", () => ({
   getSession: vi.fn(async () => ({ user: { id: "test-user", role: "appraiser" } })),
 }));
-vi.mock("@/app/valuations/_deps");
+
+/**
+ * `_deps` is NOT automocked here (unlike approve-valuation-action.test.ts):
+ * `streetView` needs to be BOTH `null` (the default — no GOOGLE_STREET_VIEW_KEY
+ * in the unit-test env, which is exactly what automock would already give)
+ * AND a controllable stub port within the SAME file, to cover both branches
+ * of `getSampleProposal`'s `if (streetView)`. Automock can only ever resolve
+ * one value for a module-level const, so the port is held in `depsState`
+ * (via `vi.hoisted`, which runs before this factory) and exposed through a
+ * getter — a live ES-module binding that `get-sample-proposal.ts`'s
+ * `import { streetView } from "@/app/valuations/_deps"` re-reads on every
+ * access, so mutating `depsState.streetView` between tests changes what the
+ * action sees. `storage` is a genuine in-memory `PortStorage` (mirrors
+ * `memStorage()` in street-view-enrich.test.ts) rather than an automocked
+ * `vi.fn()`, since `enrichStreetView` both reads (cache) and writes
+ * (thumbnail + sidecar) through it.
+ */
+const depsState = vi.hoisted(() => ({
+  streetView: null as unknown,
+  store: new Map<string, Buffer | string>(),
+}));
+
+vi.mock("@/app/valuations/_deps", async () => {
+  const { StorageNotFoundError } = await import("../src/ports/storage");
+  return {
+    sampleProposal: { fetchPool: vi.fn() },
+    valuationRepository: { get: vi.fn() },
+    storage: {
+      async put(k: string, d: Buffer | string) {
+        depsState.store.set(k, d);
+        return `/api/docs/${encodeURIComponent(k)}`;
+      },
+      async get(k: string) {
+        const v = depsState.store.get(k);
+        if (v === undefined) throw new StorageNotFoundError(k);
+        return Buffer.isBuffer(v) ? v : Buffer.from(v);
+      },
+      async delete(k: string) {
+        depsState.store.delete(k);
+      },
+    },
+    get streetView() {
+      return depsState.streetView;
+    },
+  };
+});
+
 vi.mock("@/app/actions/_record-failure", () => ({
   recordEvent: vi.fn(async () => {}),
   recordFailure: vi.fn(async () => {}),
 }));
 
 import { getSampleProposal } from "../src/app/actions/get-sample-proposal";
-import { sampleProposal, valuationRepository } from "@/app/valuations/_deps";
+import { sampleProposal, storage, valuationRepository } from "@/app/valuations/_deps";
 import { recordEvent } from "@/app/actions/_record-failure";
+import * as streetViewEnrich from "../src/app/actions/_street-view-enrich";
+import { loadPool, poolKey } from "@/app/actions/_pool-cache";
 import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
 import type { CandidatePool } from "@/ports/sample";
 
@@ -58,6 +107,8 @@ describe("getSampleProposal (v3)", () => {
     fetchPoolMock.mockReset();
     getMock.mockReset();
     vi.mocked(recordEvent).mockClear();
+    depsState.streetView = null;
+    depsState.store.clear();
   });
 
   it("passes the step-1 point, runs the domain, returns comparables + snapshot + meta, logs numbers only", async () => {
@@ -92,7 +143,17 @@ describe("getSampleProposal (v3)", () => {
       budynek: "1",
     });
     expect("candidates" in r.proposal.sampleMeta).toBe(false);
-    const meta = vi.mocked(recordEvent).mock.calls[0][0].meta as Record<string, unknown>;
+    // streetView is null by default (no GOOGLE_STREET_VIEW_KEY) — the port
+    // isn't wired, so enrichment is skipped entirely.
+    expect(r.proposal.streetView).toEqual({});
+    expect(
+      vi.mocked(recordEvent).mock.calls.some((c) => c[0].event === "proposal.streetview"),
+    ).toBe(false);
+    const sampleCall = vi
+      .mocked(recordEvent)
+      .mock.calls.find((c) => c[0].event === "proposal.sample");
+    expect(sampleCall).toBeDefined();
+    const meta = sampleCall![0].meta as Record<string, unknown>;
     expect(meta).toMatchObject({
       geocoder: "subject",
       radiusUsedM: 500,
@@ -100,7 +161,17 @@ describe("getSampleProposal (v3)", () => {
       counts: expect.any(Object),
     });
     expect(JSON.stringify(meta)).not.toMatch(/Heweliusza|306401|355300/);
-    expect(vi.mocked(recordEvent).mock.calls[0][0].valuationId).toBe(valuation.id);
+    expect(sampleCall![0].valuationId).toBe(valuation.id);
+
+    // Task 8: the fetched pool is cached (gzip, under pool/<valuationId>.json.gz)
+    // so a later radius change (`reselectSample`) never re-queries WFS —
+    // wrapped with the address/area it was fetched for (review round 1,
+    // Important #2: `reselectSample` needs this to detect a stale pool).
+    expect(depsState.store.has(poolKey(valuation.id))).toBe(true);
+    await expect(loadPool(storage, valuation.id)).resolves.toEqual({
+      savedFor: { address: valuation.address, area: 50 },
+      pool,
+    });
   });
 
   it("without subjectMeta the worker geocodes (no point sent) and ranking is distance-only", async () => {
@@ -186,5 +257,42 @@ describe("getSampleProposal (v3)", () => {
     expect(r).toEqual({ error: expect.any(String) });
     expect(getMock).not.toHaveBeenCalled();
     expect(fetchPoolMock).not.toHaveBeenCalled();
+  });
+
+  it("streetView wired (stub port) → enrichment runs, proposal.streetview event carries numbers-only meta (F-13)", async () => {
+    const stubPort: PortStreetView = {
+      lookup: vi.fn().mockResolvedValue({
+        panoId: "P1",
+        captureDate: "2023-07",
+        camera: { lat: 52.3948, lng: 16.8725 },
+      }),
+      thumbnail: vi.fn().mockResolvedValue(Buffer.from([0xff, 0xd8])),
+    };
+    depsState.streetView = stubPort;
+    getMock.mockResolvedValue(valuation);
+    fetchPoolMock.mockResolvedValue(pool);
+    const enrichSpy = vi.spyOn(streetViewEnrich, "enrichStreetView");
+    const r = await getSampleProposal({
+      valuationId: valuation.id,
+      address: valuation.address,
+      area: 50,
+    });
+    if ("error" in r) throw new Error(r.error);
+    expect(Object.keys(r.proposal.streetView).length).toBeGreaterThan(0);
+    // Fix round 2: budgetMs is derived from REQUEST_BUDGET_MS minus elapsed
+    // time, capped at ENRICH_BUDGET_MS — in this fast, all-stubbed test the
+    // cap always wins, so budgetMs should equal ENRICH_BUDGET_MS exactly.
+    expect(enrichSpy).toHaveBeenCalledTimes(1);
+    const passedBudgetMs = enrichSpy.mock.calls[0][1].budgetMs;
+    expect(typeof passedBudgetMs).toBe("number");
+    expect(passedBudgetMs).toBe(streetViewEnrich.ENRICH_BUDGET_MS);
+    expect(enrichSpy.mock.calls[0][1].storeys).toBeInstanceOf(Map);
+    enrichSpy.mockRestore();
+    const call = vi
+      .mocked(recordEvent)
+      .mock.calls.find((c) => c[0].event === "proposal.streetview");
+    expect(call).toBeDefined();
+    const meta = call![0].meta as Record<string, unknown>;
+    expect(Object.values(meta).every((v) => typeof v === "number")).toBe(true);
   });
 });
