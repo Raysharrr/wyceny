@@ -77,7 +77,8 @@ for (const [what, patched, original] of [
   ["nagłówek", patchedHeader, header],
   ["wiersz", patchedRow, row],
 ] as const) {
-  if (patched === original) throw new Error(`${what} Tabeli 1 nie został zmieniony — sprawdź szablon`);
+  if (patched === original)
+    throw new Error(`${what} Tabeli 1 nie został zmieniony — sprawdź szablon`);
 }
 
 zip.file(
