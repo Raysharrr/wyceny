@@ -257,12 +257,23 @@ def _build_now(fetch=_http_get, head=_http_signature) -> None:
         _lock.release()
 
 
+def autostart_enabled() -> bool:
+    """`STREET_INDEX=off` keeps the build from ever starting.
+
+    The e2e job in CI is deliberately network-free (every fetch behind an env flag, see
+    `.github/workflows/ci.yml`) — without this switch the worker would pull 13 MB from BIP
+    on startup and quietly break that rule. Same reason the test suite disables the
+    autostart in `tests/conftest.py`.
+    """
+    return os.environ.get("STREET_INDEX", "").lower() not in {"off", "0", "false"}
+
+
 def ensure_started(fetch=_http_get, head=_http_signature) -> None:
-    """Start a build unless one is running or finished. Idempotent — called both on
-    startup and from the request path, so a restart mid-month costs a cache read and a
-    cold worker still answers the first request (without streets)."""
+    """Start a build unless one is running, finished or switched off. Idempotent — called
+    both on startup and from the request path, so a restart mid-month costs a cache read
+    and a cold worker still answers the first request (without streets)."""
     global _status
-    if _status == "ready" or not _lock.acquire(blocking=False):
+    if not autostart_enabled() or _status == "ready" or not _lock.acquire(blocking=False):
         return
     _status = "building"
     threading.Thread(

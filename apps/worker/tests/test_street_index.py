@@ -245,3 +245,24 @@ def test_new_month_invalidates_the_cache(tmp_path):
 
 def test_missing_cache_is_not_an_error(tmp_path):
     assert load_cached(tmp_path, expected_signature="cokolwiek") is None
+
+
+def test_autostart_can_be_switched_off(monkeypatch):
+    """CI's e2e job is network-free by design; the worker must not pull 13 MB on startup."""
+    from app import street_index
+
+    monkeypatch.setenv("STREET_INDEX", "off")
+    assert street_index.autostart_enabled() is False
+
+    called = []
+    monkeypatch.setattr(street_index, "_http_get", lambda url: called.append(url))
+    street_index.ensure_started()
+    assert called == []
+    assert street_index.status() == "unavailable"
+
+
+def test_autostart_is_on_by_default(monkeypatch):
+    from app import street_index
+
+    monkeypatch.delenv("STREET_INDEX", raising=False)
+    assert street_index.autostart_enabled() is True

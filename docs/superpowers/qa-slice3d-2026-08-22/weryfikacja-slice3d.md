@@ -84,6 +84,36 @@ Efekt: `street_index_failed` w logu, **healthcheck dalej 200**, `/sample-proposa
 pulę bez ulic ze `streetIndex.status`, a krok 3 pokazuje kreski z dymkiem „Adresy się
 wczytują — pobierz próbę z rejestru ponownie za chwilę”. Zero błędów po stronie użytkownika.
 
+## Zasoby workera — do sprawdzenia przed wdrożeniem
+
+Zmierzone lokalnie na prawdziwym eksporcie:
+
+| zasób             | ile                                                              | uwaga                                                                                                                          |
+| ----------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| pamięć (szczyt)   | **46 MB** RSS przy parsowaniu, 149 MB w pełnym cyklu z pobraniem | stdlib `ElementTree`; lxml dawał 808 MB                                                                                        |
+| **dysk (szczyt)** | **≈268 MB**                                                      | `build_snapshot` rozpakowuje oba GML-e do katalogu cache i kasuje je zaraz po sparsowaniu — ale w szczycie tyle musi być wolne |
+| sieć              | 13 MB raz na miesiąc                                             | przy niezmienionej sygnaturze `HEAD` zamiast pobrania                                                                          |
+| czas              | 6,8 s pełny cykl, 0,29 s z cache                                 |                                                                                                                                |
+
+**Do zweryfikowania na Railway przed wydaniem:** czy kontener workera (ten sam, który nosi
+LibreOffice) ma te ~268 MB wolnego miejsca w `/tmp` i czy `/tmp` jest zapisywalne. Awaria
+jest bezpieczna — `status` idzie na `unavailable`, próba wraca bez ulic i bez błędu — ale
+na stagingu wyglądałaby jak niedowieziony slice, więc lepiej sprawdzić, niż zobaczyć.
+Docelowe uproszczenie (poza tym slice'em): parsować prosto ze strumienia zip, bez zapisu
+na dysk; wtedy szczyt dysku znika.
+
+## CI
+
+Job `e2e` w `.github/workflows/ci.yml` jest **celowo network-free** — każde pobranie ma
+swoją flagę. Budowa indeksu na starcie workera łamałaby tę zasadę (13 MB z BIP), więc
+doszła flaga **`STREET_INDEX: "off"`**; smoke wchodzi w krok 3 z ręcznymi transakcjami
+i żadnych adresów nie potrzebuje. Autostart jest domyślnie włączony, wyłącza go tylko ta
+zmienna (i `tests/conftest.py` dla testów jednostkowych).
+
+CI uruchamia się na `main` i na pull requestach do `main`, więc na samej gałęzi feature
+**nie ruszyło** — pełny przebieg pojawi się dopiero po otwarciu PR-a. Lokalnie zielone:
+worker 227/227, web 134 pliki / 1432 testy, typecheck, lint, depcruise, `pnpm build`.
+
 ## Sprostowanie własnego pomiaru
 
 Pierwsze przebiegi raportowały „64/64 z ulicą” — liczyły kolumnę **Data**, nie **Ulica**
