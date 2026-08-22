@@ -207,6 +207,9 @@ jobs:
       # platform's env vars and never in this repo.
       SEED_ADMIN_PASSWORD: "ci-only-not-a-real-secret"
       SEED_APPRAISER_PASSWORD: "ci-only-not-a-real-secret"
+      SEED_LUKASZ_PASSWORD: "ci-only-not-a-real-secret"
+      SEED_MONIKA_PASSWORD: "ci-only-not-a-real-secret"
+      SEED_ADAM_PASSWORD: "ci-only-not-a-real-secret"
     services:
       postgres:
         image: postgres:16
