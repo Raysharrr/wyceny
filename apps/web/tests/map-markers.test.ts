@@ -110,6 +110,25 @@ describe("buildDots", () => {
     );
     expect(dots.find((d) => d.key === "P1|LP1")?.kind).toBe("rejected");
   });
+
+  it("a manually included row re-attached outside proposed/alternates (e.g. after a radius change) is a proposed dot (Slice 3c)", () => {
+    const base = makeSelection();
+    const candidate = {
+      ...base.proposed[0],
+      transactionId: "INC",
+      lokalId: "LINC",
+      pos: { x: 1200, y: 900 },
+    };
+    const dots = buildDots(
+      makeSelection({
+        manualInclusions: [
+          { transactionId: "INC", lokalId: "LINC", at: "2026-08-21T10:00:00Z", candidate },
+        ],
+      }),
+    );
+    expect(dots.find((d) => d.key === "INC|LINC")?.kind).toBe("proposed");
+    expect(dots[dots.length - 1]?.key).toBe("INC|LINC");
+  });
 });
 
 describe("groupByPos / bestKind / buildingSummary", () => {
