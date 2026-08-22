@@ -7,11 +7,14 @@ import { candidateKey } from "@/domain/sample-selection";
 import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 import { SampleTable } from "./sample-table";
+import type { StreetIndexState } from "@/ports/sample";
 
 export type SampleSectionsProps = {
   selection: SampleSelectionSnapshot;
   streetView: StreetViewSnapshot | null;
   streetViewEnabled: boolean;
+  /** Stan indeksu adresów z chwili pobrania puli (Slice 3d) — decyduje, jak wyjaśnić kreskę. */
+  streetIndex?: StreetIndexState;
   selectedKey: string | null;
   onSelect(key: string | null): void;
   onToggleInSample(key: string, inSample: boolean): void;
@@ -38,6 +41,7 @@ export function SampleSections({
   selection,
   streetView,
   streetViewEnabled,
+  streetIndex,
   selectedKey,
   onSelect,
   onToggleInSample,
@@ -78,6 +82,7 @@ export function SampleSections({
           selection={selection}
           streetView={streetView}
           streetViewEnabled={streetViewEnabled}
+          streetIndex={streetIndex}
           selectedKey={selectedKey}
           onSelect={onSelect}
           onToggleInSample={onToggleInSample}
@@ -106,6 +111,7 @@ export function SampleSections({
               selection={selection}
               streetView={streetView}
               streetViewEnabled={streetViewEnabled}
+              streetIndex={streetIndex}
               selectedKey={selectedKey}
               onSelect={onSelect}
               onToggleInSample={onToggleInSample}

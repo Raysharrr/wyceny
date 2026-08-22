@@ -81,3 +81,45 @@ describe("_pool-cache", () => {
     expect(raw.byteLength).toBeLessThan(2 * 1024 * 1024);
   });
 });
+
+describe("_pool-cache — street index state survives the round trip (Slice 3d)", () => {
+  /**
+   * The whole four-state badge design rests on this: `reselectSample` re-selects from the
+   * CACHED pool without calling the worker, so if `streetIndex` were dropped by
+   * gzip+schema on the way in or out, every row after a radius change would claim "pool
+   * fetched without addresses" — a false statement about a pool that has them.
+   */
+  it("keeps streetIndex and the candidates' street/city through save+load", async () => {
+    const storage = memStorage();
+    const pool = buildPool();
+    const withStreets: CandidatePool = {
+      ...pool,
+      candidates: [
+        { ...pool.candidates[0], street: "ul. Heweliusza", streetNumber: "3", city: "Poznań" },
+        ...pool.candidates.slice(1),
+      ],
+      streetIndex: { status: "ready", cutoff: "2026-08-13", generatedAt: "2026-08-22T10:00:00Z" },
+    };
+
+    await savePool(storage, "v1", withStreets, { address: "Poznań, Heweliusza 3", area: 50 });
+    const loaded = await loadPool(storage, "v1");
+
+    expect(loaded?.pool.streetIndex).toEqual(withStreets.streetIndex);
+    expect(loaded?.pool.candidates[0]).toMatchObject({
+      street: "ul. Heweliusza",
+      streetNumber: "3",
+      city: "Poznań",
+    });
+  });
+
+  it("a pool cached BEFORE this slice still loads — old is not corrupt", async () => {
+    // `loadPool` re-validates and a corrupt cache must throw; an entry frozen before 3d
+    // simply has no such field, and rejecting it would break drafts mid-valuation.
+    const storage = memStorage();
+    await savePool(storage, "v2", buildPool(), { address: "Poznań, Heweliusza 3", area: 50 });
+    const loaded = await loadPool(storage, "v2");
+
+    expect(loaded).not.toBeNull();
+    expect(loaded?.pool.streetIndex).toBeUndefined();
+  });
+});

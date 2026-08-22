@@ -21,9 +21,12 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * every edit to the binary is a deliberate, reviewed event rather than a
  * silent drift. Final wave B7: Table 1's Obręb/Odległość [m] column widths
  * swapped (`scripts/patch-template-table1.mts`) — content-only change, no
- * placeholder/text delta.
+ * placeholder/text delta. Slice 3d: Table 1 back to the reference operat's layout
+ * (`Data transakcji | Miasto | Ulica | Pow. uż. | Cena transakcyjna`) via
+ * `scripts/patch-template-table1-ulica.mts` — {obreb}/{odleglosc} out of the loop,
+ * {miasto}/{ulica} back in.
  */
-const TEMPLATE_SHA256 = "146b7759610ee44085bb32f88ad1d12b8ee858a667a4533559e13ace15dca6be";
+const TEMPLATE_SHA256 = "abae1aa49f91478a28847f9faa0806aac019001d213e4f40c7225553ec88ba2a";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -123,10 +126,11 @@ const FORBIDDEN_LITERALS = [
   "W toku analizy odrzucono", // §11 rejected-transactions paragraph
   "odbywa się komunikacją miejską", // §8.1 — the source flat's own transit fact
   "mieści się w zbiorze", // §13 justification paragraph
-  // Slice 3 (Task 10, review PR #21): Table 1 prints the row's own obręb and
-  // distance, never the subject city — {miasto}/{ulica} must never come back.
-  "{miasto}",
-  "{ulica}",
+  // Slice 3 (Task 10) forbade {miasto}/{ulica} here, because back then they were filled
+  // from the SUBJECT's address (the bug Łukasz reported: every row said "Heweliusza 3").
+  // Slice 3d brings both back — fed from the transaction's own record in the GEOPOZ
+  // export — so the guard moved to where the danger actually is: the house number, which
+  // must never reach the document (render test in f12-document-sections).
 ];
 
 const REQUIRED_PLACEHOLDERS = [
@@ -159,11 +163,12 @@ const REQUIRED_PLACEHOLDERS = [
   "{/kredyt}",
   // Task 7: EGiB facts block (8.2) + MPZP variants (9). Slice 3 (Task 10)
   // reuses the tag name "obreb" a second time, INSIDE {#transakcje}, for
-  // each comparable's own obręb label — docxtemplater scopes tags per loop,
-  // so the two coexist: {obreb} at top level is the subject's §8.2 code,
-  // {obreb} inside the loop is transakcje[i].obreb. {odleglosc} is new here.
+  // each comparable's own obręb label. Slice 3d removed the loop's {obreb}/{odleglosc}
+  // (those columns live in step 3 now), so the §8.2 one must SURVIVE ALONE — that is
+  // exactly what this entry guards; Table 1's own columns are asserted at the bottom.
   "{obreb}",
-  "{odleglosc}",
+  "{miasto}",
+  "{ulica}",
   "{arkusz}",
   "{nr_dzialki}",
   "{pow_dzialki}",
@@ -350,5 +355,28 @@ describe("F-12: template integrity (operat-szablon.docx)", () => {
     expect(core, "source author leaks into generated documents").not.toContain("Audytor");
     expect(core, "source last-modified-by leaks into generated documents").not.toContain("Ksobiak");
     expect(core, "source lastPrinted timestamp must be scrubbed").not.toContain("cp:lastPrinted");
+  });
+});
+
+describe("F-12: Table 1 follows the reference operat's layout (Slice 3d)", () => {
+  it("has the reference headers, in order, and no obręb/odległość column left", () => {
+    // Aneta's operat: `Data transakcji | Miasto | Ulica | Pow. uż. [m2] | Cena
+    // transakcyjna [zł/m2]` (operat-koscielna s. 1000-1009). The row loop must match.
+    const text = templateText();
+    const table1 = text.slice(text.indexOf("Tabela 1"), text.indexOf("Tabela 2"));
+
+    expect(table1).toContain("Data transakcjiMiastoUlicaPow. uż. [m2]Cena transakcyjna [zł/m2]");
+    expect(table1).toContain("{#transakcje}{data_msc}{miasto}{ulica}{pow}{cena_jedn}{/transakcje}");
+    expect(table1).not.toContain("{obreb}");
+    expect(table1).not.toContain("{odleglosc}");
+  });
+
+  it("keeps the subject's own {obreb} in §8.2 — a different field, untouched by 3d", () => {
+    const text = templateText();
+    const afterTable1 = text.slice(text.indexOf("Tabela 2"));
+    expect(
+      afterTable1.includes("{obreb}") ||
+        text.slice(0, text.indexOf("Tabela 1")).includes("{obreb}"),
+    ).toBe(true);
   });
 });

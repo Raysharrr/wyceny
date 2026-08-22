@@ -16,7 +16,8 @@ import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 import { padObreb } from "@/domain/egib-id";
 import { obrebName } from "@/domain/obreb-name";
-import { rowBadges } from "./sample-badges";
+import { rowBadges, streetMissingReason, streetMissingTitle } from "./sample-badges";
+import type { StreetIndexState } from "@/ports/sample";
 
 export type SampleTableProps = {
   /** The rows THIS table renders — one section's worth (proposed or alternate), already resolved by the caller via `effectiveSelection`. */
@@ -32,6 +33,12 @@ export type SampleTableProps = {
   selection: SampleSelectionSnapshot;
   streetView: StreetViewSnapshot | null;
   streetViewEnabled: boolean;
+  /**
+   * State of the GEOPOZ street index when this pool was fetched (Slice 3d) — decides
+   * WHICH explanation a dash gets. Absent for pools cached before this slice; those rows
+   * can only be filled by a fresh fetch, never by a radius change.
+   */
+  streetIndex?: StreetIndexState;
   selectedKey: string | null;
   onSelect(key: string | null): void;
   /** The "w próbie" checkbox. proposed row unchecked (`inSample=false`) = a request to remove it from the sample; alternate row checked (`inSample=true`) = a request to add it. */
@@ -42,6 +49,28 @@ const pln = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFr
 const m2 = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** Stable default for the optional `includedKeys` prop — one shared empty `Set`, not a fresh one per render. */
 const NO_INCLUDED_KEYS: ReadonlySet<string> = new Set();
+
+/**
+ * Street with its house number ("ul. Kościelna 33A"). The number stays in the app — it
+ * helps the appraiser find the transaction on the map and in the panorama — and never
+ * reaches the operat (F-12), which prints the bare name like the reference operat does.
+ * A dash carries the reason as a `title`, because the four reasons mean four different
+ * things to the appraiser.
+ */
+function StreetCell({ c, streetIndex }: { c: Candidate; streetIndex?: StreetIndexState }) {
+  const reason = streetMissingReason(c, streetIndex);
+  if (reason) {
+    return (
+      <span
+        className="text-muted-foreground"
+        title={streetMissingTitle(reason, streetIndex?.cutoff ?? null)}
+      >
+        —
+      </span>
+    );
+  }
+  return <span>{[c.street, c.streetNumber].filter(Boolean).join(" ")}</span>;
+}
 
 function Thumb({
   c,
@@ -106,6 +135,7 @@ export function SampleTable({
   selection,
   streetView,
   streetViewEnabled,
+  streetIndex,
   selectedKey,
   onSelect,
   onToggleInSample,
@@ -195,6 +225,9 @@ export function SampleTable({
         </TableCell>
         <TableCell className="num">{c.date.slice(0, 7) || "—"}</TableCell>
         <TableCell>
+          <StreetCell c={c} streetIndex={streetIndex} />
+        </TableCell>
+        <TableCell>
           {c.egib ? (
             <>
               <span className="num">{padObreb(c.egib.obreb)}</span>{" "}
@@ -230,6 +263,7 @@ export function SampleTable({
           <TableHead aria-label="przejrzane">✓</TableHead>
           <TableHead>Fasada</TableHead>
           <TableHead>Data</TableHead>
+          <TableHead>Ulica</TableHead>
           <TableHead>Obręb</TableHead>
           <TableHead className="text-right">Odległość</TableHead>
           <TableHead className="text-right">Pow. (m²)</TableHead>

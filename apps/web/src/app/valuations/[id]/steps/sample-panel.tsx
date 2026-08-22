@@ -13,11 +13,15 @@ import {
   type ManualRejectionReason,
 } from "@/domain/sample-manual";
 import { obrebLabel } from "@/domain/obreb-name";
+import type { StreetIndexState } from "@/ports/sample";
+import { streetMissingReason, streetMissingTitle } from "./sample-badges";
 import { candidateKey, DEFAULTS, type Candidate } from "@/domain/sample-selection";
 import type { StreetViewEntry } from "@/domain/street-view-snapshot";
 import { kiegWmsUrl, mapEmbedUrl, ortoWmsUrl, streetViewEmbedUrl } from "./embed-urls";
 
 export type SamplePanelProps = {
+  /** Stan indeksu adresów z chwili pobrania puli (Slice 3d) — decyduje, jak wyjaśnić kreskę. */
+  streetIndex?: StreetIndexState;
   candidate: Candidate;
   index: number;
   total: number;
@@ -110,6 +114,7 @@ export function SamplePanel({
   entry,
   embedKey,
   streetViewEnabled,
+  streetIndex,
   status,
   initialRejecting = false,
   rejection,
@@ -385,6 +390,18 @@ export function SamplePanel({
 
           <dl className="text-sm">
             <Field label="Data transakcji">{candidate.date || "—"}</Field>
+            <Field label="Adres">
+              {(() => {
+                // Adres z eksportu GEOPOZ (Slice 3d) — z numerem, bo rzeczoznawca
+                // porównuje go tu z panoramą obok; do operatu idzie sama nazwa (F-12).
+                const reason = streetMissingReason(candidate, streetIndex);
+                return reason ? (
+                  <span title={streetMissingTitle(reason, streetIndex?.cutoff ?? null)}>—</span>
+                ) : (
+                  [candidate.street, candidate.streetNumber].filter(Boolean).join(" ")
+                );
+              })()}
+            </Field>
             <Field label="Cena">{pln.format(candidate.priceTotal)} zł</Field>
             <Field label="Cena za m²">{pln.format(candidate.pricePerM2)} zł/m²</Field>
             <Field label="Powierzchnia">{m2.format(candidate.area)} m²</Field>

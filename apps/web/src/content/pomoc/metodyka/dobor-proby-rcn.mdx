@@ -79,6 +79,18 @@ Gdy pula po higienie, paśmie i promieniu jest mniejsza niż {DEFAULTS.proposedN
 
 Wszystko powyżej opisuje wyłącznie **automatyczny** dobór — ranking, {DEFAULTS.proposedN} i {DEFAULTS.maxPerBuilding} na budynek. W [kroku 3](/pomoc/krok-3-proba) rzeczoznawca może dodać do próby dowolną alternatywę ręcznie (checkbox „W próbie” albo przycisk „Dodaj do próby” w panelu bocznym) — taka propozycja wchodzi do próby OBOK tego, co dobrał ranking, z pominięciem obu limitów naraz, a sam ranking i kolejność pozostałych propozycji się przy tym nie zmieniają. Dlatego próba, którą widać w kroku 3, może liczyć więcej niż {DEFAULTS.proposedN} transakcji — bramka zatwierdzenia liczy wtedy po prostu więcej wierszy, wciąż względem tego samego progu {REQUIRED_SAMPLE_SIZE}.
 
+## Skąd nazwy ulic
+
+Usługa sieciowa GUGiK, z której pobieramy transakcje, **nie wypełnia adresu dla Poznania** — dlatego adres bierzemy z drugiego źródła: **miesięcznego eksportu Rejestru Cen Nieruchomości publikowanego przez GEOPOZ** na stronie BIP. To ten sam rejestr, tylko w pełniejszej wersji. Program pobiera go raz na miesiąc i łączy z transakcjami po identyfikatorze lokalu z ewidencji gruntów — tym samym, którym rozróżnia poszczególne mieszkania w jednym akcie notarialnym.
+
+W granicach Poznania adres ma **prawie każda transakcja** (w pomiarze z 22 sierpnia 2026: 99,7–99,9 % puli). Kreska zamiast nazwy pojawia się w trzech sytuacjach, a tabela kroku 3 mówi w dymku, o którą chodzi:
+
+- **transakcja spoza Poznania** — eksport obejmuje samo miasto, więc gminy ościenne nie mają w nim adresu. To stan trwały, nie usterka; takie transakcje pojawiają się dopiero przy większym promieniu (w pomiarze najbliższa leżała 2,4 km od przedmiotu, przy domyślnych 500 m nie było ich wcale). Miasto w takim wierszu i tak jest podane — jako kod gminy;
+- **adresy się wczytują** — program buduje indeks adresów po starcie albo po publikacji nowego eksportu; wystarczy pobrać próbę z rejestru ponownie za chwilę;
+- **transakcja nowsza niż eksport** — rzadkość, bo usługa sieciowa GUGiK jest zwykle opóźniona bardziej niż miesięczny eksport.
+
+Jeszcze jedna sytuacja, tym razem bez kreski: **budynek narożny ma dwa prawidłowe adresy** (2,59 % budynków w Poznaniu ma lokale przypisane do różnych ulic — na przykład Grunwaldzka i Matejki albo Grobla i Mostowa). Program pokazuje ten, który rejestr przypisał do konkretnego lokalu, więc czasem będzie to nazwa z drugiej strony narożnika. Obie są prawdziwe — to nie jest błąd do zgłoszenia.
+
 ## Skąd zdjęcia budynków
 
 Miniaturka i podgląd w panelu kroku 3 nie są ręcznym uzupełnieniem — powstają z automatycznego wzbogacenia próby i alternatyw o widok budynku (`apps/web/src/app/actions/_street-view-enrich.ts`, `apps/web/src/adapters/street-view-google.ts`):

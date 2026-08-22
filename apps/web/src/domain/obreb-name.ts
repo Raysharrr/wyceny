@@ -12,6 +12,17 @@ function isObrebCode(obreb: string): boolean {
   return obreb.length > 0 && /^\d+$/.test(obreb);
 }
 
+/**
+ * City for Table 1 when the GEOPOZ export has no address for the transaction (Slice 3d).
+ * Derived from TERYT, which every parsed candidate carries, so the operat never loses the
+ * location of a comparable: Poznań for 3064*, "gm. <TERYT>" for a neighbouring gmina the
+ * city export cannot cover. `null` only when the identifier did not parse at all.
+ */
+export function cityLabel(egib: { teryt: string } | null | undefined): string | null {
+  if (!egib?.teryt) return null;
+  return egib.teryt.startsWith(POZNAN_TERYT_PREFIX) ? "Poznań" : gminaOf(egib.teryt);
+}
+
 /** "gm. <TERYT prefix>" — the gmina TERYT stands in for a name where no per-gmina obręb map exists. */
 function gminaOf(teryt: string): string {
   return `gm. ${teryt.split("_")[0]}`;

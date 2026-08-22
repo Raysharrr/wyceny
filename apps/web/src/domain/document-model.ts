@@ -1,7 +1,8 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
-import { obrebLabel } from "./obreb-name";
+import { cityLabel } from "./obreb-name";
+import { DASH, operatStreet } from "./street-name";
 import { candidateKey } from "./sample-selection";
 
 /**
@@ -51,7 +52,7 @@ export const LEVEL_LABEL: Record<FeatureRating, string> = {
 const LEVEL_ORDER: FeatureRating[] = ["lepsza", "przecietna", "gorsza"];
 
 const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
-const DASH = "—";
+
 const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 
 /** `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych na podstawie: …"). */
@@ -201,10 +202,18 @@ function polishFeatureList(names: string[]): string {
   return `${names.slice(0, -1).join(", ")} oraz ${names[names.length - 1]}`;
 }
 
+/**
+ * One row of Table 1 — the layout of the reference operat (decision 2026-08-22):
+ * `Data transakcji | Miasto | Ulica | Pow. uż. | Cena transakcyjna`. Obręb and distance
+ * moved back to step 3 only; Aneta's operat does not carry them.
+ *
+ * `ulica` is the BARE NAME, not an address to be trimmed in the template — the house
+ * number has no field here, so it cannot leak into the document by accident (F-12).
+ */
 export type TransactionRow = {
   data_msc: string;
-  obreb: string;
-  odleglosc: string;
+  miasto: string;
+  ulica: string;
   pow: string;
   cena_jedn: string;
 };
@@ -565,15 +574,24 @@ export function buildDocumentModel(
             : c.transactionId
               ? byFirstTransactionId.get(c.transactionId)
               : undefined;
+        // A row matched only by `transactionId` (no `lokalId`) comes from
+        // `byFirstTransactionId` — SOME lokal of that act, not necessarily this one. For
+        // obręb that was nearly invisible; a street name in an operat is a factual claim
+        // about a comparable, so an unmatched row prints a dash rather than a guess
+        // (Heweliusza 3/43 is exactly this shape: 16 lokale under one act).
+        const matchedByLokal = Boolean(c.transactionId && c.lokalId && candidate);
         return {
           data_msc: maskMonth(c.date),
-          // Slice 3: the row's own obręb and distance (review PR #21: the
-          // subject's city used to be printed for every row — false for
-          // neighbouring gminas). Manual rows and rows whose candidate
-          // fell out of the persisted snapshot (snapshot v2, edits) print
-          // dashes rather than guessing.
-          obreb: candidate ? obrebLabel(candidate.egib) : DASH,
-          odleglosc: candidate ? formatNumber(Math.round(candidate.distanceM), 0) : DASH,
+          // Slice 3d: city and street from the transaction's OWN record (the GEOPOZ
+          // export), never from the subject — the subject's city in every row was the
+          // bug reported from staging. Manual rows, rows outside Poznań and rows whose
+          // candidate fell out of the persisted snapshot print dashes.
+          // Miasto z rekordu transakcji; gdy eksport go nie ma (transakcja spoza Poznania
+          // albo lokal bez adresu), bierzemy je z TERYT-u — decyzja użytkownika
+          // 2026-08-22: operat nie może stracić informacji o położeniu porównania,
+          // którą miał przed 3d w kolumnie „Obręb”.
+          miasto: matchedByLokal ? (candidate!.city ?? cityLabel(candidate!.egib) ?? DASH) : DASH,
+          ulica: matchedByLokal ? operatStreet(candidate!.street) : DASH,
           pow: c.area != null ? formatNumber(c.area, 2) : DASH,
           cena_jedn: formatPln(c.pricePerM2),
         };

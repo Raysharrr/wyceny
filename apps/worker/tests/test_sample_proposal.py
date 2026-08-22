@@ -59,6 +59,11 @@ def test_point_from_request_skips_geocoding_and_returns_pool_never_wr(wfs_ok, mo
         "function",
         "seller",
         "pos",
+        # Slice 3d — adres z miesięcznego eksportu GEOPOZ; `None`, gdy indeks nie jest
+        # gotowy albo transakcja leży poza Poznaniem.
+        "street",
+        "streetNumber",
+        "city",
     }
     assert "versionId" not in c
     assert body["counts"] == {"fetched": 3, "deduped": 0, "noPos": 0}

@@ -1,5 +1,7 @@
 import { sameness, type Candidate, type Flag } from "@/domain/sample-selection";
 import type { SubjectEgib } from "@/domain/egib-id";
+import { POZNAN_TERYT_PREFIX } from "@/domain/obreb-name";
+import type { StreetIndexState } from "@/ports/sample";
 
 export type BadgeTone = "outline" | "secondary" | "destructive";
 export type RowBadge = { key: string; label: string; tone: BadgeTone };
@@ -40,4 +42,52 @@ export function rowBadges(
   }
   for (const f of flags) out.push(FLAG_BADGE[f]);
   return out;
+}
+
+// --------------------------------------------------------------- Ulica (Slice 3d)
+
+/** Why a row shows a dash instead of a street — four states, four different things to say. */
+export type StreetMissingReason =
+  "outside_city" | "index_building" | "pool_without_index" | "not_in_export";
+
+/**
+ * The four messages, side by side on purpose (team-lead, 2026-08-22): one shared wording
+ * would have to be so vague it would say none of these things. `outside_city` is a
+ * permanent boundary of the source, `index_building` is transient and asks for an action,
+ * `pool_without_index` needs a fresh fetch (a radius change re-selects from the cached
+ * pool WITHOUT calling the worker, so those rows would never fill in on their own), and
+ * `not_in_export` is a transaction newer than the export — nothing for the user to do.
+ */
+export function streetMissingTitle(reason: StreetMissingReason, cutoff: string | null): string {
+  switch (reason) {
+    case "outside_city":
+      return "Transakcja spoza Poznania — miejski eksport adresów jej nie obejmuje.";
+    case "index_building":
+      return "Adresy się wczytują — pobierz próbę z rejestru ponownie za chwilę.";
+    case "pool_without_index":
+      return "Ta próba została pobrana bez adresów — pobierz próbę z rejestru ponownie, żeby je uzupełnić.";
+    case "not_in_export":
+      return cutoff
+        ? `Adres jeszcze nieopublikowany (eksport z ${cutoff.slice(0, 7)}).`
+        : "Brak adresu tej transakcji w rejestrze.";
+  }
+}
+
+/**
+ * `null` when the row HAS a street. Order matters: first the states that are ours to
+ * explain (no index at all, still building), then the boundary of the source, and only
+ * then "the export simply doesn't have it" — otherwise a pool fetched before the index
+ * existed would be labelled with a claim about the export that we cannot back.
+ */
+export function streetMissingReason(
+  c: Candidate,
+  streetIndex: StreetIndexState | undefined,
+): StreetMissingReason | null {
+  if (c.street) return null;
+  if (!streetIndex) return "pool_without_index";
+  if (streetIndex.status !== "ready") return "index_building";
+  // An unparseable lokalId leaves `egib` null — that is "we don't know", not "outside
+  // Poznań", and must not claim a boundary we haven't established.
+  if (c.egib && !c.egib.teryt.startsWith(POZNAN_TERYT_PREFIX)) return "outside_city";
+  return "not_in_export";
 }

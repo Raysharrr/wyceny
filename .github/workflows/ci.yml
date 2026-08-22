@@ -177,6 +177,10 @@ jobs:
       NEXT_PUBLIC_ADDRESS_SUGGEST: "off"
       # Slice 3: keeps Street View thumbnails/iframe off so the smoke stays network-free and key-free.
       NEXT_PUBLIC_STREET_VIEW: "off"
+      # Slice 3d: the worker builds its GEOPOZ street index on startup, which means 13 MB
+      # from BIP. Off keeps this job network-free — the smoke enters step 3 with manual
+      # transactions and never fetches a pool, so it needs no addresses.
+      STREET_INDEX: "off"
       # Same rationale, for the KW upload/extract flow: keeps the upload
       # buttons hidden so the manual-entry smoke path stays network-free
       # (see kw-section.tsx's `uploadEnabled` guard).
