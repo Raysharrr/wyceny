@@ -1,6 +1,7 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
+import { cityLabel } from "./obreb-name";
 import { operatStreet } from "./street-name";
 import { candidateKey } from "./sample-selection";
 
@@ -585,7 +586,11 @@ export function buildDocumentModel(
           // export), never from the subject — the subject's city in every row was the
           // bug reported from staging. Manual rows, rows outside Poznań and rows whose
           // candidate fell out of the persisted snapshot print dashes.
-          miasto: matchedByLokal ? (candidate!.city ?? DASH) : DASH,
+          // Miasto z rekordu transakcji; gdy eksport go nie ma (transakcja spoza Poznania
+          // albo lokal bez adresu), bierzemy je z TERYT-u — decyzja użytkownika
+          // 2026-08-22: operat nie może stracić informacji o położeniu porównania,
+          // którą miał przed 3d w kolumnie „Obręb”.
+          miasto: matchedByLokal ? (candidate!.city ?? cityLabel(candidate!.egib) ?? DASH) : DASH,
           ulica: matchedByLokal ? operatStreet(candidate!.street) : DASH,
           pow: c.area != null ? formatNumber(c.area, 2) : DASH,
           cena_jedn: formatPln(c.pricePerM2),

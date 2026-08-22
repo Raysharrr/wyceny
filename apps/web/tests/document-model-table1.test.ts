@@ -75,8 +75,8 @@ describe("Tabela 1 — Data | Miasto | Ulica (Slice 3d, układ operatu wzorcoweg
     const m = buildDocumentModel(input);
     expect(m.transakcje.map((r) => [r.miasto, r.ulica])).toEqual([
       ["Poznań", "Kościelna"], // „ul.” obcięte, numer NIE trafia do dokumentu (F-12)
-      ["—", "—"],
-      ["—", "—"],
+      ["gm. 302104", "—"], // spoza Poznania: miasto z TERYT-u, ulicy eksport nie zna
+      ["—", "—"], // wiersz ręczny: brak kandydatki, więc nic nie wiemy
     ]);
     expect(JSON.stringify(m.transakcje)).not.toContain("T1");
     expect(JSON.stringify(m.transakcje)).not.toContain("33A");
@@ -241,5 +241,59 @@ describe("Tabela 1 — Data | Miasto | Ulica (Slice 3d, układ operatu wzorcoweg
     };
     const m = buildDocumentModel(input);
     expect(m.transakcje.map((r) => [r.miasto, r.ulica])).toEqual([["Poznań", "Kościelna"]]);
+  });
+});
+
+describe("Tabela 1 — miasto, gdy eksport nie ma adresu (decyzja użytkownika 2026-08-22)", () => {
+  const rcnRow = (lokalId: string) =>
+    [
+      {
+        date: "2026-05-10",
+        area: 50,
+        pricePerM2: 12000,
+        source: "rcn",
+        transactionId: "T1",
+        lokalId,
+      },
+    ] as never;
+
+  function render(candidate: Candidate) {
+    const input = syntheticDocumentInput();
+    input.address = "ul. Heweliusza 3, Poznań";
+    input.inputs.comparables = rcnRow(candidate.lokalId);
+    input.inputs.sampleSelection = {
+      version: 3,
+      proposed: [candidate],
+      alternates: [],
+      flags: {},
+      rejectedCounts: {},
+      radiusUsedM: 3000,
+      radiusWalk: [],
+      counts: { pool: 0, inRadius: 0, afterHygiene: 0, afterBand: 0, proposed: 1 },
+      params: { subjectArea: 50, todayMonth: "2026-08" },
+    };
+    return buildDocumentModel(input).transakcje[0];
+  }
+
+  it("transakcja spoza Poznania: gmina z TERYT-u w „Mieście”, kreska w „Ulicy”", () => {
+    // Przed 3d taki wiersz miał „0006 · gm. 302104” w kolumnie Obręb — operat nie może
+    // stracić informacji o położeniu porównania tylko dlatego, że miejski eksport
+    // nie obejmuje gmin ościennych.
+    expect(render(cand("T1", "302104_2", "0006", 2875))).toMatchObject({
+      miasto: "gm. 302104",
+      ulica: "—",
+    });
+  });
+
+  it("lokal w Poznaniu bez adresu w eksporcie: „Poznań” z TERYT-u, kreska w „Ulicy”", () => {
+    expect(render(cand("T1", "306401_1", "0039", 120))).toMatchObject({
+      miasto: "Poznań",
+      ulica: "—",
+    });
+  });
+
+  it("nieparsowalny identyfikator: kreska w obu — nigdy zgadywanie", () => {
+    const broken = { ...cand("T1", "306401_1", "0039", 120), egib: null };
+    expect(render(broken)).toMatchObject({ miasto: "—", ulica: "—" });
   });
 });
