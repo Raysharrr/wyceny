@@ -393,3 +393,74 @@ describe("F-12: rendered operat — empty rating scale (honest silence, Task 9)"
     expect(text).toContain("Wagi cech rynkowych przyjęto na podstawie analizy rynku lokalnego");
   });
 });
+
+describe("F-12: the house number never reaches the document (Slice 3d)", () => {
+  /** One RCN comparable that HAS a number — so the assertion below can actually fail. */
+  function renderWithStreet(): string {
+    const input = syntheticDocumentInput();
+    input.inputs.comparables = [
+      {
+        date: "2026-05-10",
+        area: 50,
+        pricePerM2: 12000,
+        source: "rcn",
+        transactionId: "T1",
+        lokalId: "306401_1.0021.AR_10.27.2_BUD.5_LOK",
+        status: "confirmed",
+      },
+    ] as typeof input.inputs.comparables;
+    input.inputs.sampleSelection = {
+      version: 3,
+      proposed: [
+        {
+          transactionId: "T1",
+          date: "2026-05-10",
+          area: 50,
+          pricePerM2: 12000,
+          priceTotal: 600000,
+          egib: {
+            teryt: "306401_1",
+            obreb: "0021",
+            arkusz: "10",
+            dzialka: "27",
+            budynek: "2",
+            lokal: "5",
+          },
+          lokalId: "306401_1.0021.AR_10.27.2_BUD.5_LOK",
+          distanceM: 123,
+          floor: 3,
+          rooms: 2,
+          market: "wtorny",
+          share: "1/1",
+          transType: "wolnyRynek",
+          function: "mieszkalna",
+          seller: null,
+          pos: null,
+          street: "ul. Kościelna",
+          streetNumber: "33A",
+          city: "Poznań",
+        },
+      ],
+      alternates: [],
+      flags: {},
+      rejectedCounts: {},
+      radiusUsedM: 500,
+      radiusWalk: [],
+      counts: { pool: 1, inRadius: 1, afterHygiene: 1, afterBand: 1, proposed: 1 },
+      params: { subjectArea: 50, todayMonth: "2026-08" },
+    };
+    const docx = renderOperatDocx(buildDocumentModel(input));
+    return new PizZip(docx).files["word/document.xml"].asText().replace(/<[^>]+>/g, "");
+  }
+
+  it("prints the street name and the city, and NOT the house number", () => {
+    // Aneta's operat does the same: the street identifies the area, the number would
+    // identify the flat. `TransactionRow` has no field for it at all — this test proves
+    // the wiring keeps it that way end to end.
+    const text = renderWithStreet();
+    expect(text).toContain("Kościelna");
+    expect(text).toContain("Poznań");
+    expect(text).not.toContain("33A");
+    expect(text).not.toContain("ul. Kościelna");
+  });
+});
