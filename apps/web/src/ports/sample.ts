@@ -15,6 +15,20 @@ export type { Candidate };
 
 export type PoolPoint = { x: number; y: number; source: "subject" | "uug" | "nominatim" };
 
+/**
+ * State of the worker's GEOPOZ street index when this pool was built (Slice 3d).
+ * Travels WITH the pool because `_pool-cache.ts` persists it and `reselectSample`
+ * re-selects from that cache without calling the worker — without this the UI could not
+ * tell "no address for this transaction" from "pool fetched before the index existed",
+ * and would label the second case with the (false) "not yet published" wording.
+ * Absent on pools cached before this slice.
+ */
+export type StreetIndexState = {
+  status: "ready" | "building" | "unavailable";
+  cutoff: string | null;
+  generatedAt: string | null;
+};
+
 export type CandidatePool = {
   point: PoolPoint;
   maxRadiusM: number;
@@ -23,6 +37,7 @@ export type CandidatePool = {
   fetchedAt: string;
   source: "rcn-wfs-gugik";
   query: { bbox: number[]; count: number; sort: string; pages: number; truncated: boolean };
+  streetIndex?: StreetIndexState;
 };
 
 export type SamplePoolRequest = {

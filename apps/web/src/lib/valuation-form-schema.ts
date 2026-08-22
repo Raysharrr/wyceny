@@ -72,6 +72,14 @@ export const poolQuerySchema = z.object({
  * this module) extends this with `candidates` rather than redefining the
  * shared fields, so the two stay in lockstep.
  */
+/** Mirrors `StreetIndexState` from `@/ports/sample` (Slice 3d). Optional: pools cached
+ *  before this slice have no such field and must keep parsing — old is not corrupt. */
+export const streetIndexStateSchema = z.object({
+  status: z.enum(["ready", "building", "unavailable"]),
+  cutoff: z.string().nullable(),
+  generatedAt: z.string().nullable(),
+});
+
 export const sampleMetaSchema = z.object({
   point: poolPointSchema,
   maxRadiusM: z.number(),
@@ -79,6 +87,7 @@ export const sampleMetaSchema = z.object({
   fetchedAt: z.string(),
   source: z.literal("rcn-wfs-gugik"),
   query: poolQuerySchema,
+  streetIndex: streetIndexStateSchema.optional(),
 });
 
 /** Mirrors `Egib` from `@/domain/egib-id` — parsed EGiB identity on an RCN candidate transaction. */
@@ -114,6 +123,11 @@ export const candidateSchema = z.object({
   function: z.string(),
   seller: z.string().nullable(),
   pos: z.object({ x: z.number(), y: z.number() }).nullable(),
+  // Slice 3d — adres z eksportu GEOPOZ. `.optional()`, bo kandydatki zamrożone przed
+  // tym slice'em (migawki wycen, cache pul, snapshoty F-14) tych pól nie mają.
+  street: z.string().nullable().optional(),
+  streetNumber: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
 });
 
 /**

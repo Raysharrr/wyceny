@@ -111,3 +111,60 @@ describe("PortSampleProposal contract (v3 CandidatePool)", () => {
     ).rejects.toThrow("worker /sample-proposal responded 500 Internal Server Error");
   });
 });
+
+describe("Slice 3d — street index fields on the pool contract", () => {
+  const withStreets = {
+    ...pool,
+    candidates: [{ ...candidate, street: "ul. Heweliusza", streetNumber: "3", city: "Poznań" }],
+    streetIndex: { status: "ready", cutoff: "2026-08-13", generatedAt: "2026-08-22T10:00:00Z" },
+  };
+
+  it("accepts a pool carrying street, number, city and the index state", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(withStreets), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await httpSampleProposal("http://worker").fetchPool({
+      address: "Poznań, Heweliusza 3",
+      area: 50,
+    });
+
+    expect(result.candidates[0].street).toBe("ul. Heweliusza");
+    expect(result.candidates[0].streetNumber).toBe("3");
+    expect(result.candidates[0].city).toBe("Poznań");
+    expect(result.streetIndex).toEqual({
+      status: "ready",
+      cutoff: "2026-08-13",
+      generatedAt: "2026-08-22T10:00:00Z",
+    });
+  });
+
+  it("still accepts a pool WITHOUT them — a pre-3d cache entry must keep parsing", async () => {
+    // `_pool-cache.ts` re-validates what it reads back from storage, and a corrupt cache
+    // is meant to throw. A pool frozen before this slice is not corrupt — it is old, and
+    // rejecting it would break every draft mid-valuation.
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(pool), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await httpSampleProposal("http://worker").fetchPool({
+      address: "Poznań, Heweliusza 3",
+      area: 50,
+    });
+
+    expect(result.candidates[0].street).toBeUndefined();
+    expect(result.streetIndex).toBeUndefined();
+  });
+
+  it("rejects an unknown index status — a shape drift must fail loudly", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ...withStreets, streetIndex: { status: "dunno" } }), {
+          status: 200,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      httpSampleProposal("http://worker").fetchPool({ address: "x", area: 50 }),
+    ).rejects.toThrow();
+  });
+});

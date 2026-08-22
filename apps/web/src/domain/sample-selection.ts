@@ -62,6 +62,19 @@ export type Candidate = {
   seller: string | null;
   /** gml:pos normalised to {x: easting, y: northing}. */
   pos: { x: number; y: number } | null;
+  /**
+   * Street of the transaction, from the monthly GEOPOZ export (Slice 3d) — WITH its
+   * prefix, exactly as the register writes it ("ul. Kościelna", "os. Zwycięstwa").
+   * `null`/absent when the transaction lies outside Poznań (the city export cannot
+   * cover it), when the export has no address for that lokal, or when the pool was
+   * fetched before the index was ready — `CandidatePool.streetIndex` tells them apart.
+   * Absent (not null) on pools frozen before this slice.
+   */
+  street?: string | null;
+  /** House number — step 3 shows it, the operat never does (F-12). */
+  streetNumber?: string | null;
+  /** City from the transaction's own record, NOT from the subject (the bug Łukasz hit). */
+  city?: string | null;
 };
 
 export type ScoreWeights = {
