@@ -56,6 +56,11 @@ export type ProseSampleFacts = {
   obreby?: string[];
   /** Radius the selection settled on, metres. Absent on pre-Slice-3 drafts (no snapshot). */
   promien_m?: number;
+  /**
+   * How many transactions the register was searched through — as a WORD
+   * ({@link approximateCount}), never a count. Absent when nothing was pooled.
+   */
+  przebadano?: string;
   pow_min_m2?: string;
   pow_max_m2?: string;
   cena_min_zl_m2: string;
@@ -177,6 +182,33 @@ function proseKcs(inputs: KcsInput): KcsResult | null {
   return usable ? computeKcs(inputs) : null;
 }
 
+/**
+ * The size of the searched pool as an operat writes it — "kilkaset", not "137".
+ * Aneta: "niech nie wpisuje konkretnej liczby tylko kilkadziesiąt lub kilkaset
+ * zależy ile ich ściągnie".
+ *
+ * Computed HERE rather than asked of the model, for two reasons. A prompt rule
+ * is a request; this is a function. And the exact count must not enter the
+ * facts at all: `_allowed_numbers` (worker) licenses every literal it finds
+ * ANYWHERE in the shared dict, so shipping 137 would authorise "137 m2" as the
+ * subject's area in any of the six sections — the very widening the guard's
+ * own post-mortem warns against.
+ *
+ * The exact number is not lost: it stays in the selection snapshot and in
+ * `pnpm trace`. The operat is a different layer.
+ *
+ * Every word here takes the genitive plural ("przebadano kilkaset transakcji"),
+ * so the sentence reads correctly whichever bucket applies.
+ */
+export function approximateCount(count: number): string | null {
+  if (count < 1) return null;
+  if (count < 10) return "kilka";
+  if (count < 20) return "kilkanaście";
+  if (count < 100) return "kilkadziesiąt";
+  if (count < 1000) return "kilkaset";
+  return "ponad tysiąc";
+}
+
 /** Relative distance from the sample mean below which the result reads as "average". */
 const NEAR_AVERAGE = 0.01;
 
@@ -252,6 +284,8 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
       ? [...new Set(sampleObreby)].sort((a, b) => a.localeCompare(b, "pl"))
       : [];
 
+  const przebadano = sel ? approximateCount(sel.counts.pool) : null;
+
   const proba: ProseSampleFacts | null = kcs
     ? {
         liczba_transakcji: inputs.comparables.length,
@@ -260,6 +294,7 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
         // radius would reach the prompt as "1000.5" — a form no Polish text
         // writes. The slider only ever produces whole metres anyway.
         ...(sel ? { promien_m: Math.round(sel.radiusUsedM) } : {}),
+        ...(przebadano ? { przebadano } : {}),
         ...(ordered.length > 0
           ? {
               zakres_dat: `${ordered[0].label} ${RANGE_SEPARATOR} ${ordered[ordered.length - 1].label}`,

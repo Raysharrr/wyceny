@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approximateCount,
   attemptedProseSections,
   buildProseFacts,
   buildProseTransactions,
@@ -746,6 +747,20 @@ describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", ()
   const factsWith = (sel: SampleSelectionSnapshot) =>
     buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, sampleSelection: sel } });
 
+  it("liczbę przebadanych transakcji podaje słownie, nie co do sztuki", () => {
+    const sel = selection([cand("0021", "tx-a")]);
+
+    expect(factsWith(sel).proba?.przebadano).toBe(approximateCount(sel.counts.pool));
+    expect(factsWith(sel).proba?.przebadano).toBe("kilkaset");
+  });
+
+  it("pomija `przebadano`, gdy pula jest pusta — stary snapshot bez licznika", () => {
+    const sel = selection([cand("0021", "tx-a")]);
+    sel.counts = { ...sel.counts, pool: 0 };
+
+    expect("przebadano" in factsWith(sel).proba!).toBe(false);
+  });
+
   it("niesie obręby próby i użyty promień", () => {
     // 0020 Golęcin, 0021 Jeżyce — dwa razy ten sam obręb ma dać jedną nazwę.
     const sel = selection([cand("0021", "tx-a"), cand("0020", "tx-b"), cand("0021", "tx-c")]);
@@ -797,5 +812,33 @@ describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", ()
     const sel = selection([cand("0021", "tx-a"), { ...cand("0021", "tx-b"), egib: null }]);
 
     expect("obreby" in factsWith(sel).proba!).toBe(false);
+  });
+});
+
+/**
+ * Slice 5, Aneta: „niech nie wpisuje konkretnej liczby tylko kilkadziesiąt lub
+ * kilkaset zależy ile ich ściągnie". Słowo liczone TUTAJ, nie zlecane modelowi:
+ * reguła w prompcie byłaby prośbą, a to jest funkcja. Fakt zostaje przy tym
+ * stringiem — dokładna liczba w faktach licencjonowałaby tę liczbę jako metraż
+ * albo cenę w dowolnej sekcji (`_allowed_numbers` chodzi po całym słowniku).
+ */
+describe("approximateCount — skala słowna przebadanych transakcji", () => {
+  it.each([
+    [1, "kilka"],
+    [9, "kilka"],
+    [10, "kilkanaście"],
+    [19, "kilkanaście"],
+    [20, "kilkadziesiąt"],
+    [99, "kilkadziesiąt"],
+    [100, "kilkaset"],
+    [999, "kilkaset"],
+    [1000, "ponad tysiąc"],
+    [4312, "ponad tysiąc"],
+  ])("%i → %s", (count, expected) => {
+    expect(approximateCount(count)).toBe(expected);
+  });
+
+  it("zero nie ma słowa — nie było czego przebadać", () => {
+    expect(approximateCount(0)).toBeNull();
   });
 });

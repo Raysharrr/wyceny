@@ -34,6 +34,7 @@ FACTS_RYNEK = {
         "cena_max_zl_m2": "12 480,00",
         "obreby": ["Zarzecze", "Podgórze"],
         "promien_m": 1000,
+        "przebadano": "kilkaset",
     },
 }
 
@@ -55,6 +56,23 @@ def test_prompt_analiza_rynku_nie_kaze_orzekac_o_trendzie():
 def test_fakty_proby_nie_niosa_trend_cen():
     prompt = build_prompt("analiza_rynku", FACTS_RYNEK)
     assert "trend_cen" not in prompt
+
+
+def test_liczba_przebadanych_transakcji_jest_slowem_nie_sztuka():
+    """Aneta: „niech nie wpisuje konkretnej liczby tylko kilkadziesiąt lub
+    kilkaset zależy ile ich ściągnie". Słowo liczy web (`approximateCount`),
+    prompt ma je tylko przepisać — i pokazać wzorzec w obu few-shotach."""
+    text = (PROMPTS_DIR / "analiza_rynku.md").read_text(encoding="utf-8")
+    assert "kilkadziesiąt" in text and "kilkaset" in text
+
+    _, examples = parse_section_file(PROMPTS_DIR / "analiza_rynku.md")
+    for facts, answer in examples:
+        przebadano = facts["proba"]["przebadano"]
+        assert isinstance(przebadano, str), "dokładna liczba rozszerzyłaby straż liczb"
+        assert przebadano in answer
+
+        # Liczba przyjętych do porównań zostaje dokładna — trafia do Tabeli 1.
+        assert str(facts["proba"]["liczba_transakcji"]) in answer
 
 
 class TestParseSectionFile:

@@ -9,6 +9,10 @@ NIE orzekaj o kierunku zmian cen — ani o wzroście, ani o spadku, ani o stabil
 Obszar badania nazywaj WYŁĄCZNIE obrębami z pola `obreby` i promieniem z pola `promien_m`;
 nie wymieniaj żadnego innego obrębu. Pole `obreb` to obręb WYCENIANEJ nieruchomości —
 użyj go tylko w akapicie wprowadzającym, nigdy jako obszaru badania.
+Liczbę przebadanych transakcji przepisz DOSŁOWNIE z pola `przebadano` — to słowo
+(„kilkadziesiąt", „kilkaset"), nie zamieniaj go na cyfry ani nie doprecyzowuj.
+Liczbę transakcji przyjętych do porównań (`liczba_transakcji`) podawaj dokładnie —
+trafia do Tabeli 1 operatu.
 Zacznij bezpośrednio od akapitu wprowadzającego — bez tytułu i bez numeru sekcji.
 
 ## PRZYKŁAD
@@ -33,7 +37,8 @@ Zacznij bezpośrednio od akapitu wprowadzającego — bez tytułu i bez numeru s
   "cena_calkowita_min_zl": "545 000",
   "cena_calkowita_max_zl": "912 000",
   "obreby": ["Zarzecze", "Podgórze"],
-  "promien_m": 1000
+  "promien_m": 1000,
+  "przebadano": "kilkaset"
  }
 }
 ```
@@ -53,9 +58,9 @@ Cechy analizowanego rynku:
 • powierzchnia użytkowa – od 58,10 m2 do 79,90 m2,
 • zakres czasowy badania – transakcje z okresu 03-2024 – 11-2025.
 
-W okresie monitorowania rynku lokalnego odnotowano transakcje na badanym terenie,
-w których wystąpiła sprzedaż nieruchomości lokalowych o funkcji mieszkalnej. W próbie
-znalazło się 14 transakcji dotyczących lokali o powierzchni użytkowej od 58,10 m2
+W okresie monitorowania rynku lokalnego przebadano kilkaset transakcji na badanym
+terenie, w których wystąpiła sprzedaż nieruchomości lokalowych o funkcji mieszkalnej.
+Do porównań przyjęto 14 transakcji dotyczących lokali o powierzchni użytkowej od 58,10 m2
 do 79,90 m2. Jednostkowe ceny transakcyjne znajdowały się w przedziale od 9 240,00 zł
 do 12 480,00 zł za 1 m2 powierzchni użytkowej lokalu. Średnia cena jednostkowa została
 ustalona na poziomie 10 815,00 zł za 1 m2. Ceny całkowite lokali przyjętych do porównań
@@ -83,7 +88,8 @@ zawierały się w przedziale od 545 000 zł do 912 000 zł.
   "cena_calkowita_min_zl": "310 000",
   "cena_calkowita_max_zl": "588 000",
   "obreby": ["Podgórze"],
-  "promien_m": 2000
+  "promien_m": 2000,
+  "przebadano": "kilkadziesiąt"
  }
 }
 ```
@@ -103,9 +109,9 @@ Cechy analizowanego rynku:
 • powierzchnia użytkowa – od 34,80 m2 do 52,40 m2,
 • zakres czasowy badania – transakcje z okresu 01-2024 – 09-2025.
 
-W okresie monitorowania rynku lokalnego odnotowano transakcje na badanym terenie,
-w których wystąpiła sprzedaż nieruchomości lokalowych o funkcji mieszkalnej. W próbie
-znalazło się 21 transakcji dotyczących lokali o powierzchni użytkowej od 34,80 m2
+W okresie monitorowania rynku lokalnego przebadano kilkadziesiąt transakcji na badanym
+terenie, w których wystąpiła sprzedaż nieruchomości lokalowych o funkcji mieszkalnej.
+Do porównań przyjęto 21 transakcji dotyczących lokali o powierzchni użytkowej od 34,80 m2
 do 52,40 m2. Jednostkowe ceny transakcyjne znajdowały się w przedziale od 8 105,00 zł
 do 11 260,00 zł za 1 m2 powierzchni użytkowej lokalu. Średnia cena jednostkowa została
 ustalona na poziomie 9 430,00 zł za 1 m2. Ceny całkowite lokali przyjętych do porównań
