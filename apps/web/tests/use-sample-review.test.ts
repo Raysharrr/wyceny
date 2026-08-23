@@ -13,6 +13,11 @@ import {
   useSampleReview,
 } from "../src/app/valuations/[id]/steps/use-sample-review";
 
+const reselectSample = vi.fn();
+vi.mock("@/app/actions/reselect-sample", () => ({
+  reselectSample: (...args: unknown[]) => reselectSample(...args),
+}));
+
 // vitest doesn't expose globals, so @testing-library/react's afterEach
 // auto-cleanup never registers — mirrors tests/rtl-step-sample.test.tsx.
 afterEach(cleanup);
@@ -387,5 +392,58 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     expect(findRow(A2)?.pricePerM2).toBe(String(A2.pricePerM2));
     expect(findRow(C)?.pricePerM2).toBe(String(C.pricePerM2));
     expect(findRow(B)).toBeUndefined();
+  });
+});
+
+/**
+ * Wyścig odpowiedzi (finding Codexa, 2026-08-23). Pola pasm są aktywne
+ * podczas przeliczania — celowo, bo blokada odbierała im fokus i zjadała
+ * wpisywane znaki. Skoro więc żądania mogą lecieć równolegle, o snapshocie
+ * musi decydować NAJNOWSZE żądanie, a nie to, które akurat wróciło ostatnie.
+ */
+describe("useSampleReview — wyścig przeliczeń (latest-request-wins)", () => {
+  const proposalWith = (unitPriceRange: { min?: number; max?: number }) => ({
+    proposal: {
+      comparables: [],
+      sampleSelection: {
+        ...makeSel({ proposed: [mk()] }),
+        params: { subjectArea: 50, todayMonth: "2026-08", unitPriceRange },
+      },
+      sampleMeta: { fetchedAt: "2026-08-23T10:00:00Z" },
+      streetView: {},
+    },
+  });
+
+  it("odpowiedź starszego żądania nie kasuje pasma z nowszego", async () => {
+    reselectSample.mockReset();
+    let resolveFirst!: (v: unknown) => void;
+    let resolveSecond!: (v: unknown) => void;
+    reselectSample
+      .mockImplementationOnce(() => new Promise((r) => (resolveFirst = r)))
+      .mockImplementationOnce(() => new Promise((r) => (resolveSecond = r)));
+
+    const { result } = renderHook(() =>
+      useHarness({ sel: makeSel({ proposed: [mk()] }), comparables: [] }),
+    );
+
+    // Rzeczoznawca zatwierdza „cenę od", a chwilę później „cenę do" —
+    // drugie żądanie niesie komplet, pierwsze tylko dolną granicę.
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000 } });
+    });
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000, max: 13000 } });
+    });
+    expect(reselectSample).toHaveBeenCalledTimes(2);
+
+    // Odpowiedzi wracają w ODWROTNEJ kolejności: nowsza pierwsza, starsza druga.
+    await act(async () => {
+      resolveSecond(proposalWith({ min: 10000, max: 13000 }));
+    });
+    await act(async () => {
+      resolveFirst(proposalWith({ min: 10000 }));
+    });
+
+    expect(result.current.sel?.params.unitPriceRange).toEqual({ min: 10000, max: 13000 });
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { UseFormSetValue } from "react-hook-form";
 import type { z } from "zod";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
@@ -233,6 +233,8 @@ export function useSampleReview({
 }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [isReselecting, setIsReselecting] = useState(false);
+  /** Numer ostatnio wysłanego przeliczenia — patrz `reselectWith` (latest-request-wins). */
+  const reselectSeq = useRef(0);
   // Missing pool cache (draft predates Slice 3, or storage cleared) — the
   // radius buttons stay disabled until a fresh "Pobierz próbę z RCN" fetch
   // re-populates it (team-lead condition 1, 2026-08-21: never a silent
@@ -447,6 +449,12 @@ export function useSampleReview({
    */
   const reselectWith = async (radiusM: RadiusM, ranges: ManualRanges) => {
     if (!sel) return;
+    // Latest-request-wins. Pola pasm są aktywne w trakcie przeliczania (blokada
+    // odbierała im fokus i zjadała wpisywane znaki), więc żądania mogą lecieć
+    // równolegle: zatwierdzasz „cenę od", zaraz potem „cenę do". Bez tokenu
+    // o snapshocie decydowałaby odpowiedź, która wróciła OSTATNIA — a starsze
+    // żądanie niesie starsze, uboższe pasmo i skasowałoby górną granicę.
+    const token = ++reselectSeq.current;
     setIsReselecting(true);
     setReselectError(null);
     try {
@@ -467,6 +475,10 @@ export function useSampleReview({
         manualInclusions: sel.manualInclusions ?? [],
         reviewed: sel.reviewed ?? [],
       });
+      // Przestarzała odpowiedź — nowsze żądanie już wyszło, to jest jego wynik
+      // do pokazania, nie ten. Dotyczy też błędu: komunikat ze starego żądania
+      // opisywałby stan, którego rzeczoznawca już nie zamawia.
+      if (token !== reselectSeq.current) return;
       if ("error" in result) {
         if (result.code === "pool_missing" || result.code === "pool_stale") setPoolMissing(true);
         setReselectError(result.error);
@@ -482,7 +494,9 @@ export function useSampleReview({
       // showing — mirrors `onFetchSample` closing the panel on a new pool.
       setSelectedKey(null);
     } finally {
-      setIsReselecting(false);
+      // Tylko najnowsze żądanie gasi wskaźnik — inaczej powrót starszego
+      // pokazywałby „gotowe", gdy nowsze wciąż leci.
+      if (token === reselectSeq.current) setIsReselecting(false);
     }
   };
 
