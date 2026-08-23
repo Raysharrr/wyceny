@@ -300,12 +300,19 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
   // `promien_m` shares the bullet with `obreby` in both few-shots and is the
   // same kind of claim about where the sample comes from, so it travels with
   // it: a radius stated over a sample that reaches outside it is the same
-  // understatement, half-said.
+  // understatement, half-said. That is not hypothetical — `manualInclusions`
+  // SURVIVE a radius reduction (a row that fell out of both lists is
+  // re-attached from its stored candidate, sample-manual.ts), so the
+  // appraiser's own override is exactly what puts a 1800 m transaction under
+  // a "w promieniu 1 000 m" sentence.
   const sel = inputs.sampleSelection ?? null;
-  const sampleObreby = sel ? effectiveSelection(sel).proposed.map((c) => obrebName(c.egib)) : [];
+  const effective = sel ? effectiveSelection(sel).proposed : [];
+  const sampleObreby = effective.map((c) => obrebName(c.egib));
   const wholeSampleCovered =
+    sel !== null &&
     sampleObreby.length === inputs.comparables.length &&
-    sampleObreby.every((name) => name !== null);
+    sampleObreby.every((name) => name !== null) &&
+    effective.every((c) => c.distanceM <= sel.radiusUsedM);
   const obreby = wholeSampleCovered
     ? [...new Set(sampleObreby)].sort((a, b) => a.localeCompare(b, "pl"))
     : [];

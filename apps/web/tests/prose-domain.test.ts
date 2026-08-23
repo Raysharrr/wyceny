@@ -835,6 +835,20 @@ describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", ()
     expect("promien_m" in proba).toBe(false);
   });
 
+  it("pomija obszar badania, gdy ręcznie zachowany wiersz leży poza promieniem", () => {
+    // `manualInclusions` przeżywają ZMNIEJSZENIE promienia: wiersz, który
+    // wypadł z obu list, jest doczepiany z zapamiętanej kandydatki
+    // (sample-manual.ts). Emitowany bezwarunkowo `radiusUsedM` twierdziłby
+    // wtedy „w promieniu 1 000 m" o próbie sięgającej 1 800 m.
+    const daleka = { ...cand("0020", "tx-daleka"), distanceM: 1800 };
+    const sel = selection([cand("0021", "tx-a"), daleka]);
+    const proba = factsWith(sel, rcnRows(2)).proba!;
+
+    expect(daleka.distanceM).toBeGreaterThan(sel.radiusUsedM);
+    expect("promien_m" in proba).toBe(false);
+    expect("obreby" in proba).toBe(false);
+  });
+
   it("pomija `obreby`, gdy choć JEDNEJ kandydatki nie da się nazwać — lista nie może zaniżać obszaru", () => {
     // `obreby-poznan.json` nazywa 24 kody, a Poznań ma ich więcej. Wypisanie
     // samych rozpoznanych opisałoby węższy obszar badania, niż operat oparł
