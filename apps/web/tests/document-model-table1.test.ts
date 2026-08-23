@@ -74,7 +74,7 @@ describe("Tabela 1 — Data | Miasto | Ulica (Slice 3d, układ operatu wzorcoweg
     };
     const m = buildDocumentModel(input);
     expect(m.transakcje.map((r) => [r.miasto, r.ulica])).toEqual([
-      ["Poznań", "Kościelna"], // „ul.” obcięte, numer NIE trafia do dokumentu (F-12)
+      ["Poznań", "ul. Kościelna"], // przedrostek zostaje, numer NIE trafia do dokumentu (F-12)
       ["gm. 302104", "—"], // spoza Poznania: miasto z TERYT-u, ulicy eksport nie zna
       ["—", "—"], // wiersz ręczny: brak kandydatki, więc nic nie wiemy
     ]);
@@ -118,7 +118,7 @@ describe("Tabela 1 — Data | Miasto | Ulica (Slice 3d, układ operatu wzorcoweg
       params: { subjectArea: 50, todayMonth: "2026-08" },
     };
     const m = buildDocumentModel(input);
-    expect(m.transakcje[0]).toMatchObject({ miasto: "Luboń", ulica: "Poznańska" });
+    expect(m.transakcje[0]).toMatchObject({ miasto: "Luboń", ulica: "ul. Poznańska" });
   });
 
   it("two lokale of ONE notarial act print their OWN street, never one lokal's twice (Heweliusza 3/43)", () => {
@@ -165,8 +165,8 @@ describe("Tabela 1 — Data | Miasto | Ulica (Slice 3d, układ operatu wzorcoweg
     };
     const m = buildDocumentModel(input);
     expect(m.transakcje.map((r) => [r.miasto, r.ulica])).toEqual([
-      ["Poznań", "Heweliusza"],
-      ["Luboń", "Poznańska"],
+      ["Poznań", "ul. Heweliusza"],
+      ["Luboń", "ul. Poznańska"],
     ]);
   });
 
@@ -240,7 +240,7 @@ describe("Tabela 1 — Data | Miasto | Ulica (Slice 3d, układ operatu wzorcoweg
       params: { subjectArea: 50, todayMonth: "2026-08" },
     };
     const m = buildDocumentModel(input);
-    expect(m.transakcje.map((r) => [r.miasto, r.ulica])).toEqual([["Poznań", "Kościelna"]]);
+    expect(m.transakcje.map((r) => [r.miasto, r.ulica])).toEqual([["Poznań", "ul. Kościelna"]]);
   });
 });
 

@@ -453,14 +453,14 @@ describe("F-12: the house number never reaches the document (Slice 3d)", () => {
     return new PizZip(docx).files["word/document.xml"].asText().replace(/<[^>]+>/g, "");
   }
 
-  it("prints the street name and the city, and NOT the house number", () => {
-    // Aneta's operat does the same: the street identifies the area, the number would
-    // identify the flat. `TransactionRow` has no field for it at all — this test proves
-    // the wiring keeps it that way end to end.
+  it("prints the street WITH its prefix and the city, and NOT the house number", () => {
+    // The street identifies the area, the number would identify the flat, and
+    // `TransactionRow` has no field for it at all — this test proves the wiring keeps it
+    // that way end to end. The prefix stays: measured 2026-08-23 on four reference
+    // operats, every one of them prints `ul. …` in full.
     const text = renderWithStreet();
-    expect(text).toContain("Kościelna");
+    expect(text).toContain("ul. Kościelna");
     expect(text).toContain("Poznań");
     expect(text).not.toContain("33A");
-    expect(text).not.toContain("ul. Kościelna");
   });
 });

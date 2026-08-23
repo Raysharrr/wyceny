@@ -2,15 +2,18 @@ import { describe, it, expect } from "vitest";
 import { operatStreet, PREFIXES_TO_STRIP } from "../src/domain/street-name";
 
 /**
- * Which prefixes may be dropped is a DATA question, and the spike answered it on the real
- * export: 991 distinct names, none of them without a prefix — `ul.` 939, `os.` 32,
- * `pl.` 10, `al.` 5, `rynek` 5. Only `ul.` is a generic marker; in the other 52 the word
- * is part of the proper name, and dropping it moves the reader somewhere else in Poznań.
+ * Which prefixes may be dropped is a DATA question, and it has now been answered twice.
+ * The spike (2026-08-22) measured the export: 991 distinct names, none without a prefix —
+ * `ul.` 939, `os.` 32, `pl.` 10, `al.` 5, `rynek` 5. The reference operats (2026-08-23)
+ * answered the other half: all FOUR print the prefix in full — `ul. Kościelna` (12×,
+ * Kościelna), `ul. Starołęcka` / `ul. Żorska` (Starołęcka), `ul. Józefa Sowińskiego`
+ * (Heweliusza), `ul. Chełmińska` (Winiary). Nothing comes off.
  */
 describe("operatStreet — nazwa ulicy do operatu", () => {
-  it("obcina „ul.” — 939 z 991 nazw w eksporcie", () => {
-    expect(operatStreet("ul. Kościelna")).toBe("Kościelna");
-    expect(operatStreet("ul. Jana Henryka Dąbrowskiego")).toBe("Jana Henryka Dąbrowskiego");
+  it("zachowuje „ul.” — drukują go wszystkie 4 operaty wzorcowe", () => {
+    expect(operatStreet("ul. Kościelna")).toBe("ul. Kościelna");
+    expect(operatStreet("ul. Józefa Sowińskiego")).toBe("ul. Józefa Sowińskiego");
+    expect(operatStreet("ul. Jana Henryka Dąbrowskiego")).toBe("ul. Jana Henryka Dąbrowskiego");
   });
 
   it("zostawia człon tam, gdzie jest częścią nazwy własnej", () => {
@@ -22,10 +25,9 @@ describe("operatStreet — nazwa ulicy do operatu", () => {
   });
 
   it("zostawia zdublowany prefiks rejestru bez zmian — świadomie", () => {
-    // Jedyny taki przypadek w całym eksporcie (991 nazw). „al.” nie jest na liście do
-    // obcięcia, więc operat wydrukuje to, co mówi rejestr. Wygląda dziwnie, ale zgadywanie,
-    // że akurat tu prefiks jest zbędny, byłoby regułą pisaną pod jeden rekord — do decyzji
-    // rzeczoznawcy (open-questions), nie do zgadnięcia w kodzie.
+    // Jedyny taki przypadek w całym eksporcie (991 nazw). Operat drukuje to, co mówi
+    // rejestr. Wygląda dziwnie, ale zgadywanie, że akurat tu prefiks jest zbędny, byłoby
+    // regułą pisaną pod jeden rekord — do decyzji rzeczoznawcy (open-questions).
     expect(operatStreet("al. Aleje Karola Marcinkowskiego")).toBe(
       "al. Aleje Karola Marcinkowskiego",
     );
@@ -38,6 +40,6 @@ describe("operatStreet — nazwa ulicy do operatu", () => {
   });
 
   it("lista prefiksów jest jedną stałą — zmiana decyzji kosztuje linijkę", () => {
-    expect(PREFIXES_TO_STRIP).toEqual(["ul."]);
+    expect(PREFIXES_TO_STRIP).toEqual([]);
   });
 });
