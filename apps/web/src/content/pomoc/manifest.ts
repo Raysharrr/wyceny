@@ -548,22 +548,26 @@ export const HELP_PAGES: HelpPage[] = [
    * `dobor-proby-rcn` powyżej.
    *
    * Źródła do sprawdzenia przy każdej zmianie generowania opisów:
-   *   apps/worker/app/main.py:427        PROSE_MODEL — nazwa modelu (NIE cytować)
-   *   apps/worker/app/main.py:435        PROSE_MAX_TOKENS — limit długości (NIE cytować)
-   *   apps/worker/app/main.py:514        PROSE_RETRY_INSTRUCTION — dopisek do drugiej próby
-   *   apps/worker/app/main.py:529        _prose_section — DOKŁADNIE jedna dodatkowa próba
-   *   apps/worker/app/main.py:640        sekcje liczone równolegle, awaria jednej nie psuje reszty
-   *   apps/worker/app/main.py:657        502, gdy nie przeżyła ani jedna sekcja
-   *   apps/worker/app/prose.py:121       _allowed_numbers — zbiór dozwolony: liczba + zapis z przecinkiem, BEZ części całkowitej
-   *   apps/worker/app/prose.py:155       validate_numbers — DOSŁOWNE dopasowanie; wyjątki: jednostka i idiom „1 m2"
+   *   apps/worker/app/main.py:620        PROSE_MODEL — nazwa modelu (NIE cytować)
+   *   apps/worker/app/main.py:628        PROSE_MAX_TOKENS — limit długości (NIE cytować)
+   *   apps/worker/app/main.py:724        PROSE_RETRY_INSTRUCTION — dopisek do drugiej próby
+   *   apps/worker/app/main.py:742        _prose_violations — obie straże w jednej liście
+   *   apps/worker/app/main.py:750        _prose_section — DOKŁADNIE jedna dodatkowa próba
+   *   apps/worker/app/main.py:843        sekcje liczone równolegle, awaria jednej nie psuje reszty
+   *   apps/worker/app/main.py:859        502, gdy nie przeżyła ani jedna sekcja
+   *   apps/worker/app/prose.py:76        _allowed_numbers — zbiór dozwolony: liczba + zapis z przecinkiem, BEZ części całkowitej
+   *   apps/worker/app/prose.py:110       validate_numbers — DOSŁOWNE dopasowanie; wyjątki: jednostka i idiom „1 m2"
+   *   apps/worker/app/prose.py:204       validate_obreby — nazwa obrębu spoza faktów (Slice 5)
    *   apps/worker/app/prompts/prose/_style.md   styl i zakaz domyślania wątków
+   *   apps/worker/app/prompts/prose/analiza_rynku.md  zakaz orzekania o kierunku cen, obszar badania z `obreby`
    *   apps/web/src/domain/prose-snapshot.ts:17  PROSE_SECTIONS (IMPORTOWANE do MDX)
    *   apps/web/src/domain/prose-snapshot.ts:34  PROSE_SECTION_LABEL (IMPORTOWANE do MDX)
-   *   apps/web/src/domain/prose.ts:135          buildProseFacts — agregaty wszystko-albo-nic
-   *   apps/web/src/domain/prose.ts:118          resultPosition — F-11, wyłącznie określenie słowne
-   *   apps/web/src/domain/prose.ts:253          selectProseSections — które sekcje w ogóle zamawiamy
+   *   apps/web/src/domain/prose.ts:218          approximateCount — skala słowna przebadanych (NIE cytować progów inaczej niż słownie)
+   *   apps/web/src/domain/prose.ts:235          resultPosition — F-11, wyłącznie określenie słowne
+   *   apps/web/src/domain/prose.ts:252          buildProseFacts — agregaty wszystko-albo-nic, obręby i promień
+   *   apps/web/src/domain/prose.ts:398          selectProseSections — które sekcje w ogóle zamawiamy
    *   apps/web/src/domain/prose-hash.ts:70      currentSectionFactsHash — odcisk per sekcja, próba sortowana
-   *   apps/web/src/domain/provenance.ts:214     blokady prozy w bramie F-4
+   *   apps/web/src/domain/provenance.ts:232     blokady prozy w bramie F-4
    */
   {
     slug: "opisy-generowane",
