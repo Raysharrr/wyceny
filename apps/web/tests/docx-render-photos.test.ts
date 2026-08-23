@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import PizZip from "pizzip";
 import {
   PHOTO_BOX,
@@ -114,4 +116,40 @@ describe("rozmiar zdjęcia oględzin w operacie", () => {
     const [, h] = fitBox({ width: 3000, height: 4000 }, PHOTO_BOX);
     expect(h).toBeLessThanOrEqual(PHOTO_BOX[1]);
   });
+});
+
+/**
+ * Two photos to a row, the way Aneta's operat prints them. Mechanism measured on
+ * 2026-08-23 (render -> LibreOffice PDF -> raster, three variants): a 2x1 table does NOT
+ * do it — docxtemplater repeats paragraphs INSIDE the first cell, and a loop spanning a
+ * <w:tr> repeats rows, both a vertical stack. What works is the whole loop inside ONE
+ * paragraph: the image module runs with `centered: false`, so the images are inline and
+ * Word wraps them itself — 1|2, 3|4, 5.
+ */
+describe("szablon — układ zdjęć oględzin", () => {
+  const xml = new PizZip(
+    fs.readFileSync(path.join(process.cwd(), "templates", "operat-szablon.docx")),
+  )
+    .file("word/document.xml")!
+    .asText();
+
+  for (const tag of ["foto_otoczenie", "foto_budynek", "foto_wnetrza"]) {
+    it(`pętla ${tag} siedzi w jednym akapicie — inaczej każde zdjęcie dostaje własny wiersz`, () => {
+      const start = xml.indexOf(`{#${tag}}`);
+      const end = xml.indexOf(`{/${tag}}`);
+      expect(start, `brak pętli ${tag}`).toBeGreaterThan(-1);
+      expect(end, `brak zamknięcia pętli ${tag}`).toBeGreaterThan(start);
+      expect(xml.slice(start, end), "granica akapitu wewnątrz pętli").not.toContain("</w:p>");
+    });
+
+    it(`{%img} w ${tag} jest jedyną treścią swojego <w:t>`, () => {
+      // Mina, na którą już raz nadepnięto: gdy znacznik dzieli <w:t> z czymkolwiek innym,
+      // moduł obrazów wywala „Raw tag not in paragraph" przy renderze.
+      const start = xml.indexOf(`{#${tag}}`);
+      const img = xml.indexOf("{%img}", start);
+      expect(img).toBeGreaterThan(start);
+      expect(xml.lastIndexOf("<w:t", img)).toBe(img - '<w:t xml:space="preserve">'.length);
+      expect(xml.slice(img + "{%img}".length)).toMatch(/^<\/w:t>/);
+    });
+  }
 });

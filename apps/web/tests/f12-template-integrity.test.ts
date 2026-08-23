@@ -24,9 +24,11 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * placeholder/text delta. Slice 3d: Table 1 back to the reference operat's layout
  * (`Data transakcji | Miasto | Ulica | Pow. uż. | Cena transakcyjna`) via
  * `scripts/patch-template-table1-ulica.mts` — {obreb}/{odleglosc} out of the loop,
- * {miasto}/{ulica} back in.
+ * {miasto}/{ulica} back in. Slice 3e: each photo loop collapsed from three paragraphs
+ * to one (`scripts/patch-template-foto-2-kolumny.mts`) so the inline images wrap two
+ * to a row — same placeholders, different paragraph structure.
  */
-const TEMPLATE_SHA256 = "abae1aa49f91478a28847f9faa0806aac019001d213e4f40c7225553ec88ba2a";
+const TEMPLATE_SHA256 = "f09013e7525e502d5229632bb0a06c0a968ef52717158bc25e03eecafa7a4540";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
