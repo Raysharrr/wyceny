@@ -1,8 +1,12 @@
 /**
  * F-14 — dobór próby v3 on frozen RCN snapshots (ADR-015).
  * Criterion today (no year-of-build source): WR from `proposed` within ±10% of the
- * appraiser's WR for ≥4/5 reference operaty and within ±5% for ≥2/5.
+ * appraiser's WR for ≥4/6 reference operaty and within ±5% for ≥2/6.
  * Regression below either bar = red CI. Snapshots: tests/fixtures/rcn-snapshots (spike A, 2026-08-20).
+ * Sixth operat (winiary, Slice 7): the only one with zero transactions shared with the
+ * appraiser's own sample — those comparables sit 676–1752 m out, past our 500 m radius —
+ * yet it lands within ±5%. A wielka-płyta estate has unit prices uniform enough that a
+ * different transaction set converges on the same average.
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { computeKcs } from "../src/domain/kcs";
@@ -14,7 +18,7 @@ import {
 } from "../src/domain/sample-selection";
 import { deriveSubjectEgib } from "../src/domain/egib-id";
 import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
-import { OPERATY, TEST_ADDRESSES } from "./fixtures/rcn-snapshots/operaty";
+import { OPERATY, TEST_ADDRESSES, type Operat } from "./fixtures/rcn-snapshots/operaty";
 
 function run(slug: string, area: number, todayMonth: string): Selection {
   const { subject, candidates } = loadSnapshot(slug);
@@ -25,6 +29,17 @@ function run(slug: string, area: number, todayMonth: string): Selection {
   });
 }
 const pct = (a: number, b: number) => Math.round(((a - b) / b) * 10000) / 100;
+
+/** WR from the operat's own PDF sample (Tabela 1, `op.pdfSample`) via computeKcs —
+ * the "sanity" check every operat must pass, and the per-operat regression below. */
+function wrFromPdfSample(op: Operat): number {
+  const { wr } = computeKcs({
+    comparables: op.pdfSample.map((r) => ({ pricePerM2: r.pricePerM2 })),
+    area: op.area,
+    features: op.features,
+  });
+  return wr;
+}
 
 describe("F-14 — WR from the proposed sample vs the appraiser's operat", () => {
   let rows: { slug: string; n: number; radius: number; wr: number; delta: number }[];
@@ -55,23 +70,26 @@ describe("F-14 — WR from the proposed sample vs the appraiser's operat", () =>
     console.table(rows);
   });
 
-  it("≥4/5 within ±10% and ≥2/5 within ±5%", () => {
+  it("≥4/6 within ±10% and ≥2/6 within ±5%", () => {
     expect(rows.filter((r) => Math.abs(r.delta) <= 10).length).toBeGreaterThanOrEqual(4);
     expect(rows.filter((r) => Math.abs(r.delta) <= 5).length).toBeGreaterThanOrEqual(2);
   });
 
   it("sanity — the PDF sample itself reproduces the operat WR within 0.2%", () => {
     for (const op of OPERATY) {
-      const { wr } = computeKcs({
-        comparables: op.pdfSample.map((r) => ({ pricePerM2: r.pricePerM2 })),
-        area: op.area,
-        features: op.features,
-      });
+      const wr = wrFromPdfSample(op);
       expect(Math.abs(pct(wr, op.pdfWrRounded!))).toBeLessThanOrEqual(0.2);
     }
   });
 
-  it.skip("top-20 contains ≥8/12 of the appraiser's transactions for ≥4/5 — enable after a year-of-build source (ADR-015 rule 10)", () => {
+  it("Winiary — próba z operatu odtwarza WR do 0,2%", () => {
+    const op = OPERATY.find((o) => o.slug === "winiary");
+    expect(op, "brak wpisu winiary w OPERATY").toBeDefined();
+    const wr = wrFromPdfSample(op!);
+    expect(Math.abs(pct(wr, op!.pdfWrRounded!))).toBeLessThanOrEqual(0.2);
+  });
+
+  it.skip("top-20 contains ≥8/12 of the appraiser's transactions for ≥4/6 — enable after a year-of-build source (ADR-015 rule 10)", () => {
     const hits = OPERATY.map((op) => {
       const sel = run(op.slug, op.area, op.todayMonth);
       const top20 = sel.ranking
