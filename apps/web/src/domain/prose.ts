@@ -24,6 +24,8 @@
 
 import { cityFromAddress, formatNumber, formatPln, LEVEL_LABEL } from "./document-model";
 import { computeKcs, type Comparable, type KcsInput, type KcsResult } from "./kcs";
+import { obrebName } from "./obreb-name";
+import { effectiveSelection } from "./sample-snapshot";
 import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "./prose-snapshot";
 import { sourced, type Sourced } from "@wyceny/shared";
 
@@ -46,6 +48,14 @@ export type ProseSampleFacts = {
   /** The ONE numeric leaf the worker accepts as a number — everything else is a PL string. */
   liczba_transakcji: number;
   zakres_dat?: string;
+  /**
+   * Obręb NAMES the sample actually comes from — deduped, sorted (Slice 5).
+   * Absent, never empty: with no nameable obręb the model must drop the thread
+   * rather than see `[]` and read it as "none".
+   */
+  obreby?: string[];
+  /** Radius the selection settled on, metres. Absent on pre-Slice-3 drafts (no snapshot). */
+  promien_m?: number;
   pow_min_m2?: string;
   pow_max_m2?: string;
   cena_min_zl_m2: string;
@@ -220,9 +230,33 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
   // of the model (F-11).
   const totals = everyAreaKnown ? minMax(withArea.map((c) => c.pricePerM2 * c.area)) : null;
 
+  // Obszar badania as the SAMPLE defines it, not as the subject's own obręb
+  // suggests. Aneta on a generated section: "analizę opisał nam nie z tego
+  // obrębu ewidencyjnego" — the facts carried only `obreb` (the SUBJECT's), so
+  // the model had nothing to name the study area with and named its own.
+  //
+  // Read through `effectiveSelection`, not `sel.proposed`: a row the appraiser
+  // rejected is not in Table 1, so its obręb is not an area the operat speaks
+  // about. `obrebName` returns null rather than inventing a name.
+  const sel = inputs.sampleSelection ?? null;
+  const obreby = sel
+    ? [
+        ...new Set(
+          effectiveSelection(sel)
+            .proposed.map((c) => obrebName(c.egib))
+            .filter((name) => name !== null),
+        ),
+      ].sort((a, b) => a.localeCompare(b, "pl"))
+    : [];
+
   const proba: ProseSampleFacts | null = kcs
     ? {
         liczba_transakcji: inputs.comparables.length,
+        ...(obreby.length > 0 ? { obreby } : {}),
+        // Rounded: the number guard compares written forms, and a fractional
+        // radius would reach the prompt as "1000.5" — a form no Polish text
+        // writes. The slider only ever produces whole metres anyway.
+        ...(sel ? { promien_m: Math.round(sel.radiusUsedM) } : {}),
         ...(ordered.length > 0
           ? {
               zakres_dat: `${ordered[0].label} ${RANGE_SEPARATOR} ${ordered[ordered.length - 1].label}`,

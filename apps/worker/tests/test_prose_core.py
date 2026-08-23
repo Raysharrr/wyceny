@@ -31,6 +31,8 @@ FACTS_RYNEK = {
         "cena_min_zl_m2": "9 240,00",
         "cena_srednia_zl_m2": "10 815,00",
         "cena_max_zl_m2": "12 480,00",
+        "obreby": ["Zarzecze", "Podgórze"],
+        "promien_m": 1000,
     },
 }
 

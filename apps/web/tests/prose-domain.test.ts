@@ -12,6 +12,8 @@ import { currentSectionFactsHash, proseFactsHash } from "@/domain/prose-hash";
 import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "@/domain/prose-snapshot";
 import { buildDocumentModel, formatNumber, formatPln } from "@/domain/document-model";
 import { computeKcs, type KcsInput, type KcsResult } from "@/domain/kcs";
+import type { Candidate } from "@/domain/sample-selection";
+import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 
 /**
  * Domain tests for the LLM prose proposal (ADR-014, T5).
@@ -695,5 +697,95 @@ describe("attemptedProseSections", () => {
 
     expect(attemptedProseSections(legacy, input, currentSectionFactsHash)).toEqual([]);
     expect(attemptedProseSections(null, input, currentSectionFactsHash)).toEqual([]);
+  });
+});
+
+/**
+ * Slice 5. Aneta o wygenerowanej sekcji: „analizę opisał nam nie z tego obrębu
+ * ewidencyjnego". Model nie miał skąd wziąć obszaru badania — fakty niosły
+ * wyłącznie obręb PRZEDMIOTU wyceny, więc obszar próby dopisywał sam.
+ *
+ * Nazwy obrębów poniżej są prawdziwe (publiczny rejestr GEOPOZ, `obreby-poznan.json`),
+ * bo `obrebName` rozwiązuje wyłącznie kody z tego pliku. F-9 dotyczy danych z operatów
+ * — adresy, ceny i identyfikatory transakcji zostają wymyślone.
+ */
+describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", () => {
+  const cand = (obreb: string, transactionId: string): Candidate => ({
+    transactionId,
+    date: "2025-03-04",
+    area: 60,
+    pricePerM2: 11000,
+    priceTotal: 660000,
+    egib: { teryt: "306401_1", obreb, arkusz: "22", dzialka: "13/82", budynek: "1", lokal: "1" },
+    lokalId: `306401_1.${obreb}.x`,
+    distanceM: 400,
+    floor: 1,
+    rooms: 2,
+    market: "wtorny",
+    share: "1/1",
+    transType: "wolnyRynek",
+    function: "mieszkalna",
+    seller: null,
+    pos: null,
+  });
+
+  const selection = (proposed: Candidate[]): SampleSelectionSnapshot => ({
+    version: 3,
+    proposed,
+    alternates: [],
+    flags: {},
+    rejectedCounts: {},
+    manualRejections: [],
+    manualInclusions: [],
+    radiusUsedM: 1000,
+    radiusWalk: [],
+    counts: { pool: 137, inRadius: 61, afterHygiene: 44, afterBand: 31, proposed: proposed.length },
+    params: { subjectArea: 68.4, todayMonth: "2026-08" },
+  });
+
+  const factsWith = (sel: SampleSelectionSnapshot) =>
+    buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, sampleSelection: sel } });
+
+  it("niesie obręby próby i użyty promień", () => {
+    // 0020 Golęcin, 0021 Jeżyce — dwa razy ten sam obręb ma dać jedną nazwę.
+    const sel = selection([cand("0021", "tx-a"), cand("0020", "tx-b"), cand("0021", "tx-c")]);
+    const proba = factsWith(sel).proba;
+
+    expect(proba).toMatchObject({ obreby: ["Golęcin", "Jeżyce"], promien_m: sel.radiusUsedM });
+  });
+
+  it("bierze obręby PO nakładce rzeczoznawcy, nie surowy `proposed`", () => {
+    // Odrzucona kandydatka wypada z Tabeli 1, więc jej obręb nie jest już
+    // obszarem badania, o którym operat orzeka.
+    const jezyce = cand("0021", "tx-a");
+    const sel: SampleSelectionSnapshot = {
+      ...selection([jezyce, cand("0020", "tx-b")]),
+      manualRejections: [
+        {
+          transactionId: jezyce.transactionId,
+          lokalId: jezyce.lokalId,
+          reason: "other",
+          at: "2026-08-23T10:00:00.000Z",
+        },
+      ],
+    };
+
+    expect(factsWith(sel).proba?.obreby).toEqual(["Golęcin"]);
+  });
+
+  it("pomija oba pola bez snapshotu doboru — stara wycena nie dostaje zer", () => {
+    const proba = buildProseFacts({ address: ADDRESS, inputs: INPUTS }).proba!;
+
+    expect("obreby" in proba).toBe(false);
+    expect("promien_m" in proba).toBe(false);
+  });
+
+  it("pomija `obreby`, gdy żadnej kandydatce nie da się nazwać obrębu", () => {
+    // Kod spoza mapy GEOPOZ — `obrebName` nigdy nie zmyśla nazwy.
+    const sel = selection([{ ...cand("0021", "tx-a"), egib: null }]);
+    const proba = factsWith(sel).proba!;
+
+    expect("obreby" in proba).toBe(false);
+    expect(proba.promien_m).toBe(sel.radiusUsedM);
   });
 });

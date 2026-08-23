@@ -6,6 +6,9 @@ obszar badania, pasmo powierzchni użytkowej wynikające z próby, zakres czasow
 z dat transakcji), akapit o zaobserwowanych cenach jednostkowych (minimalna, średnia,
 maksymalna z próby) z podaniem liczby transakcji oraz zdanie o przedziale cen całkowitych.
 NIE orzekaj o kierunku zmian cen — ani o wzroście, ani o spadku, ani o stabilności.
+Obszar badania nazywaj WYŁĄCZNIE obrębami z pola `obreby` i promieniem z pola `promien_m`;
+nie wymieniaj żadnego innego obrębu. Pole `obreb` to obręb WYCENIANEJ nieruchomości —
+użyj go tylko w akapicie wprowadzającym, nigdy jako obszaru badania.
 Zacznij bezpośrednio od akapitu wprowadzającego — bez tytułu i bez numeru sekcji.
 
 ## PRZYKŁAD
@@ -28,7 +31,9 @@ Zacznij bezpośrednio od akapitu wprowadzającego — bez tytułu i bez numeru s
   "cena_srednia_zl_m2": "10 815,00",
   "cena_max_zl_m2": "12 480,00",
   "cena_calkowita_min_zl": "545 000",
-  "cena_calkowita_max_zl": "912 000"
+  "cena_calkowita_max_zl": "912 000",
+  "obreby": ["Zarzecze", "Podgórze"],
+  "promien_m": 1000
  }
 }
 ```
@@ -43,7 +48,8 @@ wyceny.
 Cechy analizowanego rynku:
 
 • zakres przedmiotowy – rynek wtórny nieruchomości lokalowych o funkcji mieszkalnej,
-• obszar badania – m. Nowogród, obręb nr 0007 Zarzecze,
+• obszar badania – m. Nowogród, obręby Zarzecze i Podgórze, w promieniu 1 000 m
+  od wycenianej nieruchomości,
 • powierzchnia użytkowa – od 58,10 m2 do 79,90 m2,
 • zakres czasowy badania – transakcje z okresu 03-2024 – 11-2025.
 
@@ -75,7 +81,9 @@ zawierały się w przedziale od 545 000 zł do 912 000 zł.
   "cena_srednia_zl_m2": "9 430,00",
   "cena_max_zl_m2": "11 260,00",
   "cena_calkowita_min_zl": "310 000",
-  "cena_calkowita_max_zl": "588 000"
+  "cena_calkowita_max_zl": "588 000",
+  "obreby": ["Podgórze"],
+  "promien_m": 2000
  }
 }
 ```
@@ -90,7 +98,8 @@ wyceny.
 Cechy analizowanego rynku:
 
 • zakres przedmiotowy – rynek wtórny nieruchomości lokalowych o funkcji mieszkalnej,
-• obszar badania – m. Nowogród, obręb nr 0012 Podgórze,
+• obszar badania – m. Nowogród, obręb Podgórze, w promieniu 2 000 m
+  od wycenianej nieruchomości,
 • powierzchnia użytkowa – od 34,80 m2 do 52,40 m2,
 • zakres czasowy badania – transakcje z okresu 01-2024 – 09-2025.
 
