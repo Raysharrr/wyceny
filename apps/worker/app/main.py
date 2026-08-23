@@ -629,9 +629,12 @@ PROSE_MAX_TOKENS = 2500
 
 
 class ProseTransaction(BaseModel):
-    """One sample transaction. Never reaches the prompt — it only feeds
-    `prose.price_trend` (rule 2 of the T3 contract), so raw prices never widen
-    the number guard's allowed set."""
+    """One sample transaction. Never reaches the prompt (rule 2 of the T3
+    contract), so raw prices never widen the number guard's allowed set. Since
+    Slice 5 the worker derives NOTHING from these — the price-trend paragraph
+    was removed because no reference operat states a direction of price change.
+    The field stays on the wire so web can keep sending it unchanged; the sample
+    still drives per-section staleness on the web side."""
 
     data: str  # "MM-RRRR"
     cena_m2: float
@@ -803,23 +806,6 @@ def _float_paths(value, path: str = "fakty") -> list[str]:
     return [path] if isinstance(value, float) else []
 
 
-def _facts_with_trend(fakty: dict, transakcje: list[ProseTransaction]) -> dict:
-    """Facts as the prompt will see them: the sample collapses into a single
-    deterministic `proba.trend_cen`. The transactions themselves stay out —
-    their prices in the facts would authorise the model to write any of them
-    anywhere. No sample or no `proba` in the facts: no trend, no error."""
-    proba = fakty.get("proba")
-    if not transakcje or not isinstance(proba, dict):
-        return fakty
-    try:
-        trend = prose_core.price_trend([t.model_dump() for t in transakcje])
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400, detail="Daty transakcji muszą być w formacie MM-RRRR."
-        ) from exc
-    return {**fakty, "proba": {**proba, "trend_cen": trend}}
-
-
 @app.post("/prose-proposal")
 def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
     secret = os.environ.get("WORKER_SHARED_SECRET", "")
@@ -838,7 +824,7 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
                 f"pola z liczbą zmiennoprzecinkową: {', '.join(floats)}."
             ),
         )
-    facts = _facts_with_trend(request.fakty, request.transakcje)
+    facts = request.fakty
 
     # Parallel: six sections at ~8 s each would block the wizard for ~50 s.
     # `_prose_section` never raises — a failing section is contained there, so

@@ -552,10 +552,8 @@ export const HELP_PAGES: HelpPage[] = [
    *   apps/worker/app/main.py:435        PROSE_MAX_TOKENS — limit długości (NIE cytować)
    *   apps/worker/app/main.py:514        PROSE_RETRY_INSTRUCTION — dopisek do drugiej próby
    *   apps/worker/app/main.py:529        _prose_section — DOKŁADNIE jedna dodatkowa próba
-   *   apps/worker/app/main.py:608        wstrzyknięcie proba.trend_cen do faktów
    *   apps/worker/app/main.py:640        sekcje liczone równolegle, awaria jednej nie psuje reszty
    *   apps/worker/app/main.py:657        502, gdy nie przeżyła ani jedna sekcja
-   *   apps/worker/app/prose.py:82        price_trend — połowy próby, próg (NIE cytować)
    *   apps/worker/app/prose.py:121       _allowed_numbers — zbiór dozwolony: liczba + zapis z przecinkiem, BEZ części całkowitej
    *   apps/worker/app/prose.py:155       validate_numbers — DOSŁOWNE dopasowanie; wyjątki: jednostka i idiom „1 m2"
    *   apps/worker/app/prompts/prose/_style.md   styl i zakaz domyślania wątków

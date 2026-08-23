@@ -16,9 +16,10 @@
  *    travels as the categorical string from {@link resultPosition}.
  *
  * Sample transactions travel OUTSIDE the facts (see
- * {@link buildProseTransactions}): the worker collapses them into a
- * deterministic trend and keeps them out of the prompt, because raw prices in
- * the facts would authorise the model to write any of them anywhere.
+ * {@link buildProseTransactions}) and, since Slice 5, the worker derives
+ * NOTHING from them — the price-trend paragraph they fed is gone. They stay
+ * off the wire into the prompt for the original reason: raw prices in the
+ * facts would authorise the model to write any of them anywhere.
  */
 
 import { cityFromAddress, formatNumber, formatPln, LEVEL_LABEL } from "./document-model";
@@ -107,19 +108,19 @@ export const PROSE_SECTION_FACTS: Record<ProseSection, readonly (keyof ProseFact
 };
 
 /**
- * Sections whose text reflects the sample's price trend. The trend is derived
- * by the worker FROM THE TRANSACTIONS, which travel outside `fakty`, so these
- * two sections must fingerprint the transactions too or a reordered-in-time
- * sample would leave a contradicted trend claim in the operat.
+ * Sections whose text reflects the sample itself, fingerprinted over the
+ * TRANSACTIONS on top of their facts.
  *
- * `uzasadnienie` stays in this set even though its prompt never mentions
- * `trend_cen` — that is a deliberate over-approximation, not an oversight to
- * "clean up". Its facts include `proba`, whose min/mean/max/count move
- * whenever the transaction sample moves, so the section is exposed to sample
- * edits regardless of the trend. The asymmetry that matters is legal, not
- * computational: under-approximating staleness here would leave stale prose
- * standing in a SIGNED appraisal — a legal defect — while over-approximating
- * merely costs one redundant LLM call. Do not drop it from this set.
+ * Until Slice 5 the reason was mechanical: the worker collapsed the sample
+ * into `proba.trend_cen`, an input the facts did not carry. That paragraph is
+ * gone and the worker now derives nothing from the sample — so this set is
+ * pure over-approximation, and it stays that way deliberately. Both sections'
+ * facts include `proba`, whose min/mean/max/count move whenever the sample
+ * moves; the extra transaction fingerprint only adds sensitivity to WHICH row
+ * carried which month. The asymmetry that matters is legal, not computational:
+ * under-approximating staleness here would leave stale prose standing in a
+ * SIGNED appraisal — a legal defect — while over-approximating merely costs
+ * one redundant LLM call. Do not shrink this set to "clean it up".
  */
 export const SECTIONS_USING_TRANSACTIONS: ReadonlySet<ProseSection> = new Set([
   "analiza_rynku",
@@ -289,13 +290,12 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
 }
 
 /**
- * The sample as the worker wants it: "MM-RRRR" + a numeric price, outside the
- * facts. All-or-nothing, same doctrine as the aggregates above: the worker
- * collapses these into `proba.trend_cen`, a claim about how prices moved ACROSS
- * THE SAMPLE. Computed from the dated subset it would describe a different
- * sample than the one the operat presents — a partial aggregate dressed as a
- * complete one, which is exactly the untruth the aggregates were fixed for.
- * One dateless comparable and the trend claim is simply not made.
+ * The sample as the worker's wire shape wants it: "MM-RRRR" + a numeric price,
+ * outside the facts. Since Slice 5 the worker reads nothing from it; on this
+ * side it is still the finest-grained fingerprint of the sample
+ * ({@link SECTIONS_USING_TRANSACTIONS}). All-or-nothing is kept for the same
+ * doctrine as the aggregates above: a payload built from the dated subset
+ * would describe a different sample than the one the operat presents.
  */
 export function buildProseTransactions(comparables: Comparable[]): ProseTransactionPayload[] {
   const months = comparables.map((c) => monthOf(c.date));

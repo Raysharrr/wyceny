@@ -378,18 +378,18 @@ describe("currentSectionFactsHash — scoped to what the section sees", () => {
 
 describe("currentSectionFactsHash — the fingerprint covers the transactions too (review I-2)", () => {
   /**
-   * The worker injects `proba.trend_cen = price_trend(transakcje)` into the
-   * facts EVERY section sees (`apps/worker/app/main.py`), so the transactions
-   * are an input to the prose even though they travel outside `fakty`. A
-   * fingerprint over the facts alone would call the proposals current after an
-   * edit that reverses the trend the operat asserts. `analiza_rynku` is used
-   * below because it is one of the two sections in `SECTIONS_USING_TRANSACTIONS`.
+   * Written when the worker injected `proba.trend_cen = price_trend(transakcje)`
+   * into the facts every section saw: a fingerprint over the facts alone called
+   * the proposals current after an edit that reversed the trend the operat
+   * asserted. Slice 5 removed that paragraph, so the pairing below no longer
+   * changes any text the model can produce — the fingerprint stays sensitive to
+   * it on purpose (see `SECTIONS_USING_TRANSACTIONS`): over-approximating
+   * staleness costs one LLM call, under-approximating leaves stale prose in a
+   * SIGNED appraisal.
    *
    * Same prices, same areas, same month SET — only which row carries which
-   * month changes. Every fact is therefore byte-identical (the date range is
-   * built from the sorted month set; the price and area aggregates are
-   * order-free), while `price_trend` sorts chronologically and reads the
-   * opposite direction.
+   * month changes, so every fact is byte-identical (the date range is built
+   * from the sorted month set; the price and area aggregates are order-free).
    */
   const row = (date: string, pricePerM2: number) => ({
     date,
@@ -529,11 +529,10 @@ describe("buildProseTransactions", () => {
     ]);
   });
 
-  // Same all-or-nothing doctrine as the aggregates (review finding I-1). The
-  // worker turns these into `proba.trend_cen` — a claim about how prices moved
-  // across THE SAMPLE. Built from the dated subset it would describe a
-  // different sample than the one the operat presents, and the number guard
-  // cannot catch that: "wzrostowe" carries no number at all.
+  // Same all-or-nothing doctrine as the aggregates (review finding I-1): a
+  // payload built from the dated subset would describe a different sample than
+  // the one the operat presents. Since Slice 5 nothing downstream reads it —
+  // it is the staleness fingerprint's input only.
   it("sends nothing when any comparable lacks a usable month", () => {
     expect(buildProseTransactions([...COMPARABLES, { pricePerM2: 8100 }])).toEqual([]);
     expect(buildProseTransactions([...COMPARABLES, { date: "2024-13", pricePerM2: 8000 }])).toEqual(

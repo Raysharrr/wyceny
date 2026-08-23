@@ -36,9 +36,10 @@ describe("PROSE_SECTION_FACTS mirrors the prompts", () => {
     }
   });
 
-  it("names the sections whose text depends on the sample's price trend", () => {
-    // The worker injects `proba.trend_cen = price_trend(transakcje)` into the
-    // shared facts, so these two must fingerprint the transactions as well.
+  it("names the sections fingerprinted over the sample as well as their facts", () => {
+    // Was mechanical (the worker injected `proba.trend_cen` into the shared
+    // facts); since Slice 5 it is deliberate over-approximation — both sections
+    // carry `proba`, which moves with the sample anyway.
     expect([...SECTIONS_USING_TRANSACTIONS].sort()).toEqual(["analiza_rynku", "uzasadnienie"]);
   });
 });

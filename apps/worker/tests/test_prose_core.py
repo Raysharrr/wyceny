@@ -17,7 +17,6 @@ from app.prose import (
     SECTIONS,
     build_prompt,
     parse_section_file,
-    price_trend,
     validate_numbers,
 )
 
@@ -32,9 +31,27 @@ FACTS_RYNEK = {
         "cena_min_zl_m2": "9 240,00",
         "cena_srednia_zl_m2": "10 815,00",
         "cena_max_zl_m2": "12 480,00",
-        "trend_cen": "stabilne",
     },
 }
+
+
+# Zero na sześć operatów wzorcowych (5 KCS w repo + Winiary) orzeka o kierunku
+# cen, a operaty metodą porównywania parami robią z tej odmowy osobne zdanie:
+# „nie jest możliwym stwierdzenie, czy rynek odpowiada na aktualną sytuację
+# wzrostem czy stagnacją cen". To konwencja zawodowa, nie przeoczenie — prompt
+# nie może wymuszać twierdzenia, którego rzeczoznawca nie stawia.
+FORBIDDEN_TREND_WORDS = ("tendencj", "wzrostow", "spadkow", "wzrost cen", "spadek cen")
+
+
+def test_prompt_analiza_rynku_nie_kaze_orzekac_o_trendzie():
+    text = (PROMPTS_DIR / "analiza_rynku.md").read_text(encoding="utf-8").lower()
+    for word in FORBIDDEN_TREND_WORDS:
+        assert word not in text, f"prompt wciąż mówi o trendzie: {word!r}"
+
+
+def test_fakty_proby_nie_niosa_trend_cen():
+    prompt = build_prompt("analiza_rynku", FACTS_RYNEK)
+    assert "trend_cen" not in prompt
 
 
 class TestParseSectionFile:
@@ -64,7 +81,7 @@ class TestParseSectionFile:
     def test_example_data_is_parsed_json(self):
         _, examples = parse_section_file(PROMPTS_DIR / "analiza_rynku.md")
         data, _ = examples[0]
-        assert data["proba"]["trend_cen"] == "stabilne"
+        assert data["proba"]["zakres_dat"] == "03-2024 – 11-2025"
 
     def test_missing_task_raises(self, tmp_path):
         path = tmp_path / "broken.md"
@@ -134,7 +151,7 @@ class TestBuildPrompt:
         prompt = build_prompt("analiza_rynku", FACTS_RYNEK)
         tail = prompt[prompt.index("\n\nDANE:\n") :]
         assert '\n "adres": "ul. Klonowa 14/3, Nowogród"' in tail  # indent=1, ensure_ascii=False
-        assert '\n  "trend_cen": "stabilne"' in tail  # nested level = 2 spaces
+        assert '\n  "cena_max_zl_m2": "12 480,00"' in tail  # nested level = 2 spaces
         assert "\\u" not in tail
 
     def test_example_text_included_verbatim(self):
@@ -158,88 +175,6 @@ class TestBuildPrompt:
         # Section name is used to build a path — only the closed set is allowed.
         with pytest.raises(ValueError):
             build_prompt("../../main", FACTS_RYNEK)
-
-
-def tx(date: str, price: float) -> dict:
-    return {"data": date, "cena_m2": price}
-
-
-class TestPriceTrend:
-    def test_rising(self):
-        assert (
-            price_trend(
-                [
-                    tx("01-2024", 9000.0),
-                    tx("02-2024", 9100.0),
-                    tx("03-2024", 10000.0),
-                    tx("04-2024", 10500.0),
-                ]
-            )
-            == "wzrostowe"
-        )
-
-    def test_falling(self):
-        assert (
-            price_trend(
-                [
-                    tx("01-2024", 10500.0),
-                    tx("02-2024", 10000.0),
-                    tx("03-2024", 9100.0),
-                    tx("04-2024", 9000.0),
-                ]
-            )
-            == "spadkowe"
-        )
-
-    def test_stable_below_threshold(self):
-        # halves: 9050 vs 9175 -> +1,4% < 5%
-        assert (
-            price_trend(
-                [
-                    tx("01-2024", 9000.0),
-                    tx("02-2024", 9100.0),
-                    tx("03-2024", 9150.0),
-                    tx("04-2024", 9200.0),
-                ]
-            )
-            == "stabilne"
-        )
-
-    def test_dates_sorted_chronologically_not_lexicographically(self):
-        # Regression: "02-2025" < "11-2024" lexicographically but is LATER in time.
-        # Lexicographic order would report "spadkowe" here.
-        data = [tx("11-2024", 9000.0), tx("02-2025", 12000.0)]
-        assert price_trend(data) == "wzrostowe"
-        assert price_trend(list(reversed(data))) == "wzrostowe"
-
-    def test_odd_count_middle_goes_to_second_half(self):
-        # spec split [100] vs [106, 106] -> +6% wzrostowe;
-        # putting the middle in the FIRST half would give +2,9% -> "stabilne".
-        assert (
-            price_trend([tx("01-2024", 100.0), tx("02-2024", 106.0), tx("03-2024", 106.0)])
-            == "wzrostowe"
-        )
-
-    def test_empty_and_single_transaction_are_stable(self):
-        assert price_trend([]) == "stabilne"
-        assert price_trend([tx("05-2025", 11000.0)]) == "stabilne"
-
-    def test_threshold_boundaries_are_inclusive_upward(self):
-        # delta == +prog -> wzrostowe, delta == -prog -> spadkowe (asymmetry is intentional)
-        assert price_trend([tx("01-2024", 100.0), tx("02-2024", 105.0)]) == "wzrostowe"
-        assert price_trend([tx("01-2024", 100.0), tx("02-2024", 95.0)]) == "spadkowe"
-
-    def test_custom_threshold(self):
-        data = [tx("01-2024", 100.0), tx("02-2024", 113.0)]
-        assert price_trend(data) == "wzrostowe"
-        assert price_trend(data, prog=0.2) == "stabilne"
-
-    def test_zero_baseline_is_stable(self):
-        assert price_trend([tx("01-2024", 0.0), tx("02-2024", 0.0)]) == "stabilne"
-
-    def test_malformed_date_raises(self):
-        with pytest.raises(ValueError):
-            price_trend([tx("2024-01", 9000.0), tx("2024-02", 9500.0)])
 
 
 # Facts for the number guard — synthetic, shaped like a real section payload

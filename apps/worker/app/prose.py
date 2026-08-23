@@ -1,5 +1,5 @@
-"""Prose core: prompt assembly from the committed section prompts, a
-deterministic price trend, and the number guard. Pure — no I/O beyond reading
+"""Prose core: prompt assembly from the committed section prompts and the
+number guard. Pure — no I/O beyond reading
 the prompt files, no `anthropic` import (the API call lives in main.py behind
 an injectable seam, same shape as kw.py).
 
@@ -61,51 +61,6 @@ def parse_section_file(path: Path) -> tuple[str, list[tuple[dict, str]]]:
     if not examples:
         raise ValueError(f"{path.name}: zero przykładów few-shot")
     return task, examples
-
-
-_DATE_RE = re.compile(r"^(\d{2})-(\d{4})$")
-
-
-def _chronological_key(transaction: dict) -> tuple[int, int]:
-    """Sort key for an 'MM-RRRR' date. Lexicographic sorting of these strings is
-    WRONG ('01-2025' < '03-2024'), hence the explicit (year, month) tuple."""
-    raw = str(transaction["data"])
-    match = _DATE_RE.match(raw.strip())
-    if not match:
-        raise ValueError(f"data transakcji spoza formatu MM-RRRR: {raw!r}")
-    month, year = int(match.group(1)), int(match.group(2))
-    if not 1 <= month <= 12:
-        raise ValueError(f"miesiąc spoza zakresu 1-12: {raw!r}")
-    return year, month
-
-
-def price_trend(transakcje: list[dict], *, prog: float = 0.05) -> str:
-    """Deterministic price trend over the sample: 'stabilne' | 'wzrostowe' | 'spadkowe'.
-
-    Input: [{'data': 'MM-RRRR', 'cena_m2': float}, ...]. Transactions are sorted
-    chronologically and split into halves (with an odd count the middle one goes
-    to the SECOND half); the verdict comes from the relative change between the
-    half means. Fewer than 2 transactions -> 'stabilne' (no grounds to claim a
-    change). The wording in the operat is derived from this value, never from the
-    model's own reading of the numbers.
-    """
-    if len(transakcje) < 2:
-        return "stabilne"
-
-    ordered = sorted(transakcje, key=_chronological_key)
-    prices = [float(t["cena_m2"]) for t in ordered]
-    middle = len(prices) // 2
-    first, second = prices[:middle], prices[middle:]
-
-    mean_first = sum(first) / len(first)
-    mean_second = sum(second) / len(second)
-    if mean_first == 0:
-        return "stabilne"
-
-    delta = (mean_second - mean_first) / mean_first
-    if abs(delta) < prog:
-        return "stabilne"
-    return "wzrostowe" if delta >= prog else "spadkowe"
 
 
 _NUM_RE = re.compile(r"\d[\d\s]*(?:,\d+)?")

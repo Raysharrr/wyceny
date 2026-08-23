@@ -5,7 +5,7 @@ i obszar analizowano i po co), wypunktowane cechy analizowanego rynku (zakres pr
 obszar badania, pasmo powierzchni użytkowej wynikające z próby, zakres czasowy wynikający
 z dat transakcji), akapit o zaobserwowanych cenach jednostkowych (minimalna, średnia,
 maksymalna z próby) z podaniem liczby transakcji oraz zdanie o przedziale cen całkowitych.
-Zakończ akapitem o zmienności cen w badanym okresie WYŁĄCZNIE na podstawie pola `trend_cen`.
+NIE orzekaj o kierunku zmian cen — ani o wzroście, ani o spadku, ani o stabilności.
 Zacznij bezpośrednio od akapitu wprowadzającego — bez tytułu i bez numeru sekcji.
 
 ## PRZYKŁAD
@@ -28,8 +28,7 @@ Zacznij bezpośrednio od akapitu wprowadzającego — bez tytułu i bez numeru s
   "cena_srednia_zl_m2": "10 815,00",
   "cena_max_zl_m2": "12 480,00",
   "cena_calkowita_min_zl": "545 000",
-  "cena_calkowita_max_zl": "912 000",
-  "trend_cen": "stabilne"
+  "cena_calkowita_max_zl": "912 000"
  }
 }
 ```
@@ -56,9 +55,6 @@ do 12 480,00 zł za 1 m2 powierzchni użytkowej lokalu. Średnia cena jednostkow
 ustalona na poziomie 10 815,00 zł za 1 m2. Ceny całkowite lokali przyjętych do porównań
 zawierały się w przedziale od 545 000 zł do 912 000 zł.
 
-W badanym okresie poziom cen jednostkowych pozostawał stabilny — porównanie średnich cen
-z pierwszej i drugiej połowy okresu nie wykazało istotnej zmiany.
-
 ## PRZYKŁAD
 
 ### DANE
@@ -79,8 +75,7 @@ z pierwszej i drugiej połowy okresu nie wykazało istotnej zmiany.
   "cena_srednia_zl_m2": "9 430,00",
   "cena_max_zl_m2": "11 260,00",
   "cena_calkowita_min_zl": "310 000",
-  "cena_calkowita_max_zl": "588 000",
-  "trend_cen": "wzrostowe"
+  "cena_calkowita_max_zl": "588 000"
  }
 }
 ```
@@ -106,6 +101,3 @@ do 52,40 m2. Jednostkowe ceny transakcyjne znajdowały się w przedziale od 8 10
 do 11 260,00 zł za 1 m2 powierzchni użytkowej lokalu. Średnia cena jednostkowa została
 ustalona na poziomie 9 430,00 zł za 1 m2. Ceny całkowite lokali przyjętych do porównań
 zawierały się w przedziale od 310 000 zł do 588 000 zł.
-
-W badanym okresie odnotowano wzrostową tendencję cen jednostkowych — średnia cena
-z drugiej połowy okresu była wyższa od średniej z połowy pierwszej.
