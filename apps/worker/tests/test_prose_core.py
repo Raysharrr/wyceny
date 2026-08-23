@@ -376,6 +376,50 @@ class TestValidateObreby:
         assert validate_obreby("", self.FACTS) == []
         assert validate_obreby("Ceny mieściły się w przedziale.", self.FACTS) == []
 
+    # --- Runda Codexa 1: trzy kontrprzykłady na zbyt luźną straż ---------
+
+    def test_obreb_przedmiotu_nie_moze_byc_obszarem_badania(self):
+        """Prompt pozwala na `obreb` wyłącznie w akapicie wprowadzającym.
+        Straż dopuszczająca go wszędzie odtwarza dosłownie skargę Anety:
+        „analizę opisał nam nie z tego obrębu ewidencyjnego"."""
+        text = "• obszar badania – m. Nowogród, obręb Zarzecze, w promieniu 1 000 m,"
+        assert validate_obreby(text, self.FACTS) == ["Zarzecze"]
+
+    def test_obreb_przedmiotu_wolno_w_akapicie_wprowadzajacym(self):
+        text = (
+            "Przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0007 Zarzecze.\n\n"
+            "• obszar badania – m. Nowogród, obręby Golęcin i Sołacz,"
+        )
+        assert validate_obreby(text, self.FACTS) == []
+
+    def test_lapie_forme_obreb_ewidencyjny(self):
+        """„w obrębie ewidencyjnym X" omijało straż w całości — przymiotnik
+        rozrywał wzorzec, a nazwa nigdy nie była czytana."""
+        assert validate_obreby("Zbadano rynek w obrębie ewidencyjnym Naramowice.", self.FACTS) == [
+            "Naramowice"
+        ]
+        assert validate_obreby(
+            "Transakcje z obrębów ewidencyjnych Golęcin i Sołacz.", self.FACTS
+        ) == []
+
+    def test_rdzen_nie_przepuszcza_innej_nazwy_o_wspolnym_poczatku(self):
+        """Golęcin ⊅ Golęcisko: dopuszczamy odmianę fleksyjną, nie dowolny
+        prefiks. Inaczej straż przepuszcza sąsiedni, realnie istniejący obręb."""
+        assert validate_obreby("Transakcje pochodzą z obrębu Golęcisko.", self.FACTS) == [
+            "Golęcisko"
+        ]
+
+    def test_rdzen_przepuszcza_odmiane_fleksyjna(self):
+        for form in ("Golęcina", "Golęcinie", "Golęcinem", "Sołacza", "Sołaczu"):
+            assert validate_obreby(f"Rynek w obrębie {form}.", self.FACTS) == [], form
+
+    def test_bez_obreby_w_faktach_obszar_badania_nie_ma_prawa_do_zadnej_nazwy(self):
+        """Gdy `obreby` wypadło (wszystko-albo-nic), obszaru badania nie znamy
+        — więc model nie ma prawa go nazwać, także obrębem przedmiotu."""
+        facts = {"obreb": "0007 Zarzecze", "proba": {"liczba_transakcji": 3}}
+        text = "• obszar badania – m. Nowogród, obręb Zarzecze,"
+        assert validate_obreby(text, facts) == ["Zarzecze"]
+
     def test_few_shoty_promptu_sa_czyste(self):
         # Regresja na samą straż: gdyby odrzucała poprawną polszczyznę, sekcja
         # byłaby trwale niewypełnialna, a testy syntetyczne by tego nie pokazały.
