@@ -736,6 +736,7 @@ describe("StepSample — rozrzut cen w pasku (Slice 6)", () => {
 describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
   beforeEach(() => {
     reselectSample.mockReset();
+    getSampleProposal.mockReset();
   });
 
   const withRanges = (params: Partial<SampleSelectionSnapshot["params"]>) =>
@@ -750,6 +751,31 @@ describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
         streetView={null}
       />,
     );
+
+  it("ponowne pobranie z RCN niesie wpisane pasma, nie kasuje ich po cichu", async () => {
+    const user = userEvent.setup();
+    getSampleProposal.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection({ params: { areaRange: { min: 40, max: 60 } } }),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+    withRanges({ areaRange: { min: 40, max: 60 }, unitPriceRange: { min: 9000 } });
+
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+
+    await waitFor(() =>
+      expect(getSampleProposal).toHaveBeenCalledWith({
+        valuationId: VID,
+        address: ADDRESS,
+        area: AREA,
+        areaRange: { min: 40, max: 60 },
+        unitPriceRange: { min: 9000 },
+      }),
+    );
+  });
 
   it("pola czytają pasma ZE SNAPSHOTU — jedynego ich domu", () => {
     withRanges({ areaRange: { min: 40, max: 60 }, unitPriceRange: { min: 9000, max: 13000 } });

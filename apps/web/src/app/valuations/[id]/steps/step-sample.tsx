@@ -298,7 +298,17 @@ export function StepSample({
     setFetchSampleError(null);
     setIsFetchingSample(true);
     try {
-      const result = await getSampleProposal({ valuationId, address, area });
+      // Pasma jadą RAZEM z pobraniem (Slice 6): świeże „Pobierz próbę z RCN"
+      // czyści ręczny ślad przeglądania (odrzucenia, dodania, ✓), ale granice
+      // doboru to nie ślad — to parametr, jak promień. Bez tego rzeczoznawca
+      // wpisywałby je od nowa po każdym pobraniu.
+      const result = await getSampleProposal({
+        valuationId,
+        address,
+        area,
+        ...(sel?.params.areaRange ? { areaRange: sel.params.areaRange } : {}),
+        ...(sel?.params.unitPriceRange ? { unitPriceRange: sel.params.unitPriceRange } : {}),
+      });
       if ("error" in result) {
         setFetchSampleError(result.error);
         return;

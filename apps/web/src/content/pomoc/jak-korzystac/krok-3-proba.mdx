@@ -80,7 +80,7 @@ Pod przyciskami promienia są cztery pola: **powierzchnia od / do [m²]** i **ce
 
 Podanie którejkolwiek granicy powierzchni **zastępuje** domyślne pasmo ±{DEFAULTS.areaBandPct / 0.01}% wokół powierzchni przedmiotu — nie zawęża go, tylko wchodzi na jego miejsce. Wpisanie samego „od: 40” przepuści więc również lokal 200 m², bo górnej granicy nie postawiłeś. Dla ceny nie ma pasma domyślnego: puste pola nie odcinają niczego.
 
-Wartości zatwierdzasz, wychodząc z pola (Tab, klik gdzie indziej albo Enter) — wtedy dobór przelicza się na tej samej puli, dokładnie jak po zmianie promienia, i tak samo zachowuje cały Twój ręczny ślad. Wpisane pasma zapisują się w szkicu: przeżywają zmianę promienia i zamknięcie strony.
+Wartości zatwierdzasz, wychodząc z pola (Tab, klik gdzie indziej albo Enter) — wtedy dobór przelicza się na tej samej puli, dokładnie jak po zmianie promienia, i tak samo zachowuje cały Twój ręczny ślad. Wpisane pasma zapisują się w szkicu: przeżywają zmianę promienia i zamknięcie strony. Przeżywają też „Pobierz próbę z RCN” — pasma są parametrem doboru, jak promień, a nie śladem przeglądania, więc pobranie ich nie kasuje (kasuje odrzucenia, ręczne dodania i znaczniki ✓, jak opisano wyżej).
 
 **Zawężenie pasma może powiększyć przeszukiwany promień.** Dobór rozszerza okrąg, dopóki po higienie i paśmie nie zbierze {DEFAULTS.minPoolAfterBand} transakcji — a Twoje pasmo liczy się razem z nimi, więc odcinając część kandydatek, każesz mu sięgnąć dalej. Aktualny promień widać w pasku nad tabelą i na mapie; jeśli po wpisaniu pasma podskoczył, to jest właśnie ten mechanizm, nie błąd.
 
