@@ -4,7 +4,7 @@
  * appraiser's WR for ≥4/6 reference operaty and within ±5% for ≥2/6.
  * Regression below either bar = red CI. Snapshots: tests/fixtures/rcn-snapshots (spike A, 2026-08-20).
  * Sixth operat (winiary, Slice 7): the only one with zero transactions shared with the
- * appraiser's own sample — her comparables sit 676–1752 m out, past our 500 m radius —
+ * appraiser's own sample — those comparables sit 676–1752 m out, past our 500 m radius —
  * yet it lands within ±5%. A wielka-płyta estate has unit prices uniform enough that a
  * different transaction set converges on the same average.
  */
