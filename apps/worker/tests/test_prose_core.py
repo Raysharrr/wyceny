@@ -398,9 +398,10 @@ class TestValidateObreby:
         assert validate_obreby("Zbadano rynek w obrębie ewidencyjnym Naramowice.", self.FACTS) == [
             "Naramowice"
         ]
-        assert validate_obreby(
-            "Transakcje z obrębów ewidencyjnych Golęcin i Sołacz.", self.FACTS
-        ) == []
+        assert (
+            validate_obreby("Transakcje z obrębów ewidencyjnych Golęcin i Sołacz.", self.FACTS)
+            == []
+        )
 
     def test_rdzen_nie_przepuszcza_innej_nazwy_o_wspolnym_poczatku(self):
         """Golęcin ⊅ Golęcisko: dopuszczamy odmianę fleksyjną, nie dowolny
@@ -603,14 +604,14 @@ class TestInflectPokrywaSlownik:
     @pytest.mark.parametrize(
         "nazwa,forma",
         [
-            ("Dębiec", "dębca"),      # e ruchome
-            ("Poznań", "poznania"),   # ń -> ni
-            ("Główna", "głównej"),    # przymiotnikowa
-            ("Wilda", "wildzie"),     # palatalizacja d -> dzi
-            ("Śródka", "śródce"),     # palatalizacja k -> c
+            ("Dębiec", "dębca"),  # e ruchome
+            ("Poznań", "poznania"),  # ń -> ni
+            ("Główna", "głównej"),  # przymiotnikowa
+            ("Wilda", "wildzie"),  # palatalizacja d -> dzi
+            ("Śródka", "śródce"),  # palatalizacja k -> c
             ("Starołęka", "starołęce"),
             ("Ławica", "ławicy"),
-            ("Jeżyce", "jeżyc"),      # dopełniacz liczby mnogiej
+            ("Jeżyce", "jeżyc"),  # dopełniacz liczby mnogiej
             ("Krzesiny", "krzesinach"),
             ("Chartowo", "chartowa"),
             ("Golęcin", "golęcinie"),
