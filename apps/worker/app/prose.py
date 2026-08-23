@@ -10,6 +10,7 @@ string computed on the web side.
 
 import json
 import re
+from itertools import product
 from pathlib import Path
 
 PROMPTS_DIR = Path(__file__).parent / "prompts" / "prose"
@@ -158,96 +159,125 @@ def validate_numbers(text: str, facts: dict) -> list[str]:
 # Aneta on a generated section: "analizę opisał nam nie z tego obrębu
 # ewidencyjnego". The facts name the study area (`proba.obreby`, built from the
 # sample the appraiser actually kept), so the text may name no other.
+#
+# KNOWN LIMIT, deliberate. The worker ships without `obreby-poznan.json` (it is
+# a separate deployment; the file lives in web), so "a name we know is an
+# obręb" can only mean "a name the FACTS carry". An invented name that is
+# neither in the facts nor introduced by the word "obręb" — "Badany obszar
+# stanowił Naramowice." — is therefore not detectable here. Closing that needs
+# the obręb list inside the worker image or inside the facts payload, which is
+# a scope decision, not something this guard can improvise.
 
-# The keyword and the optional adjective the register uses ("w obrębie
-# EWIDENCYJNYM Naramowice"). The adjective belongs to the keyword, not to the
-# name — read as a name it would make the guard skip the real one.
 _OBREB_KEYWORD_RE = re.compile(r"\bobręb\w*(?:\s+ewidencyjn\w*)?", re.IGNORECASE)
-# A proper noun: initial capital (Polish letters included). NEVER IGNORECASE —
+# A proper noun, or a run of them ("Zielona Góra"). NEVER IGNORECASE —
 # lowercase words after "w obrębie" are ordinary prose ("w obrębie jednego
 # budynku"), and matching them would make every sentence a violation.
-_OBREB_NAME_RE = re.compile(r"[A-ZĄĆĘŁŃÓŚŹŻ][\w-]+")
+_NAME_RUN_RE = re.compile(r"[A-ZĄĆĘŁŃÓŚŹŻ][\w-]*(?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][\w-]*)*")
 # Everything the register and ordinary prose put between the keyword and the
-# name: a colon, "nr"/"numer", "o nazwie", a code. Each optional and
-# independent, so "obręb ewidencyjny: X", "obręb nr 0007 X" and "obręb
-# ewidencyjny o nazwie X" all land on the same capture.
+# name: a colon, a dash, "nr"/"numer", "o nazwie"/"oznaczony jako", a code.
 _OBREB_TAIL_RE = re.compile(
-    r"(?:\s*:)?"
+    r"(?:\s*[:–—-])?"
     r"(?:\s+(?:nr|numer|numerze))?"
-    r"(?:\s+o\s+nazwie)?"
+    r"(?:\s+(?:o\s+nazwie|oznaczony\s+jako))?"
     r"(?:\s+\d{1,4})?"
-    r"((?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][\w-]+(?:\s*,|\s+i|\s+oraz)?)+)"
+    r"\s*[:–—-]?\s*"
+    r"((?:\s*[A-ZĄĆĘŁŃÓŚŹŻ][\w-]*(?:\s*,|\s+i|\s+oraz)?)+)"
 )
-# Bullet or blank line — NOT a sentence: "m. Nowogród" breaks on its own full
-# stop and would tear the names away from the paragraph that governs them.
-_SEGMENT_BOUNDARY_RE = re.compile(r"•|\n[ \t]*\n")
+# Bullet, list marker at a line start, or a blank line — NOT a sentence:
+# "m. Nowogród" breaks on its own full stop and would tear the names away from
+# the paragraph that governs them.
+_SEGMENT_BOUNDARY_RE = re.compile(r"(?m)•|\n[ \t]*\n|^[ \t]*[-–—*·]\s")
 
 
 def _inflect(name: str) -> set[str]:
-    """Every written form of ONE known obręb name.
+    """Every written form of ONE known obręb (or city) name.
 
-    The direction matters. Round 2 stripped an ending off whatever word the
-    text used and compared stems — which BOTH accepted "Golęcino" for a fact of
-    "Golęcin" (not a form of it) and rejected "Dębca" for a fact of "Dębiec"
-    (a correct one, with the fleeting -e-). Generating forms of the FACTS
-    instead makes the accepted set closed and finite: the names come from the
-    valuation, and Poznań has 24 of them in total.
+    The direction matters. Stripping an ending off whatever word the TEXT used
+    both accepted "Golęcino" for a fact of "Golęcin" (not a form of it) and
+    rejected "Dębca" for a fact of "Dębiec" (a correct one, with the fleeting
+    -e-). Generating forms of the FACTS instead makes the accepted set closed
+    and finite: the names come from the valuation, and Poznań has 24 in total.
 
-    # ponytail: suffix paradigms, not a morphological analyser. The rules below
-    # cover every name in `obreby-poznan.json` (pinned by a test that walks the
-    # whole file); a name needing a deeper stem change would need a rule here.
+    The branches are EXCLUSIVE on purpose. While they were additive, "Dębiec"
+    collected both its real forms and the regular-masculine junk ("dębieca",
+    "dębiecy") — which the cross-name collision test cannot see, because it
+    only compares one name's set against another's.
+
+    # ponytail: suffix paradigms, not a morphological analyser. Pinned by an
+    # EQUALITY test on four reference names plus a walk over the whole
+    # dictionary; a name needing a deeper stem change would need a rule here.
     """
+    words = name.split()
+    if len(words) > 1:
+        # "Zielona Góra" -> "Zielonej Góry": every part declines.
+        per_word = [sorted(_inflect(word)) for word in words]
+        return {" ".join(combo) for combo in product(*per_word)}
+
     low = name.casefold()
     forms = {low}
-
     if low.endswith("ec"):  # Dębiec -> Dębca (e ruchome)
         stem = low[:-2].removesuffix("i") + "c"
-        forms |= {stem + e for e in ("a", "u", "owi", "em", "e")}
-    if low.endswith("ń"):  # Poznań -> Poznania
+        forms |= {stem + e for e in ("a", "u", "owi", "em")}
+    elif low.endswith("ń"):  # Poznań -> Poznania
         stem = low[:-1] + "ni"
-        forms |= {stem, *(stem + e for e in ("a", "u", "owi", "em"))}
-
-    if low.endswith("a"):  # Wilda, Główna, Starołęka, Ławica, Komandoria
+        forms |= {stem + e for e in ("a", "u", "owi", "em")}
+    elif low.endswith(("na", "wa")):  # Główna — przymiotnikowa
+        forms |= {low[:-1] + e for e in ("ej", "ą")}
+    elif low.endswith("a"):  # Wilda, Śródka, Starołęka, Ławica, Komandoria
         stem = low[:-1]
-        forms |= {stem + e for e in ("y", "i", "ę", "ą", "o", "ej", "e")}
-        # Locative/dative palatalisation: Wilda -> Wildzie, Śródka -> Śródce.
-        soft = {"d": "dzie", "k": "ce", "g": "dze", "c": "cy", "t": "cie", "ł": "le"}
-        if stem and stem[-1] in soft:
+        forms |= {stem + ("i" if stem[-1] in "kgi" else "y"), stem + "ę", stem + "ą"}
+        soft = {"d": "dzie", "k": "ce", "g": "dze", "t": "cie", "ł": "le"}
+        if stem[-1] in soft:
             forms.add(stem[:-1] + soft[stem[-1]])
+    elif low.endswith(("ce", "je")):  # Jeżyce, Naramowice, Rataje — liczba mnoga
+        stem = low[:-1]
+        forms |= {stem, stem + "ach", stem + "ami", stem + "om"}
+    elif low.endswith("e"):  # Zegrze — nijaki
+        forms |= {low[:-1] + e for e in ("a", "u", "em")}
     elif low.endswith("o"):  # Chartowo, Junikowo, Piątkowo, Umultowo
         forms |= {low[:-1] + e for e in ("a", "u", "em", "ie")}
-    elif low.endswith("e"):  # Zegrze; plural Jeżyce, Naramowice, Rataje
-        forms |= {low[:-1] + e for e in ("", "a", "u", "em", "ach", "ami", "om")}
-    elif low.endswith(("y", "i")):  # plural Krzesiny, Winiary, Krzyżowniki
-        forms |= {low[:-1] + e for e in ("", "ach", "ami", "om")}
-    elif not low.endswith(("ą", "ę", "ó", "u")):  # consonant-final masculine
-        forms |= {low + e for e in ("a", "u", "owi", "em", "ie", "y")}
+    elif low.endswith(("y", "i")):  # Krzesiny, Winiary, Podolany, Krzyżowniki
+        stem = low[:-1]
+        forms |= {stem, stem + "ach", stem + "ami", stem + "om"}
+    elif not low.endswith(("ą", "ę", "ó", "u")):  # Golęcin, Łazarz — spółgłoskowy
+        forms |= {low + e for e in ("a", "u", "owi", "em", "ie")}
     return forms
 
 
-def _names_in(value) -> list[str]:
-    """Proper nouns inside a fact string. `obreb` arrives as "0007 Zarzecze"
-    and `rynek` as "wtórny, lokale mieszkalne, Poznań"; the code is not a
-    name, and neither are the lowercase words."""
-    return _OBREB_NAME_RE.findall(value) if isinstance(value, str) else []
+def _last_name_in(value) -> str:
+    """The trailing proper noun of a fact string: `obreb` arrives as "0007
+    Zarzecze" and `rynek` as "wtórny, lokale mieszkalne, Poznań". A run, not a
+    word, so "0051 Stare Miasto" stays one name."""
+    runs = _NAME_RUN_RE.findall(value) if isinstance(value, str) else []
+    return runs[-1] if runs else ""
 
 
 def _forms_of(names: list[str]) -> set[str]:
-    return {form for name in names for form in _inflect(name)}
+    return {form for name in names if name for form in _inflect(name)}
 
 
 def _study_area_forms(facts: dict) -> set[str]:
-    """The study area as the FACTS state it — plus the city, because "w obrębie
-    Poznania" is ordinary Polish for "within Poznań" and names no obręb at all.
+    """The study area as the FACTS state it, plus the city IN ITS DECLINED
+    FORMS ONLY.
+
+    The city needs both halves of that rule. "w obrębie Poznania" is ordinary
+    Polish for "within Poznań" and names no obręb, so a declined form must
+    pass. But Poznań is ALSO a real obręb (0051), so the NOMINATIVE after the
+    keyword — "obręb Poznań" — is a claim about an obręb and is judged like any
+    other. Only `rynek` is read: the address would whitelist a street name
+    ("Poznań, ul. Heweliusza 3" made `Heweliusza` a legal obręb), and the city
+    already travels in `rynek`.
 
     Empty `obreby` (the web side's all-or-nothing rule withheld it) leaves only
-    the city: an area we cannot state is an area the operat must not name.
+    the declined city: an area we cannot state is an area the operat must not
+    name.
     """
     proba = facts.get("proba")
     raw = proba.get("obreby") or [] if isinstance(proba, dict) else []
     sample = [n for n in raw if isinstance(n, str) and n]
-    city = _names_in(facts.get("rynek"))[-1:] + _names_in(facts.get("adres"))[-1:]
-    return _forms_of(sample + city)
+    city = _last_name_in(facts.get("rynek"))
+    declined = _inflect(city) - {city.casefold()} if city else set()
+    return _forms_of(sample) | declined
 
 
 def _segment_start(text: str, position: int) -> int:
@@ -260,36 +290,108 @@ def _segment_start(text: str, position: int) -> int:
     return start
 
 
+def _unmatched(words: list[str], allowed: set[str]) -> list[str]:
+    """Words of one capitalised run that are NOT an allowed name.
+
+    Longest match first, so a run holding a multi-word name next to a
+    single-word one segments correctly. Whatever is left over is reported as
+    ONE string per maximal gap — "Stare Miasto" is one invented name, not two.
+    """
+    out: list[str] = []
+    pending: list[str] = []
+    i = 0
+    while i < len(words):
+        hit = 0
+        for j in range(len(words), i, -1):
+            if " ".join(words[i:j]).casefold() in allowed:
+                hit = j - i
+                break
+        if hit:
+            if pending:
+                out.append(" ".join(pending))
+                pending = []
+            i += hit
+        else:
+            pending.append(words[i])
+            i += 1
+    if pending:
+        out.append(" ".join(pending))
+    return out
+
+
 def validate_obreby(text: str, facts: dict) -> list[str]:
     """Obręb names present in the TEXT but absent from the FACTS (empty = clean).
 
-    Only names introduced by the word "obręb" in any of its forms are read —
-    the section also names a city and a street, and those are not obręby.
+    Two passes, because the word "obręb" is a useful hint but a useless gate.
 
-    The default is INVERTED on purpose: the subject's own `obreb` is legal ONLY
-    in the opening paragraph, which is the one place the prompt allows it.
-    Everywhere else the sample's `obreby` are the whole permitted set. Round 2
-    instead looked for the phrase "obszar badania" near the name, so every
-    rewording of it — "badany obszar", "teren badania", or a plain sentence —
-    walked straight past the guard. There is no synonym of "not the opening
-    paragraph".
+    1. Names introduced by the keyword — this is what catches an INVENTED name
+       ("obręb ewidencyjny: Naramowice"), which nothing else can recognise.
+    2. The SUBJECT's own obręb anywhere else in the text. Its name is known
+       from the facts, so word order cannot hide it: "Badany obszar stanowił
+       Zarzecze", "obręb oznaczony jako Zarzecze" and "w Zarzeczu" are all the
+       same claim, and a keyword-gated guard read none of them.
+
+    The subject's obręb is legal EXACTLY ONCE — at the first keyword mention in
+    the opening paragraph, the one place the prompt allows it. Everywhere else
+    the sample's `obreby` are the whole permitted set. Scoping it to "the
+    opening paragraph" instead let a single-paragraph text carry the study-area
+    claim beside the intro and say nothing; scoping it to a phrase ("obszar
+    badania") let every synonym through. Position is the only thing with no
+    synonym.
     """
     study = _study_area_forms(facts)
-    intro = study | _forms_of(_names_in(facts.get("obreb")))
+    subject = _forms_of([_last_name_in(facts.get("obreb"))])
+    subject_only = subject - study
 
     violations: list[str] = []
+
+    def report(name: str) -> None:
+        if name not in violations:
+            violations.append(name)
+
+    # Pass 1 — names the keyword introduces.
+    intro_end = -1
+    opening_end = _first_segment_end(text)
     for keyword in _OBREB_KEYWORD_RE.finditer(text):
         tail = _OBREB_TAIL_RE.match(text, keyword.end())
         if not tail:
             continue
-        start = _segment_start(text, keyword.start())
-        allowed = intro if not text[:start].strip() else study
-        for found in _OBREB_NAME_RE.findall(tail.group(1)):
-            if found.casefold() in allowed:
-                continue
-            if found not in violations:
-                violations.append(found)
+        opening = not text[: _segment_start(text, keyword.start())].strip()
+        if opening and intro_end < 0:
+            allowed, intro_end = study | subject, tail.end()
+        else:
+            allowed = study
+        for run in _NAME_RUN_RE.findall(tail.group(1)):
+            for name in _unmatched(run.split(), allowed):
+                report(name)
+
+    # Pass 2 — the subject's obręb outside its one legal mention. With no legal
+    # mention at all the whole opening paragraph stays exempt: the intro may
+    # name the subject's obręb without the keyword, and flagging that would
+    # reject a correct section.
+    exempt_until = intro_end if intro_end >= 0 else opening_end
+    for run in _NAME_RUN_RE.finditer(text):
+        if run.start() < exempt_until:
+            continue
+        words = run.group(0).split()
+        i = 0
+        while i < len(words):
+            hit = 0
+            for j in range(len(words), i, -1):
+                if " ".join(words[i:j]).casefold() in subject_only:
+                    hit = j - i
+                    break
+            if hit:
+                report(" ".join(words[i : i + hit]))
+                i += hit
+            else:
+                i += 1
     return violations
+
+
+def _first_segment_end(text: str) -> int:
+    boundary = _SEGMENT_BOUNDARY_RE.search(text)
+    return boundary.start() if boundary else len(text)
 
 
 def _dumps(data: dict) -> str:

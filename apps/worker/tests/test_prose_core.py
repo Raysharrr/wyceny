@@ -482,6 +482,89 @@ class TestValidateObreby:
     def test_poprawna_fleksja_nazw_z_faktow_nie_jest_naruszeniem(self, zdanie):
         assert validate_obreby(zdanie, self.FACTS_FLEKSJA) == []
 
+    # --- Runda Codexa 3: pięć znalezisk ----------------------------------
+
+    FACTS_MIASTO = {
+        "obreb": "0007 Zarzecze",
+        "adres": "Poznań, ul. Heweliusza 3",
+        "rynek": "wtórny, lokale mieszkalne, Poznań",
+        "proba": {"obreby": ["Golęcin", "Sołacz"]},
+    }
+
+    def test_miasto_w_mianowniku_po_slowie_obreb_jest_sadzone(self):
+        """Poznań jest JEDNOCZEŚNIE miastem i realnym obrębem 0051, więc
+        „obręb Poznań" to twierdzenie o obrębie i podlega zbiorowi próby."""
+        text = self.WSTEP + "• obszar badania – obręb Poznań,"
+        assert validate_obreby(text, self.FACTS_MIASTO) == ["Poznań"]
+
+    def test_miasto_w_formie_zaleznej_to_zwykla_polszczyzna(self):
+        """„w obrębie Poznania" znaczy „w granicach Poznania" — żadna forma
+        zależna nie nazywa obrębu."""
+        text = self.WSTEP + "Transakcje odnotowano w obrębie Poznania."
+        assert validate_obreby(text, self.FACTS_MIASTO) == []
+
+    def test_nazwa_ulicy_z_adresu_nie_jest_dozwolonym_obrebem(self):
+        """Adres nie jest źródłem nazw obrębów — whitelistował `Heweliusza`."""
+        text = self.WSTEP + "• obszar badania – obręb Heweliusza,"
+        assert validate_obreby(text, self.FACTS_MIASTO) == ["Heweliusza"]
+
+    @pytest.mark.parametrize(
+        "opis,oczekiwane",
+        [
+            ("Badany obszar stanowił Zarzecze, obręb ewidencyjny miasta.", "Zarzecze"),
+            ("Badanie objęło obręb oznaczony jako Zarzecze.", "Zarzecze"),
+            ("obręb – Zarzecze", "Zarzecze"),
+            # Naruszenie raportuje formę ZAPISANĄ w tekście — model ma poprawić
+            # to, co napisał, a nie odgadywać mianownik.
+            ("Rynek analizowano w Zarzeczu.", "Zarzeczu"),
+        ],
+    )
+    def test_obreb_przedmiotu_lapany_niezaleznie_od_szyku(self, opis, oczekiwane):
+        """Straż bramkowana słowem kluczowym padała na szyku. Nazwa obrębu
+        PRZEDMIOTU jest znana z faktów, więc jest sądzona wszędzie poza jedyną
+        dozwoloną wzmianką we wstępie — bramką jest nazwa, nie słowo „obręb"."""
+        assert validate_obreby(self.WSTEP + opis, self.FACTS) == [oczekiwane]
+
+    def test_jednoakapitowy_tekst_nie_przemyca_obszaru_badania(self):
+        """Obserwacja team-leada z rundy 3, domknięta tą samą regułą pozycyjną:
+        legalna wzmianka obrębu przedmiotu jest POJEDYNCZA."""
+        text = (
+            "Przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0007 Zarzecze. "
+            "Obszarem badania był obręb Zarzecze, w promieniu 1 000 m."
+        )
+        assert validate_obreby(text, self.FACTS) == ["Zarzecze"]
+
+    def test_pojedyncza_wzmianka_we_wstepie_nadal_przechodzi(self):
+        text = "Przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0007 Zarzecze."
+        assert validate_obreby(text, self.FACTS) == []
+
+    @pytest.mark.parametrize("marker", ["-", "–", "—", "*", "•"])
+    def test_markery_listy_zamykaja_akapit_wprowadzajacy(self, marker):
+        text = f"Wstęp.\n{marker} obszar badania – obręb Zarzecze."
+        assert validate_obreby(text, self.FACTS) == ["Zarzecze"]
+
+    FACTS_WIELOWYRAZOWE = {
+        "obreb": "0051 Stare Miasto",
+        "rynek": "wtórny, lokale mieszkalne, Zielona Góra",
+        "proba": {"obreby": ["Zielona Góra", "Nowe Miasto"]},
+    }
+
+    def test_nazwa_wielowyrazowa_z_faktow_nie_jest_naruszeniem(self):
+        text = "Wstęp.\n\nRynek w obrębach Zielona Góra i Nowe Miasto."
+        assert validate_obreby(text, self.FACTS_WIELOWYRAZOWE) == []
+
+    def test_nazwa_wielowyrazowa_odmieniona_nie_jest_naruszeniem(self):
+        text = "Wstęp.\n\nRynek w obrębie Zielonej Góry."
+        assert validate_obreby(text, self.FACTS_WIELOWYRAZOWE) == []
+
+    def test_nieznana_nazwa_wielowyrazowa_to_JEDNO_naruszenie(self):
+        text = "Wstęp.\n\nRynek w obrębie Stary Rynek."
+        assert validate_obreby(text, self.FACTS_WIELOWYRAZOWE) == ["Stary Rynek"]
+
+    def test_dwie_nazwy_bez_spojnika_rozdzielaja_sie(self):
+        text = "Wstęp.\n\nRynek w obrębach Golęcin Sołacz."
+        assert validate_obreby(text, self.FACTS) == []
+
     def test_few_shoty_promptu_sa_czyste(self):
         # Regresja na samą straż: gdyby odrzucała poprawną polszczyznę, sekcja
         # byłaby trwale niewypełnialna, a testy syntetyczne by tego nie pokazały.
@@ -536,6 +619,22 @@ class TestInflectPokrywaSlownik:
     )
     def test_generuje_realne_formy_odmiany(self, nazwa, forma):
         assert forma in app.prose._inflect(nazwa)
+
+    @pytest.mark.parametrize(
+        "nazwa,zatwierdzone",
+        [
+            ("Dębiec", {"dębiec", "dębca", "dębcu", "dębcowi", "dębcem"}),
+            ("Główna", {"główna", "głównej", "główną"}),
+            ("Wilda", {"wilda", "wildy", "wildzie", "wildę", "wildą"}),
+            ("Jeżyce", {"jeżyce", "jeżyc", "jeżycach", "jeżycami", "jeżycom"}),
+        ],
+    )
+    def test_generator_nie_nadprodukuje(self, nazwa, zatwierdzone):
+        """RÓWNOŚĆ, nie zawieranie: test antykolizyjny porównuje zbiory MIĘDZY
+        nazwami, więc nadprodukcja w obrębie jednej nazwy (`dębieca`, `Główni`,
+        `Wildi`, `Jeżyca`) przechodziła przez niego bez śladu. Tylko równość
+        pada, gdy któraś gałąź przestanie być rozłączna."""
+        assert app.prose._inflect(nazwa) == zatwierdzone
 
     def test_nie_generuje_form_ktore_nie_sa_odmiana(self):
         assert "golęcino" not in app.prose._inflect("Golęcin")
