@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import type { Comparable, SampleMeta } from "@/domain/kcs";
@@ -781,6 +781,52 @@ describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
     );
   });
 
+  it("świeże pobranie z RCN nie daje się nadpisać starszemu przeliczeniu", async () => {
+    // Trzeci wariant tej samej klasy (finding Codexa r2): „Pobierz próbę z RCN"
+    // jest aktywne w trakcie przeliczania, więc oba tory muszą stać w jednej
+    // kolejce — inaczej starszy reselect wraca później i cofa świeżą pulę.
+    const user = userEvent.setup();
+    let resolveReselect!: (v: unknown) => void;
+    reselectSample.mockImplementationOnce(() => new Promise((r) => (resolveReselect = r)));
+    getSampleProposal.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection({ radiusUsedM: 2000 }),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection({ radiusUsedM: 500 })}
+        streetView={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "1000 m" })); // wisi
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await waitFor(() => expect(bannerText(container)).toMatch(/w promieniu 2000 m/));
+
+    // Dopiero teraz wraca starsze przeliczenie — nie ma prawa cofnąć świeżej puli.
+    await act(async () => {
+      resolveReselect({
+        proposal: {
+          comparables: [],
+          sampleSelection: makeSampleSelection({ radiusUsedM: 1000 }),
+          sampleMeta: makeSampleMeta(),
+          streetView: makeStreetView(),
+        },
+      });
+    });
+    expect(bannerText(container)).toMatch(/w promieniu 2000 m/);
+  });
+
   it("pola czytają pasma ZE SNAPSHOTU — jedynego ich domu", () => {
     withRanges({ areaRange: { min: 40, max: 60 }, unitPriceRange: { min: 9000, max: 13000 } });
     expect(screen.getByLabelText(/powierzchnia od/i)).toHaveValue(40);
@@ -1388,9 +1434,23 @@ describe("StepSample — radius buttons (Task 8)", () => {
     expect(prices).toEqual(["12000", "12500", "9000"]);
   });
 
-  it("carries manualRejections from the response into the effective (post-rejection) rows saved to the form", async () => {
+  it("nakłada BIEŻĄCY ślad ręczny na wynik przeliczenia, nawet gdy odpowiedź go nie niesie", async () => {
+    // Kontrakt odwrócony w rundzie 3 (finding Codexa): panel jest aktywny w
+    // trakcie przeliczania, więc ślad ręczny z chwili WYSŁANIA bywa nieaktualny,
+    // gdy odpowiedź wraca. Źródłem prawdy jest snapshot w chwili POWROTU —
+    // odpowiedź poniżej celowo NIE niesie odrzucenia, a i tak musi ono zadziałać.
     const user = userEvent.setup();
-    const sel = makeSampleSelection({ radiusUsedM: 500 });
+    const sel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ radiusUsedM: 500 }),
+      manualRejections: [
+        {
+          transactionId: "T-NEW-1",
+          lokalId: "306401_1.0001.34_BUD_5_LOK_6",
+          reason: "too_far",
+          at: "2026-08-21T09:00:00Z",
+        },
+      ],
+    };
     const initialComparables: Comparable[] = sel.proposed.map((c) => ({
       date: c.date,
       area: c.area,
@@ -1410,19 +1470,12 @@ describe("StepSample — radius buttons (Task 8)", () => {
       lokalId: "306401_1.0001.34_BUD_5_LOK_9",
       pricePerM2: 13000,
     });
-    const sel2: SampleSelectionSnapshot = {
-      ...makeSampleSelection({ proposed: [tNew1, tNew2], alternates: [tNew3], radiusUsedM: 1000 }),
-      // T-NEW-1 was manually rejected in a PREVIOUS round and carried over —
-      // the effective proposal backfills from alternates (T-NEW-3).
-      manualRejections: [
-        {
-          transactionId: "T-NEW-1",
-          lokalId: tNew1.lokalId,
-          reason: "too_far",
-          at: "2026-08-21T09:00:00Z",
-        },
-      ],
-    };
+    // Odpowiedź BEZ `manualRejections` — ślad ma przyjść z bieżącego snapshotu.
+    const sel2: SampleSelectionSnapshot = makeSampleSelection({
+      proposed: [tNew1, tNew2],
+      alternates: [tNew3],
+      radiusUsedM: 1000,
+    });
     reselectSample.mockResolvedValue({
       proposal: {
         comparables: [tNew1, tNew2].map((c) => ({

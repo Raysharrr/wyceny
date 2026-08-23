@@ -232,6 +232,9 @@ export function StepSample({
     clearReselectError,
     onRadius,
     onRanges,
+    claimRequest,
+    isLatestRequest,
+    resetDesired,
   } = useSampleReview({
     valuationId,
     sel,
@@ -297,6 +300,10 @@ export function StepSample({
   const onFetchSample = async () => {
     setFetchSampleError(null);
     setIsFetchingSample(true);
+    // Pobranie stoi w tej samej kolejce co przeliczenia (finding Codexa r2):
+    // przycisk jest aktywny w trakcie reselectu, więc bez wspólnego numeru
+    // starsze przeliczenie wróciłoby po świeżej puli i by ją cofnęło.
+    const token = claimRequest();
     try {
       // Pasma jadą RAZEM z pobraniem (Slice 6): świeże „Pobierz próbę z RCN"
       // czyści ręczny ślad przeglądania (odrzucenia, dodania, ✓), ale granice
@@ -309,10 +316,15 @@ export function StepSample({
         ...(sel?.params.areaRange ? { areaRange: sel.params.areaRange } : {}),
         ...(sel?.params.unitPriceRange ? { unitPriceRange: sel.params.unitPriceRange } : {}),
       });
+      if (!isLatestRequest(token)) return;
       if ("error" in result) {
         setFetchSampleError(result.error);
         return;
       }
+      // Świeża pula to nowy punkt wyjścia — promień wraca do spaceru domeny,
+      // więc intencja „1000 m" sprzed pobrania przestaje obowiązywać. Pasma
+      // przetrwają, bo niesie je snapshot z odpowiedzi.
+      resetDesired();
       // Rows stay fully editable after this — a hand-edited row keeps
       // `source: "rcn"` even though its values no longer match the fetch;
       // reconciling edited-vs-fetched fidelity is a later gating-slice concern.

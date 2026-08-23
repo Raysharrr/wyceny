@@ -414,6 +414,68 @@ describe("useSampleReview — wyścig przeliczeń (latest-request-wins)", () => 
     },
   });
 
+  it("nowsze żądanie niesie promień zadany przed nim (koordynator, nie stary snapshot)", async () => {
+    // Scenariusz Codexa: klik 1000 m leci jako żądanie nr 1; zanim wróci,
+    // rzeczoznawca zatwierdza pasmo — żądanie nr 2. Gdyby czytało promień ze
+    // STAREGO `sel.radiusUsedM` (500), wygrałoby tokenem i skasowało zmianę
+    // promienia. Konfiguracja musi być czytana z koordynatora, nie ze snapshotu.
+    reselectSample.mockReset();
+    reselectSample.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() =>
+      useHarness({ sel: makeSel({ proposed: [mk()] }), comparables: [] }),
+    );
+    act(() => {
+      void result.current.review.onRadius(1000);
+    });
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000 } });
+    });
+
+    expect(reselectSample).toHaveBeenCalledTimes(2);
+    expect(reselectSample.mock.calls[1][0]).toMatchObject({
+      radiusOverrideM: 1000,
+      unitPriceRange: { min: 10000 },
+    });
+  });
+
+  it("odrzucenie wykonane PO wysłaniu żądania przeżywa jego odpowiedź", async () => {
+    // Panel jest aktywny w trakcie przeliczania, więc odpowiedź nie może wnosić
+    // stanu ręcznego z chwili wysłania — nakładamy AKTUALNY.
+    reselectSample.mockReset();
+    let resolve!: (v: unknown) => void;
+    reselectSample.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+
+    const victim = mk();
+    const other = mk();
+    const { result } = renderHook(() =>
+      useHarness({
+        sel: makeSel({ proposed: [victim, other] }),
+        comparables: [victim, other].map((c) => rcnRow(c)),
+      }),
+    );
+
+    await act(async () => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000 } });
+    });
+    act(() => {
+      result.current.review.setSelectedKey(candidateKey(victim));
+    });
+    act(() => {
+      result.current.review.reject({ reason: "too_far" });
+    });
+    expect(result.current.sel?.manualRejections).toHaveLength(1); // sanity: odrzucenie zapisane
+
+    await act(async () => {
+      resolve(proposalWith({ min: 10000 }));
+    });
+
+    expect(result.current.sel?.manualRejections).toHaveLength(1);
+    expect(result.current.sel?.manualRejections?.[0]).toMatchObject({
+      transactionId: victim.transactionId,
+    });
+  });
+
   it("odpowiedź starszego żądania nie kasuje pasma z nowszego", async () => {
     reselectSample.mockReset();
     let resolveFirst!: (v: unknown) => void;
