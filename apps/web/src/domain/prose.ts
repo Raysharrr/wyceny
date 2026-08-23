@@ -30,14 +30,28 @@ import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "./prose-s
 import { sourced, type Sourced } from "@wyceny/shared";
 
 /**
- * Market description — flats on the secondary market, in the subject's own
- * city. The city is load-bearing, not decoration: the few-shot examples carry
- * it here ("wtórny, lokale mieszkalne, Nowogród") and their prose opens with
- * "analizę rynku lokalnego m. Nowogród, obręb nr …". Sending it without the
- * city, a staging run produced "przeprowadzono analizę rynku lokalnego obręb
- * Golęcin" — the model, having no city to place, glued the bare obręb onto the
- * sentence in the wrong grammatical case. Polish declension is decided by what
- * the phrase is attached to, so the fact has to arrive shaped.
+ * What the sample IS — and therefore what the section may call the market.
+ *
+ * Not an assumption dressed as a fact: it restates the selection's own filters
+ * (ADR-015). `hygieneReasons` rejects `not_residential`, so every row is a
+ * flat; it rejects `primary_market`, so no row is a declared new-build. The
+ * known hole is `tran_rodzaj_rynku` being filled in ~28% of RCN records — a
+ * developer sale with the field empty passes, which the `primary_suspect` flag
+ * (from `tran_sprzedajacy`) catches only in part. That gap is tracked in
+ * open-questions, not papered over here; an appraiser writing "rynek wtórny"
+ * from the same registry stands on exactly the same evidence.
+ *
+ * Emitted only alongside `proba` (below): with no sample there is no market to
+ * characterise, and a constant asserted into an empty draft WOULD be an
+ * assumption dressed as a fact.
+ *
+ * The city is load-bearing, not decoration: the few-shot examples carry it here
+ * ("wtórny, lokale mieszkalne, Nowogród") and their prose opens with "analizę
+ * rynku lokalnego m. Nowogród, obręb nr …". Sending it without the city, a
+ * staging run produced "przeprowadzono analizę rynku lokalnego obręb Golęcin" —
+ * the model, having no city to place, glued the bare obręb onto the sentence in
+ * the wrong grammatical case. Polish declension is decided by what the phrase
+ * is attached to, so the fact has to arrive shaped.
  */
 const RYNEK_BASE = "wtórny, lokale mieszkalne";
 
@@ -76,7 +90,8 @@ export type ProseFacts = {
   dzielnica?: string;
   obreb?: string;
   pow_uzytkowa: string;
-  rynek: string;
+  /** Travels WITH `proba` or not at all — see {@link RYNEK_BASE}. */
+  rynek?: string;
   proba?: ProseSampleFacts;
   nr_dzialki?: string;
   pow_dzialki_m2?: string;
@@ -329,8 +344,7 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
     // from the address (the prompt tolerates its absence).
     ...(subject?.obreb ? { obreb: subject.obreb } : {}),
     pow_uzytkowa: formatNumber(inputs.area, 2),
-    rynek: `${RYNEK_BASE}, ${cityFromAddress(address)}`,
-    ...(proba ? { proba } : {}),
+    ...(proba ? { rynek: `${RYNEK_BASE}, ${cityFromAddress(address)}`, proba } : {}),
     ...(subject?.nrDzialki ? { nr_dzialki: subject.nrDzialki } : {}),
     ...(subject?.powEwidHa != null
       ? { pow_dzialki_m2: formatNumber(subject.powEwidHa * M2_PER_HA, 0) }

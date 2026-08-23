@@ -165,6 +165,9 @@ describe("buildProseFacts", () => {
     expect(facts).not.toHaveProperty("proba");
     expect(facts).not.toHaveProperty("pozycja_wyniku");
     expect(facts.notatka_otoczenie).toBe(NOTE);
+    // Slice 5: `rynek` jest twierdzeniem O PRÓBIE („wtórny, lokale mieszkalne"
+    // to konsekwencja filtrów doboru), więc bez próby nie ma go co twierdzić.
+    expect(facts).not.toHaveProperty("rynek");
   });
 
   it("undated / area-less comparables: prices stay, the derived ranges drop out", () => {
