@@ -101,7 +101,7 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
  * przeniesieniu komponentu, a oba historyczne rozjazdy polegaly na tym, ze
  * przycisk PRZESTAL istniec.
  *
- * Zakres na dzis: 34 wystapien, 17 unikalnych etykiet. To siec bezpieczenstwa
+ * Zakres na dzis: 35 wystapien, 17 unikalnych etykiet. To siec bezpieczenstwa
  * na jedna, najczestsza klase bledu — nie dowod zgodnosci Pomocy z aplikacja.
  *
  * T12 potwierdzil to empirycznie po raz trzeci: skasowanie przycisku
