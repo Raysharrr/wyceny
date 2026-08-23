@@ -747,8 +747,18 @@ describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", ()
     params: { subjectArea: 68.4, todayMonth: "2026-08" },
   });
 
-  const factsWith = (sel: SampleSelectionSnapshot) =>
-    buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, sampleSelection: sel } });
+  /** Wiersze RCN 1:1 z propozycjami — tak wygląda próba bez ręcznych dopisków. */
+  const rcnRows = (n: number): KcsInput["comparables"] =>
+    Array.from({ length: n }, (_, i) => ({
+      date: "2025-03",
+      area: 60,
+      pricePerM2: 11000 + i,
+      source: "rcn" as const,
+      transactionId: `tx-${i}`,
+    }));
+
+  const factsWith = (sel: SampleSelectionSnapshot, comparables = rcnRows(sel.proposed.length)) =>
+    buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, comparables, sampleSelection: sel } });
 
   it("liczbę przebadanych transakcji podaje słownie, nie co do sztuki", () => {
     const sel = selection([cand("0021", "tx-a")]);
@@ -788,7 +798,8 @@ describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", ()
       ],
     };
 
-    expect(factsWith(sel).proba?.obreby).toEqual(["Golęcin"]);
+    // Jedna propozycja przeżywa odrzucenie, więc próba ma jeden wiersz.
+    expect(factsWith(sel, rcnRows(1)).proba?.obreby).toEqual(["Golęcin"]);
   });
 
   it("pomija oba pola bez snapshotu doboru — stara wycena nie dostaje zer", () => {
@@ -803,8 +814,25 @@ describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", ()
     const sel = selection([{ ...cand("0021", "tx-a"), egib: null }]);
     const proba = factsWith(sel).proba!;
 
+    // `promien_m` dzieli z `obreby` ten sam punkt wypunktowania w obu
+    // few-shotach, więc jedzie razem z nim albo wcale — zdanie o obszarze
+    // badania nie może zostać w połowie.
     expect("obreby" in proba).toBe(false);
-    expect(proba.promien_m).toBe(sel.radiusUsedM);
+    expect("promien_m" in proba).toBe(false);
+  });
+
+  it("pomija obszar badania, gdy próba ma wiersz spoza doboru (ręcznie dopisany)", () => {
+    // `comparables` to propozycje doboru PLUS każdy wiersz nie-RCN
+    // (`rebuildComparables`), więc ręcznie dopisana transakcja nie ma
+    // kandydatki — a `liczba_transakcji` liczy ją tak samo. Wypisanie obrębów
+    // samych propozycji opisałoby węższy obszar niż ten, na którym operat się
+    // opiera. INPUTS ma trzy transakcje, w tym jedną `source: "manual"`.
+    const sel = selection([cand("0021", "tx-a"), cand("0020", "tx-b")]);
+    const proba = factsWith(sel, [...rcnRows(2), { pricePerM2: 12000, source: "manual" }]).proba!;
+
+    expect(proba.liczba_transakcji).toBeGreaterThan(sel.proposed.length);
+    expect("obreby" in proba).toBe(false);
+    expect("promien_m" in proba).toBe(false);
   });
 
   it("pomija `obreby`, gdy choć JEDNEJ kandydatki nie da się nazwać — lista nie może zaniżać obszaru", () => {

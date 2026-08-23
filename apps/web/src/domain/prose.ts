@@ -286,18 +286,29 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
   // rejected is not in Table 1, so its obręb is not an area the operat speaks
   // about. `obrebName` returns null rather than inventing a name.
   //
-  // ALL-OR-NOTHING, same doctrine as the aggregates below: `obreby-poznan.json`
-  // names 24 of Poznań's obręb codes, so a sample can easily hold a row whose
-  // obręb has no name. Listing the nameable ones would UNDERSTATE the study
-  // area the operat asserts — "obszar badania – obręb Golęcin" while half the
-  // sample sits elsewhere — and no guard catches that: every name in the
-  // sentence IS in the facts. A missing list is honest; a partial one is not.
+  // ALL-OR-NOTHING, same doctrine as the aggregates below. Two ways the study
+  // area can come out partial, and both make it UNDERSTATE what the operat
+  // rests on — "obszar badania – obręb Golęcin" while half the sample sits
+  // elsewhere. No guard catches that: every name in the sentence IS in a fact.
+  //
+  //  - `obreby-poznan.json` names 24 of Poznań's obręb codes, so a candidate's
+  //    obręb may have no name at all;
+  //  - `comparables` is the effective proposal PLUS every non-RCN row
+  //    (`rebuildComparables`) — a hand-typed transaction has no candidate
+  //    behind it, while `liczba_transakcji` counts it all the same.
+  //
+  // `promien_m` shares the bullet with `obreby` in both few-shots and is the
+  // same kind of claim about where the sample comes from, so it travels with
+  // it: a radius stated over a sample that reaches outside it is the same
+  // understatement, half-said.
   const sel = inputs.sampleSelection ?? null;
   const sampleObreby = sel ? effectiveSelection(sel).proposed.map((c) => obrebName(c.egib)) : [];
-  const obreby =
-    sampleObreby.length > 0 && sampleObreby.every((name) => name !== null)
-      ? [...new Set(sampleObreby)].sort((a, b) => a.localeCompare(b, "pl"))
-      : [];
+  const wholeSampleCovered =
+    sampleObreby.length === inputs.comparables.length &&
+    sampleObreby.every((name) => name !== null);
+  const obreby = wholeSampleCovered
+    ? [...new Set(sampleObreby)].sort((a, b) => a.localeCompare(b, "pl"))
+    : [];
 
   const przebadano = sel ? approximateCount(sel.counts.pool) : null;
 
@@ -308,7 +319,7 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
         // Rounded: the number guard compares written forms, and a fractional
         // radius would reach the prompt as "1000.5" — a form no Polish text
         // writes. The slider only ever produces whole metres anyway.
-        ...(sel ? { promien_m: Math.round(sel.radiusUsedM) } : {}),
+        ...(sel && wholeSampleCovered ? { promien_m: Math.round(sel.radiusUsedM) } : {}),
         ...(przebadano ? { przebadano } : {}),
         ...(ordered.length > 0
           ? {
