@@ -32,14 +32,21 @@ describe("F-14 — WR from the proposed sample vs the appraiser's operat", () =>
   beforeAll(() => {
     rows = OPERATY.map((op) => {
       const sel = run(op.slug, op.area, op.todayMonth);
+      // ADR-015, „Kryterium jakości": „WR z proponowanej DWUNASTKI w ±10% dla
+      // ≥4/5 operatów referencyjnych i ±5% dla ≥2/5". Od Slice 6 `proposedN`
+      // to 20, więc „proponowana dwunastka" = prefiks rankingu, nie całe
+      // wyjście UI. Wybór propozycji jest zachłanny po rankingu, więc prefiks
+      // 12 przy N=20 jest bit-w-bit tym samym zbiorem co całe `proposed`
+      // przy N=12. Bramka mierzy ranking; tego, ile wierszy widzi
+      // rzeczoznawca, nie mierzy wcale.
       const { wr } = computeKcs({
-        comparables: sel.proposed.map((c) => ({ pricePerM2: c.pricePerM2 })),
+        comparables: sel.proposed.slice(0, 12).map((c) => ({ pricePerM2: c.pricePerM2 })),
         area: op.area,
         features: op.features,
       });
       return {
         slug: op.slug,
-        n: sel.proposed.length,
+        n: Math.min(sel.proposed.length, 12),
         radius: sel.radiusUsedM,
         wr,
         delta: pct(wr, op.pdfWrRounded!),
@@ -101,7 +108,7 @@ describe("F-14 — invariants on every snapshot (ADR-015 rules 5–9)", () => {
     }
     expect(Math.max(0, ...perBuilding.values())).toBeLessThanOrEqual(3);
     expect(sel.proposed.length).toBeGreaterThan(0);
-    expect(sel.proposed.length).toBeLessThanOrEqual(12);
+    expect(sel.proposed.length).toBeLessThanOrEqual(20);
     expect(sel.alternates.length).toBeLessThanOrEqual(40);
   });
 
@@ -110,9 +117,9 @@ describe("F-14 — invariants on every snapshot (ADR-015 rules 5–9)", () => {
     expect(sel.radiusUsedM).toBe(500);
     expect(sel.proposed.length).toBeGreaterThanOrEqual(6);
   });
-  it("Sielawy 21F (92,34 m²) — no pierwotny in proposed, 12 rows", () => {
+  it("Sielawy 21F (92,34 m²) — no pierwotny in proposed, 20 rows", () => {
     const sel = run("sielawy", 92.34, "2026-08");
-    expect(sel.proposed).toHaveLength(12);
+    expect(sel.proposed).toHaveLength(20);
     expect(sel.proposed.every((c) => c.market !== "pierwotny")).toBe(true);
   });
   it("snapshots carry real pagination and pair-duplicates (what the worker must reproduce)", () => {

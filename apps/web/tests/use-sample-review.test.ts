@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
-import { candidateKey, type Candidate } from "@/domain/sample-selection";
+import { candidateKey, DEFAULTS, type Candidate } from "@/domain/sample-selection";
 import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import {
   matchLegacyRow,
@@ -199,8 +199,8 @@ function useHarness(initial: { sel: SampleSelectionSnapshot; comparables: Compar
  * than through `StepSample`'s DOM (that's Tasks 3–5, once the UI exists).
  */
 describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)", () => {
-  it("include(key) on an alternate adds a manual inclusion, marks it reviewed, resyncs comparables (12 RCN + 1 included = 13, + a pre-existing hand-added row = 14), and keeps the selection on the same row", () => {
-    const proposed = Array.from({ length: 12 }, () => mk());
+  it("include(key) on an alternate adds a manual inclusion, marks it reviewed, resyncs comparables (N RCN + 1 included, + a pre-existing hand-added row), and keeps the selection on the same row", () => {
+    const proposed = Array.from({ length: DEFAULTS.proposedN }, () => mk());
     const alt = mk({ pricePerM2: 20000 });
     const sel = makeSel({ proposed, alternates: [alt] });
     // A hand-added `source: "manual"` row (rtl-step-sample.test.tsx's
@@ -226,8 +226,8 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     expect(result.current.sel?.reviewed?.some((r) => candidateKey(r) === candidateKey(alt))).toBe(
       true,
     );
-    // 12 original RCN rows + the newly included row + the hand-added row.
-    expect(result.current.comparables).toHaveLength(14);
+    // N original RCN rows + the newly included row + the hand-added row.
+    expect(result.current.comparables).toHaveLength(DEFAULTS.proposedN + 2);
     expect(
       result.current.comparables.some(
         (c) => c.transactionId === alt.transactionId && c.lokalId === alt.lokalId,
@@ -313,11 +313,11 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
   });
 
   it("statusOf/selectedStatus reflect the effective overlay, independent of the manual-inclusion list", () => {
-    // 12 proposed (the domain's cap, DEFAULTS.proposedN) — otherwise
+    // A full proposed list (the domain's cap, DEFAULTS.proposedN) — otherwise
     // `applyManualRejections`'s own refill (which runs even with an empty
     // overlay) would top B/C straight into `proposed`, since there'd be
     // room; B/C only stay `alternates` when the cap is already full.
-    const proposed = Array.from({ length: 12 }, () => mk());
+    const proposed = Array.from({ length: DEFAULTS.proposedN }, () => mk());
     const A = proposed[0];
     const B = mk();
     const C = mk();

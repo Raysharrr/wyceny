@@ -20,7 +20,7 @@
  *   5. score = 100·sameBuilding + 60·sameParcel + 30·sameObreb − distanceM/100,
  *      tie → newer date, then candidateKey (transactionId|lokalId — total
  *      order even for several lokale of one act);
- *   6. proposed = top 12 (capped at 3 per building, rule 6), alternates = next 40.
+ *   6. proposed = top 20 (capped at 3 per building, rule 6), alternates = next 40.
  */
 import { padObreb } from "./egib-id";
 import type { Egib, SubjectEgib } from "./egib-id";
@@ -115,7 +115,11 @@ export const DEFAULTS = {
   areaBandPct: 0.3,
   radiusStepsM: [500, 1000, 2000, 3000],
   minPoolAfterBand: 30,
-  proposedN: 12,
+  // 20, nie 12 — rzeczoznawca musi mieć zapas do ręcznego odrzucania (Aneta,
+  // 2026-08-20: „niech zaciąga ok 20 a nie 12"). Próg 12 z bramy F-4 dotyczy
+  // próby PRZYJĘTEJ do porównań, nie liczby propozycji; bramka F-14 mierzy WR
+  // z prefiksu 12 tego rankingu (ADR-015, „Kryterium jakości").
+  proposedN: 20,
   alternatesN: 40,
   maxPerBuilding: 3,
   iqrMinN: 8,

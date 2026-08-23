@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { selectSample, candidateKey, type Candidate } from "../src/domain/sample-selection";
+import {
+  selectSample,
+  candidateKey,
+  DEFAULTS,
+  type Candidate,
+} from "../src/domain/sample-selection";
 import {
   applyManualOverlay,
   applyManualRejections,
@@ -52,10 +57,12 @@ const rej = (c: Candidate, reason: ManualRejection["reason"] = "too_far"): Manua
   at: "2026-08-21T10:00:00Z",
 });
 const P = { subjectArea: 50, todayMonth: "2026-08" };
+/** Przez stałą, nie przez liczbę — Slice 6 przesunął ją 12 → 20. */
+const N = DEFAULTS.proposedN;
 
 describe("applyManualOverlay — inclusions on top of rejections", () => {
-  const pool = Array.from({ length: 20 }, (_, i) => mk({ distanceM: 10 + i }));
-  const sel = selectSample(pool, P); // proposed 12, alternates 8
+  const pool = Array.from({ length: N + 8 }, (_, i) => mk({ distanceM: 10 + i }));
+  const sel = selectSample(pool, P); // proposed N, alternates 8
 
   it("no overlay → identical to applyManualRejections (base behaviour untouched)", () => {
     const a = applyManualOverlay(sel, { rejections: [], inclusions: [] });
@@ -65,11 +72,11 @@ describe("applyManualOverlay — inclusions on top of rejections", () => {
     expect(a.included).toEqual([]);
   });
 
-  it("including an alternate puts it into proposed beyond 12, in ranking order, and removes it from alternates", () => {
+  it("including an alternate puts it into proposed beyond the cap, in ranking order, and removes it from alternates", () => {
     const add = sel.alternates[3];
     const out = applyManualOverlay(sel, { rejections: [], inclusions: [inc(add)] });
-    expect(out.proposed).toHaveLength(13);
-    expect(out.proposed[12]).toEqual(add);
+    expect(out.proposed).toHaveLength(N + 1);
+    expect(out.proposed[N]).toEqual(add);
     expect(out.alternates.map(candidateKey)).not.toContain(candidateKey(add));
     expect(out.included).toEqual([add]);
   });
@@ -84,26 +91,26 @@ describe("applyManualOverlay — inclusions on top of rejections", () => {
     expect(out.proposed.map(candidateKey)).toContain(candidateKey(flagged));
   });
 
-  it("rejection beats inclusion for the same key; rejecting a base row still refills from ranking (12 + additions)", () => {
+  it("rejection beats inclusion for the same key; rejecting a base row still refills from ranking (N + additions)", () => {
     const add = sel.alternates[2];
     const out = applyManualOverlay(sel, {
       rejections: [rej(sel.proposed[0]), rej(add)],
       inclusions: [inc(add)],
     });
     expect(out.proposed.map(candidateKey)).not.toContain(candidateKey(add));
-    expect(out.proposed).toHaveLength(12); // 11 base + 1 refill (first eligible alternate)
+    expect(out.proposed).toHaveLength(N); // N-1 base + 1 refill (first eligible alternate)
     expect(out.removed.map(candidateKey)).toEqual(
       expect.arrayContaining([candidateKey(sel.proposed[0]), candidateKey(add)]),
     );
   });
 
-  it("an included alternate is not counted by the refill cap: reject one base row → 12 ranked + 1 added = 13", () => {
+  it("an included alternate is not counted by the refill cap: reject one base row → N ranked + 1 added", () => {
     const add = sel.alternates[5];
     const out = applyManualOverlay(sel, {
       rejections: [rej(sel.proposed[1])],
       inclusions: [inc(add)],
     });
-    expect(out.proposed).toHaveLength(13);
+    expect(out.proposed).toHaveLength(N + 1);
   });
 
   it("an inclusion whose candidate is no longer in the lists (e.g. smaller radius) is re-attached from the stored candidate, at the end", () => {
@@ -123,7 +130,7 @@ describe("applyManualOverlay — inclusions on top of rejections", () => {
       rejections: [],
       inclusions: [inc(add), inc(add), inc(alreadyProposed)],
     });
-    expect(out.proposed).toHaveLength(13);
+    expect(out.proposed).toHaveLength(N + 1);
     expect(out.included).toEqual([add]);
     expect(
       out.proposed.filter((c) => candidateKey(c) === candidateKey(alreadyProposed)),

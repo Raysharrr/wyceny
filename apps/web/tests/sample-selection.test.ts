@@ -88,7 +88,7 @@ describe("selectSample — ADR-015 defaults", () => {
       inRadius: 30,
       afterHygiene: 30,
       afterBand: 30,
-      proposed: 12,
+      proposed: 20,
     });
   });
   it("band-only pool below the gate still stops at the last step (3000)", () => {
@@ -248,13 +248,31 @@ describe("selectSample — ADR-015 defaults", () => {
     expect(a.proposed.map((c) => c.transactionId)).toEqual(b.proposed.map((c) => c.transactionId));
     expect(JSON.stringify(pool)).toBe(snapshot);
   });
+  it("proponuje 20 transakcji, żeby rzeczoznawca miał co odrzucać", () => {
+    const pool = [...Array(60)].map(() => mk({ distanceM: 200 }));
+    expect(selectSample(pool, P).proposed).toHaveLength(20);
+  });
+  it("cap na budynek nadal obowiązuje przy 20 propozycjach", () => {
+    const shared = {
+      teryt: "306401_1",
+      obreb: "0021",
+      arkusz: "10",
+      dzialka: "27",
+      budynek: "2",
+      lokal: "x",
+    };
+    const pool = [...Array(40)].map(() => mk({ egib: shared, distanceM: 200 }));
+    expect(selectSample(pool, P).proposed.length).toBeLessThanOrEqual(3);
+  });
   it("DEFAULTS pin ADR-015", () => {
     expect(DEFAULTS).toMatchObject({
       windowMonths: 24,
       areaBandPct: 0.3,
       radiusStepsM: [500, 1000, 2000, 3000],
       minPoolAfterBand: 30,
-      proposedN: 12,
+      // 20 od 2026-08-23 (decyzja usera na feedback Anety) — formalny dopisek
+      // do ADR-015 robi team-lead przy zamykaniu Slice 6.
+      proposedN: 20,
       alternatesN: 40,
       maxPerBuilding: 3,
       iqrMinN: 8,
