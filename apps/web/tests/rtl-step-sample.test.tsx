@@ -119,6 +119,7 @@ function makeSampleSelection(
     counts?: Partial<SampleSelectionSnapshot["counts"]>;
     proposed?: Candidate[];
     alternates?: Candidate[];
+    params?: Partial<SampleSelectionSnapshot["params"]>;
   } = {},
 ): SampleSelectionSnapshot {
   return {
@@ -149,7 +150,7 @@ function makeSampleSelection(
       proposed: 2,
       ...overrides.counts,
     },
-    params: { subjectArea: 50, todayMonth: "2026-08" },
+    params: { subjectArea: 50, todayMonth: "2026-08", ...overrides.params },
   };
 }
 
@@ -729,6 +730,83 @@ describe("StepSample — rozrzut cen w pasku (Slice 6)", () => {
     const { container } = renderWithPrices([9203.54, 10498.22]);
     expect(bannerText(container)).toMatch(/0,13/);
     expect(bannerText(container)).not.toMatch(/szeroki rozrzut/i);
+  });
+});
+
+describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
+  beforeEach(() => {
+    reselectSample.mockReset();
+  });
+
+  const withRanges = (params: Partial<SampleSelectionSnapshot["params"]>) =>
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection({ params })}
+        streetView={null}
+      />,
+    );
+
+  it("pola czytają pasma ZE SNAPSHOTU — jedynego ich domu", () => {
+    withRanges({ areaRange: { min: 40, max: 60 }, unitPriceRange: { min: 9000, max: 13000 } });
+    expect(screen.getByLabelText(/powierzchnia od/i)).toHaveValue(40);
+    expect(screen.getByLabelText(/powierzchnia do/i)).toHaveValue(60);
+    expect(screen.getByLabelText(/cena od/i)).toHaveValue(9000);
+    expect(screen.getByLabelText(/cena do/i)).toHaveValue(13000);
+  });
+
+  it("stary szkic bez pasm renderuje puste pola, bez błędu", () => {
+    withRanges({});
+    expect(screen.getByLabelText(/powierzchnia od/i)).toHaveValue(null);
+    expect(screen.getByLabelText(/cena do/i)).toHaveValue(null);
+  });
+
+  it("wyjście z pola przelicza dobór z nowym pasmem", async () => {
+    const user = userEvent.setup();
+    reselectSample.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection({ params: { areaRange: { min: 40 } } }),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+    withRanges({});
+    await user.type(screen.getByLabelText(/powierzchnia od/i), "40");
+    await user.tab();
+    await waitFor(() =>
+      expect(reselectSample).toHaveBeenCalledWith(
+        expect.objectContaining({ areaRange: { min: 40 }, radiusOverrideM: 500 }),
+      ),
+    );
+  });
+
+  it("zmiana promienia niesie zapisane pasma (bramka A1 ze Slice 3c)", async () => {
+    const user = userEvent.setup();
+    reselectSample.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection({
+          radiusUsedM: 1000,
+          params: { areaRange: { min: 40, max: 60 } },
+        }),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+    withRanges({ areaRange: { min: 40, max: 60 } });
+    await user.click(screen.getByRole("button", { name: "1000 m" }));
+    await waitFor(() =>
+      expect(reselectSample).toHaveBeenCalledWith(
+        expect.objectContaining({ radiusOverrideM: 1000, areaRange: { min: 40, max: 60 } }),
+      ),
+    );
+    // …i po przeliczeniu pola nadal je pokazują (snapshot wrócił z pasmami).
+    await waitFor(() => expect(screen.getByLabelText(/powierzchnia do/i)).toHaveValue(60));
   });
 });
 

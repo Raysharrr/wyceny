@@ -48,6 +48,15 @@ export async function buildProposal(
     manualInclusions?: ManualInclusion[];
     /** Review trail (Slice 3c, Task 5) — informational only; carried the same way so "przejrzane N/M" survives a radius change. */
     reviewed?: ReviewedMark[];
+    /**
+     * Appraiser's own bands (Slice 6) — carried on BOTH callers, so neither a
+     * radius change nor a fresh "Pobierz próbę z RCN" silently drops them.
+     * `undefined` (and a band with neither bound) leaves ADR-015 defaults alone.
+     */
+    ranges?: {
+      areaRange?: { min?: number; max?: number };
+      unitPriceRange?: { min?: number; max?: number };
+    };
     session: { user: { id: string } };
     valuationId: string;
     startedAt: number;
@@ -74,6 +83,7 @@ export async function buildProposal(
     session,
     valuationId,
     startedAt,
+    ranges,
   } = args;
   // Only present for a reselect (the discriminated union above guarantees
   // it) — a fresh fetch always walks the domain's own radius steps.
@@ -87,6 +97,8 @@ export async function buildProposal(
     todayMonth: new Date().toISOString().slice(0, 7),
     subjectEgib: deriveSubjectEgib(subjectMeta?.buildingId, valuation.inputs?.subject?.parcelId),
     ...(radiusOverrideM !== undefined ? { radiusOverrideM } : {}),
+    ...(ranges?.areaRange ? { areaRange: ranges.areaRange } : {}),
+    ...(ranges?.unitPriceRange ? { unitPriceRange: ranges.unitPriceRange } : {}),
   };
   const selection = selectSample(pool.candidates, selectionParams);
   const sampleSelection: SampleSelectionSnapshot = {

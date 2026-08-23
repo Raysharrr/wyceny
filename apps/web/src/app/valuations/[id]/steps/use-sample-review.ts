@@ -18,6 +18,7 @@ import {
   type SampleSelectionSnapshot,
 } from "@/domain/sample-snapshot";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
+import type { ManualRanges } from "./sample-ranges";
 
 /** `reselectSample`'s radius union — mirrors `ReselectSampleInput["radiusOverrideM"]` in `@/app/actions/reselect-sample`. */
 type RadiusM = 500 | 1000 | 2000 | 3000;
@@ -444,7 +445,7 @@ export function useSampleReview({
    * treated identically: both disable the radius buttons until a fresh
    * "Pobierz próbę z RCN" re-populates the cache.
    */
-  const onRadius = async (radiusM: RadiusM) => {
+  const reselectWith = async (radiusM: RadiusM, ranges: ManualRanges) => {
     if (!sel) return;
     setIsReselecting(true);
     setReselectError(null);
@@ -452,6 +453,11 @@ export function useSampleReview({
       const result = await reselectSample({
         valuationId,
         radiusOverrideM: radiusM,
+        // Ręczne pasma (Slice 6) jadą tą samą drogą co nakładka poniżej —
+        // snapshot jest ich jedynym domem, więc każde przeliczenie musi je
+        // nieść dalej, inaczej zmiana promienia po cichu by je skasowała.
+        ...(ranges.areaRange ? { areaRange: ranges.areaRange } : {}),
+        ...(ranges.unitPriceRange ? { unitPriceRange: ranges.unitPriceRange } : {}),
         manualRejections: sel.manualRejections ?? [],
         // Carried the SAME way `manualRejections` is — `buildProposal`
         // re-injects both into the fresh snapshot (Slice 3c, Task 5), so an
@@ -478,6 +484,22 @@ export function useSampleReview({
     } finally {
       setIsReselecting(false);
     }
+  };
+
+  /** Radius button — carries the bands the appraiser already set. */
+  const onRadius = (radiusM: RadiusM) =>
+    reselectWith(radiusM, {
+      areaRange: sel?.params.areaRange,
+      unitPriceRange: sel?.params.unitPriceRange,
+    });
+
+  /**
+   * A band was committed (Slice 6) — re-runs the selection at the CURRENT
+   * radius. `radiusUsedM` always comes from `radiusStepsM`, so the cast holds.
+   */
+  const onRanges = (ranges: ManualRanges) => {
+    if (!sel) return;
+    return reselectWith(sel.radiusUsedM as RadiusM, ranges);
   };
 
   /** Clears the reselect error banner — called alongside `setPoolMissing(false)` when a fresh "Pobierz próbę z RCN" fetch succeeds (review round 1, minor #2). */
@@ -508,5 +530,6 @@ export function useSampleReview({
     reselectError,
     clearReselectError,
     onRadius,
+    onRanges,
   };
 }

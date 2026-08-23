@@ -7,21 +7,31 @@ import { sampleProposal, storage, valuationRepository } from "@/app/valuations/_
 import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
-import { valuationFormObject } from "@/lib/valuation-form-schema";
+import { manualRangeSchema, valuationFormObject } from "@/lib/valuation-form-schema";
 import { savePool } from "@/app/actions/_pool-cache";
 import { buildProposal } from "@/app/actions/_build-proposal";
 import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { SampleMeta } from "@/domain/kcs";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 
-const inputSchema = valuationFormObject
-  .pick({ address: true, area: true })
-  .extend({ valuationId: z.uuid("Nieprawidłowe dane formularza.") });
+const inputSchema = valuationFormObject.pick({ address: true, area: true }).extend({
+  valuationId: z.uuid("Nieprawidłowe dane formularza."),
+  // Ręczne pasma rzeczoznawcy (Slice 6) — bez tego "Pobierz próbę z RCN
+  // ponownie" po cichu wyrzucałoby wpisane zakresy.
+  areaRange: manualRangeSchema.optional(),
+  unitPriceRange: manualRangeSchema.optional(),
+});
 
 // Declared explicitly rather than `z.input<typeof inputSchema>`: `area` is
 // `z.coerce.number()`, whose input type is `unknown`, not `number` — callers
 // (the step-3 UI) always have a real number in hand by this point.
-export type GetSampleProposalInput = { valuationId: string; address: string; area: number };
+export type GetSampleProposalInput = {
+  valuationId: string;
+  address: string;
+  area: number;
+  areaRange?: { min?: number; max?: number };
+  unitPriceRange?: { min?: number; max?: number };
+};
 export type GetSampleProposalResult =
   | {
       proposal: {
@@ -110,6 +120,7 @@ export async function getSampleProposal(
         pool,
         valuation,
         area,
+        ranges: { areaRange: parsed.data.areaRange, unitPriceRange: parsed.data.unitPriceRange },
         session,
         valuationId,
         event: "proposal.sample",

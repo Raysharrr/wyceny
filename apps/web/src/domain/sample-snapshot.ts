@@ -113,6 +113,13 @@ export type SampleSelectionSnapshot = {
     todayMonth: string;
     subjectEgib?: SubjectEgib;
     radiusOverrideM?: number;
+    /**
+     * Appraiser's own bands (Slice 6). Persisted so they survive a radius
+     * change and a page reload — the snapshot is their ONLY home, there is no
+     * parallel component state to drift from it. Absent on older drafts.
+     */
+    areaRange?: { min?: number; max?: number };
+    unitPriceRange?: { min?: number; max?: number };
   };
 };
 
@@ -156,6 +163,8 @@ export function toSampleSelectionSnapshot(
       todayMonth: p.todayMonth,
       ...(p.subjectEgib ? { subjectEgib: p.subjectEgib } : {}),
       ...(p.radiusOverrideM !== undefined ? { radiusOverrideM: p.radiusOverrideM } : {}),
+      ...(p.areaRange ? { areaRange: p.areaRange } : {}),
+      ...(p.unitPriceRange ? { unitPriceRange: p.unitPriceRange } : {}),
     },
   };
 }

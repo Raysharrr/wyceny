@@ -22,6 +22,7 @@ import { sampleStepSchema } from "@/app/actions/wizard-schemas";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import { AutoBanner } from "@/components/wizard/auto-banner";
 import { priceSpread, SPREAD_WARN_THRESHOLD } from "@/domain/price-spread";
+import { SampleRanges } from "./sample-ranges";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
@@ -230,6 +231,7 @@ export function StepSample({
     reselectError,
     clearReselectError,
     onRadius,
+    onRanges,
   } = useSampleReview({
     valuationId,
     sel,
@@ -439,6 +441,19 @@ export function StepSample({
                   onChange={(radiusM: Parameters<typeof onRadius>[0]) => {
                     setPanelInitialRejecting(null);
                     onRadius(radiusM);
+                  }}
+                />
+                <SampleRanges
+                  areaRange={sel.params.areaRange}
+                  unitPriceRange={sel.params.unitPriceRange}
+                  busy={isReselecting}
+                  disabledReason={poolMissing ? reselectError : null}
+                  onCommit={(next) => {
+                    // Ta sama higiena co przy zmianie promienia: nowy dobór
+                    // zastępuje całą pulę, więc wskaźnik na wiersz ze starej
+                    // nie może przeżyć.
+                    setPanelInitialRejecting(null);
+                    onRanges(next);
                   }}
                 />
                 {reselectError ? (
