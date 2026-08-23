@@ -414,6 +414,50 @@ describe("useSampleReview — wyścig przeliczeń (latest-request-wins)", () => 
     },
   });
 
+  it("przejęcie żądania przez pobranie nie zostawia kontrolek w stanie „przeliczanie”", async () => {
+    // Finding Codexa r3 #1: fetch podbija wspólny licznik, więc `finally`
+    // starego reselectu nie gasi flagi (token już nieaktualny), a fetch gasi
+    // tylko własną. Kontrolki zostawały wyłączone na stałe.
+    reselectSample.mockReset();
+    reselectSample.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() =>
+      useHarness({ sel: makeSel({ proposed: [mk()] }), comparables: [] }),
+    );
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000 } });
+    });
+    expect(result.current.review.isReselecting).toBe(true);
+
+    act(() => {
+      result.current.review.claimRequest();
+    });
+    expect(result.current.review.isReselecting).toBe(false);
+  });
+
+  it("pobranie widzi pasmo zatwierdzone tuż przed nim, nie to ze snapshotu", () => {
+    // Finding Codexa r3 #2: `onRanges` zapisuje pasma tylko w koordynatorze.
+    // Gdy przeliczenie jeszcze wisi (albo padło), świeże pobranie musi wziąć
+    // najnowszą intencję, nie starą wartość z `sel.params`.
+    reselectSample.mockReset();
+    reselectSample.mockImplementation(() => new Promise(() => {}));
+
+    const sel = {
+      ...makeSel({ proposed: [mk()] }),
+      params: { subjectArea: 50, todayMonth: "2026-08", unitPriceRange: { min: 9000 } },
+    };
+    const { result } = renderHook(() => useHarness({ sel, comparables: [] }));
+
+    expect(result.current.review.pendingRanges()).toEqual({
+      areaRange: undefined,
+      unitPriceRange: { min: 9000 },
+    });
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 11000 } });
+    });
+    expect(result.current.review.pendingRanges()).toEqual({ unitPriceRange: { min: 11000 } });
+  });
+
   it("nowsze żądanie niesie promień zadany przed nim (koordynator, nie stary snapshot)", async () => {
     // Scenariusz Codexa: klik 1000 m leci jako żądanie nr 1; zanim wróci,
     // rzeczoznawca zatwierdza pasmo — żądanie nr 2. Gdyby czytało promień ze

@@ -781,6 +781,51 @@ describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
     );
   });
 
+  it("pobranie jedzie z pasmem zatwierdzonym tuż przed nim, nie ze starego snapshotu", async () => {
+    // Finding Codexa r3 #2: przeliczenie po zatwierdzeniu pasma jeszcze wisi,
+    // więc nowe pasmo żyje wyłącznie w koordynatorze. Pobranie musi je zabrać.
+    const user = userEvent.setup();
+    reselectSample.mockImplementation(() => new Promise(() => {})); // wisi
+    getSampleProposal.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection(),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+    withRanges({ unitPriceRange: { min: 9000 } }); // stary snapshot
+
+    const from = screen.getByLabelText(/cena od/i);
+    await user.tripleClick(from);
+    await user.keyboard("11000");
+    await user.tab(); // commit → przeliczenie wisi
+
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+
+    await waitFor(() =>
+      expect(getSampleProposal).toHaveBeenCalledWith(
+        expect.objectContaining({ unitPriceRange: { min: 11000 } }),
+      ),
+    );
+  });
+
+  it("na czas pobierania promień i pasma są zablokowane, a pasek mówi dlaczego", async () => {
+    // Finding Codexa r3 #3: reselect wystartowany w poprzek zapisu puli
+    // czytałby inną pulę, niż zaraz zapisze pobranie — UI rozjeżdżałby się
+    // z cache. Blokada na czas pobierania usuwa ten start.
+    const user = userEvent.setup();
+    getSampleProposal.mockImplementation(() => new Promise(() => {})); // wisi
+    const { container } = withRanges({});
+
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "1000 m" })).toBeDisabled());
+    expect(screen.getByLabelText(/cena od/i)).toBeDisabled();
+    expect(screen.getByLabelText(/powierzchnia od/i)).toBeDisabled();
+    expect(bannerText(container)).toMatch(/pobieranie nowej puli/i);
+  });
+
   it("świeże pobranie z RCN nie daje się nadpisać starszemu przeliczeniu", async () => {
     // Trzeci wariant tej samej klasy (finding Codexa r2): „Pobierz próbę z RCN"
     // jest aktywne w trakcie przeliczania, więc oba tory muszą stać w jednej

@@ -234,7 +234,8 @@ export function StepSample({
     onRanges,
     claimRequest,
     isLatestRequest,
-    resetDesired,
+    pendingRanges,
+    resetDesiredRadius,
   } = useSampleReview({
     valuationId,
     sel,
@@ -309,12 +310,16 @@ export function StepSample({
       // czyści ręczny ślad przeglądania (odrzucenia, dodania, ✓), ale granice
       // doboru to nie ślad — to parametr, jak promień. Bez tego rzeczoznawca
       // wpisywałby je od nowa po każdym pobraniu.
+      // `pendingRanges()`, nie `sel.params`: pasmo zatwierdzone tuż przed
+      // kliknięciem żyje jeszcze tylko w koordynatorze, bo jego przeliczenie
+      // wisi albo padło (finding Codexa r3).
+      const ranges = pendingRanges();
       const result = await getSampleProposal({
         valuationId,
         address,
         area,
-        ...(sel?.params.areaRange ? { areaRange: sel.params.areaRange } : {}),
-        ...(sel?.params.unitPriceRange ? { unitPriceRange: sel.params.unitPriceRange } : {}),
+        ...(ranges.areaRange ? { areaRange: ranges.areaRange } : {}),
+        ...(ranges.unitPriceRange ? { unitPriceRange: ranges.unitPriceRange } : {}),
       });
       if (!isLatestRequest(token)) return;
       if ("error" in result) {
@@ -324,7 +329,7 @@ export function StepSample({
       // Świeża pula to nowy punkt wyjścia — promień wraca do spaceru domeny,
       // więc intencja „1000 m" sprzed pobrania przestaje obowiązywać. Pasma
       // przetrwają, bo niesie je snapshot z odpowiedzi.
-      resetDesired();
+      resetDesiredRadius();
       // Rows stay fully editable after this — a hand-edited row keeps
       // `source: "rcn"` even though its values no longer match the fetch;
       // reconciling edited-vs-fetched fidelity is a later gating-slice concern.
@@ -415,6 +420,9 @@ export function StepSample({
                     próby Anety mieszczą się w 0,13–0,23, a szerokie pasmo pozwala
                     korektom szarpać wynikiem dwukrotnie mocniej. `AutoBanner` sam
                     jest `role="status"`, więc nic tu nie trzeba dokładać. */}
+                {isFetchingSample
+                  ? " · pobieranie nowej puli z RCN — promień i pasma chwilowo nieaktywne"
+                  : null}
                 {spread ? (
                   <>
                     {" · rozrzut cen "}
@@ -446,7 +454,11 @@ export function StepSample({
                 <SampleRadius
                   value={sel.radiusUsedM}
                   steps={DEFAULTS.radiusStepsM}
-                  busy={isReselecting}
+                  // Także na czas POBIERANIA: przeliczenie wystartowane w
+                  // poprzek zapisu nowej puli czytałoby inną pulę, niż zaraz
+                  // wyląduje w cache — UI rozjechałby się z tym, na czym
+                  // pracuje następny reselect (finding Codexa r3).
+                  busy={isReselecting || isFetchingSample}
                   // The alert below is the single VISIBLE copy of the reason
                   // (minor #3) — `disabledReason` here only drives `disabled`
                   // + the `title` tooltip, so it reuses the SAME text
@@ -468,8 +480,18 @@ export function StepSample({
                 <SampleRanges
                   areaRange={sel.params.areaRange}
                   unitPriceRange={sel.params.unitPriceRange}
-                  busy={isReselecting}
-                  disabledReason={poolMissing ? reselectError : null}
+                  busy={isReselecting || isFetchingSample}
+                  // Blokada idzie przez POWÓD, nie przez `busy`: samo
+                  // przeliczanie pól nie wyłącza (blokada odbierała im fokus
+                  // i zjadała wpisywane znaki, runda 2), ale pobieranie już
+                  // tak — wtedy nie ma na czym przeliczać.
+                  disabledReason={
+                    isFetchingSample
+                      ? "Trwa pobieranie nowej puli z RCN — za chwilę będzie na czym przeliczać."
+                      : poolMissing
+                        ? reselectError
+                        : null
+                  }
                   onCommit={(next) => {
                     // Ta sama higiena co przy zmianie promienia: nowy dobór
                     // zastępuje całą pulę, więc wskaźnik na wiersz ze starej

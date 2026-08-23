@@ -480,7 +480,7 @@ export function useSampleReview({
     // równolegle: zatwierdzasz „cenę od", zaraz potem „cenę do". Bez tokenu
     // o snapshocie decydowałaby odpowiedź, która wróciła OSTATNIA — a starsze
     // żądanie niesie starsze, uboższe pasmo i skasowałoby górną granicę.
-    const token = ++requestSeq.current;
+    const token = claimRequest();
     setIsReselecting(true);
     setReselectError(null);
     try {
@@ -551,13 +551,40 @@ export function useSampleReview({
    * Rezerwuje numer dla żądania spoza tego hooka („Pobierz próbę z RCN").
    * Bez tego świeży fetch stałby poza kolejką i starszy reselect mógłby
    * nadpisać jego wynik po powrocie.
+   *
+   * Gasi też wskaźnik przeliczania: przejęte żądanie nie ma już kto zamknąć —
+   * jego własne `finally` widzi nieaktualny token i słusznie nic nie robi, a
+   * przejmujący tor pilnuje tylko swojej flagi. Bez tego kontrolki zostawały
+   * wyłączone na stałe (finding Codexa r3).
    */
-  const claimRequest = () => ++requestSeq.current;
+  const claimRequest = () => {
+    setIsReselecting(false);
+    return ++requestSeq.current;
+  };
   /** Czy odpowiedź o tym numerze jest wciąż tą, na którą czekamy. */
   const isLatestRequest = (token: number) => token === requestSeq.current;
-  /** Świeża pula = nowy punkt wyjścia: intencje sprzed niej przestają obowiązywać. */
-  const resetDesired = () => {
-    desired.current = {};
+  /**
+   * Pasma, z którymi ma pojechać żądanie wysyłane spoza hooka. Najnowsza
+   * intencja z koordynatora, a dopiero w jej braku wartość ze snapshotu —
+   * pasmo zatwierdzone tuż przed pobraniem żyje jeszcze tylko w koordynatorze
+   * (przeliczenie wisi albo padło) i bez tego by przepadło.
+   */
+  const pendingRanges = (): ManualRanges => {
+    const current = selRef.current ?? sel;
+    return (
+      desired.current.ranges ?? {
+        areaRange: current?.params.areaRange,
+        unitPriceRange: current?.params.unitPriceRange,
+      }
+    );
+  };
+  /**
+   * Świeża pula = nowy punkt wyjścia dla PROMIENIA: dobór znów chodzi własnym
+   * spacerem, więc intencja „1000 m" sprzed pobrania przestaje obowiązywać.
+   * Pasma zostają — są parametrem doboru i niesie je snapshot z odpowiedzi.
+   */
+  const resetDesiredRadius = () => {
+    delete desired.current.radiusM;
   };
 
   /** Clears the reselect error banner — called alongside `setPoolMissing(false)` when a fresh "Pobierz próbę z RCN" fetch succeeds (review round 1, minor #2). */
@@ -591,6 +618,7 @@ export function useSampleReview({
     onRanges,
     claimRequest,
     isLatestRequest,
-    resetDesired,
+    pendingRanges,
+    resetDesiredRadius,
   };
 }
