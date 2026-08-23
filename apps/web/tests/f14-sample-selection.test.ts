@@ -14,7 +14,7 @@ import {
 } from "../src/domain/sample-selection";
 import { deriveSubjectEgib } from "../src/domain/egib-id";
 import { loadSnapshot } from "./fixtures/rcn-snapshots/load";
-import { OPERATY, TEST_ADDRESSES } from "./fixtures/rcn-snapshots/operaty";
+import { OPERATY, TEST_ADDRESSES, type Operat } from "./fixtures/rcn-snapshots/operaty";
 
 function run(slug: string, area: number, todayMonth: string): Selection {
   const { subject, candidates } = loadSnapshot(slug);
@@ -25,6 +25,17 @@ function run(slug: string, area: number, todayMonth: string): Selection {
   });
 }
 const pct = (a: number, b: number) => Math.round(((a - b) / b) * 10000) / 100;
+
+/** WR from the operat's own PDF sample (Tabela 1, `op.pdfSample`) via computeKcs —
+ * the "sanity" check every operat must pass, and the per-operat regression below. */
+function wrFromPdfSample(op: Operat): number {
+  const { wr } = computeKcs({
+    comparables: op.pdfSample.map((r) => ({ pricePerM2: r.pricePerM2 })),
+    area: op.area,
+    features: op.features,
+  });
+  return wr;
+}
 
 describe("F-14 — WR from the proposed sample vs the appraiser's operat", () => {
   let rows: { slug: string; n: number; radius: number; wr: number; delta: number }[];
@@ -62,13 +73,15 @@ describe("F-14 — WR from the proposed sample vs the appraiser's operat", () =>
 
   it("sanity — the PDF sample itself reproduces the operat WR within 0.2%", () => {
     for (const op of OPERATY) {
-      const { wr } = computeKcs({
-        comparables: op.pdfSample.map((r) => ({ pricePerM2: r.pricePerM2 })),
-        area: op.area,
-        features: op.features,
-      });
+      const wr = wrFromPdfSample(op);
       expect(Math.abs(pct(wr, op.pdfWrRounded!))).toBeLessThanOrEqual(0.2);
     }
+  });
+
+  it("Winiary — próba z operatu odtwarza WR do 0,2%", () => {
+    const op = OPERATY.find((o) => o.slug === "winiary")!;
+    const wr = wrFromPdfSample(op);
+    expect(Math.abs(pct(wr, op.pdfWrRounded!))).toBeLessThanOrEqual(0.2);
   });
 
   it.skip("top-20 contains ≥8/12 of the appraiser's transactions for ≥4/5 — enable after a year-of-build source (ADR-015 rule 10)", () => {
