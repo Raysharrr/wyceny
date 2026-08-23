@@ -3,6 +3,7 @@ import { DEFAULTS } from "@/domain/sample-selection";
 import { MANUAL_REJECTION_REASONS, MANUAL_REJECTION_LABELS } from "@/domain/sample-manual";
 import { REJECTED_PER_REASON } from "@/domain/sample-snapshot";
 import { STREET_VIEW_TTL_DAYS, ENRICH_BUDGET_MS } from "@/app/actions/_street-view-enrich";
+import { SPREAD_WARN_THRESHOLD } from "@/domain/price-spread";
 
 W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m², na których oprze się kalkulacja. „Pobierz próbę z RCN” pokazuje propozycje z rejestru: przeglądasz je z podglądem budynku i odrzucasz niepasujące, podając powód. Transakcje możesz też wpisać ręcznie — oba źródła się łączą, bo ostateczna tabela zostaje edytowalna.
 
@@ -29,6 +30,8 @@ Przycisk „Pobierz próbę z RCN” pobiera transakcje dobrane rankingiem podob
 - Gdy pobranie się nie uda, zobaczysz komunikat z powodem, a próbę wpisujesz ręcznie.
 
 Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebadano N transakcji z RCN, data)”, a do tego liczbę alternatyw i odrzuconych: N to cała pula z rejestru w kwadracie ±3 km wokół przedmiotu, po złożeniu duplikatów i odrzuceniu rekordów bez współrzędnych; Y — ile z tej puli przeszło higienę i pasmo metrażu w promieniu R; R — promień, na którym dobór się zatrzymał. Gdy pobieranie przerwie się, zanim pula sięgnie pełnego okna czasowego — przez limit stron pobierania (8 × 5000 rekordów) albo budżet czasu (ok. 25 s) — pasek dokłada ostrzeżenie, że pula może być niepełna. Szkic sprzed tej wersji, w którym próba z RCN jest zapisana bez szczegółów doboru, dostaje zamiast liczników komunikat: „Próba z RCN z (data) zapisana bez szczegółów doboru — pobierz próbę z RCN ponownie, żeby zobaczyć promień i liczniki.”
+
+Na końcu paska stoi **rozrzut cen** — jedna liczba mówiąca, czy próba trzyma się kupy cenowo. To różnica między najwyższą a najniższą ceną jednostkową w próbie, podzielona przez średnią (w operacie: V max − V min z Tabeli 2). Im mniej, tym węższe pasmo, w którym poruszają się korekty. Powyżej {SPREAD_WARN_THRESHOLD.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} pasek dopisuje ostrzeżenie o szerokim rozrzucie i podpowiada, co z tym zrobić. To wyłącznie ostrzeżenie — niczego nie blokuje, w odróżnieniu od progu {REQUIRED_SAMPLE_SIZE} transakcji przy zatwierdzeniu. Skąd ten próg, opisuje [dobór próby](/pomoc/dobor-proby-rcn).
 
 Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty; [jak dobieramy próbę](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
 
@@ -70,6 +73,16 @@ Propozycja dodana ręcznie z „Alternatyw” nie dostaje żadnej specjalnej odz
 Przyciski {DEFAULTS.radiusStepsM.join(" / ")} m przeliczają dobór na tej samej puli, którą „Pobierz próbę z RCN” już pobrało — bez ponownego zapytania do rejestru, więc przeliczenie jest natychmiastowe. Są aktywne od razu po pobraniu próby; dopiero pierwsze kliknięcie, które nie znajdzie zapamiętanej puli, blokuje je jednym z dwóch komunikatów: „Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.” (szkic sprzed tej wersji, bez zapamiętanej puli) albo „Dane przedmiotu zmieniły się od ostatniego pobrania — pobierz próbę z RCN ponownie.” (adres lub powierzchnia zmienione w kroku 1 od ostatniego pobrania). W obu przypadkach przyciski odblokowuje dopiero nowe „Pobierz próbę z RCN”.
 
 Zmiana promienia zachowuje cały Twój ręczny ślad: odrzucenia, ręcznie dodane alternatywy (razem z odznaką „dodana ręcznie”, jeśli po przeliczeniu wypadną z bieżącego doboru) i znaczniki ✓ „przejrzane”. Traci je wyłącznie nowe „Pobierz próbę z RCN” — bo to ono zastępuje całą pulę, nie samo przeliczenie promienia na tej, która już jest.
+
+## Pasma powierzchni i ceny
+
+Pod przyciskami promienia są cztery pola: **powierzchnia od / do [m²]** i **cena od / do [zł/m²]**. To Twoje własne granice doboru — program szuka wyłącznie w nich. Puste pole znaczy „bez ograniczenia z tej strony”, więc możesz podać samą dolną granicę, samą górną albo obie.
+
+Podanie którejkolwiek granicy powierzchni **zastępuje** domyślne pasmo ±{DEFAULTS.areaBandPct / 0.01}% wokół powierzchni przedmiotu — nie zawęża go, tylko wchodzi na jego miejsce. Wpisanie samego „od: 40” przepuści więc również lokal 200 m², bo górnej granicy nie postawiłeś. Dla ceny nie ma pasma domyślnego: puste pola nie odcinają niczego.
+
+Wartości zatwierdzasz, wychodząc z pola (Tab, klik gdzie indziej albo Enter) — wtedy dobór przelicza się na tej samej puli, dokładnie jak po zmianie promienia, i tak samo zachowuje cały Twój ręczny ślad. Wpisane pasma zapisują się w szkicu: przeżywają zmianę promienia i zamknięcie strony.
+
+**Zawężenie pasma może powiększyć przeszukiwany promień.** Dobór rozszerza okrąg, dopóki po higienie i paśmie nie zbierze {DEFAULTS.minPoolAfterBand} transakcji — a Twoje pasmo liczy się razem z nimi, więc odcinając część kandydatek, każesz mu sięgnąć dalej. Aktualny promień widać w pasku nad tabelą i na mapie; jeśli po wpisaniu pasma podskoczył, to jest właśnie ten mechanizm, nie błąd.
 
 ## Odrzucone
 

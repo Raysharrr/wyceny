@@ -2,6 +2,7 @@ import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 import { DEFAULTS, DEFAULT_WEIGHTS } from "@/domain/sample-selection";
 import { STREET_VIEW_TTL_DAYS } from "@/app/actions/_street-view-enrich";
 import { OBREBY_POZNAN } from "@/domain/obreb-name";
+import { SPREAD_WARN_THRESHOLD } from "@/domain/price-spread";
 
 Próba porównawcza pochodzi z rejestru cen nieruchomości (RCN) — publicznego zbioru danych o cenach transakcyjnych, udostępnianego usługą WFS Geoportalu (GUGiK). Rejestr podaje surowe transakcje; o tym, które z nich trafią do wyceny, decydują dwa moduły: worker (`apps/worker/app/rcn.py`, `apps/worker/app/main.py`) pobiera surową pulę z rejestru, a czysta domena (`apps/web/src/domain/sample-selection.ts`) ją filtruje i sortuje. Poniżej opis krok po kroku, z liczbami cytowanymi wprost z kodu — jeśli kiedyś się zmienią, zmieni się też ta strona.
 
@@ -43,6 +44,8 @@ Odrzucona transakcja zapamiętuje pierwszy pasujący powód z tej listy, ale te�
 
 Dopiero transakcje, które przejdą higienę, trafiają do osobnego, drugiego filtra — pasma metrażu: odpada z niego powierzchnia poza pasmem ±{DEFAULTS.areaBandPct / 0.01}% powierzchni przedmiotu (`out_of_area_band`).
 
+Na tym samym etapie działają **ręczne pasma rzeczoznawcy** z [kroku 3](/pomoc/krok-3-proba). Podanie którejkolwiek granicy powierzchni zastępuje pasmo ±{DEFAULTS.areaBandPct / 0.01}% w całości (`manual_area_range`), a pasmo ceny jednostkowej odcina niezależnie (`manual_price_range`); granica niepodana nie odcina z tej strony niczego. Puste pasma to dokładnie to samo co ich brak — dobór zachowuje się wtedy jak przed tą wersją. Odrzucenia mają własne kody powodu i trafiają do sekcji „Odrzucone” jak każde inne: program nigdy nie gubi kandydatki po cichu.
+
 ## Promień
 
 Dobór sprawdza kolejne promienie {DEFAULTS.radiusStepsM.join(" → ")} m i zatrzymuje się na pierwszym, w którym pula **po higienie i po paśmie metrażu** liczy co najmniej {DEFAULTS.minPoolAfterBand} transakcji. Gdy żaden krok tego progu nie osiąga, dobór zostaje przy ostatnim ({DEFAULTS.radiusStepsM[DEFAULTS.radiusStepsM.length - 1]} m) z tym, co akurat zebrał.
@@ -78,6 +81,14 @@ Z posortowanej listy dobór bierze **{DEFAULTS.proposedN}** transakcji jako pró
 Gdy pula po higienie, paśmie i promieniu jest mniejsza niż {DEFAULTS.proposedN}, aplikacja pokazuje tyle, ile znalazła — nie ma progu, poniżej którego dobór odmawia zwrotu wyniku. Zatwierdzenie operatu zostaje mimo to zablokowane, dopóki cała próba (transakcje z RCN plus ewentualne wiersze wpisane ręcznie) nie osiągnie {REQUIRED_SAMPLE_SIZE} transakcji. To dwie niezależne stałe zapisane w dwóch miejscach — `DEFAULTS.proposedN` w domenie doboru i `REQUIRED_SAMPLE_SIZE` w progu zatwierdzenia — dziś równe, ale zmiana jednej nie rusza drugiej.
 
 Wszystko powyżej opisuje wyłącznie **automatyczny** dobór — ranking, {DEFAULTS.proposedN} i {DEFAULTS.maxPerBuilding} na budynek. W [kroku 3](/pomoc/krok-3-proba) rzeczoznawca może dodać do próby dowolną alternatywę ręcznie (checkbox „W próbie” albo przycisk „Dodaj do próby” w panelu bocznym) — taka propozycja wchodzi do próby OBOK tego, co dobrał ranking, z pominięciem obu limitów naraz, a sam ranking i kolejność pozostałych propozycji się przy tym nie zmieniają. Dlatego próba, którą widać w kroku 3, może liczyć więcej niż {DEFAULTS.proposedN} transakcji — bramka zatwierdzenia liczy wtedy po prostu więcej wierszy, wciąż względem tego samego progu {REQUIRED_SAMPLE_SIZE}.
+
+## Rozrzut cen w próbie
+
+Po dobraniu próby program liczy jedną liczbę opisującą jej spójność cenową: **rozrzut** = (C max − C min) / C śr, czyli różnicę między skrajnymi wskaźnikami V max i V min z Tabeli 2 operatu. Pasek nad tabelą w kroku 3 pokazuje ją na bieżąco.
+
+Ta liczba ma znaczenie metodyczne, nie kosmetyczne. W metodzie korygowania ceny średniej to właśnie V min i V max wyznaczają zakres, w którym mogą się poruszać poprawki — im szersze pasmo, tym mocniej korekty przesuwają wynik, przy tych samych wagach cech. Dwa operaty wzorcowe, na których kalibrowaliśmy dobór, mają próby wąskie: 0,13 i 0,23. Program przed poprawkami z tej wersji potrafił zwrócić próbę o rozrzucie 0,75 — i przy identycznych wagach cech rozjeżdżał się z operatem o 10%.
+
+Powyżej {SPREAD_WARN_THRESHOLD.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} pasek ostrzega i proponuje zawężenie pasma powierzchni albo odrzucenie skrajnych cen. **To ostrzeżenie, nie bramka** — nie blokuje ani przeliczenia, ani zatwierdzenia; jedynym twardym progiem pozostaje {REQUIRED_SAMPLE_SIZE} transakcji w próbie. Rozrzut nie wchodzi też do rankingu: dobór nie optymalizuje pod tę liczbę, tylko ją pokazuje.
 
 ## Skąd nazwy ulic
 
