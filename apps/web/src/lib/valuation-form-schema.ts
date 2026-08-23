@@ -156,6 +156,8 @@ const rejectReasonSchema = z.enum([
   "out_of_window",
   "out_of_area_band",
   "primary_market",
+  "manual_area_range",
+  "manual_price_range",
 ]);
 
 /** Mirrors `RejectedRow` from `@/domain/sample-snapshot` — the compact "Odrzucone" row (Slice 3). */

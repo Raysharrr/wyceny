@@ -11,7 +11,9 @@
  *      radius whose pool after the area band reaches `minPoolAfterBand`
  *      (or the last step);
  *   2. hygiene → `rejected` with a reason code;
- *   3. area band → `rejected: out_of_area_band`;
+ *   3. area band → `rejected: out_of_area_band`, or the appraiser's own
+ *      `areaRange`/`unitPriceRange` → `manual_area_range`/`manual_price_range`
+ *      (Slice 6 — a given `areaRange` bound REPLACES the ±30% band);
  *   4. flags: IQR 1.5× on price/m² (n ≥ 8) → `price_outlier`;
  *      `market === null` → `market_unknown`; `market === null` ∧
  *      `seller === "osobaPrawna"` → also `primary_suspect` — flags never
@@ -101,6 +103,15 @@ export type SelectionParams = {
   alternatesN?: number;
   /** Cap on proposed rows from one building — overflow moves to alternates, ranking order kept (ADR-015 rule 6, default 3). */
   maxPerBuilding?: number;
+  /**
+   * Appraiser's own area band [m²] (Slice 6). REPLACES `areaBandPct` as soon as
+   * either bound is given — an undefined bound then means "no limit on that
+   * side", NOT "fall back to the ±30% band". `{}` (neither bound) changes
+   * nothing: the default band still applies, which is what keeps F-14 green.
+   */
+  areaRange?: { min?: number; max?: number };
+  /** Appraiser's own unit-price band [zł/m²] (Slice 6). Same bound semantics as `areaRange`; there is no default band to replace. */
+  unitPriceRange?: { min?: number; max?: number };
 };
 
 export const DEFAULT_WEIGHTS: ScoreWeights = {
@@ -133,7 +144,11 @@ export type RejectReason =
   | "no_price"
   | "out_of_window"
   | "out_of_area_band"
-  | "primary_market";
+  | "primary_market"
+  /** Outside the appraiser's own area band (Slice 6) — never coexists with `out_of_area_band`. */
+  | "manual_area_range"
+  /** Outside the appraiser's own unit-price band (Slice 6). */
+  | "manual_price_range";
 
 export type Flag = "price_outlier" | "market_unknown" | "primary_suspect";
 
@@ -273,6 +288,16 @@ export function selectSample(candidates: Candidate[], params: SelectionParams): 
   const floor = floorMonth(params.todayMonth, windowMonths);
   const loArea = params.subjectArea * (1 - areaBandPct);
   const hiArea = params.subjectArea * (1 + areaBandPct);
+  // Ręczne pasma rzeczoznawcy (Slice 6). Sprawdzamy OBECNOŚĆ GRANIC, nie
+  // obecność obiektu: `areaRange: {}` z formularza (oba pola puste) musi
+  // zachowywać się dokładnie jak brak pola, inaczej pusty obiekt wyłączałby
+  // pasmo ±30% i przestawiał dobór — a to jest dokładnie ta ścieżka, którą
+  // chodzą snapshoty F-14.
+  const areaMin = params.areaRange?.min;
+  const areaMax = params.areaRange?.max;
+  const manualArea = areaMin !== undefined || areaMax !== undefined;
+  const priceMin = params.unitPriceRange?.min;
+  const priceMax = params.unitPriceRange?.max;
 
   const evaluate = (radiusM: number) => {
     const inRadius = candidates.filter((c) => c.distanceM <= radiusM);
@@ -289,12 +314,23 @@ export function selectSample(candidates: Candidate[], params: SelectionParams): 
 
     const banded: Candidate[] = [];
     for (const c of clean) {
-      if (c.area < loArea || c.area > hiArea) {
-        rejected.push({
-          candidate: c,
-          reason: "out_of_area_band",
-          allReasons: ["out_of_area_band"],
-        });
+      const reasons: RejectReason[] = [];
+      if (manualArea) {
+        if (
+          (areaMin !== undefined && c.area < areaMin) ||
+          (areaMax !== undefined && c.area > areaMax)
+        )
+          reasons.push("manual_area_range");
+      } else if (c.area < loArea || c.area > hiArea) {
+        reasons.push("out_of_area_band");
+      }
+      if (
+        (priceMin !== undefined && c.pricePerM2 < priceMin) ||
+        (priceMax !== undefined && c.pricePerM2 > priceMax)
+      )
+        reasons.push("manual_price_range");
+      if (reasons.length > 0) {
+        rejected.push({ candidate: c, reason: reasons[0], allReasons: reasons });
       } else banded.push(c);
     }
     return { radiusM, inRadius, rejected, banded, afterHygiene, afterBand: banded.length };

@@ -264,6 +264,52 @@ describe("selectSample — ADR-015 defaults", () => {
     const pool = [...Array(40)].map(() => mk({ egib: shared, distanceM: 200 }));
     expect(selectSample(pool, P).proposed.length).toBeLessThanOrEqual(3);
   });
+  it("ręczne pasmo powierzchni nadpisuje areaBandPct", () => {
+    // subjectArea 50 → pasmo domyślne 35..65 m². Ręczne 40..60 jest węższe
+    // z jednej strony (35 wypada) i to ono decyduje.
+    const pool = [35, 45, 55, 75].map((area) => mk({ area }));
+    const s = selectSample(pool, { ...P, areaRange: { min: 40, max: 60 } });
+    const areas = s.proposed.map((c) => c.area);
+    expect(areas.sort((a, b) => a - b)).toEqual([45, 55]);
+    expect(s.rejected.map((r) => r.reason).sort()).toEqual([
+      "manual_area_range",
+      "manual_area_range",
+    ]);
+  });
+  it("nieokreślona granica nie odcina z tej strony — pasmo domyślne przestaje obowiązywać", () => {
+    // Sedno „nadpisuje areaBandPct": przy samym `min` kandydatka 200 m²
+    // ZOSTAJE, choć pasmo ±30% (35..65) dawno by ją wyrzuciło.
+    const pool = [35, 45, 200].map((area) => mk({ area }));
+    const s = selectSample(pool, { ...P, areaRange: { min: 40 } });
+    expect(s.proposed.map((c) => c.area).sort((a, b) => a - b)).toEqual([45, 200]);
+    expect(s.rejected).toHaveLength(1);
+    expect(s.rejected[0].reason).toBe("manual_area_range");
+  });
+  it("ręczne pasmo ceny odcina skrajne oferty", () => {
+    const pool = [7000, 11000, 12000, 16000].map((pricePerM2) => mk({ pricePerM2 }));
+    const s = selectSample(pool, { ...P, unitPriceRange: { min: 10000, max: 13000 } });
+    expect(s.proposed.every((c) => c.pricePerM2 >= 10000 && c.pricePerM2 <= 13000)).toBe(true);
+    expect(s.rejected.filter((r) => r.reason === "manual_price_range")).toHaveLength(2);
+  });
+  it("kandydatka poza obydwoma pasmami nosi oba powody", () => {
+    const s = selectSample([mk({ area: 20, pricePerM2: 30000 })], {
+      ...P,
+      areaRange: { min: 40 },
+      unitPriceRange: { max: 13000 },
+    });
+    expect(s.rejected[0].allReasons).toEqual(["manual_area_range", "manual_price_range"]);
+    expect(s.rejected[0].reason).toBe("manual_area_range");
+  });
+  it("puste zakresy nie zmieniają niczego — F-14 zostaje nietknięte", () => {
+    const pool = [...Array(40)].map((_, i) =>
+      mk({ distanceM: (i * 37) % 900, area: 40 + (i % 20), pricePerM2: 11000 + ((i * 131) % 900) }),
+    );
+    const withEmpty = selectSample(pool, { ...P, areaRange: {}, unitPriceRange: {} });
+    const without = selectSample(pool, P);
+    expect(withEmpty.proposed.map(candidateKey)).toEqual(without.proposed.map(candidateKey));
+    expect(withEmpty.rejected.map((r) => r.reason)).toEqual(without.rejected.map((r) => r.reason));
+    expect(withEmpty.counts).toEqual(without.counts);
+  });
   it("DEFAULTS pin ADR-015", () => {
     expect(DEFAULTS).toMatchObject({
       windowMonths: 24,
