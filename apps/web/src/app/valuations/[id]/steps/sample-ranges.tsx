@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -24,9 +24,9 @@ const range = (min?: number, max?: number): ManualRange | undefined =>
  * i dać mu zakresy". Puste pole = brak ograniczenia z tej strony; podanie
  * którejkolwiek granicy powierzchni wyłącza domyślne pasmo ±30% z ADR-015.
  *
- * Pola są NIEkontrolowane, a `key` przywiązuje je do wartości ze snapshotu:
- * snapshot pozostaje jedynym domem pasm (przeżywają zmianę promienia i
- * przeładowanie), a przeglądarka trzyma stan wpisywania — bez drugiego,
+ * Pola są NIEkontrolowane i dosynchronizowywane do snapshotu efektem poniżej:
+ * snapshot pozostaje jedynym domem pasm (przeżywają zmianę promienia i zapis
+ * szkicu), a przeglądarka trzyma stan wpisywania — bez drugiego,
  * rozjeżdżającego się źródła prawdy w `useState`.
  *
  * Zatwierdzenie następuje na wyjściu z pola (albo Enterem), nie na każdym
@@ -66,8 +66,25 @@ export function SampleRanges({
     { id: "range-price-max", label: "Cena do [zł/m²]", ref: priceMax, v: unitPriceRange?.max },
   ];
 
+  // Dosynchronizowanie do snapshotu, który właśnie wrócił z przeliczenia —
+  // POLE Z FOKUSEM ZOSTAJE NIETKNIĘTE. Wcześniej robił to `key` na kontenerze
+  // i kasował to, co rzeczoznawca akurat wpisywał: zatwierdzasz „cenę od",
+  // przechodzisz do „ceny do", a w połowie wpisywania wraca reselect,
+  // przemontowuje grupę i zjada wpisane znaki (złapane na żywo 2026-08-23).
+  useEffect(() => {
+    const sync = (el: HTMLInputElement | null, v?: number) => {
+      if (!el || el === document.activeElement) return;
+      const next = v === undefined ? "" : String(v);
+      if (el.value !== next) el.value = next;
+    };
+    sync(areaMin.current, areaRange?.min);
+    sync(areaMax.current, areaRange?.max);
+    sync(priceMin.current, unitPriceRange?.min);
+    sync(priceMax.current, unitPriceRange?.max);
+  }, [areaRange, unitPriceRange]);
+
   return (
-    <div className="grid gap-3 sm:grid-cols-4" key={JSON.stringify({ areaRange, unitPriceRange })}>
+    <div className="grid gap-3 sm:grid-cols-4">
       {fields.map((f) => (
         <div key={f.id} className="flex flex-col gap-1">
           <Label htmlFor={f.id} className="text-xs text-muted-foreground">
@@ -81,7 +98,11 @@ export function SampleRanges({
             min={0}
             step="any"
             defaultValue={f.v ?? ""}
-            disabled={busy || !!disabledReason}
+            // NIE blokujemy na czas przeliczania: blokada odbiera polu fokus,
+            // przez co dosynchronizowanie wyżej przestaje je omijać i kasuje
+            // wpisywane znaki. Blokuje wyłącznie brak zapamiętanej puli.
+            disabled={!!disabledReason}
+            aria-busy={busy}
             title={disabledReason ?? undefined}
             placeholder="bez ograniczenia"
             onBlur={commit}
