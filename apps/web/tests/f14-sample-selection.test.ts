@@ -42,6 +42,10 @@ function wrFromPdfSample(op: Operat): number {
 }
 
 describe("F-14 — WR from the proposed sample vs the appraiser's operat", () => {
+  it("zbiór referencyjny ma dokładnie 6 operatów — usunięcie trudnego operatu nie może zazielenić bramki", () => {
+    expect(OPERATY.length).toBe(6);
+  });
+
   let rows: { slug: string; n: number; radius: number; wr: number; delta: number }[];
 
   beforeAll(() => {
