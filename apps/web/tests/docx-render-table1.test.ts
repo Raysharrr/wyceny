@@ -82,7 +82,7 @@ describe("renderOperatDocx — Table 1 city/street (guards docxtemplater's paren
       params: { subjectArea: 50, todayMonth: "2026-08" },
     };
     const model = buildDocumentModel(input);
-    expect(model.transakcje[0]).toMatchObject({ miasto: "Luboń", ulica: "Kościelna" });
+    expect(model.transakcje[0]).toMatchObject({ miasto: "Luboń", ulica: "ul. Kościelna" });
 
     const text = docText(renderOperatDocx(model));
     const table1 = text.slice(text.indexOf("Tabela 1"), text.indexOf("Tabela 2"));
