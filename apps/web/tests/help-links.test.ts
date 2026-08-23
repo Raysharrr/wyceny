@@ -144,8 +144,10 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
   // zakres straznika, a to jest dokladnie ten rodzaj cichej utraty pokrycia,
   // przed ktorym ten plik ma bronic. Rosna, gdy Pomoc cytuje nowy przycisk —
   // wtedy zaktualizuj tez liczby w komentarzu wyzej.
-  it("zna dokladny zakres: 34 wystapien, 17 unikalnych etykiet", () => {
-    expect(cytaty.length).toBe(34);
+  it("zna dokladny zakres: 35 wystapien, 17 unikalnych etykiet", () => {
+    // 35 od Slice 6: `krok-3-proba` cytuje „Pobierz probe z RCN" raz wiecej,
+    // przy zdaniu o tym, ze reczne pasma przezywaja ponowne pobranie.
+    expect(cytaty.length).toBe(35);
     expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(17);
   });
 
