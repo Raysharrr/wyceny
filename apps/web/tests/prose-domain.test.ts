@@ -14,7 +14,7 @@ import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "@/domain/
 import { buildDocumentModel, formatNumber, formatPln } from "@/domain/document-model";
 import { computeKcs, type KcsInput, type KcsResult } from "@/domain/kcs";
 import type { Candidate } from "@/domain/sample-selection";
-import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
+import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 
 /**
  * Domain tests for the LLM prose proposal (ADR-014, T5).
@@ -835,18 +835,65 @@ describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", ()
     expect("promien_m" in proba).toBe(false);
   });
 
-  it("pomija obszar badania, gdy ręcznie zachowany wiersz leży poza promieniem", () => {
-    // `manualInclusions` przeżywają ZMNIEJSZENIE promienia: wiersz, który
-    // wypadł z obu list, jest doczepiany z zapamiętanej kandydatki
-    // (sample-manual.ts). Emitowany bezwarunkowo `radiusUsedM` twierdziłby
-    // wtedy „w promieniu 1 000 m" o próbie sięgającej 1 800 m.
+  describe("wiersz zachowany ręcznie poza promieniem", () => {
+    // Odtworzone PRZEZ PRAWDZIWĄ ŚCIEŻKĘ, nie przez wstawienie dalekiego
+    // wiersza wprost do `proposed`: rzeczoznawca dodał transakcję ręcznie,
+    // potem zmniejszył promień. `applyManualOverlay` doczepia ją z zapamiętanej
+    // kandydatki, mimo że wypadła z propozycji i alternatyw — więc `radiusUsedM`
+    // emitowany bezwarunkowo twierdziłby „w promieniu 1 000 m" o próbie
+    // sięgającej 1 800 m.
     const daleka = { ...cand("0020", "tx-daleka"), distanceM: 1800 };
-    const sel = selection([cand("0021", "tx-a"), daleka]);
-    const proba = factsWith(sel, rcnRows(2)).proba!;
+    const wlaczona = (): SampleSelectionSnapshot => ({
+      ...selection([cand("0021", "tx-a")]), // daleka NIE jest w `proposed`
+      manualInclusions: [
+        {
+          transactionId: daleka.transactionId,
+          lokalId: daleka.lokalId,
+          at: "2026-08-23T10:00:00.000Z",
+          candidate: daleka,
+        },
+      ],
+    });
 
-    expect(daleka.distanceM).toBeGreaterThan(sel.radiusUsedM);
-    expect("promien_m" in proba).toBe(false);
-    expect("obreby" in proba).toBe(false);
+    it("wycofuje `promien_m` i `obreby`", () => {
+      const sel = wlaczona();
+      const proba = factsWith(sel, rcnRows(2)).proba!;
+
+      // Warunek trzyma się nakładki, nie surowego `proposed`.
+      expect(sel.proposed).toHaveLength(1);
+      expect(effectiveSelection(sel).proposed).toHaveLength(2);
+      expect(daleka.distanceM).toBeGreaterThan(sel.radiusUsedM);
+      expect("promien_m" in proba).toBe(false);
+      expect("obreby" in proba).toBe(false);
+    });
+
+    it("wraca, gdy rzeczoznawca odrzuci ten daleki wiersz", () => {
+      const sel: SampleSelectionSnapshot = {
+        ...wlaczona(),
+        manualRejections: [
+          {
+            transactionId: daleka.transactionId,
+            lokalId: daleka.lokalId,
+            reason: "too_far",
+            at: "2026-08-23T10:05:00.000Z",
+          },
+        ],
+      };
+      const proba = factsWith(sel, rcnRows(1)).proba!;
+
+      expect(proba.promien_m).toBe(sel.radiusUsedM);
+      expect(proba.obreby).toEqual(["Jeżyce"]);
+    });
+
+    it("wiersz dokładnie na promieniu zostaje — granica jest domknięta", () => {
+      const naGranicy = { ...cand("0020", "tx-granica"), distanceM: 1000 };
+      const sel = selection([cand("0021", "tx-a"), naGranicy]);
+      const proba = factsWith(sel, rcnRows(2)).proba!;
+
+      expect(naGranicy.distanceM).toBe(sel.radiusUsedM);
+      expect(proba.promien_m).toBe(sel.radiusUsedM);
+      expect(proba.obreby).toEqual(["Golęcin", "Jeżyce"]);
+    });
   });
 
   it("pomija `obreby`, gdy choć JEDNEJ kandydatki nie da się nazwać — lista nie może zaniżać obszaru", () => {

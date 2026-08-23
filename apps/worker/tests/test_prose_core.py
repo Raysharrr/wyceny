@@ -420,9 +420,123 @@ class TestValidateObreby:
         text = "• obszar badania – m. Nowogród, obręb Zarzecze,"
         assert validate_obreby(text, facts) == ["Zarzecze"]
 
+    # --- Runda Codexa 2: równoważne sformułowania i fleksja ---------------
+
+    WSTEP = "Analizę rynku przeprowadzono w m. Nowogród, obręb nr 0007 Zarzecze.\n\n"
+
+    @pytest.mark.parametrize(
+        "opis",
+        [
+            "• badany obszar – m. Nowogród, obręb Zarzecze,",
+            "• obszar objęty badaniem – obręb Zarzecze,",
+            "• teren badania – obręb Zarzecze,",
+            "Badanie rynku przeprowadzono w obrębie Zarzecze.",
+            "Rynek analizowano w granicach obrębu Zarzecze.",
+        ],
+    )
+    def test_obreb_przedmiotu_poza_wstepem_zawsze_narusza(self, opis):
+        """Straż z rundy 2 rozpoznawała kontekst po frazie „obszar badania" —
+        każdy synonim ją omijał. Domyślne jest teraz ODWRÓCONE: `obreb`
+        przedmiotu jest legalny WYŁĄCZNIE w akapicie wprowadzającym, więc
+        żadne przeformułowanie nie otwiera furtki."""
+        assert validate_obreby(self.WSTEP + opis, self.FACTS) == ["Zarzecze"]
+
+    def test_obreb_przedmiotu_poza_wstepem_narusza_takze_bez_obreby(self):
+        facts = {"obreb": "0007 Zarzecze", "proba": {"liczba_transakcji": 3}}
+        text = self.WSTEP + "Badanie rynku przeprowadzono w obrębie Zarzecze."
+        assert validate_obreby(text, facts) == ["Zarzecze"]
+
+    @pytest.mark.parametrize(
+        "opis",
+        [
+            "• obręb ewidencyjny: Naramowice,",
+            "• obręb ewidencyjny o nazwie Naramowice,",
+            "• obręb nr 0044 Naramowice,",
+        ],
+    )
+    def test_lapie_nazwe_po_dwukropku_i_po_frazie_o_nazwie(self, opis):
+        assert validate_obreby(self.WSTEP + opis, self.FACTS) == ["Naramowice"]
+
+    def test_nie_przepuszcza_nazwy_ktora_nie_jest_forma_dozwolonej(self):
+        """„Golęcino" nie jest odmianą „Golęcina" — poprzednia straż zdejmowała
+        końcówkę z DOWOLNEGO słowa tekstu i dawała się nabrać."""
+        text = self.WSTEP + "• obszar badania – obręb Golęcino,"
+        assert validate_obreby(text, self.FACTS) == ["Golęcino"]
+
+    FACTS_FLEKSJA = {
+        "obreb": "0011 Dębiec",
+        "rynek": "wtórny, lokale mieszkalne, Poznań",
+        "proba": {"obreby": ["Dębiec", "Główna", "Jeżyce", "Wilda"]},
+    }
+
+    @pytest.mark.parametrize(
+        "zdanie",
+        [
+            "Transakcje pochodzą z obrębu Dębca.",
+            "Transakcje pochodzą z obrębu Głównej.",
+            "Transakcje pochodzą z obrębu Poznania.",
+            "Transakcje odnotowano w obrębach Jeżyc i Wildy.",
+            "Transakcje odnotowano w obrębie Dębcu oraz w obrębie Wildzie.",
+        ],
+    )
+    def test_poprawna_fleksja_nazw_z_faktow_nie_jest_naruszeniem(self, zdanie):
+        assert validate_obreby(zdanie, self.FACTS_FLEKSJA) == []
+
     def test_few_shoty_promptu_sa_czyste(self):
         # Regresja na samą straż: gdyby odrzucała poprawną polszczyznę, sekcja
         # byłaby trwale niewypełnialna, a testy syntetyczne by tego nie pokazały.
         _, examples = parse_section_file(PROMPTS_DIR / "analiza_rynku.md")
         for facts, answer in examples:
             assert validate_obreby(answer, facts) == []
+
+
+def _slownik_obrebow() -> list[str]:
+    """Nazwy obrębów z web — NIE duplikujemy słownika w workerze, tak jak
+    `prose-section-facts.test.ts` czyta prompty workera z drugiej strony."""
+    path = Path(__file__).resolve().parents[2] / "web" / "src" / "domain" / "obreby-poznan.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return sorted(v for k, v in raw.items() if k != "_source")
+
+
+class TestInflectPokrywaSlownik:
+    """Generator form działa na zamkniętym zbiorze: nazwy z wyceny pochodzą
+    z tego pliku. Reguła, która nie obsłużyłaby którejś nazwy, jest błędem
+    straży, a nie ciekawostką lingwistyczną."""
+
+    def test_kazda_nazwa_ze_slownika_jest_wlasna_forma(self):
+        for name in _slownik_obrebow():
+            assert name.casefold() in app.prose._inflect(name), name
+
+    def test_zadna_forma_nie_koliduje_z_inna_nazwa(self):
+        """Gdyby forma jednej nazwy zrównała się z drugą, straż przepuściłaby
+        realnie istniejący, ale NIE nasz obręb — dokładnie klasa „Golęcino"."""
+        slownik = _slownik_obrebow()
+        formy = {n: app.prose._inflect(n) for n in slownik}
+        for a in slownik:
+            for b in slownik:
+                if a != b:
+                    assert not (formy[a] & formy[b]), f"{a} × {b}: {formy[a] & formy[b]}"
+
+    @pytest.mark.parametrize(
+        "nazwa,forma",
+        [
+            ("Dębiec", "dębca"),      # e ruchome
+            ("Poznań", "poznania"),   # ń -> ni
+            ("Główna", "głównej"),    # przymiotnikowa
+            ("Wilda", "wildzie"),     # palatalizacja d -> dzi
+            ("Śródka", "śródce"),     # palatalizacja k -> c
+            ("Starołęka", "starołęce"),
+            ("Ławica", "ławicy"),
+            ("Jeżyce", "jeżyc"),      # dopełniacz liczby mnogiej
+            ("Krzesiny", "krzesinach"),
+            ("Chartowo", "chartowa"),
+            ("Golęcin", "golęcinie"),
+            ("Łazarz", "łazarza"),
+        ],
+    )
+    def test_generuje_realne_formy_odmiany(self, nazwa, forma):
+        assert forma in app.prose._inflect(nazwa)
+
+    def test_nie_generuje_form_ktore_nie_sa_odmiana(self):
+        assert "golęcino" not in app.prose._inflect("Golęcin")
+        assert "jeżycowo" not in app.prose._inflect("Jeżyce")

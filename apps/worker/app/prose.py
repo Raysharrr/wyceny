@@ -156,86 +156,108 @@ def validate_numbers(text: str, facts: dict) -> list[str]:
 #
 # `validate_numbers` is blind to an invented obręb: a name carries no digit.
 # Aneta on a generated section: "analizę opisał nam nie z tego obrębu
-# ewidencyjnego". The facts now name the study area (`proba.obreby`, built from
-# the sample the appraiser actually kept), so the text may name no other.
+# ewidencyjnego". The facts name the study area (`proba.obreby`, built from the
+# sample the appraiser actually kept), so the text may name no other.
 
 # The keyword and the optional adjective the register uses ("w obrębie
-# EWIDENCYJNYM Naramowice"). The adjective is part of the keyword, not of the
-# name — reading it as a name would make the guard skip the real one, which is
-# how "obrębie ewidencyjnym Naramowice" walked past round 1 untouched.
+# EWIDENCYJNYM Naramowice"). The adjective belongs to the keyword, not to the
+# name — read as a name it would make the guard skip the real one.
 _OBREB_KEYWORD_RE = re.compile(r"\bobręb\w*(?:\s+ewidencyjn\w*)?", re.IGNORECASE)
 # A proper noun: initial capital (Polish letters included). NEVER IGNORECASE —
 # lowercase words after "w obrębie" are ordinary prose ("w obrębie jednego
 # budynku"), and matching them would make every sentence a violation.
 _OBREB_NAME_RE = re.compile(r"[A-ZĄĆĘŁŃÓŚŹŻ][\w-]+")
-# What may follow the keyword: an optional "nr", an optional 4-digit code, then
-# one or more names joined by a comma / "i" / "oraz" ("obrębach Golęcin i
-# Sołacz", "obręb nr 0007 Zarzecze"). `\s` spans the newline the prompt's
-# few-shot wraps on.
+# Everything the register and ordinary prose put between the keyword and the
+# name: a colon, "nr"/"numer", "o nazwie", a code. Each optional and
+# independent, so "obręb ewidencyjny: X", "obręb nr 0007 X" and "obręb
+# ewidencyjny o nazwie X" all land on the same capture.
 _OBREB_TAIL_RE = re.compile(
-    r"(?:\s+[Nn]r)?(?:\s+\d{1,4})?"
+    r"(?:\s*:)?"
+    r"(?:\s+(?:nr|numer|numerze))?"
+    r"(?:\s+o\s+nazwie)?"
+    r"(?:\s+\d{1,4})?"
     r"((?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][\w-]+(?:\s*,|\s+i|\s+oraz)?)+)"
 )
-# Segment boundaries. The study-area claim is scoped to the bullet or paragraph
-# it stands in, so the SUBJECT's obręb stays legal in the opening paragraph
-# while being illegal as the area the sample was drawn from. Sentences are
-# deliberately NOT a boundary: "m. Nowogród" would split on its own full stop
-# and tear the names away from the phrase that governs them.
+# Bullet or blank line — NOT a sentence: "m. Nowogród" breaks on its own full
+# stop and would tear the names away from the paragraph that governs them.
 _SEGMENT_BOUNDARY_RE = re.compile(r"•|\n[ \t]*\n")
-_STUDY_AREA_RE = re.compile(r"obszar\w*\s+badan\w*", re.IGNORECASE)
-
-# Polish inflectional endings, longest first. Stripping the same set from both
-# the fact and the written form reduces them to a shared stem, so "Golęcinie"
-# matches "Golęcin" while "Golęcisko" does not — round 1 compared PREFIXES,
-# which let a different, really existing obręb through on a shared opening.
-_OBREB_ENDINGS = ("ach", "ami", "owi", "ów", "om", "em", "ie", "ą", "ę", "a", "e", "i", "o", "u", "y")
-_MIN_STEM = 3
 
 
-def _obreb_stem(name: str) -> str:
-    """Casefolded name with one inflectional ending removed (never below
-    {@link _MIN_STEM} characters). Polish declines proper nouns and the guard
-    must not punish grammar — but it must not accept a different name either.
+def _inflect(name: str) -> set[str]:
+    """Every written form of ONE known obręb name.
 
-    # ponytail: one ending, not a morphological analyser. Poznań's 24 obręb
-    # names are single words; a real declension engine earns its place only if
-    # one of them ever needs a stem change deeper than the ending.
+    The direction matters. Round 2 stripped an ending off whatever word the
+    text used and compared stems — which BOTH accepted "Golęcino" for a fact of
+    "Golęcin" (not a form of it) and rejected "Dębca" for a fact of "Dębiec"
+    (a correct one, with the fleeting -e-). Generating forms of the FACTS
+    instead makes the accepted set closed and finite: the names come from the
+    valuation, and Poznań has 24 of them in total.
+
+    # ponytail: suffix paradigms, not a morphological analyser. The rules below
+    # cover every name in `obreby-poznan.json` (pinned by a test that walks the
+    # whole file); a name needing a deeper stem change would need a rule here.
     """
     low = name.casefold()
-    for ending in _OBREB_ENDINGS:
-        if low.endswith(ending) and len(low) - len(ending) >= _MIN_STEM:
-            return low[: -len(ending)]
-    return low
+    forms = {low}
+
+    if low.endswith("ec"):  # Dębiec -> Dębca (e ruchome)
+        stem = low[:-2].removesuffix("i") + "c"
+        forms |= {stem + e for e in ("a", "u", "owi", "em", "e")}
+    if low.endswith("ń"):  # Poznań -> Poznania
+        stem = low[:-1] + "ni"
+        forms |= {stem, *(stem + e for e in ("a", "u", "owi", "em"))}
+
+    if low.endswith("a"):  # Wilda, Główna, Starołęka, Ławica, Komandoria
+        stem = low[:-1]
+        forms |= {stem + e for e in ("y", "i", "ę", "ą", "o", "ej", "e")}
+        # Locative/dative palatalisation: Wilda -> Wildzie, Śródka -> Śródce.
+        soft = {"d": "dzie", "k": "ce", "g": "dze", "c": "cy", "t": "cie", "ł": "le"}
+        if stem and stem[-1] in soft:
+            forms.add(stem[:-1] + soft[stem[-1]])
+    elif low.endswith("o"):  # Chartowo, Junikowo, Piątkowo, Umultowo
+        forms |= {low[:-1] + e for e in ("a", "u", "em", "ie")}
+    elif low.endswith("e"):  # Zegrze; plural Jeżyce, Naramowice, Rataje
+        forms |= {low[:-1] + e for e in ("", "a", "u", "em", "ach", "ami", "om")}
+    elif low.endswith(("y", "i")):  # plural Krzesiny, Winiary, Krzyżowniki
+        forms |= {low[:-1] + e for e in ("", "ach", "ami", "om")}
+    elif not low.endswith(("ą", "ę", "ó", "u")):  # consonant-final masculine
+        forms |= {low + e for e in ("a", "u", "owi", "em", "ie", "y")}
+    return forms
 
 
-def _sample_obreby(facts: dict) -> list[str]:
-    """The study area as the FACTS state it — the only names the text may use
-    for the area the sample was drawn from. Empty when `obreby` was withheld
-    (the all-or-nothing rule on the web side), and then no name is allowed
-    there at all: an area we cannot state is an area the operat must not name.
+def _names_in(value) -> list[str]:
+    """Proper nouns inside a fact string. `obreb` arrives as "0007 Zarzecze"
+    and `rynek` as "wtórny, lokale mieszkalne, Poznań"; the code is not a
+    name, and neither are the lowercase words."""
+    return _OBREB_NAME_RE.findall(value) if isinstance(value, str) else []
+
+
+def _forms_of(names: list[str]) -> set[str]:
+    return {form for name in names for form in _inflect(name)}
+
+
+def _study_area_forms(facts: dict) -> set[str]:
+    """The study area as the FACTS state it — plus the city, because "w obrębie
+    Poznania" is ordinary Polish for "within Poznań" and names no obręb at all.
+
+    Empty `obreby` (the web side's all-or-nothing rule withheld it) leaves only
+    the city: an area we cannot state is an area the operat must not name.
     """
     proba = facts.get("proba")
     raw = proba.get("obreby") or [] if isinstance(proba, dict) else []
-    return [n for n in raw if isinstance(n, str) and n]
+    sample = [n for n in raw if isinstance(n, str) and n]
+    city = _names_in(facts.get("rynek"))[-1:] + _names_in(facts.get("adres"))[-1:]
+    return _forms_of(sample + city)
 
 
-def _subject_obreby(facts: dict) -> list[str]:
-    """The SUBJECT's own obręb, which the few-shot uses to open the section.
-    `obreb` arrives as "0007 Zarzecze"; the code is not a name."""
-    subject = facts.get("obreb")
-    return _OBREB_NAME_RE.findall(subject) if isinstance(subject, str) else []
-
-
-def _segment_bounds(text: str, position: int) -> tuple[int, int]:
-    """The bullet or paragraph `position` falls in."""
-    start, end = 0, len(text)
+def _segment_start(text: str, position: int) -> int:
+    """Start of the bullet or paragraph `position` falls in."""
+    start = 0
     for boundary in _SEGMENT_BOUNDARY_RE.finditer(text):
-        if boundary.end() <= position:
-            start = boundary.end()
-        else:
-            end = boundary.start()
+        if boundary.end() > position:
             break
-    return start, end
+        start = boundary.end()
+    return start
 
 
 def validate_obreby(text: str, facts: dict) -> list[str]:
@@ -244,24 +266,26 @@ def validate_obreby(text: str, facts: dict) -> list[str]:
     Only names introduced by the word "obręb" in any of its forms are read —
     the section also names a city and a street, and those are not obręby.
 
-    The allowed set depends on WHERE the name stands. A bullet or paragraph
-    that speaks of the "obszar badania" may use only `proba.obreby`; anywhere
-    else the subject's own `obreb` is legal too. Without that split the guard
-    accepted "obszar badania – obręb Zarzecze" for a sample drawn from Golęcin
-    and Sołacz — which is the exact error the appraiser reported.
+    The default is INVERTED on purpose: the subject's own `obreb` is legal ONLY
+    in the opening paragraph, which is the one place the prompt allows it.
+    Everywhere else the sample's `obreby` are the whole permitted set. Round 2
+    instead looked for the phrase "obszar badania" near the name, so every
+    rewording of it — "badany obszar", "teren badania", or a plain sentence —
+    walked straight past the guard. There is no synonym of "not the opening
+    paragraph".
     """
-    sample = [_obreb_stem(n) for n in _sample_obreby(facts)]
-    general = sample + [_obreb_stem(n) for n in _subject_obreby(facts)]
+    study = _study_area_forms(facts)
+    intro = study | _forms_of(_names_in(facts.get("obreb")))
 
     violations: list[str] = []
     for keyword in _OBREB_KEYWORD_RE.finditer(text):
         tail = _OBREB_TAIL_RE.match(text, keyword.end())
         if not tail:
             continue
-        start, end = _segment_bounds(text, keyword.start())
-        allowed = sample if _STUDY_AREA_RE.search(text, start, end) else general
+        start = _segment_start(text, keyword.start())
+        allowed = intro if not text[:start].strip() else study
         for found in _OBREB_NAME_RE.findall(tail.group(1)):
-            if _obreb_stem(found) in allowed:
+            if found.casefold() in allowed:
                 continue
             if found not in violations:
                 violations.append(found)
