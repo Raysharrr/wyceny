@@ -101,7 +101,11 @@ describe("renderOperatDocx photos (Slice 10, F-12 media leg)", () => {
  */
 describe("rozmiar zdjęcia oględzin w operacie", () => {
   it("mieści dwa zdjęcia w rzędzie — najwyżej połowa szerokości kolumny", () => {
-    // Kolumna tekstu w szablonie to 600 px w jednostkach modułu obrazów.
+    // Zmierzone na `<w:sectPr>` szablonu: kolumna tekstu to 9072 dxa w węższej sekcji
+    // (16,0 cm = 605 px @96dpi, jednostki modułu obrazów) i 9637 dxa w szerszej. Dwa
+    // pudełka po 290 px to 580 px plus spacja — mieści się w węższej z zapasem ~25 px.
+    // Ta asercja pilnuje granicy; DOWODEM, że Word faktycznie zawija po dwa, jest render
+    // (PDF → raster, 2026-08-23), nie ten test.
     expect(PHOTO_BOX[0]).toBeLessThanOrEqual(290);
   });
 
