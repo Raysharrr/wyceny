@@ -242,10 +242,9 @@ describe("proposeProse — happy path", () => {
       // T2 moved the fingerprint from one hash for the whole valuation to one
       // per section; T3 stamps it only for the sections actually REQUESTED —
       // here, all six. Each one is over its own fact subset AND (for
-      // `analiza_rynku`/`uzasadnienie`) the transactions (review I-2): the
-      // worker derives `proba.trend_cen` from the latter, so a facts-only
-      // fingerprint would miss an edit that reverses the trend the operat
-      // asserts.
+      // `analiza_rynku`/`uzasadnienie`) the transactions (review I-2) — kept
+      // as over-approximation after Slice 5 removed the trend the worker used
+      // to derive from them.
       factsHashes: Object.fromEntries(
         ALL_SECTIONS.map((section) => [
           section,

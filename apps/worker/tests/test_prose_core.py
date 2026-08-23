@@ -17,8 +17,8 @@ from app.prose import (
     SECTIONS,
     build_prompt,
     parse_section_file,
-    price_trend,
     validate_numbers,
+    validate_obreby,
 )
 
 # Synthetic facts in the shape the prompts document (F-9: fictional world only).
@@ -32,9 +32,47 @@ FACTS_RYNEK = {
         "cena_min_zl_m2": "9 240,00",
         "cena_srednia_zl_m2": "10 815,00",
         "cena_max_zl_m2": "12 480,00",
-        "trend_cen": "stabilne",
+        "obreby": ["Zarzecze", "Podgórze"],
+        "promien_m": 1000,
+        "przebadano": "kilkaset",
     },
 }
+
+
+# Zero na sześć operatów wzorcowych (5 KCS w repo + Winiary) orzeka o kierunku
+# cen, a operaty metodą porównywania parami robią z tej odmowy osobne zdanie:
+# „nie jest możliwym stwierdzenie, czy rynek odpowiada na aktualną sytuację
+# wzrostem czy stagnacją cen". To konwencja zawodowa, nie przeoczenie — prompt
+# nie może wymuszać twierdzenia, którego rzeczoznawca nie stawia.
+FORBIDDEN_TREND_WORDS = ("tendencj", "wzrostow", "spadkow", "wzrost cen", "spadek cen")
+
+
+def test_prompt_analiza_rynku_nie_kaze_orzekac_o_trendzie():
+    text = (PROMPTS_DIR / "analiza_rynku.md").read_text(encoding="utf-8").lower()
+    for word in FORBIDDEN_TREND_WORDS:
+        assert word not in text, f"prompt wciąż mówi o trendzie: {word!r}"
+
+
+def test_fakty_proby_nie_niosa_trend_cen():
+    prompt = build_prompt("analiza_rynku", FACTS_RYNEK)
+    assert "trend_cen" not in prompt
+
+
+def test_liczba_przebadanych_transakcji_jest_slowem_nie_sztuka():
+    """Aneta: „niech nie wpisuje konkretnej liczby tylko kilkadziesiąt lub
+    kilkaset zależy ile ich ściągnie". Słowo liczy web (`approximateCount`),
+    prompt ma je tylko przepisać — i pokazać wzorzec w obu few-shotach."""
+    text = (PROMPTS_DIR / "analiza_rynku.md").read_text(encoding="utf-8")
+    assert "kilkadziesiąt" in text and "kilkaset" in text
+
+    _, examples = parse_section_file(PROMPTS_DIR / "analiza_rynku.md")
+    for facts, answer in examples:
+        przebadano = facts["proba"]["przebadano"]
+        assert isinstance(przebadano, str), "dokładna liczba rozszerzyłaby straż liczb"
+        assert przebadano in answer
+
+        # Liczba przyjętych do porównań zostaje dokładna — trafia do Tabeli 1.
+        assert str(facts["proba"]["liczba_transakcji"]) in answer
 
 
 class TestParseSectionFile:
@@ -64,7 +102,7 @@ class TestParseSectionFile:
     def test_example_data_is_parsed_json(self):
         _, examples = parse_section_file(PROMPTS_DIR / "analiza_rynku.md")
         data, _ = examples[0]
-        assert data["proba"]["trend_cen"] == "stabilne"
+        assert data["proba"]["zakres_dat"] == "03-2024 – 11-2025"
 
     def test_missing_task_raises(self, tmp_path):
         path = tmp_path / "broken.md"
@@ -134,7 +172,7 @@ class TestBuildPrompt:
         prompt = build_prompt("analiza_rynku", FACTS_RYNEK)
         tail = prompt[prompt.index("\n\nDANE:\n") :]
         assert '\n "adres": "ul. Klonowa 14/3, Nowogród"' in tail  # indent=1, ensure_ascii=False
-        assert '\n  "trend_cen": "stabilne"' in tail  # nested level = 2 spaces
+        assert '\n  "cena_max_zl_m2": "12 480,00"' in tail  # nested level = 2 spaces
         assert "\\u" not in tail
 
     def test_example_text_included_verbatim(self):
@@ -158,88 +196,6 @@ class TestBuildPrompt:
         # Section name is used to build a path — only the closed set is allowed.
         with pytest.raises(ValueError):
             build_prompt("../../main", FACTS_RYNEK)
-
-
-def tx(date: str, price: float) -> dict:
-    return {"data": date, "cena_m2": price}
-
-
-class TestPriceTrend:
-    def test_rising(self):
-        assert (
-            price_trend(
-                [
-                    tx("01-2024", 9000.0),
-                    tx("02-2024", 9100.0),
-                    tx("03-2024", 10000.0),
-                    tx("04-2024", 10500.0),
-                ]
-            )
-            == "wzrostowe"
-        )
-
-    def test_falling(self):
-        assert (
-            price_trend(
-                [
-                    tx("01-2024", 10500.0),
-                    tx("02-2024", 10000.0),
-                    tx("03-2024", 9100.0),
-                    tx("04-2024", 9000.0),
-                ]
-            )
-            == "spadkowe"
-        )
-
-    def test_stable_below_threshold(self):
-        # halves: 9050 vs 9175 -> +1,4% < 5%
-        assert (
-            price_trend(
-                [
-                    tx("01-2024", 9000.0),
-                    tx("02-2024", 9100.0),
-                    tx("03-2024", 9150.0),
-                    tx("04-2024", 9200.0),
-                ]
-            )
-            == "stabilne"
-        )
-
-    def test_dates_sorted_chronologically_not_lexicographically(self):
-        # Regression: "02-2025" < "11-2024" lexicographically but is LATER in time.
-        # Lexicographic order would report "spadkowe" here.
-        data = [tx("11-2024", 9000.0), tx("02-2025", 12000.0)]
-        assert price_trend(data) == "wzrostowe"
-        assert price_trend(list(reversed(data))) == "wzrostowe"
-
-    def test_odd_count_middle_goes_to_second_half(self):
-        # spec split [100] vs [106, 106] -> +6% wzrostowe;
-        # putting the middle in the FIRST half would give +2,9% -> "stabilne".
-        assert (
-            price_trend([tx("01-2024", 100.0), tx("02-2024", 106.0), tx("03-2024", 106.0)])
-            == "wzrostowe"
-        )
-
-    def test_empty_and_single_transaction_are_stable(self):
-        assert price_trend([]) == "stabilne"
-        assert price_trend([tx("05-2025", 11000.0)]) == "stabilne"
-
-    def test_threshold_boundaries_are_inclusive_upward(self):
-        # delta == +prog -> wzrostowe, delta == -prog -> spadkowe (asymmetry is intentional)
-        assert price_trend([tx("01-2024", 100.0), tx("02-2024", 105.0)]) == "wzrostowe"
-        assert price_trend([tx("01-2024", 100.0), tx("02-2024", 95.0)]) == "spadkowe"
-
-    def test_custom_threshold(self):
-        data = [tx("01-2024", 100.0), tx("02-2024", 113.0)]
-        assert price_trend(data) == "wzrostowe"
-        assert price_trend(data, prog=0.2) == "stabilne"
-
-    def test_zero_baseline_is_stable(self):
-        assert price_trend([tx("01-2024", 0.0), tx("02-2024", 0.0)]) == "stabilne"
-
-    def test_malformed_date_raises(self):
-        with pytest.raises(ValueError):
-            price_trend([tx("2024-01", 9000.0), tx("2024-02", 9500.0)])
 
 
 # Facts for the number guard — synthetic, shaped like a real section payload
@@ -384,3 +340,302 @@ class TestGuardAcceptsOnlyExactForms:
             validate_numbers("Lokal 71,63 m2, średnia 13 123,60 zł, 12 transakcji.", self.FACTS)
             == []
         )
+
+
+class TestValidateObreby:
+    """Slice 5. Aneta: „analizę opisał nam nie z tego obrębu ewidencyjnego".
+    Nazwa obrębu nie niesie żadnej liczby, więc `validate_numbers` jest na nią
+    ślepy — potrzebna osobna straż."""
+
+    FACTS = {"obreb": "0007 Zarzecze", "proba": {"obreby": ["Golęcin", "Sołacz"]}}
+
+    def test_lapie_obreb_spoza_faktow(self):
+        text = "Zbadano rynek lokalny w obrębie Naramowice oraz w obrębach sąsiednich."
+        assert validate_obreby(text, self.FACTS) == ["Naramowice"]
+
+    def test_przepuszcza_obreby_z_proby(self):
+        assert validate_obreby("Zbadano rynek w obrębach Golęcin i Sołacz.", self.FACTS) == []
+
+    def test_przepuszcza_obreb_wycenianej_nieruchomosci(self):
+        # Few-shot otwiera akapit obrębem PRZEDMIOTU wyceny — z pola `obreb`,
+        # nie z próby. Straż, która go odrzuca, kasuje każdą poprawną generację.
+        text = "Przeprowadzono analizę rynku m. Nowogród, obręb nr 0007 Zarzecze."
+        assert validate_obreby(text, self.FACTS) == []
+
+    def test_przepuszcza_odmienione_nazwy(self):
+        # Polszczyzna odmienia nazwy własne; straż nie może karać za gramatykę.
+        assert validate_obreby("Transakcje z obrębu Golęcina i z Sołacza.", self.FACTS) == []
+
+    def test_nie_lapie_slow_pospolitych_po_slowie_obreb(self):
+        assert validate_obreby("Badanie w obrębie jednego budynku.", self.FACTS) == []
+
+    def test_bez_faktow_o_obrebach_kazda_nazwa_jest_naruszeniem(self):
+        assert validate_obreby("Rynek w obrębie Naramowice.", {}) == ["Naramowice"]
+
+    def test_pusty_tekst_i_brak_wzmianki(self):
+        assert validate_obreby("", self.FACTS) == []
+        assert validate_obreby("Ceny mieściły się w przedziale.", self.FACTS) == []
+
+    # --- Runda Codexa 1: trzy kontrprzykłady na zbyt luźną straż ---------
+
+    def test_obreb_przedmiotu_nie_moze_byc_obszarem_badania(self):
+        """Prompt pozwala na `obreb` wyłącznie w akapicie wprowadzającym.
+        Straż dopuszczająca go wszędzie odtwarza dosłownie skargę Anety:
+        „analizę opisał nam nie z tego obrębu ewidencyjnego"."""
+        text = "• obszar badania – m. Nowogród, obręb Zarzecze, w promieniu 1 000 m,"
+        assert validate_obreby(text, self.FACTS) == ["Zarzecze"]
+
+    def test_obreb_przedmiotu_wolno_w_akapicie_wprowadzajacym(self):
+        text = (
+            "Przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0007 Zarzecze.\n\n"
+            "• obszar badania – m. Nowogród, obręby Golęcin i Sołacz,"
+        )
+        assert validate_obreby(text, self.FACTS) == []
+
+    def test_lapie_forme_obreb_ewidencyjny(self):
+        """„w obrębie ewidencyjnym X" omijało straż w całości — przymiotnik
+        rozrywał wzorzec, a nazwa nigdy nie była czytana."""
+        assert validate_obreby("Zbadano rynek w obrębie ewidencyjnym Naramowice.", self.FACTS) == [
+            "Naramowice"
+        ]
+        assert validate_obreby(
+            "Transakcje z obrębów ewidencyjnych Golęcin i Sołacz.", self.FACTS
+        ) == []
+
+    def test_rdzen_nie_przepuszcza_innej_nazwy_o_wspolnym_poczatku(self):
+        """Golęcin ⊅ Golęcisko: dopuszczamy odmianę fleksyjną, nie dowolny
+        prefiks. Inaczej straż przepuszcza sąsiedni, realnie istniejący obręb."""
+        assert validate_obreby("Transakcje pochodzą z obrębu Golęcisko.", self.FACTS) == [
+            "Golęcisko"
+        ]
+
+    def test_rdzen_przepuszcza_odmiane_fleksyjna(self):
+        for form in ("Golęcina", "Golęcinie", "Golęcinem", "Sołacza", "Sołaczu"):
+            assert validate_obreby(f"Rynek w obrębie {form}.", self.FACTS) == [], form
+
+    def test_bez_obreby_w_faktach_obszar_badania_nie_ma_prawa_do_zadnej_nazwy(self):
+        """Gdy `obreby` wypadło (wszystko-albo-nic), obszaru badania nie znamy
+        — więc model nie ma prawa go nazwać, także obrębem przedmiotu."""
+        facts = {"obreb": "0007 Zarzecze", "proba": {"liczba_transakcji": 3}}
+        text = "• obszar badania – m. Nowogród, obręb Zarzecze,"
+        assert validate_obreby(text, facts) == ["Zarzecze"]
+
+    # --- Runda Codexa 2: równoważne sformułowania i fleksja ---------------
+
+    WSTEP = "Analizę rynku przeprowadzono w m. Nowogród, obręb nr 0007 Zarzecze.\n\n"
+
+    @pytest.mark.parametrize(
+        "opis",
+        [
+            "• badany obszar – m. Nowogród, obręb Zarzecze,",
+            "• obszar objęty badaniem – obręb Zarzecze,",
+            "• teren badania – obręb Zarzecze,",
+            "Badanie rynku przeprowadzono w obrębie Zarzecze.",
+            "Rynek analizowano w granicach obrębu Zarzecze.",
+        ],
+    )
+    def test_obreb_przedmiotu_poza_wstepem_zawsze_narusza(self, opis):
+        """Straż z rundy 2 rozpoznawała kontekst po frazie „obszar badania" —
+        każdy synonim ją omijał. Domyślne jest teraz ODWRÓCONE: `obreb`
+        przedmiotu jest legalny WYŁĄCZNIE w akapicie wprowadzającym, więc
+        żadne przeformułowanie nie otwiera furtki."""
+        assert validate_obreby(self.WSTEP + opis, self.FACTS) == ["Zarzecze"]
+
+    def test_obreb_przedmiotu_poza_wstepem_narusza_takze_bez_obreby(self):
+        facts = {"obreb": "0007 Zarzecze", "proba": {"liczba_transakcji": 3}}
+        text = self.WSTEP + "Badanie rynku przeprowadzono w obrębie Zarzecze."
+        assert validate_obreby(text, facts) == ["Zarzecze"]
+
+    @pytest.mark.parametrize(
+        "opis",
+        [
+            "• obręb ewidencyjny: Naramowice,",
+            "• obręb ewidencyjny o nazwie Naramowice,",
+            "• obręb nr 0044 Naramowice,",
+        ],
+    )
+    def test_lapie_nazwe_po_dwukropku_i_po_frazie_o_nazwie(self, opis):
+        assert validate_obreby(self.WSTEP + opis, self.FACTS) == ["Naramowice"]
+
+    def test_nie_przepuszcza_nazwy_ktora_nie_jest_forma_dozwolonej(self):
+        """„Golęcino" nie jest odmianą „Golęcina" — poprzednia straż zdejmowała
+        końcówkę z DOWOLNEGO słowa tekstu i dawała się nabrać."""
+        text = self.WSTEP + "• obszar badania – obręb Golęcino,"
+        assert validate_obreby(text, self.FACTS) == ["Golęcino"]
+
+    FACTS_FLEKSJA = {
+        "obreb": "0011 Dębiec",
+        "rynek": "wtórny, lokale mieszkalne, Poznań",
+        "proba": {"obreby": ["Dębiec", "Główna", "Jeżyce", "Wilda"]},
+    }
+
+    @pytest.mark.parametrize(
+        "zdanie",
+        [
+            "Transakcje pochodzą z obrębu Dębca.",
+            "Transakcje pochodzą z obrębu Głównej.",
+            "Transakcje pochodzą z obrębu Poznania.",
+            "Transakcje odnotowano w obrębach Jeżyc i Wildy.",
+            "Transakcje odnotowano w obrębie Dębcu oraz w obrębie Wildzie.",
+        ],
+    )
+    def test_poprawna_fleksja_nazw_z_faktow_nie_jest_naruszeniem(self, zdanie):
+        assert validate_obreby(zdanie, self.FACTS_FLEKSJA) == []
+
+    # --- Runda Codexa 3: pięć znalezisk ----------------------------------
+
+    FACTS_MIASTO = {
+        "obreb": "0007 Zarzecze",
+        "adres": "Poznań, ul. Heweliusza 3",
+        "rynek": "wtórny, lokale mieszkalne, Poznań",
+        "proba": {"obreby": ["Golęcin", "Sołacz"]},
+    }
+
+    def test_miasto_w_mianowniku_po_slowie_obreb_jest_sadzone(self):
+        """Poznań jest JEDNOCZEŚNIE miastem i realnym obrębem 0051, więc
+        „obręb Poznań" to twierdzenie o obrębie i podlega zbiorowi próby."""
+        text = self.WSTEP + "• obszar badania – obręb Poznań,"
+        assert validate_obreby(text, self.FACTS_MIASTO) == ["Poznań"]
+
+    def test_miasto_w_formie_zaleznej_to_zwykla_polszczyzna(self):
+        """„w obrębie Poznania" znaczy „w granicach Poznania" — żadna forma
+        zależna nie nazywa obrębu."""
+        text = self.WSTEP + "Transakcje odnotowano w obrębie Poznania."
+        assert validate_obreby(text, self.FACTS_MIASTO) == []
+
+    def test_nazwa_ulicy_z_adresu_nie_jest_dozwolonym_obrebem(self):
+        """Adres nie jest źródłem nazw obrębów — whitelistował `Heweliusza`."""
+        text = self.WSTEP + "• obszar badania – obręb Heweliusza,"
+        assert validate_obreby(text, self.FACTS_MIASTO) == ["Heweliusza"]
+
+    @pytest.mark.parametrize(
+        "opis,oczekiwane",
+        [
+            ("Badany obszar stanowił Zarzecze, obręb ewidencyjny miasta.", "Zarzecze"),
+            ("Badanie objęło obręb oznaczony jako Zarzecze.", "Zarzecze"),
+            ("obręb – Zarzecze", "Zarzecze"),
+            # Naruszenie raportuje formę ZAPISANĄ w tekście — model ma poprawić
+            # to, co napisał, a nie odgadywać mianownik.
+            ("Rynek analizowano w Zarzeczu.", "Zarzeczu"),
+        ],
+    )
+    def test_obreb_przedmiotu_lapany_niezaleznie_od_szyku(self, opis, oczekiwane):
+        """Straż bramkowana słowem kluczowym padała na szyku. Nazwa obrębu
+        PRZEDMIOTU jest znana z faktów, więc jest sądzona wszędzie poza jedyną
+        dozwoloną wzmianką we wstępie — bramką jest nazwa, nie słowo „obręb"."""
+        assert validate_obreby(self.WSTEP + opis, self.FACTS) == [oczekiwane]
+
+    def test_jednoakapitowy_tekst_nie_przemyca_obszaru_badania(self):
+        """Obserwacja team-leada z rundy 3, domknięta tą samą regułą pozycyjną:
+        legalna wzmianka obrębu przedmiotu jest POJEDYNCZA."""
+        text = (
+            "Przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0007 Zarzecze. "
+            "Obszarem badania był obręb Zarzecze, w promieniu 1 000 m."
+        )
+        assert validate_obreby(text, self.FACTS) == ["Zarzecze"]
+
+    def test_pojedyncza_wzmianka_we_wstepie_nadal_przechodzi(self):
+        text = "Przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0007 Zarzecze."
+        assert validate_obreby(text, self.FACTS) == []
+
+    @pytest.mark.parametrize("marker", ["-", "–", "—", "*", "•"])
+    def test_markery_listy_zamykaja_akapit_wprowadzajacy(self, marker):
+        text = f"Wstęp.\n{marker} obszar badania – obręb Zarzecze."
+        assert validate_obreby(text, self.FACTS) == ["Zarzecze"]
+
+    FACTS_WIELOWYRAZOWE = {
+        "obreb": "0051 Stare Miasto",
+        "rynek": "wtórny, lokale mieszkalne, Zielona Góra",
+        "proba": {"obreby": ["Zielona Góra", "Nowe Miasto"]},
+    }
+
+    def test_nazwa_wielowyrazowa_z_faktow_nie_jest_naruszeniem(self):
+        text = "Wstęp.\n\nRynek w obrębach Zielona Góra i Nowe Miasto."
+        assert validate_obreby(text, self.FACTS_WIELOWYRAZOWE) == []
+
+    def test_nazwa_wielowyrazowa_odmieniona_nie_jest_naruszeniem(self):
+        text = "Wstęp.\n\nRynek w obrębie Zielonej Góry."
+        assert validate_obreby(text, self.FACTS_WIELOWYRAZOWE) == []
+
+    def test_nieznana_nazwa_wielowyrazowa_to_JEDNO_naruszenie(self):
+        text = "Wstęp.\n\nRynek w obrębie Stary Rynek."
+        assert validate_obreby(text, self.FACTS_WIELOWYRAZOWE) == ["Stary Rynek"]
+
+    def test_dwie_nazwy_bez_spojnika_rozdzielaja_sie(self):
+        text = "Wstęp.\n\nRynek w obrębach Golęcin Sołacz."
+        assert validate_obreby(text, self.FACTS) == []
+
+    def test_few_shoty_promptu_sa_czyste(self):
+        # Regresja na samą straż: gdyby odrzucała poprawną polszczyznę, sekcja
+        # byłaby trwale niewypełnialna, a testy syntetyczne by tego nie pokazały.
+        _, examples = parse_section_file(PROMPTS_DIR / "analiza_rynku.md")
+        for facts, answer in examples:
+            assert validate_obreby(answer, facts) == []
+
+
+def _slownik_obrebow() -> list[str]:
+    """Nazwy obrębów z web — NIE duplikujemy słownika w workerze, tak jak
+    `prose-section-facts.test.ts` czyta prompty workera z drugiej strony."""
+    path = Path(__file__).resolve().parents[2] / "web" / "src" / "domain" / "obreby-poznan.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return sorted(v for k, v in raw.items() if k != "_source")
+
+
+class TestInflectPokrywaSlownik:
+    """Generator form działa na zamkniętym zbiorze: nazwy z wyceny pochodzą
+    z tego pliku. Reguła, która nie obsłużyłaby którejś nazwy, jest błędem
+    straży, a nie ciekawostką lingwistyczną."""
+
+    def test_kazda_nazwa_ze_slownika_jest_wlasna_forma(self):
+        for name in _slownik_obrebow():
+            assert name.casefold() in app.prose._inflect(name), name
+
+    def test_zadna_forma_nie_koliduje_z_inna_nazwa(self):
+        """Gdyby forma jednej nazwy zrównała się z drugą, straż przepuściłaby
+        realnie istniejący, ale NIE nasz obręb — dokładnie klasa „Golęcino"."""
+        slownik = _slownik_obrebow()
+        formy = {n: app.prose._inflect(n) for n in slownik}
+        for a in slownik:
+            for b in slownik:
+                if a != b:
+                    assert not (formy[a] & formy[b]), f"{a} × {b}: {formy[a] & formy[b]}"
+
+    @pytest.mark.parametrize(
+        "nazwa,forma",
+        [
+            ("Dębiec", "dębca"),      # e ruchome
+            ("Poznań", "poznania"),   # ń -> ni
+            ("Główna", "głównej"),    # przymiotnikowa
+            ("Wilda", "wildzie"),     # palatalizacja d -> dzi
+            ("Śródka", "śródce"),     # palatalizacja k -> c
+            ("Starołęka", "starołęce"),
+            ("Ławica", "ławicy"),
+            ("Jeżyce", "jeżyc"),      # dopełniacz liczby mnogiej
+            ("Krzesiny", "krzesinach"),
+            ("Chartowo", "chartowa"),
+            ("Golęcin", "golęcinie"),
+            ("Łazarz", "łazarza"),
+        ],
+    )
+    def test_generuje_realne_formy_odmiany(self, nazwa, forma):
+        assert forma in app.prose._inflect(nazwa)
+
+    @pytest.mark.parametrize(
+        "nazwa,zatwierdzone",
+        [
+            ("Dębiec", {"dębiec", "dębca", "dębcu", "dębcowi", "dębcem"}),
+            ("Główna", {"główna", "głównej", "główną"}),
+            ("Wilda", {"wilda", "wildy", "wildzie", "wildę", "wildą"}),
+            ("Jeżyce", {"jeżyce", "jeżyc", "jeżycach", "jeżycami", "jeżycom"}),
+        ],
+    )
+    def test_generator_nie_nadprodukuje(self, nazwa, zatwierdzone):
+        """RÓWNOŚĆ, nie zawieranie: test antykolizyjny porównuje zbiory MIĘDZY
+        nazwami, więc nadprodukcja w obrębie jednej nazwy (`dębieca`, `Główni`,
+        `Wildi`, `Jeżyca`) przechodziła przez niego bez śladu. Tylko równość
+        pada, gdy któraś gałąź przestanie być rozłączna."""
+        assert app.prose._inflect(nazwa) == zatwierdzone
+
+    def test_nie_generuje_form_ktore_nie_sa_odmiana(self):
+        assert "golęcino" not in app.prose._inflect("Golęcin")
+        assert "jeżycowo" not in app.prose._inflect("Jeżyce")

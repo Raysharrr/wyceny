@@ -16,25 +16,42 @@
  *    travels as the categorical string from {@link resultPosition}.
  *
  * Sample transactions travel OUTSIDE the facts (see
- * {@link buildProseTransactions}): the worker collapses them into a
- * deterministic trend and keeps them out of the prompt, because raw prices in
- * the facts would authorise the model to write any of them anywhere.
+ * {@link buildProseTransactions}) and, since Slice 5, the worker derives
+ * NOTHING from them — the price-trend paragraph they fed is gone. They stay
+ * off the wire into the prompt for the original reason: raw prices in the
+ * facts would authorise the model to write any of them anywhere.
  */
 
 import { cityFromAddress, formatNumber, formatPln, LEVEL_LABEL } from "./document-model";
 import { computeKcs, type Comparable, type KcsInput, type KcsResult } from "./kcs";
+import { obrebName } from "./obreb-name";
+import { effectiveSelection } from "./sample-snapshot";
 import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "./prose-snapshot";
 import { sourced, type Sourced } from "@wyceny/shared";
 
 /**
- * Market description — flats on the secondary market, in the subject's own
- * city. The city is load-bearing, not decoration: the few-shot examples carry
- * it here ("wtórny, lokale mieszkalne, Nowogród") and their prose opens with
- * "analizę rynku lokalnego m. Nowogród, obręb nr …". Sending it without the
- * city, a staging run produced "przeprowadzono analizę rynku lokalnego obręb
- * Golęcin" — the model, having no city to place, glued the bare obręb onto the
- * sentence in the wrong grammatical case. Polish declension is decided by what
- * the phrase is attached to, so the fact has to arrive shaped.
+ * What the sample IS — and therefore what the section may call the market.
+ *
+ * Not an assumption dressed as a fact: it restates the selection's own filters
+ * (ADR-015). `hygieneReasons` rejects `not_residential`, so every row is a
+ * flat; it rejects `primary_market`, so no row is a declared new-build. The
+ * known hole is `tran_rodzaj_rynku` being filled in ~28% of RCN records — a
+ * developer sale with the field empty passes, which the `primary_suspect` flag
+ * (from `tran_sprzedajacy`) catches only in part. That gap is tracked in
+ * open-questions, not papered over here; an appraiser writing "rynek wtórny"
+ * from the same registry stands on exactly the same evidence.
+ *
+ * Emitted only alongside `proba` (below): with no sample there is no market to
+ * characterise, and a constant asserted into an empty draft WOULD be an
+ * assumption dressed as a fact.
+ *
+ * The city is load-bearing, not decoration: the few-shot examples carry it here
+ * ("wtórny, lokale mieszkalne, Nowogród") and their prose opens with "analizę
+ * rynku lokalnego m. Nowogród, obręb nr …". Sending it without the city, a
+ * staging run produced "przeprowadzono analizę rynku lokalnego obręb Golęcin" —
+ * the model, having no city to place, glued the bare obręb onto the sentence in
+ * the wrong grammatical case. Polish declension is decided by what the phrase
+ * is attached to, so the fact has to arrive shaped.
  */
 const RYNEK_BASE = "wtórny, lokale mieszkalne";
 
@@ -45,6 +62,19 @@ export type ProseSampleFacts = {
   /** The ONE numeric leaf the worker accepts as a number — everything else is a PL string. */
   liczba_transakcji: number;
   zakres_dat?: string;
+  /**
+   * Obręb NAMES the sample actually comes from — deduped, sorted (Slice 5).
+   * Absent, never empty: with no nameable obręb the model must drop the thread
+   * rather than see `[]` and read it as "none".
+   */
+  obreby?: string[];
+  /** Radius the selection settled on, metres. Absent on pre-Slice-3 drafts (no snapshot). */
+  promien_m?: number;
+  /**
+   * How many transactions the register was searched through — as a WORD
+   * ({@link approximateCount}), never a count. Absent when nothing was pooled.
+   */
+  przebadano?: string;
   pow_min_m2?: string;
   pow_max_m2?: string;
   cena_min_zl_m2: string;
@@ -60,7 +90,8 @@ export type ProseFacts = {
   dzielnica?: string;
   obreb?: string;
   pow_uzytkowa: string;
-  rynek: string;
+  /** Travels WITH `proba` or not at all — see {@link RYNEK_BASE}. */
+  rynek?: string;
   proba?: ProseSampleFacts;
   nr_dzialki?: string;
   pow_dzialki_m2?: string;
@@ -107,19 +138,19 @@ export const PROSE_SECTION_FACTS: Record<ProseSection, readonly (keyof ProseFact
 };
 
 /**
- * Sections whose text reflects the sample's price trend. The trend is derived
- * by the worker FROM THE TRANSACTIONS, which travel outside `fakty`, so these
- * two sections must fingerprint the transactions too or a reordered-in-time
- * sample would leave a contradicted trend claim in the operat.
+ * Sections whose text reflects the sample itself, fingerprinted over the
+ * TRANSACTIONS on top of their facts.
  *
- * `uzasadnienie` stays in this set even though its prompt never mentions
- * `trend_cen` — that is a deliberate over-approximation, not an oversight to
- * "clean up". Its facts include `proba`, whose min/mean/max/count move
- * whenever the transaction sample moves, so the section is exposed to sample
- * edits regardless of the trend. The asymmetry that matters is legal, not
- * computational: under-approximating staleness here would leave stale prose
- * standing in a SIGNED appraisal — a legal defect — while over-approximating
- * merely costs one redundant LLM call. Do not drop it from this set.
+ * Until Slice 5 the reason was mechanical: the worker collapsed the sample
+ * into `proba.trend_cen`, an input the facts did not carry. That paragraph is
+ * gone and the worker now derives nothing from the sample — so this set is
+ * pure over-approximation, and it stays that way deliberately. Both sections'
+ * facts include `proba`, whose min/mean/max/count move whenever the sample
+ * moves; the extra transaction fingerprint only adds sensitivity to WHICH row
+ * carried which month. The asymmetry that matters is legal, not computational:
+ * under-approximating staleness here would leave stale prose standing in a
+ * SIGNED appraisal — a legal defect — while over-approximating merely costs
+ * one redundant LLM call. Do not shrink this set to "clean it up".
  */
 export const SECTIONS_USING_TRANSACTIONS: ReadonlySet<ProseSection> = new Set([
   "analiza_rynku",
@@ -164,6 +195,33 @@ function proseKcs(inputs: KcsInput): KcsResult | null {
     inputs.area > 0 &&
     inputs.comparables.every((c) => c.pricePerM2 > 0);
   return usable ? computeKcs(inputs) : null;
+}
+
+/**
+ * The size of the searched pool as an operat writes it — "kilkaset", not "137".
+ * Aneta: "niech nie wpisuje konkretnej liczby tylko kilkadziesiąt lub kilkaset
+ * zależy ile ich ściągnie".
+ *
+ * Computed HERE rather than asked of the model, for two reasons. A prompt rule
+ * is a request; this is a function. And the exact count must not enter the
+ * facts at all: `_allowed_numbers` (worker) licenses every literal it finds
+ * ANYWHERE in the shared dict, so shipping 137 would authorise "137 m2" as the
+ * subject's area in any of the six sections — the very widening the guard's
+ * own post-mortem warns against.
+ *
+ * The exact number is not lost: it stays in the selection snapshot and in
+ * `pnpm trace`. The operat is a different layer.
+ *
+ * Every word here takes the genitive plural ("przebadano kilkaset transakcji"),
+ * so the sentence reads correctly whichever bucket applies.
+ */
+export function approximateCount(count: number): string | null {
+  if (count < 1) return null;
+  if (count < 10) return "kilka";
+  if (count < 20) return "kilkanaście";
+  if (count < 100) return "kilkadziesiąt";
+  if (count < 1000) return "kilkaset";
+  return "ponad tysiąc";
 }
 
 /** Relative distance from the sample mean below which the result reads as "average". */
@@ -219,9 +277,57 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
   // of the model (F-11).
   const totals = everyAreaKnown ? minMax(withArea.map((c) => c.pricePerM2 * c.area)) : null;
 
+  // Obszar badania as the SAMPLE defines it, not as the subject's own obręb
+  // suggests. Aneta on a generated section: "analizę opisał nam nie z tego
+  // obrębu ewidencyjnego" — the facts carried only `obreb` (the SUBJECT's), so
+  // the model had nothing to name the study area with and named its own.
+  //
+  // Read through `effectiveSelection`, not `sel.proposed`: a row the appraiser
+  // rejected is not in Table 1, so its obręb is not an area the operat speaks
+  // about. `obrebName` returns null rather than inventing a name.
+  //
+  // ALL-OR-NOTHING, same doctrine as the aggregates below. Two ways the study
+  // area can come out partial, and both make it UNDERSTATE what the operat
+  // rests on — "obszar badania – obręb Golęcin" while half the sample sits
+  // elsewhere. No guard catches that: every name in the sentence IS in a fact.
+  //
+  //  - `obreby-poznan.json` names 24 of Poznań's obręb codes, so a candidate's
+  //    obręb may have no name at all;
+  //  - `comparables` is the effective proposal PLUS every non-RCN row
+  //    (`rebuildComparables`) — a hand-typed transaction has no candidate
+  //    behind it, while `liczba_transakcji` counts it all the same.
+  //
+  // `promien_m` shares the bullet with `obreby` in both few-shots and is the
+  // same kind of claim about where the sample comes from, so it travels with
+  // it: a radius stated over a sample that reaches outside it is the same
+  // understatement, half-said. That is not hypothetical — `manualInclusions`
+  // SURVIVE a radius reduction (a row that fell out of both lists is
+  // re-attached from its stored candidate, sample-manual.ts), so the
+  // appraiser's own override is exactly what puts a 1800 m transaction under
+  // a "w promieniu 1 000 m" sentence.
+  const sel = inputs.sampleSelection ?? null;
+  const effective = sel ? effectiveSelection(sel).proposed : [];
+  const sampleObreby = effective.map((c) => obrebName(c.egib));
+  const wholeSampleCovered =
+    sel !== null &&
+    sampleObreby.length === inputs.comparables.length &&
+    sampleObreby.every((name) => name !== null) &&
+    effective.every((c) => c.distanceM <= sel.radiusUsedM);
+  const obreby = wholeSampleCovered
+    ? [...new Set(sampleObreby)].sort((a, b) => a.localeCompare(b, "pl"))
+    : [];
+
+  const przebadano = sel ? approximateCount(sel.counts.pool) : null;
+
   const proba: ProseSampleFacts | null = kcs
     ? {
         liczba_transakcji: inputs.comparables.length,
+        ...(obreby.length > 0 ? { obreby } : {}),
+        // Rounded: the number guard compares written forms, and a fractional
+        // radius would reach the prompt as "1000.5" — a form no Polish text
+        // writes. The slider only ever produces whole metres anyway.
+        ...(sel && wholeSampleCovered ? { promien_m: Math.round(sel.radiusUsedM) } : {}),
+        ...(przebadano ? { przebadano } : {}),
         ...(ordered.length > 0
           ? {
               zakres_dat: `${ordered[0].label} ${RANGE_SEPARATOR} ${ordered[ordered.length - 1].label}`,
@@ -256,8 +362,7 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
     // from the address (the prompt tolerates its absence).
     ...(subject?.obreb ? { obreb: subject.obreb } : {}),
     pow_uzytkowa: formatNumber(inputs.area, 2),
-    rynek: `${RYNEK_BASE}, ${cityFromAddress(address)}`,
-    ...(proba ? { proba } : {}),
+    ...(proba ? { rynek: `${RYNEK_BASE}, ${cityFromAddress(address)}`, proba } : {}),
     ...(subject?.nrDzialki ? { nr_dzialki: subject.nrDzialki } : {}),
     ...(subject?.powEwidHa != null
       ? { pow_dzialki_m2: formatNumber(subject.powEwidHa * M2_PER_HA, 0) }
@@ -289,13 +394,12 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
 }
 
 /**
- * The sample as the worker wants it: "MM-RRRR" + a numeric price, outside the
- * facts. All-or-nothing, same doctrine as the aggregates above: the worker
- * collapses these into `proba.trend_cen`, a claim about how prices moved ACROSS
- * THE SAMPLE. Computed from the dated subset it would describe a different
- * sample than the one the operat presents — a partial aggregate dressed as a
- * complete one, which is exactly the untruth the aggregates were fixed for.
- * One dateless comparable and the trend claim is simply not made.
+ * The sample as the worker's wire shape wants it: "MM-RRRR" + a numeric price,
+ * outside the facts. Since Slice 5 the worker reads nothing from it; on this
+ * side it is still the finest-grained fingerprint of the sample
+ * ({@link SECTIONS_USING_TRANSACTIONS}). All-or-nothing is kept for the same
+ * doctrine as the aggregates above: a payload built from the dated subset
+ * would describe a different sample than the one the operat presents.
  */
 export function buildProseTransactions(comparables: Comparable[]): ProseTransactionPayload[] {
   const months = comparables.map((c) => monthOf(c.date));

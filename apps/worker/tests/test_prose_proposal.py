@@ -170,38 +170,26 @@ RISING = [
 ]
 
 
-def test_transactions_become_trend_and_never_reach_the_prompt(monkeypatch):
+def test_transactions_change_nothing_in_the_prompt(monkeypatch):
+    """Since Slice 5 the worker derives nothing from the sample — the price-trend
+    paragraph is gone. The facts reach the model EXACTLY as web sent them, and the
+    raw prices stay out: in the facts they would widen the guard's allowed set."""
     fake = FakeLlm({})
     monkeypatch.setattr(main, "_generate_prose_section", fake)
     resp = post(mint(), sekcje=["analiza_rynku"], transakcje=RISING)
     assert resp.status_code == 200
 
-    expected_facts = {**FAKTY, "proba": {**FAKTY["proba"], "trend_cen": "wzrostowe"}}
     _, prompt, _ = fake.calls[0]
-    assert prompt == prose_core.build_prompt("analiza_rynku", expected_facts)
-    # Raw prices stay out: in the facts they would widen the guard's allowed set.
+    assert prompt == prose_core.build_prompt("analiza_rynku", FAKTY)
     assert "9871" not in prompt
 
 
-def test_facts_without_proba_skip_the_trend(monkeypatch):
-    fake = FakeLlm({})
-    monkeypatch.setattr(main, "_generate_prose_section", fake)
-    fakty = {k: v for k, v in FAKTY.items() if k != "proba"}
-    resp = post(mint(), sekcje=["opis_lokalu"], fakty=fakty, transakcje=RISING)
-    assert resp.status_code == 200
-    assert fake.calls[0][1] == prose_core.build_prompt("opis_lokalu", fakty)
-
-
-def test_malformed_transaction_date_400(monkeypatch):
-    """`price_trend` raises on a date outside MM-RRRR; bounce it at the border
-    instead of silently dropping the trend (T2 backlog p. 3)."""
+def test_malformed_transaction_date_is_no_longer_rejected(monkeypatch):
+    """The MM-RRRR border check existed only for `price_trend`, which is gone.
+    A date the worker never parses must not fail the whole request."""
     monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({}))
-    # Two transactions: with a single one `price_trend` returns "stabilne"
-    # without ever parsing the date.
     transakcje = [{"data": "2024-03", "cena_m2": 8000.0}, {"data": "05-2024", "cena_m2": 9000.0}]
-    resp = post(mint(), sekcje=["analiza_rynku"], transakcje=transakcje)
-    assert resp.status_code == 400
-    assert "MM-RRRR" in resp.json()["detail"]
+    assert post(mint(), sekcje=["analiza_rynku"], transakcje=transakcje).status_code == 200
 
 
 def test_int_transaction_count_is_allowed(monkeypatch):
@@ -300,7 +288,7 @@ def test_anthropic_touchpoint_is_confined_to_the_llm_helper():
     """ADR-009: one injectable function touches `anthropic`, everything else is
     testable without it."""
     assert "import anthropic" in inspect.getsource(main._generate_prose_section)
-    for fn in (main._prose_section, main.prose_proposal, main._facts_with_trend):
+    for fn in (main._prose_section, main.prose_proposal):
         assert "anthropic" not in inspect.getsource(fn)
 
 
@@ -325,11 +313,10 @@ def test_returned_prose_carries_no_number_outside_the_facts(monkeypatch):
     monkeypatch.setattr(main, "_generate_prose_section", fake)
     resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"], transakcje=RISING)
     assert resp.status_code == 200
-    facts_seen_by_model = {**FAKTY, "proba": {**FAKTY["proba"], "trend_cen": "wzrostowe"}}
     texts = resp.json()["sekcje"]
     assert len(texts) == 2
     for text in texts.values():
-        assert prose_core.validate_numbers(text, facts_seen_by_model) == []
+        assert prose_core.validate_numbers(text, FAKTY) == []
 
 
 def test_transaction_price_is_not_an_allowed_number(monkeypatch):
@@ -453,3 +440,32 @@ def test_empty_response_is_refused(monkeypatch):
     install_stub_anthropic(monkeypatch, text="   ")
     with pytest.raises(RuntimeError, match="pusta"):
         main._generate_prose_section("opis_lokalu", "PROMPT")
+
+
+# Slice 5: an obręb the facts never named. Carries NO number, so
+# `validate_numbers` waves it through — the section is rejected only because
+# `validate_obreby` runs alongside it.
+OBCY_OBREB = "Zbadano rynek lokalny w obrębie Naramowice, gdzie odnotowano transakcje."
+WLASNY_OBREB = "Zbadano rynek lokalny w obrębie Zarzecze, gdzie odnotowano transakcje."
+
+
+def test_obreb_spoza_faktow_jest_odrzucany_po_ponownej_probie(monkeypatch):
+    monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({"analiza_rynku": [OBCY_OBREB]}))
+    resp = post(mint(), sekcje=["analiza_rynku"])
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sekcje"] == {}
+    assert body["odrzucone"] == {"analiza_rynku": ["Naramowice"]}
+
+
+def test_obreb_spoza_faktow_naprawiony_w_drugiej_probie_przechodzi(monkeypatch):
+    fake = FakeLlm({"analiza_rynku": [OBCY_OBREB, WLASNY_OBREB]})
+    monkeypatch.setattr(main, "_generate_prose_section", fake)
+    resp = post(mint(), sekcje=["analiza_rynku"])
+
+    assert resp.status_code == 200
+    assert resp.json()["sekcje"] == {"analiza_rynku": WLASNY_OBREB}
+    # Poprawka niesie nazwę, nie tylko liczby — inaczej model nie wie, co zmienić.
+    _, _, correction = fake.calls[1]
+    assert "Naramowice" in correction

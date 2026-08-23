@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approximateCount,
   attemptedProseSections,
   buildProseFacts,
   buildProseTransactions,
@@ -12,6 +13,8 @@ import { currentSectionFactsHash, proseFactsHash } from "@/domain/prose-hash";
 import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "@/domain/prose-snapshot";
 import { buildDocumentModel, formatNumber, formatPln } from "@/domain/document-model";
 import { computeKcs, type KcsInput, type KcsResult } from "@/domain/kcs";
+import type { Candidate } from "@/domain/sample-selection";
+import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 
 /**
  * Domain tests for the LLM prose proposal (ADR-014, T5).
@@ -162,6 +165,9 @@ describe("buildProseFacts", () => {
     expect(facts).not.toHaveProperty("proba");
     expect(facts).not.toHaveProperty("pozycja_wyniku");
     expect(facts.notatka_otoczenie).toBe(NOTE);
+    // Slice 5: `rynek` jest twierdzeniem O PRÓBIE („wtórny, lokale mieszkalne"
+    // to konsekwencja filtrów doboru), więc bez próby nie ma go co twierdzić.
+    expect(facts).not.toHaveProperty("rynek");
   });
 
   it("undated / area-less comparables: prices stay, the derived ranges drop out", () => {
@@ -378,18 +384,18 @@ describe("currentSectionFactsHash — scoped to what the section sees", () => {
 
 describe("currentSectionFactsHash — the fingerprint covers the transactions too (review I-2)", () => {
   /**
-   * The worker injects `proba.trend_cen = price_trend(transakcje)` into the
-   * facts EVERY section sees (`apps/worker/app/main.py`), so the transactions
-   * are an input to the prose even though they travel outside `fakty`. A
-   * fingerprint over the facts alone would call the proposals current after an
-   * edit that reverses the trend the operat asserts. `analiza_rynku` is used
-   * below because it is one of the two sections in `SECTIONS_USING_TRANSACTIONS`.
+   * Written when the worker injected `proba.trend_cen = price_trend(transakcje)`
+   * into the facts every section saw: a fingerprint over the facts alone called
+   * the proposals current after an edit that reversed the trend the operat
+   * asserted. Slice 5 removed that paragraph, so the pairing below no longer
+   * changes any text the model can produce — the fingerprint stays sensitive to
+   * it on purpose (see `SECTIONS_USING_TRANSACTIONS`): over-approximating
+   * staleness costs one LLM call, under-approximating leaves stale prose in a
+   * SIGNED appraisal.
    *
    * Same prices, same areas, same month SET — only which row carries which
-   * month changes. Every fact is therefore byte-identical (the date range is
-   * built from the sorted month set; the price and area aggregates are
-   * order-free), while `price_trend` sorts chronologically and reads the
-   * opposite direction.
+   * month changes, so every fact is byte-identical (the date range is built
+   * from the sorted month set; the price and area aggregates are order-free).
    */
   const row = (date: string, pricePerM2: number) => ({
     date,
@@ -529,11 +535,10 @@ describe("buildProseTransactions", () => {
     ]);
   });
 
-  // Same all-or-nothing doctrine as the aggregates (review finding I-1). The
-  // worker turns these into `proba.trend_cen` — a claim about how prices moved
-  // across THE SAMPLE. Built from the dated subset it would describe a
-  // different sample than the one the operat presents, and the number guard
-  // cannot catch that: "wzrostowe" carries no number at all.
+  // Same all-or-nothing doctrine as the aggregates (review finding I-1): a
+  // payload built from the dated subset would describe a different sample than
+  // the one the operat presents. Since Slice 5 nothing downstream reads it —
+  // it is the staleness fingerprint's input only.
   it("sends nothing when any comparable lacks a usable month", () => {
     expect(buildProseTransactions([...COMPARABLES, { pricePerM2: 8100 }])).toEqual([]);
     expect(buildProseTransactions([...COMPARABLES, { date: "2024-13", pricePerM2: 8000 }])).toEqual(
@@ -696,5 +701,236 @@ describe("attemptedProseSections", () => {
 
     expect(attemptedProseSections(legacy, input, currentSectionFactsHash)).toEqual([]);
     expect(attemptedProseSections(null, input, currentSectionFactsHash)).toEqual([]);
+  });
+});
+
+/**
+ * Slice 5. Aneta o wygenerowanej sekcji: „analizę opisał nam nie z tego obrębu
+ * ewidencyjnego". Model nie miał skąd wziąć obszaru badania — fakty niosły
+ * wyłącznie obręb PRZEDMIOTU wyceny, więc obszar próby dopisywał sam.
+ *
+ * Nazwy obrębów poniżej są prawdziwe (publiczny rejestr GEOPOZ, `obreby-poznan.json`),
+ * bo `obrebName` rozwiązuje wyłącznie kody z tego pliku. F-9 dotyczy danych z operatów
+ * — adresy, ceny i identyfikatory transakcji zostają wymyślone.
+ */
+describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", () => {
+  const cand = (obreb: string, transactionId: string): Candidate => ({
+    transactionId,
+    date: "2025-03-04",
+    area: 60,
+    pricePerM2: 11000,
+    priceTotal: 660000,
+    egib: { teryt: "306401_1", obreb, arkusz: "22", dzialka: "13/82", budynek: "1", lokal: "1" },
+    lokalId: `306401_1.${obreb}.x`,
+    distanceM: 400,
+    floor: 1,
+    rooms: 2,
+    market: "wtorny",
+    share: "1/1",
+    transType: "wolnyRynek",
+    function: "mieszkalna",
+    seller: null,
+    pos: null,
+  });
+
+  const selection = (proposed: Candidate[]): SampleSelectionSnapshot => ({
+    version: 3,
+    proposed,
+    alternates: [],
+    flags: {},
+    rejectedCounts: {},
+    manualRejections: [],
+    manualInclusions: [],
+    radiusUsedM: 1000,
+    radiusWalk: [],
+    counts: { pool: 137, inRadius: 61, afterHygiene: 44, afterBand: 31, proposed: proposed.length },
+    params: { subjectArea: 68.4, todayMonth: "2026-08" },
+  });
+
+  /** Wiersze RCN 1:1 z propozycjami — tak wygląda próba bez ręcznych dopisków. */
+  const rcnRows = (n: number): KcsInput["comparables"] =>
+    Array.from({ length: n }, (_, i) => ({
+      date: "2025-03",
+      area: 60,
+      pricePerM2: 11000 + i,
+      source: "rcn" as const,
+      transactionId: `tx-${i}`,
+    }));
+
+  const factsWith = (sel: SampleSelectionSnapshot, comparables = rcnRows(sel.proposed.length)) =>
+    buildProseFacts({ address: ADDRESS, inputs: { ...INPUTS, comparables, sampleSelection: sel } });
+
+  it("liczbę przebadanych transakcji podaje słownie, nie co do sztuki", () => {
+    const sel = selection([cand("0021", "tx-a")]);
+
+    expect(factsWith(sel).proba?.przebadano).toBe(approximateCount(sel.counts.pool));
+    expect(factsWith(sel).proba?.przebadano).toBe("kilkaset");
+  });
+
+  it("pomija `przebadano`, gdy pula jest pusta — stary snapshot bez licznika", () => {
+    const sel = selection([cand("0021", "tx-a")]);
+    sel.counts = { ...sel.counts, pool: 0 };
+
+    expect("przebadano" in factsWith(sel).proba!).toBe(false);
+  });
+
+  it("niesie obręby próby i użyty promień", () => {
+    // 0020 Golęcin, 0021 Jeżyce — dwa razy ten sam obręb ma dać jedną nazwę.
+    const sel = selection([cand("0021", "tx-a"), cand("0020", "tx-b"), cand("0021", "tx-c")]);
+    const proba = factsWith(sel).proba;
+
+    expect(proba).toMatchObject({ obreby: ["Golęcin", "Jeżyce"], promien_m: sel.radiusUsedM });
+  });
+
+  it("bierze obręby PO nakładce rzeczoznawcy, nie surowy `proposed`", () => {
+    // Odrzucona kandydatka wypada z Tabeli 1, więc jej obręb nie jest już
+    // obszarem badania, o którym operat orzeka.
+    const jezyce = cand("0021", "tx-a");
+    const sel: SampleSelectionSnapshot = {
+      ...selection([jezyce, cand("0020", "tx-b")]),
+      manualRejections: [
+        {
+          transactionId: jezyce.transactionId,
+          lokalId: jezyce.lokalId,
+          reason: "other",
+          at: "2026-08-23T10:00:00.000Z",
+        },
+      ],
+    };
+
+    // Jedna propozycja przeżywa odrzucenie, więc próba ma jeden wiersz.
+    expect(factsWith(sel, rcnRows(1)).proba?.obreby).toEqual(["Golęcin"]);
+  });
+
+  it("pomija oba pola bez snapshotu doboru — stara wycena nie dostaje zer", () => {
+    const proba = buildProseFacts({ address: ADDRESS, inputs: INPUTS }).proba!;
+
+    expect("obreby" in proba).toBe(false);
+    expect("promien_m" in proba).toBe(false);
+  });
+
+  it("pomija `obreby`, gdy żadnej kandydatce nie da się nazwać obrębu", () => {
+    // Kod spoza mapy GEOPOZ — `obrebName` nigdy nie zmyśla nazwy.
+    const sel = selection([{ ...cand("0021", "tx-a"), egib: null }]);
+    const proba = factsWith(sel).proba!;
+
+    // `promien_m` dzieli z `obreby` ten sam punkt wypunktowania w obu
+    // few-shotach, więc jedzie razem z nim albo wcale — zdanie o obszarze
+    // badania nie może zostać w połowie.
+    expect("obreby" in proba).toBe(false);
+    expect("promien_m" in proba).toBe(false);
+  });
+
+  it("pomija obszar badania, gdy próba ma wiersz spoza doboru (ręcznie dopisany)", () => {
+    // `comparables` to propozycje doboru PLUS każdy wiersz nie-RCN
+    // (`rebuildComparables`), więc ręcznie dopisana transakcja nie ma
+    // kandydatki — a `liczba_transakcji` liczy ją tak samo. Wypisanie obrębów
+    // samych propozycji opisałoby węższy obszar niż ten, na którym operat się
+    // opiera. INPUTS ma trzy transakcje, w tym jedną `source: "manual"`.
+    const sel = selection([cand("0021", "tx-a"), cand("0020", "tx-b")]);
+    const proba = factsWith(sel, [...rcnRows(2), { pricePerM2: 12000, source: "manual" }]).proba!;
+
+    expect(proba.liczba_transakcji).toBeGreaterThan(sel.proposed.length);
+    expect("obreby" in proba).toBe(false);
+    expect("promien_m" in proba).toBe(false);
+  });
+
+  describe("wiersz zachowany ręcznie poza promieniem", () => {
+    // Odtworzone PRZEZ PRAWDZIWĄ ŚCIEŻKĘ, nie przez wstawienie dalekiego
+    // wiersza wprost do `proposed`: rzeczoznawca dodał transakcję ręcznie,
+    // potem zmniejszył promień. `applyManualOverlay` doczepia ją z zapamiętanej
+    // kandydatki, mimo że wypadła z propozycji i alternatyw — więc `radiusUsedM`
+    // emitowany bezwarunkowo twierdziłby „w promieniu 1 000 m" o próbie
+    // sięgającej 1 800 m.
+    const daleka = { ...cand("0020", "tx-daleka"), distanceM: 1800 };
+    const wlaczona = (): SampleSelectionSnapshot => ({
+      ...selection([cand("0021", "tx-a")]), // daleka NIE jest w `proposed`
+      manualInclusions: [
+        {
+          transactionId: daleka.transactionId,
+          lokalId: daleka.lokalId,
+          at: "2026-08-23T10:00:00.000Z",
+          candidate: daleka,
+        },
+      ],
+    });
+
+    it("wycofuje `promien_m` i `obreby`", () => {
+      const sel = wlaczona();
+      const proba = factsWith(sel, rcnRows(2)).proba!;
+
+      // Warunek trzyma się nakładki, nie surowego `proposed`.
+      expect(sel.proposed).toHaveLength(1);
+      expect(effectiveSelection(sel).proposed).toHaveLength(2);
+      expect(daleka.distanceM).toBeGreaterThan(sel.radiusUsedM);
+      expect("promien_m" in proba).toBe(false);
+      expect("obreby" in proba).toBe(false);
+    });
+
+    it("wraca, gdy rzeczoznawca odrzuci ten daleki wiersz", () => {
+      const sel: SampleSelectionSnapshot = {
+        ...wlaczona(),
+        manualRejections: [
+          {
+            transactionId: daleka.transactionId,
+            lokalId: daleka.lokalId,
+            reason: "too_far",
+            at: "2026-08-23T10:05:00.000Z",
+          },
+        ],
+      };
+      const proba = factsWith(sel, rcnRows(1)).proba!;
+
+      expect(proba.promien_m).toBe(sel.radiusUsedM);
+      expect(proba.obreby).toEqual(["Jeżyce"]);
+    });
+
+    it("wiersz dokładnie na promieniu zostaje — granica jest domknięta", () => {
+      const naGranicy = { ...cand("0020", "tx-granica"), distanceM: 1000 };
+      const sel = selection([cand("0021", "tx-a"), naGranicy]);
+      const proba = factsWith(sel, rcnRows(2)).proba!;
+
+      expect(naGranicy.distanceM).toBe(sel.radiusUsedM);
+      expect(proba.promien_m).toBe(sel.radiusUsedM);
+      expect(proba.obreby).toEqual(["Golęcin", "Jeżyce"]);
+    });
+  });
+
+  it("pomija `obreby`, gdy choć JEDNEJ kandydatki nie da się nazwać — lista nie może zaniżać obszaru", () => {
+    // `obreby-poznan.json` nazywa 24 kody, a Poznań ma ich więcej. Wypisanie
+    // samych rozpoznanych opisałoby węższy obszar badania, niż operat oparł
+    // na próbie — a każda nazwa w takim zdaniu JEST w faktach, więc żadna
+    // straż tego nie złapie.
+    const sel = selection([cand("0021", "tx-a"), { ...cand("0021", "tx-b"), egib: null }]);
+
+    expect("obreby" in factsWith(sel).proba!).toBe(false);
+  });
+});
+
+/**
+ * Slice 5, Aneta: „niech nie wpisuje konkretnej liczby tylko kilkadziesiąt lub
+ * kilkaset zależy ile ich ściągnie". Słowo liczone TUTAJ, nie zlecane modelowi:
+ * reguła w prompcie byłaby prośbą, a to jest funkcja. Fakt zostaje przy tym
+ * stringiem — dokładna liczba w faktach licencjonowałaby tę liczbę jako metraż
+ * albo cenę w dowolnej sekcji (`_allowed_numbers` chodzi po całym słowniku).
+ */
+describe("approximateCount — skala słowna przebadanych transakcji", () => {
+  it.each([
+    [1, "kilka"],
+    [9, "kilka"],
+    [10, "kilkanaście"],
+    [19, "kilkanaście"],
+    [20, "kilkadziesiąt"],
+    [99, "kilkadziesiąt"],
+    [100, "kilkaset"],
+    [999, "kilkaset"],
+    [1000, "ponad tysiąc"],
+    [4312, "ponad tysiąc"],
+  ])("%i → %s", (count, expected) => {
+    expect(approximateCount(count)).toBe(expected);
+  });
+
+  it("zero nie ma słowa — nie było czego przebadać", () => {
+    expect(approximateCount(0)).toBeNull();
   });
 });

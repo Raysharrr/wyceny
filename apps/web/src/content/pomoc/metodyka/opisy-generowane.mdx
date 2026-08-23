@@ -4,21 +4,37 @@ Opisowe sekcje operatu — te, których nie da się złożyć z tabel — pisze 
 
 ## Co model widzi
 
-Do modelu jedzie jeden słownik faktów, ten sam dla wszystkich {PROSE_SECTIONS.length} sekcji naraz: adres i powierzchnia użytkowa, stałe określenie rynku „wtórny, lokale mieszkalne” (wpisywane zawsze, niezależnie od próby) i nazwa miasta z adresu, dane ewidencyjne działki i budynku, notatka z oględzin, oceny cech o niezerowej wadze oraz zbiorcze dane próby porównawczej — liczba transakcji, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna, przedział cen całkowitych. Liczby są w nim gotowymi polskimi napisami — sformatowanymi tą samą funkcją, którą formatuje je operat, bo inaczej ten sam fakt wyglądałby w dwóch miejscach dokumentu inaczej. Jedynym wyjątkiem jest liczba transakcji w próbie, która jedzie jako zwykła liczba całkowita.
+Do modelu jedzie jeden słownik faktów, ten sam dla wszystkich {PROSE_SECTIONS.length} sekcji naraz: adres i powierzchnia użytkowa, określenie rynku „wtórny, lokale mieszkalne” z nazwą miasta z adresu, dane ewidencyjne działki i budynku, notatka z oględzin, oceny cech o niezerowej wadze oraz zbiorcze dane próby porównawczej — liczba transakcji przyjętych do porównań, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna, przedział cen całkowitych, a do tego obszar badania: nazwy obrębów, z których pochodzi próba, użyty promień i liczba przebadanych transakcji podana słownie. Liczby są w nim gotowymi polskimi napisami — sformatowanymi tą samą funkcją, którą formatuje je operat, bo inaczej ten sam fakt wyglądałby w dwóch miejscach dokumentu inaczej. Jedynym wyjątkiem jest liczba transakcji w próbie, która jedzie jako zwykła liczba całkowita.
 
 Równie istotne jest to, czego w tym słowniku nie ma:
 
 - **wartość rynkowa i wartość jednostkowa wyniku nigdy nie opuszczają aplikacji.** Sekcja „{PROSE_SECTION_LABEL.uzasadnienie}” dostaje wyłącznie określenie słowne, mówiące, gdzie wynik leży wobec przedziału i średniej próby — nie kwotę;
 - **pojedyncze transakcje próby nie wchodzą do treści zadania.** Ich ceny w faktach byłyby dla modelu pozwoleniem na wpisanie dowolnej z nich w dowolnym miejscu operatu;
-- **dane, których wycena nie ma, są pomijane, a nie zgadywane.** Klucz, którego szkic nie potrafi uzasadnić, po prostu nie istnieje w faktach; styl wypowiedzi każe wtedy pominąć cały wątek, zamiast go domyślać.
+- **dane, których wycena nie ma, są pomijane, a nie zgadywane.** Klucz, którego szkic nie potrafi uzasadnić, po prostu nie istnieje w faktach; styl wypowiedzi każe wtedy pominąć cały wątek, zamiast go domyślać. Dotyczy to również określenia rynku: bez próby porównawczej nie ma czego charakteryzować, więc fakt nie jest wpisywany.
 
 Model nie ma też dostępu do sieci, do innych wycen ani do wcześniejszych operatów.
 
-## Trend cen nie jest odczytem modelu
+## Operat nie orzeka o kierunku zmian cen
 
-Zdanie o kierunku zmian cen na rynku jest w operacie twierdzeniem sprawdzalnym, więc nie może zależeć od tego, jak model „widzi” liczby. Liczy je kod: próba jest porządkowana chronologicznie, dzielona na połowy, a względna zmiana między średnimi obu połówek daje jedno z trzech słów — stabilne, wzrostowe albo spadkowe. Poniżej ustalonego progu tej zmiany werdykt brzmi „stabilne”; przy mniej niż dwóch transakcjach nie ma podstaw do żadnego twierdzenia o zmianie i wynik również brzmi „stabilne”. Model dostaje **gotowe słowo**, nie ceny do interpretacji.
+Wcześniejsza wersja kończyła analizę rynku zdaniem w rodzaju „w badanym okresie odnotowano wzrostową tendencję cen jednostkowych”. Zdanie zostało usunięte i jest to zmiana świadoma, nie naprawa błędu: kierunek zmian liczył kod, deterministycznie, a zadanie wprost kazało ten akapit napisać. Nic tu nie było zmyślone.
 
-Sam próg oraz kod, który go stosuje, żyją w usłudze obliczeniowej (`apps/worker/app/prose.py`), a nie w aplikacji webowej — dlatego ta strona nie podaje jego wartości liczbowo. Nazwa użytego modelu i górny limit długości odpowiedzi są w tej samej usłudze, ale w innym module (`apps/worker/app/main.py`): moduł liczący trend celowo nie zna modelu językowego i nie wywołuje go, więc obu tych ustawień u siebie nie ma.
+Powód usunięcia jest empiryczny. Sprawdziliśmy sześć operatów wzorcowych, na których aplikacja się opiera — **żaden** nie orzeka o kierunku cen. Operaty sporządzane inną metodą (porównywanie parami) idą dalej i robią z odmowy osobne zdanie: „nie jest możliwym stwierdzenie, czy rynek odpowiada na aktualną sytuację wzrostem czy stagnacją cen”. To konwencja zawodowa, a nie przeoczenie: rzeczoznawca takiego twierdzenia po prostu nie stawia, więc nie stawia go też aplikacja.
+
+Zdanie zniknęło **u źródła**. Fakt o trendzie przestał w ogóle powstawać, więc nie ma tu żadnej straży, która pilnowałaby modelu przed napisaniem takiego zdania — nie ma czego pilnować, bo model nie dostaje ani kierunku, ani cen pojedynczych transakcji, z których mógłby go odczytać.
+
+## Obszar badania: obręby z próby, nie z domysłu
+
+Sekcja analizy rynku nazywa obszar, na którym rynek badano. Wcześniej fakty niosły wyłącznie obręb **wycenianej nieruchomości**, więc obszar badania model musiał sobie dopowiedzieć — i potrafił wskazać obręb, z którego nie pochodziła ani jedna transakcja z próby.
+
+Teraz obszar badania jest faktem: nazwy obrębów wyliczone z próby **po** Twoich odrzuceniach (transakcja, którą odrzuciłeś, nie trafia do Tabeli 1, więc jej obręb nie jest obszarem, o którym operat orzeka) oraz promień, na którym zatrzymał się dobór. Nazwa obrębu użyta w tekście, a nieobecna w faktach, jest wyłapywana tak samo jak liczba spoza faktów — z tą samą jedną dodatkową próbą i tym samym skutkiem, gdy druga wersja też jej używa. Zwykła kontrola liczb byłaby tu bezradna: nazwa obrębu nie zawiera żadnej cyfry.
+
+Lista obrębów działa na zasadzie wszystko albo nic. Aplikacja zna nazwy części kodów obrębów Poznania; gdy choć jednej transakcji z próby nie da się nazwać, cała lista jest pomijana. Wypisanie samych rozpoznanych opisywałoby obszar węższy niż ten, na którym operat faktycznie się opiera — a takiego zdania nie wyłapałaby żadna kontrola, bo każda nazwa w nim **jest** w faktach.
+
+## Liczba przebadanych transakcji jest słowem
+
+„Przebadano kilkaset transakcji” — nie „przebadano 137 transakcji”. Tak piszą operaty i o to prosili rzeczoznawcy. Słowo dobiera aplikacja, nie model: do dziewięciu „kilka”, do dziewiętnastu „kilkanaście”, do dziewięćdziesięciu dziewięciu „kilkadziesiąt”, do dziewięciuset dziewięćdziesięciu dziewięciu „kilkaset”, wyżej „ponad tysiąc”. Reguła w zadaniu byłaby prośbą; funkcja jest funkcją.
+
+Ma to drugi, mniej oczywisty powód. Zbiór liczb dozwolonych powstaje z **całego** słownika faktów (patrz niżej), wspólnego dla wszystkich sekcji — więc dokładna liczba przebadanych transakcji byłaby jednocześnie pozwoleniem na wpisanie tej samej liczby jako powierzchni lokalu albo ceny, w dowolnym miejscu operatu. Dokładna liczba nie ginie: widać ją w kroku 3 i w danych wyceny. Liczba transakcji **przyjętych do porównań** jest natomiast podawana dokładnie — trafia do Tabeli 1.
 
 ## Kontrola liczb
 
@@ -26,7 +42,7 @@ Reguła jest jednozdaniowa: **każda liczba w wygenerowanym tekście musi wystę
 
 Zbiór dozwolony powstaje z przeszukania całego słownika faktów — także zagnieżdżonych obiektów i list — i zebrania z niego wszystkich liczb. Do zbioru trafia każda taka liczba oraz jej zapis z przecinkiem dziesiętnym. Przy porównaniu odstępy wewnątrz liczby są nieistotne, więc „10 815” i „10815” to ta sama liczba — i to jedyna swoboda, jaką kontrola daje. Inna postać faktu faktem nie jest: przy powierzchni „71,63 m²” tekst z „71 m²” zostaje odrzucony tak samo jak liczba wzięta znikąd, bo zaokrąglona powierzchnia to nie jest ta powierzchnia. Dwa wyjątki są zamierzone: cyfra w oznaczeniu jednostki („m²”, „m2”) nie jest faktem, a napis „1 m²” — idiom ceny jednostkowej — wolno postawić z własną jedynką, gdziekolwiek w zdaniu wystąpi.
 
-Gdy sprawdzenie znajdzie liczbę spoza faktów, sekcja dostaje **dokładnie jedną dodatkową próbę**: model widzi to samo zadanie i dopisek wymieniający liczby, których użyć nie wolno. Jeżeli druga wersja znów zawiera liczbę spoza faktów, tekst zostaje odrzucony w całości, a sekcja wraca **pusta**, z wypisanymi liczbami, które ją zdyskwalifikowały. Rzeczoznawca pisze wtedy to jedno pole ręcznie — [krok 6](/pomoc/krok-6-opisy) pokazuje ten powód wprost pod pustym polem.
+Gdy sprawdzenie znajdzie liczbę spoza faktów — albo nazwę obrębu spoza faktów — sekcja dostaje **dokładnie jedną dodatkową próbę**: model widzi to samo zadanie i dopisek wymieniający wartości, których użyć nie wolno. Jeżeli druga wersja znów je zawiera, tekst zostaje odrzucony w całości, a sekcja wraca **pusta**, z wypisanymi wartościami, które ją zdyskwalifikowały. Rzeczoznawca pisze wtedy to jedno pole ręcznie — [krok 6](/pomoc/krok-6-opisy) pokazuje ten powód wprost pod pustym polem.
 
 Wyborem świadomym jest tu kierunek domyślny. Odrzucony tekst nie jest zastępowany zdaniem z szablonu ani wersją „bez tej liczby”: pusta sekcja jest widoczna i wymaga decyzji, a zdanie-zaślepka wygląda w operacie jak treść.
 
@@ -35,8 +51,8 @@ Wyborem świadomym jest tu kierunek domyślny. Odrzucony tekst nie jest zastępo
 Sprawdzenie jest **testem przynależności do zbioru, nie testem sensu**. Wynikają z tego trzy ograniczenia, o których trzeba wiedzieć, żeby nie brać go za więcej, niż jest.
 
 - **Liczba przestawiona.** Liczba obecna w faktach, ale użyta w niewłaściwym miejscu — powierzchnia działki wpisana jako powierzchnia lokalu, cena minimalna podana jako średnia — przechodzi bez zastrzeżeń. W zbiorze dozwolonym jest, więc kontrola milczy. To jest najpoważniejsza luka tego mechanizmu i jedyną obroną przed nią jest przeczytanie tekstu.
-- **Twierdzenia bez liczb.** Zdanie „budynek jest w dobrym stanie technicznym” nie zawiera żadnej liczby, więc nie ma czego porównywać. Kontrola dotyczy wyłącznie liczb; wszystko pozostałe pilnuje styl zadania i oko rzeczoznawcy.
-- **Agregat policzony z części próby.** Twierdzenie „trzy transakcje z okresu 11-2024 – 11-2024”, gdzie zakres pochodzi z dwóch transakcji mających datę, a liczba — z całej próby, składa się wyłącznie z liczb obecnych w faktach. Kontrola nie ma szans go zauważyć, bo błąd powstał **przed** modelem. Dlatego agregaty próby buduje się w aplikacji na zasadzie wszystko albo nic: zakres dat powstaje tylko wtedy, gdy każda transakcja ma datę, a pasmo powierzchni i przedział cen całkowitych — tylko wtedy, gdy każda ma powierzchnię. Brakujący agregat jest uczciwy; częściowy byłby fałszem możliwym do wykazania.
+- **Twierdzenia bez liczb.** Zdanie „budynek jest w dobrym stanie technicznym” nie zawiera żadnej liczby, więc nie ma czego porównywać. Jedynym wyjątkiem jest nazwa obrębu, która ma własną kontrolę (wyżej); całą resztę pilnuje styl zadania i oko rzeczoznawcy.
+- **Agregat policzony z części próby.** Twierdzenie „trzy transakcje z okresu 11-2024 – 11-2024”, gdzie zakres pochodzi z dwóch transakcji mających datę, a liczba — z całej próby, składa się wyłącznie z liczb obecnych w faktach. Kontrola nie ma szans go zauważyć, bo błąd powstał **przed** modelem. Dlatego agregaty próby buduje się w aplikacji na zasadzie wszystko albo nic: zakres dat powstaje tylko wtedy, gdy każda transakcja ma datę, pasmo powierzchni i przedział cen całkowitych — tylko wtedy, gdy każda ma powierzchnię, a lista obrębów — tylko wtedy, gdy każdą da się nazwać. Brakujący agregat jest uczciwy; częściowy byłby fałszem możliwym do wykazania.
 
 ## Propozycja, nie treść operatu
 

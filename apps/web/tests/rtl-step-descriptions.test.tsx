@@ -275,7 +275,7 @@ describe("sections the automat cannot fill — honest silence", () => {
 
     expect(screen.getByLabelText(/Analiza i charakterystyka rynku/)).toHaveValue("");
     const hint = screen.getByTestId("prose-hint-analiza_rynku");
-    expect(hint).toHaveTextContent("liczb spoza danych wyceny");
+    expect(hint).toHaveTextContent("wartości spoza danych wyceny");
     expect(hint).toHaveTextContent("9 871,00");
     expect(hint).toHaveTextContent("1 234,00");
   });

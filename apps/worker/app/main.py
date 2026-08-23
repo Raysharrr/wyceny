@@ -629,9 +629,12 @@ PROSE_MAX_TOKENS = 2500
 
 
 class ProseTransaction(BaseModel):
-    """One sample transaction. Never reaches the prompt — it only feeds
-    `prose.price_trend` (rule 2 of the T3 contract), so raw prices never widen
-    the number guard's allowed set."""
+    """One sample transaction. Never reaches the prompt (rule 2 of the T3
+    contract), so raw prices never widen the number guard's allowed set. Since
+    Slice 5 the worker derives NOTHING from these — the price-trend paragraph
+    was removed because no reference operat states a direction of price change.
+    The field stays on the wire so web can keep sending it unchanged; the sample
+    still drives per-section staleness on the web side."""
 
     data: str  # "MM-RRRR"
     cena_m2: float
@@ -719,8 +722,11 @@ class _SectionOutcome(NamedTuple):
 
 
 PROSE_RETRY_INSTRUCTION = (
-    "UWAGA: poprzednia wersja tej sekcji zawierała liczby spoza DANE: {numbers}. "
-    "Napisz ją ponownie, używając wyłącznie liczb z DANE poniżej.\n\n"
+    # "wartości", not "liczby": since Slice 5 the list can also hold an obręb
+    # name the facts never carried (`prose.validate_obreby`), and telling the
+    # model that "Naramowice" is a number teaches it nothing about the fix.
+    "UWAGA: poprzednia wersja tej sekcji zawierała wartości spoza DANE: {numbers}. "
+    "Napisz ją ponownie, używając wyłącznie liczb i nazw z DANE poniżej.\n\n"
     # Trailing blank line on purpose: this block sits directly in front of the
     # validated prompt, and nothing guarantees the API puts a separator between
     # two adjacent text blocks. Without it the model could see
@@ -731,6 +737,14 @@ PROSE_RETRY_INSTRUCTION = (
 PROSE_FAILED_DETAIL = (
     "Nie udało się wygenerować opisów — spróbuj ponownie albo napisz teksty ręcznie."
 )
+
+
+def _prose_violations(text: str, facts: dict) -> list[str]:
+    """Everything the text asserts that the facts do not carry. Two guards, one
+    list: invented NUMBERS (areas, prices, years) and invented OBRĘB names —
+    the latter carry no digit, so the number guard is blind to exactly the
+    error the appraiser reported ("opisał nam nie z tego obrębu")."""
+    return prose_core.validate_numbers(text, facts) + prose_core.validate_obreby(text, facts)
 
 
 def _prose_section(section: str, facts: dict) -> _SectionOutcome:
@@ -750,7 +764,7 @@ def _prose_section(section: str, facts: dict) -> _SectionOutcome:
         input_tokens += completion.input_tokens
         output_tokens += completion.output_tokens
         text = completion.text.strip()
-        violations = prose_core.validate_numbers(text, facts)
+        violations = _prose_violations(text, facts)
 
         if violations:
             logger.warning("prose_section_retry", section=section, violations=violations)
@@ -762,7 +776,7 @@ def _prose_section(section: str, facts: dict) -> _SectionOutcome:
             input_tokens += retry.input_tokens
             output_tokens += retry.output_tokens
             text = retry.text.strip()
-            violations = prose_core.validate_numbers(text, facts)
+            violations = _prose_violations(text, facts)
             if violations:
                 logger.warning("prose_section_rejected", section=section, violations=violations)
                 text = ""
@@ -803,23 +817,6 @@ def _float_paths(value, path: str = "fakty") -> list[str]:
     return [path] if isinstance(value, float) else []
 
 
-def _facts_with_trend(fakty: dict, transakcje: list[ProseTransaction]) -> dict:
-    """Facts as the prompt will see them: the sample collapses into a single
-    deterministic `proba.trend_cen`. The transactions themselves stay out —
-    their prices in the facts would authorise the model to write any of them
-    anywhere. No sample or no `proba` in the facts: no trend, no error."""
-    proba = fakty.get("proba")
-    if not transakcje or not isinstance(proba, dict):
-        return fakty
-    try:
-        trend = prose_core.price_trend([t.model_dump() for t in transakcje])
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400, detail="Daty transakcji muszą być w formacie MM-RRRR."
-        ) from exc
-    return {**fakty, "proba": {**proba, "trend_cen": trend}}
-
-
 @app.post("/prose-proposal")
 def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
     secret = os.environ.get("WORKER_SHARED_SECRET", "")
@@ -838,7 +835,7 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
                 f"pola z liczbą zmiennoprzecinkową: {', '.join(floats)}."
             ),
         )
-    facts = _facts_with_trend(request.fakty, request.transakcje)
+    facts = request.fakty
 
     # Parallel: six sections at ~8 s each would block the wizard for ~50 s.
     # `_prose_section` never raises — a failing section is contained there, so

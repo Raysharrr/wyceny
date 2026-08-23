@@ -49,8 +49,8 @@ function sha256Canonical(value: unknown): string {
 /**
  * Canonical hash of the facts dictionary ALONE.
  *
- * NOT a draft's fingerprint — it does not see the transactions, and the
- * worker derives `proba.trend_cen` from those. Production code wants
+ * NOT a draft's fingerprint — it does not see the transactions, which two
+ * sections fingerprint on top of their facts. Production code wants
  * {@link currentSectionFactsHash}; this stays exported for the canonicalisation
  * tests that pin the hashing itself.
  */
@@ -75,8 +75,8 @@ export function currentSectionFactsHash(section: ProseSection, input: ProseFacts
   }
   return sha256Canonical({
     facts: subset,
-    // Sorted: the worker orders the sample chronologically before halving the
-    // period, so row order is invisible to the model.
+    // Sorted: the model never sees the sample at all, so the ORDER of rows is
+    // not a change to the operat — only which row carries which month is.
     transactions: SECTIONS_USING_TRANSACTIONS.has(section)
       ? [...buildProseTransactions(input.inputs.comparables)].sort((a, b) =>
           a.data === b.data ? a.cena_m2 - b.cena_m2 : a.data < b.data ? -1 : 1,

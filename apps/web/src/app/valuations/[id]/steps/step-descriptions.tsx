@@ -456,15 +456,17 @@ function ProseEditors({
             // silence forbids, so a section that was asked for and came back
             // with neither text nor a reason still says so. Only a draft where
             // nothing has been attempted yet (no snapshot at all) stays quiet.
-            const numbers = rejected && rejected.length > 0 ? ` (${rejected.join("; ")})` : "";
+            // "wartości", not "liczb": since Slice 5 the worker also rejects an
+            // obręb name the facts never carried, and that list item is not a number.
+            const offending = rejected && rejected.length > 0 ? ` (${rejected.join("; ")})` : "";
             const hint = entry
               ? rejected && rejected.length > 0
-                ? `Nie udało się odświeżyć tej sekcji — automat użył liczb spoza danych wyceny${numbers}. Poniższy tekst pochodzi z wcześniejszej generacji.`
+                ? `Nie udało się odświeżyć tej sekcji — automat użył wartości spoza danych wyceny${offending}. Poniższy tekst pochodzi z wcześniejszej generacji.`
                 : rejected
                   ? "Nie udało się odświeżyć tej sekcji — poniższy tekst pochodzi z wcześniejszej generacji."
                   : null
               : rejected && rejected.length > 0
-                ? `Automat użył liczb spoza danych wyceny${numbers} — napisz tę sekcję ręcznie.`
+                ? `Automat użył wartości spoza danych wyceny${offending} — napisz tę sekcję ręcznie.`
                 : rejected
                   ? "Nie udało się wygenerować tej sekcji — spróbuj ponownie albo napisz ją ręcznie."
                   : !generatableSections.includes(section)
