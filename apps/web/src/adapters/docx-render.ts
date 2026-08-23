@@ -28,8 +28,14 @@ const SIGNATURE_SIZE: [number, number] = [170, 57];
 /** Print size of each map in the document, px @96dpi (600px ≈ 15.9 cm width). */
 const MAP_SIZE: [number, number] = [600, 450];
 
-/** Print box for an inspection photo, px @96dpi — aspect-preserved inside. */
-const PHOTO_BOX: [number, number] = [600, 450];
+/**
+ * Print box for an inspection photo, px @96dpi — aspect-preserved inside.
+ *
+ * Half the text column, so two photos stand in a row the way Aneta's operat prints them
+ * (two columns, six photos to a page). Was [600, 450] until 2026-08-23 — one photo across
+ * the full page width, which is what she asked us to shrink.
+ */
+export const PHOTO_BOX: [number, number] = [290, 220];
 
 /** §8.1 map images (Slice 9) — both required together, never one without the other. */
 export type RenderMaps = { ewidencyjna: Buffer; orto: Buffer };
