@@ -717,6 +717,10 @@ describe("StepSample — rozrzut cen w pasku (Slice 6)", () => {
     // C min / C max / C śr próby programu dla Heweliusza sprzed poprawek.
     const { container } = renderWithPrices([7156.05, 15576.83, 11118.68]);
     expect(bannerText(container)).toMatch(/szeroki rozrzut/i);
+    // Wskazówka musi prowadzić w pasmo CENY: pomiar na Heweliuszu dał 0,248
+    // dla pasma ceny wobec 0,925 dla pasma powierzchni. Kierowanie
+    // rzeczoznawcy w powierzchnię to rada w słabszy suwak.
+    expect(bannerText(container)).toMatch(/pasm[ao] ceny/i);
     // Ostrzeżenie niczego nie blokuje — musi być uprzejmym `status`, nie `alert`.
     const status = container.querySelector('[role="status"]');
     expect(status?.textContent).toMatch(/szeroki rozrzut/i);

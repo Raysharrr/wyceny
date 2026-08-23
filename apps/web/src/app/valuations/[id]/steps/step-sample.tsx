@@ -413,7 +413,7 @@ export function StepSample({
                       })}
                     </b>
                     {spread.spread > SPREAD_WARN_THRESHOLD
-                      ? " — szeroki rozrzut, rozważ zawężenie pasma powierzchni lub odrzucenie skrajnych cen"
+                      ? " — szeroki rozrzut, najskuteczniej zawęzi go pasmo ceny (pasmo powierzchni działa na rozrzut słabo); pomaga też odrzucenie skrajnych cen"
                       : null}
                   </>
                 ) : null}
