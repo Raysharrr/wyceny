@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { selectSample, candidateKey, type Candidate } from "../src/domain/sample-selection";
+import {
+  selectSample,
+  candidateKey,
+  DEFAULTS,
+  type Candidate,
+} from "../src/domain/sample-selection";
 import {
   applyManualRejections,
   MANUAL_REJECTION_REASONS,
@@ -47,10 +52,13 @@ const rej = (
   at: "2026-08-21T10:00:00Z",
 });
 const P = { subjectArea: 50, todayMonth: "2026-08" };
+/** Wyrażone przez stałą, nie przez liczbę — Slice 6 przesunął ją 12 → 20 i wszystkie
+ *  „12" w tym pliku trzeba było przepisać. Drugi raz już nie trzeba. */
+const N = DEFAULTS.proposedN;
 
 describe("applyManualRejections — overlay on the domain result, never inside it", () => {
-  // 20 clean candidates ranked by distance → proposed = 12, alternates = 8.
-  const pool = Array.from({ length: 20 }, (_, i) => mk({ distanceM: 10 + i }));
+  // N + 8 clean candidates ranked by distance → proposed = N, alternates = 8.
+  const pool = Array.from({ length: N + 8 }, (_, i) => mk({ distanceM: 10 + i }));
   const sel = selectSample(pool, P);
 
   it("no rejections → identity", () => {
@@ -62,9 +70,9 @@ describe("applyManualRejections — overlay on the domain result, never inside i
   it("rejecting a proposed row pulls the first alternate in, keeps ranking order, reports removed", () => {
     const victim = sel.proposed[3];
     const out = applyManualRejections(sel, [rej(victim)]);
-    expect(out.proposed).toHaveLength(12);
+    expect(out.proposed).toHaveLength(N);
     expect(out.proposed.map(candidateKey)).not.toContain(candidateKey(victim));
-    expect(out.proposed[11]).toEqual(sel.alternates[0]);
+    expect(out.proposed[N - 1]).toEqual(sel.alternates[0]);
     expect(out.alternates).toEqual(sel.alternates.slice(1));
     expect(out.removed).toEqual([victim]);
   });
@@ -82,7 +90,7 @@ describe("applyManualRejections — overlay on the domain result, never inside i
     };
     const out = applyManualRejections(withFlag, [rej(sel.proposed[0])]);
     expect(out.proposed.map(candidateKey)).not.toContain(candidateKey(flagged));
-    expect(out.proposed[11]).toEqual(sel.alternates[1]);
+    expect(out.proposed[N - 1]).toEqual(sel.alternates[1]);
     expect(out.alternates.map(candidateKey)).toContain(candidateKey(flagged));
   });
   it("respects maxPerBuilding when refilling (rule 6)", () => {
@@ -98,13 +106,13 @@ describe("applyManualRejections — overlay on the domain result, never inside i
     const sameB = [1, 2, 3, 4].map((i) =>
       mk({ distanceM: i, egib: { ...egibB, lokal: String(i) } }),
     );
-    const others = Array.from({ length: 12 }, (_, i) => mk({ distanceM: 50 + i }));
+    const others = Array.from({ length: N }, (_, i) => mk({ distanceM: 50 + i }));
     const sel2 = selectSample([...sameB, ...others], P);
     expect(sel2.proposed.filter((c) => c.egib?.budynek === "B")).toHaveLength(3);
     const victim = sel2.proposed.find((c) => c.egib?.budynek !== "B")!;
     const out = applyManualRejections(sel2, [rej(victim)]);
     expect(out.proposed.filter((c) => c.egib?.budynek === "B")).toHaveLength(3);
-    expect(out.proposed).toHaveLength(12);
+    expect(out.proposed).toHaveLength(N);
   });
   it("inverse of rule 6 — freeing a full building's slot admits its own demoted alternate", () => {
     // Same setup as the previous test: 3 proposed rows share building "B",
@@ -120,7 +128,7 @@ describe("applyManualRejections — overlay on the domain result, never inside i
     const sameB = [1, 2, 3, 4].map((i) =>
       mk({ distanceM: i, egib: { ...egibB, lokal: String(i) } }),
     );
-    const others = Array.from({ length: 12 }, (_, i) => mk({ distanceM: 50 + i }));
+    const others = Array.from({ length: N }, (_, i) => mk({ distanceM: 50 + i }));
     const sel2 = selectSample([...sameB, ...others], P);
     const fromB = (c: Candidate) => c.egib?.budynek === "B";
     expect(sel2.proposed.filter(fromB)).toHaveLength(3);
@@ -133,7 +141,7 @@ describe("applyManualRejections — overlay on the domain result, never inside i
     const out = applyManualRejections(sel2, [rej(victim)]);
     expect(out.proposed.filter(fromB)).toHaveLength(3);
     expect(out.proposed.map(candidateKey)).toContain(candidateKey(fourthFromB));
-    expect(out.proposed).toHaveLength(12);
+    expect(out.proposed).toHaveLength(N);
   });
   it("unknown keys are ignored; duplicates count once", () => {
     const ghost: ManualRejection = {
@@ -144,7 +152,7 @@ describe("applyManualRejections — overlay on the domain result, never inside i
     };
     const out = applyManualRejections(sel, [ghost, rej(sel.proposed[0]), rej(sel.proposed[0])]);
     expect(out.removed).toHaveLength(1);
-    expect(out.proposed).toHaveLength(12);
+    expect(out.proposed).toHaveLength(N);
   });
   it("exposes the reason vocabulary used by the UI", () => {
     expect(MANUAL_REJECTION_REASONS).toEqual([

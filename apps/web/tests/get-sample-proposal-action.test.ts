@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULTS } from "@/domain/sample-selection";
 import { z } from "zod";
 import type { PortStreetView } from "../src/ports/street-view";
 
@@ -126,7 +127,7 @@ describe("getSampleProposal (v3)", () => {
     });
     if ("error" in r) throw new Error(r.error);
     expect(r.proposal.comparables.length).toBeGreaterThanOrEqual(6);
-    expect(r.proposal.comparables.length).toBeLessThanOrEqual(12);
+    expect(r.proposal.comparables.length).toBeLessThanOrEqual(DEFAULTS.proposedN);
     expect(r.proposal.comparables[0]).toEqual(
       expect.objectContaining({
         date: expect.any(String),

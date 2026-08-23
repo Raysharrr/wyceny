@@ -156,6 +156,8 @@ const rejectReasonSchema = z.enum([
   "out_of_window",
   "out_of_area_band",
   "primary_market",
+  "manual_area_range",
+  "manual_price_range",
 ]);
 
 /** Mirrors `RejectedRow` from `@/domain/sample-snapshot` — the compact "Odrzucone" row (Slice 3). */
@@ -210,6 +212,21 @@ export const streetViewSchema = z.record(
 );
 
 /**
+ * Appraiser's own selection band (Slice 6) — powierzchnia [m²] lub cena [zł/m²].
+ * Obie granice opcjonalne (pusta = brak ograniczenia z tej strony), ale to jest
+ * granica zaufania: wartości przychodzą z formularza i lecą prosto do domeny,
+ * więc odwrócone albo ujemne pasmo odrzucamy tutaj, a nie w `selectSample`.
+ */
+export const manualRangeSchema = z
+  .object({
+    min: z.number().nonnegative().optional(),
+    max: z.number().nonnegative().optional(),
+  })
+  .refine((r) => r.min === undefined || r.max === undefined || r.min <= r.max, {
+    message: "Dolna granica nie może być większa od górnej",
+  });
+
+/**
  * Mirrors `SampleSelectionSnapshot` from `@/domain/sample-snapshot` — what
  * step 3's domain call persists in `inputs.sampleSelection` (ADR-015 "Dobor
  * proby v3"): the appraiser's proposed/alternate rows plus enough context
@@ -260,6 +277,9 @@ export const sampleSelectionSchema = z.object({
       })
       .optional(),
     radiusOverrideM: z.number().optional(),
+    /** Ręczne pasma rzeczoznawcy (Slice 6). Addytywne — stare szkice ich nie mają. */
+    areaRange: manualRangeSchema.optional(),
+    unitPriceRange: manualRangeSchema.optional(),
   }),
 });
 

@@ -10,6 +10,7 @@ import { loadPool } from "@/app/actions/_pool-cache";
 import { buildProposal } from "@/app/actions/_build-proposal";
 import {
   manualInclusionSchema,
+  manualRangeSchema,
   manualRejectionSchema,
   reviewedMarkSchema,
 } from "@/lib/valuation-form-schema";
@@ -23,6 +24,9 @@ const inputSchema = z.object({
   // them; `buildProposal` treats a missing value the same as `[]`.
   manualInclusions: z.array(manualInclusionSchema).optional(),
   reviewed: z.array(reviewedMarkSchema).optional(),
+  // Ręczne pasma rzeczoznawcy (Slice 6) — walidowane tu, na granicy zaufania.
+  areaRange: manualRangeSchema.optional(),
+  unitPriceRange: manualRangeSchema.optional(),
 });
 
 export type ReselectSampleInput = {
@@ -31,6 +35,8 @@ export type ReselectSampleInput = {
   manualRejections: ManualRejection[];
   manualInclusions?: ManualInclusion[];
   reviewed?: ReviewedMark[];
+  areaRange?: { min?: number; max?: number };
+  unitPriceRange?: { min?: number; max?: number };
 };
 export type ReselectSampleResult =
   | { proposal: Awaited<ReturnType<typeof buildProposal>> }
@@ -70,8 +76,15 @@ export async function reselectSample(input: ReselectSampleInput): Promise<Resele
     const firstIssue = parsed.error.issues[0];
     return { error: firstIssue?.message ?? "Nieprawidłowe dane formularza." };
   }
-  const { valuationId, radiusOverrideM, manualRejections, manualInclusions, reviewed } =
-    parsed.data;
+  const {
+    valuationId,
+    radiusOverrideM,
+    manualRejections,
+    manualInclusions,
+    reviewed,
+    areaRange,
+    unitPriceRange,
+  } = parsed.data;
 
   return withTrace(async () => {
     const startedAt = Date.now();
@@ -96,6 +109,7 @@ export async function reselectSample(input: ReselectSampleInput): Promise<Resele
         manualRejections,
         manualInclusions,
         reviewed,
+        ranges: { areaRange, unitPriceRange },
         session,
         valuationId,
         event: "proposal.reselect",

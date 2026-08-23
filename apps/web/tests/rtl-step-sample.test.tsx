@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import type { Comparable, SampleMeta } from "@/domain/kcs";
@@ -119,6 +119,7 @@ function makeSampleSelection(
     counts?: Partial<SampleSelectionSnapshot["counts"]>;
     proposed?: Candidate[];
     alternates?: Candidate[];
+    params?: Partial<SampleSelectionSnapshot["params"]>;
   } = {},
 ): SampleSelectionSnapshot {
   return {
@@ -149,7 +150,7 @@ function makeSampleSelection(
       proposed: 2,
       ...overrides.counts,
     },
-    params: { subjectArea: 50, todayMonth: "2026-08" },
+    params: { subjectArea: 50, todayMonth: "2026-08", ...overrides.params },
   };
 }
 
@@ -677,6 +678,256 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
       "href",
       `/valuations/${VID}?step=2`,
     );
+  });
+});
+
+describe("StepSample — rozrzut cen w pasku (Slice 6)", () => {
+  /** Kandydatki różniące się wyłącznie ceną jednostkową — kluczem jest transactionId|lokalId. */
+  function proposedWithPrices(prices: number[]): Candidate[] {
+    return prices.map((pricePerM2, i) =>
+      makeCandidate({
+        transactionId: `T-SPREAD-${i}`,
+        lokalId: `306401_1.0001.34_BUD_5_LOK_S${i}`,
+        pricePerM2,
+      }),
+    );
+  }
+  function renderWithPrices(prices: number[]) {
+    return render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection({ proposed: proposedWithPrices(prices) })}
+        streetView={null}
+      />,
+    );
+  }
+
+  it("pasek pokazuje rozrzut cen w próbie", () => {
+    // 10 000 i 12 500 → C śr 11 250, (12 500 − 10 000) / 11 250 = 0,2222.
+    const { container } = renderWithPrices([10000, 12500]);
+    expect(bannerText(container)).toMatch(/rozrzut cen/i);
+    expect(bannerText(container)).toMatch(/0,22/);
+  });
+
+  it("ostrzega, gdy rozrzut przekracza próg", () => {
+    // C min / C max / C śr próby programu dla Heweliusza sprzed poprawek.
+    const { container } = renderWithPrices([7156.05, 15576.83, 11118.68]);
+    expect(bannerText(container)).toMatch(/szeroki rozrzut/i);
+    // Wskazówka musi prowadzić w pasmo CENY: pomiar na Heweliuszu dał 0,248
+    // dla pasma ceny wobec 0,925 dla pasma powierzchni. Kierowanie
+    // rzeczoznawcy w powierzchnię to rada w słabszy suwak.
+    expect(bannerText(container)).toMatch(/pasm[ao] ceny/i);
+    // Ostrzeżenie niczego nie blokuje — musi być uprzejmym `status`, nie `alert`.
+    const status = container.querySelector('[role="status"]');
+    expect(status?.textContent).toMatch(/szeroki rozrzut/i);
+    expect(container.querySelector('[role="alert"]')?.textContent ?? "").not.toMatch(
+      /szeroki rozrzut/i,
+    );
+  });
+
+  it("nie ostrzega przy wąskim paśmie", () => {
+    // C min / C max z Tabeli 2 operatu Winiary → rozrzut 0,13.
+    const { container } = renderWithPrices([9203.54, 10498.22]);
+    expect(bannerText(container)).toMatch(/0,13/);
+    expect(bannerText(container)).not.toMatch(/szeroki rozrzut/i);
+  });
+});
+
+describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
+  beforeEach(() => {
+    reselectSample.mockReset();
+    getSampleProposal.mockReset();
+  });
+
+  const withRanges = (params: Partial<SampleSelectionSnapshot["params"]>) =>
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection({ params })}
+        streetView={null}
+      />,
+    );
+
+  it("ponowne pobranie z RCN niesie wpisane pasma, nie kasuje ich po cichu", async () => {
+    const user = userEvent.setup();
+    getSampleProposal.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection({ params: { areaRange: { min: 40, max: 60 } } }),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+    withRanges({ areaRange: { min: 40, max: 60 }, unitPriceRange: { min: 9000 } });
+
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+
+    await waitFor(() =>
+      expect(getSampleProposal).toHaveBeenCalledWith({
+        valuationId: VID,
+        address: ADDRESS,
+        area: AREA,
+        areaRange: { min: 40, max: 60 },
+        unitPriceRange: { min: 9000 },
+      }),
+    );
+  });
+
+  it("pobranie jedzie z pasmem zatwierdzonym tuż przed nim, nie ze starego snapshotu", async () => {
+    // Finding Codexa r3 #2: przeliczenie po zatwierdzeniu pasma jeszcze wisi,
+    // więc nowe pasmo żyje wyłącznie w koordynatorze. Pobranie musi je zabrać.
+    const user = userEvent.setup();
+    reselectSample.mockImplementation(() => new Promise(() => {})); // wisi
+    getSampleProposal.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection(),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+    withRanges({ unitPriceRange: { min: 9000 } }); // stary snapshot
+
+    const from = screen.getByLabelText(/cena od/i);
+    await user.tripleClick(from);
+    await user.keyboard("11000");
+    await user.tab(); // commit → przeliczenie wisi
+
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+
+    await waitFor(() =>
+      expect(getSampleProposal).toHaveBeenCalledWith(
+        expect.objectContaining({ unitPriceRange: { min: 11000 } }),
+      ),
+    );
+  });
+
+  it("na czas pobierania promień i pasma są zablokowane, a pasek mówi dlaczego", async () => {
+    // Finding Codexa r3 #3: reselect wystartowany w poprzek zapisu puli
+    // czytałby inną pulę, niż zaraz zapisze pobranie — UI rozjeżdżałby się
+    // z cache. Blokada na czas pobierania usuwa ten start.
+    const user = userEvent.setup();
+    getSampleProposal.mockImplementation(() => new Promise(() => {})); // wisi
+    const { container } = withRanges({});
+
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "1000 m" })).toBeDisabled());
+    expect(screen.getByLabelText(/cena od/i)).toBeDisabled();
+    expect(screen.getByLabelText(/powierzchnia od/i)).toBeDisabled();
+    expect(bannerText(container)).toMatch(/pobieranie nowej puli/i);
+  });
+
+  it("świeże pobranie z RCN nie daje się nadpisać starszemu przeliczeniu", async () => {
+    // Trzeci wariant tej samej klasy (finding Codexa r2): „Pobierz próbę z RCN"
+    // jest aktywne w trakcie przeliczania, więc oba tory muszą stać w jednej
+    // kolejce — inaczej starszy reselect wraca później i cofa świeżą pulę.
+    const user = userEvent.setup();
+    let resolveReselect!: (v: unknown) => void;
+    reselectSample.mockImplementationOnce(() => new Promise((r) => (resolveReselect = r)));
+    getSampleProposal.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection({ radiusUsedM: 2000 }),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+
+    const { container } = render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection({ radiusUsedM: 500 })}
+        streetView={null}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "1000 m" })); // wisi
+    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await waitFor(() => expect(bannerText(container)).toMatch(/w promieniu 2000 m/));
+
+    // Dopiero teraz wraca starsze przeliczenie — nie ma prawa cofnąć świeżej puli.
+    await act(async () => {
+      resolveReselect({
+        proposal: {
+          comparables: [],
+          sampleSelection: makeSampleSelection({ radiusUsedM: 1000 }),
+          sampleMeta: makeSampleMeta(),
+          streetView: makeStreetView(),
+        },
+      });
+    });
+    expect(bannerText(container)).toMatch(/w promieniu 2000 m/);
+  });
+
+  it("pola czytają pasma ZE SNAPSHOTU — jedynego ich domu", () => {
+    withRanges({ areaRange: { min: 40, max: 60 }, unitPriceRange: { min: 9000, max: 13000 } });
+    expect(screen.getByLabelText(/powierzchnia od/i)).toHaveValue(40);
+    expect(screen.getByLabelText(/powierzchnia do/i)).toHaveValue(60);
+    expect(screen.getByLabelText(/cena od/i)).toHaveValue(9000);
+    expect(screen.getByLabelText(/cena do/i)).toHaveValue(13000);
+  });
+
+  it("stary szkic bez pasm renderuje puste pola, bez błędu", () => {
+    withRanges({});
+    expect(screen.getByLabelText(/powierzchnia od/i)).toHaveValue(null);
+    expect(screen.getByLabelText(/cena do/i)).toHaveValue(null);
+  });
+
+  it("wyjście z pola przelicza dobór z nowym pasmem", async () => {
+    const user = userEvent.setup();
+    reselectSample.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection({ params: { areaRange: { min: 40 } } }),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+    withRanges({});
+    await user.type(screen.getByLabelText(/powierzchnia od/i), "40");
+    await user.tab();
+    await waitFor(() =>
+      expect(reselectSample).toHaveBeenCalledWith(
+        expect.objectContaining({ areaRange: { min: 40 }, radiusOverrideM: 500 }),
+      ),
+    );
+  });
+
+  it("zmiana promienia niesie zapisane pasma (bramka A1 ze Slice 3c)", async () => {
+    const user = userEvent.setup();
+    reselectSample.mockResolvedValue({
+      proposal: {
+        comparables: [],
+        sampleSelection: makeSampleSelection({
+          radiusUsedM: 1000,
+          params: { areaRange: { min: 40, max: 60 } },
+        }),
+        sampleMeta: makeSampleMeta(),
+        streetView: makeStreetView(),
+      },
+    });
+    withRanges({ areaRange: { min: 40, max: 60 } });
+    await user.click(screen.getByRole("button", { name: "1000 m" }));
+    await waitFor(() =>
+      expect(reselectSample).toHaveBeenCalledWith(
+        expect.objectContaining({ radiusOverrideM: 1000, areaRange: { min: 40, max: 60 } }),
+      ),
+    );
+    // …i po przeliczeniu pola nadal je pokazują (snapshot wrócił z pasmami).
+    await waitFor(() => expect(screen.getByLabelText(/powierzchnia do/i)).toHaveValue(60));
   });
 });
 
@@ -1228,9 +1479,23 @@ describe("StepSample — radius buttons (Task 8)", () => {
     expect(prices).toEqual(["12000", "12500", "9000"]);
   });
 
-  it("carries manualRejections from the response into the effective (post-rejection) rows saved to the form", async () => {
+  it("nakłada BIEŻĄCY ślad ręczny na wynik przeliczenia, nawet gdy odpowiedź go nie niesie", async () => {
+    // Kontrakt odwrócony w rundzie 3 (finding Codexa): panel jest aktywny w
+    // trakcie przeliczania, więc ślad ręczny z chwili WYSŁANIA bywa nieaktualny,
+    // gdy odpowiedź wraca. Źródłem prawdy jest snapshot w chwili POWROTU —
+    // odpowiedź poniżej celowo NIE niesie odrzucenia, a i tak musi ono zadziałać.
     const user = userEvent.setup();
-    const sel = makeSampleSelection({ radiusUsedM: 500 });
+    const sel: SampleSelectionSnapshot = {
+      ...makeSampleSelection({ radiusUsedM: 500 }),
+      manualRejections: [
+        {
+          transactionId: "T-NEW-1",
+          lokalId: "306401_1.0001.34_BUD_5_LOK_6",
+          reason: "too_far",
+          at: "2026-08-21T09:00:00Z",
+        },
+      ],
+    };
     const initialComparables: Comparable[] = sel.proposed.map((c) => ({
       date: c.date,
       area: c.area,
@@ -1250,19 +1515,12 @@ describe("StepSample — radius buttons (Task 8)", () => {
       lokalId: "306401_1.0001.34_BUD_5_LOK_9",
       pricePerM2: 13000,
     });
-    const sel2: SampleSelectionSnapshot = {
-      ...makeSampleSelection({ proposed: [tNew1, tNew2], alternates: [tNew3], radiusUsedM: 1000 }),
-      // T-NEW-1 was manually rejected in a PREVIOUS round and carried over —
-      // the effective proposal backfills from alternates (T-NEW-3).
-      manualRejections: [
-        {
-          transactionId: "T-NEW-1",
-          lokalId: tNew1.lokalId,
-          reason: "too_far",
-          at: "2026-08-21T09:00:00Z",
-        },
-      ],
-    };
+    // Odpowiedź BEZ `manualRejections` — ślad ma przyjść z bieżącego snapshotu.
+    const sel2: SampleSelectionSnapshot = makeSampleSelection({
+      proposed: [tNew1, tNew2],
+      alternates: [tNew3],
+      radiusUsedM: 1000,
+    });
     reselectSample.mockResolvedValue({
       proposal: {
         comparables: [tNew1, tNew2].map((c) => ({

@@ -5,13 +5,18 @@ import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
-import { candidateKey, type Candidate } from "@/domain/sample-selection";
+import { candidateKey, DEFAULTS, type Candidate } from "@/domain/sample-selection";
 import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import {
   matchLegacyRow,
   rcnRow,
   useSampleReview,
 } from "../src/app/valuations/[id]/steps/use-sample-review";
+
+const reselectSample = vi.fn();
+vi.mock("@/app/actions/reselect-sample", () => ({
+  reselectSample: (...args: unknown[]) => reselectSample(...args),
+}));
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
 // auto-cleanup never registers — mirrors tests/rtl-step-sample.test.tsx.
@@ -199,8 +204,8 @@ function useHarness(initial: { sel: SampleSelectionSnapshot; comparables: Compar
  * than through `StepSample`'s DOM (that's Tasks 3–5, once the UI exists).
  */
 describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)", () => {
-  it("include(key) on an alternate adds a manual inclusion, marks it reviewed, resyncs comparables (12 RCN + 1 included = 13, + a pre-existing hand-added row = 14), and keeps the selection on the same row", () => {
-    const proposed = Array.from({ length: 12 }, () => mk());
+  it("include(key) on an alternate adds a manual inclusion, marks it reviewed, resyncs comparables (N RCN + 1 included, + a pre-existing hand-added row), and keeps the selection on the same row", () => {
+    const proposed = Array.from({ length: DEFAULTS.proposedN }, () => mk());
     const alt = mk({ pricePerM2: 20000 });
     const sel = makeSel({ proposed, alternates: [alt] });
     // A hand-added `source: "manual"` row (rtl-step-sample.test.tsx's
@@ -226,8 +231,8 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     expect(result.current.sel?.reviewed?.some((r) => candidateKey(r) === candidateKey(alt))).toBe(
       true,
     );
-    // 12 original RCN rows + the newly included row + the hand-added row.
-    expect(result.current.comparables).toHaveLength(14);
+    // N original RCN rows + the newly included row + the hand-added row.
+    expect(result.current.comparables).toHaveLength(DEFAULTS.proposedN + 2);
     expect(
       result.current.comparables.some(
         (c) => c.transactionId === alt.transactionId && c.lokalId === alt.lokalId,
@@ -313,11 +318,11 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
   });
 
   it("statusOf/selectedStatus reflect the effective overlay, independent of the manual-inclusion list", () => {
-    // 12 proposed (the domain's cap, DEFAULTS.proposedN) — otherwise
+    // A full proposed list (the domain's cap, DEFAULTS.proposedN) — otherwise
     // `applyManualRejections`'s own refill (which runs even with an empty
     // overlay) would top B/C straight into `proposed`, since there'd be
     // room; B/C only stay `alternates` when the cap is already full.
-    const proposed = Array.from({ length: 12 }, () => mk());
+    const proposed = Array.from({ length: DEFAULTS.proposedN }, () => mk());
     const A = proposed[0];
     const B = mk();
     const C = mk();
@@ -387,5 +392,164 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     expect(findRow(A2)?.pricePerM2).toBe(String(A2.pricePerM2));
     expect(findRow(C)?.pricePerM2).toBe(String(C.pricePerM2));
     expect(findRow(B)).toBeUndefined();
+  });
+});
+
+/**
+ * Wyścig odpowiedzi (finding Codexa, 2026-08-23). Pola pasm są aktywne
+ * podczas przeliczania — celowo, bo blokada odbierała im fokus i zjadała
+ * wpisywane znaki. Skoro więc żądania mogą lecieć równolegle, o snapshocie
+ * musi decydować NAJNOWSZE żądanie, a nie to, które akurat wróciło ostatnie.
+ */
+describe("useSampleReview — wyścig przeliczeń (latest-request-wins)", () => {
+  const proposalWith = (unitPriceRange: { min?: number; max?: number }) => ({
+    proposal: {
+      comparables: [],
+      sampleSelection: {
+        ...makeSel({ proposed: [mk()] }),
+        params: { subjectArea: 50, todayMonth: "2026-08", unitPriceRange },
+      },
+      sampleMeta: { fetchedAt: "2026-08-23T10:00:00Z" },
+      streetView: {},
+    },
+  });
+
+  it("przejęcie żądania przez pobranie nie zostawia kontrolek w stanie „przeliczanie”", async () => {
+    // Finding Codexa r3 #1: fetch podbija wspólny licznik, więc `finally`
+    // starego reselectu nie gasi flagi (token już nieaktualny), a fetch gasi
+    // tylko własną. Kontrolki zostawały wyłączone na stałe.
+    reselectSample.mockReset();
+    reselectSample.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() =>
+      useHarness({ sel: makeSel({ proposed: [mk()] }), comparables: [] }),
+    );
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000 } });
+    });
+    expect(result.current.review.isReselecting).toBe(true);
+
+    act(() => {
+      result.current.review.claimRequest();
+    });
+    expect(result.current.review.isReselecting).toBe(false);
+  });
+
+  it("pobranie widzi pasmo zatwierdzone tuż przed nim, nie to ze snapshotu", () => {
+    // Finding Codexa r3 #2: `onRanges` zapisuje pasma tylko w koordynatorze.
+    // Gdy przeliczenie jeszcze wisi (albo padło), świeże pobranie musi wziąć
+    // najnowszą intencję, nie starą wartość z `sel.params`.
+    reselectSample.mockReset();
+    reselectSample.mockImplementation(() => new Promise(() => {}));
+
+    const sel = {
+      ...makeSel({ proposed: [mk()] }),
+      params: { subjectArea: 50, todayMonth: "2026-08", unitPriceRange: { min: 9000 } },
+    };
+    const { result } = renderHook(() => useHarness({ sel, comparables: [] }));
+
+    expect(result.current.review.pendingRanges()).toEqual({
+      areaRange: undefined,
+      unitPriceRange: { min: 9000 },
+    });
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 11000 } });
+    });
+    expect(result.current.review.pendingRanges()).toEqual({ unitPriceRange: { min: 11000 } });
+  });
+
+  it("nowsze żądanie niesie promień zadany przed nim (koordynator, nie stary snapshot)", async () => {
+    // Scenariusz Codexa: klik 1000 m leci jako żądanie nr 1; zanim wróci,
+    // rzeczoznawca zatwierdza pasmo — żądanie nr 2. Gdyby czytało promień ze
+    // STAREGO `sel.radiusUsedM` (500), wygrałoby tokenem i skasowało zmianę
+    // promienia. Konfiguracja musi być czytana z koordynatora, nie ze snapshotu.
+    reselectSample.mockReset();
+    reselectSample.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() =>
+      useHarness({ sel: makeSel({ proposed: [mk()] }), comparables: [] }),
+    );
+    act(() => {
+      void result.current.review.onRadius(1000);
+    });
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000 } });
+    });
+
+    expect(reselectSample).toHaveBeenCalledTimes(2);
+    expect(reselectSample.mock.calls[1][0]).toMatchObject({
+      radiusOverrideM: 1000,
+      unitPriceRange: { min: 10000 },
+    });
+  });
+
+  it("odrzucenie wykonane PO wysłaniu żądania przeżywa jego odpowiedź", async () => {
+    // Panel jest aktywny w trakcie przeliczania, więc odpowiedź nie może wnosić
+    // stanu ręcznego z chwili wysłania — nakładamy AKTUALNY.
+    reselectSample.mockReset();
+    let resolve!: (v: unknown) => void;
+    reselectSample.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+
+    const victim = mk();
+    const other = mk();
+    const { result } = renderHook(() =>
+      useHarness({
+        sel: makeSel({ proposed: [victim, other] }),
+        comparables: [victim, other].map((c) => rcnRow(c)),
+      }),
+    );
+
+    await act(async () => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000 } });
+    });
+    act(() => {
+      result.current.review.setSelectedKey(candidateKey(victim));
+    });
+    act(() => {
+      result.current.review.reject({ reason: "too_far" });
+    });
+    expect(result.current.sel?.manualRejections).toHaveLength(1); // sanity: odrzucenie zapisane
+
+    await act(async () => {
+      resolve(proposalWith({ min: 10000 }));
+    });
+
+    expect(result.current.sel?.manualRejections).toHaveLength(1);
+    expect(result.current.sel?.manualRejections?.[0]).toMatchObject({
+      transactionId: victim.transactionId,
+    });
+  });
+
+  it("odpowiedź starszego żądania nie kasuje pasma z nowszego", async () => {
+    reselectSample.mockReset();
+    let resolveFirst!: (v: unknown) => void;
+    let resolveSecond!: (v: unknown) => void;
+    reselectSample
+      .mockImplementationOnce(() => new Promise((r) => (resolveFirst = r)))
+      .mockImplementationOnce(() => new Promise((r) => (resolveSecond = r)));
+
+    const { result } = renderHook(() =>
+      useHarness({ sel: makeSel({ proposed: [mk()] }), comparables: [] }),
+    );
+
+    // Rzeczoznawca zatwierdza „cenę od", a chwilę później „cenę do" —
+    // drugie żądanie niesie komplet, pierwsze tylko dolną granicę.
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000 } });
+    });
+    act(() => {
+      void result.current.review.onRanges({ unitPriceRange: { min: 10000, max: 13000 } });
+    });
+    expect(reselectSample).toHaveBeenCalledTimes(2);
+
+    // Odpowiedzi wracają w ODWROTNEJ kolejności: nowsza pierwsza, starsza druga.
+    await act(async () => {
+      resolveSecond(proposalWith({ min: 10000, max: 13000 }));
+    });
+    await act(async () => {
+      resolveFirst(proposalWith({ min: 10000 }));
+    });
+
+    expect(result.current.sel?.params.unitPriceRange).toEqual({ min: 10000, max: 13000 });
   });
 });

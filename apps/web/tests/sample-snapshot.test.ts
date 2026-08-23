@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { selectSample, candidateKey, type Candidate } from "../src/domain/sample-selection";
+import {
+  selectSample,
+  candidateKey,
+  DEFAULTS,
+  type Candidate,
+} from "../src/domain/sample-selection";
 import {
   toSampleSelectionSnapshot,
   effectiveSelection,
@@ -218,11 +223,14 @@ describe("toSampleSelectionSnapshot", () => {
   });
 });
 
-describe("toSampleSelectionSnapshot — flags trimming is load-bearing (synthetic, afterBand > 52)", () => {
+describe("toSampleSelectionSnapshot — flags trimming is load-bearing (synthetic, afterBand > kept)", () => {
   const P = { subjectArea: 50, todayMonth: "2026-08" };
-  // 55 "normal" candidates, close in (distanceM 10..64) — these fill proposed
-  // (top 12) and most of alternates (next 40).
-  const normal = Array.from({ length: 55 }, (_, i) => mk({ distanceM: 10 + i }));
+  // Ile wierszy snapshot w ogóle zatrzymuje. Przez stałe, nie przez liczbę —
+  // Slice 6 przesunął proposedN 12 → 20, więc „52" przestało być prawdą.
+  const KEPT = DEFAULTS.proposedN + DEFAULTS.alternatesN;
+  // Dokładnie tyle „normalnych" kandydatek, ile snapshot zatrzymuje — zapełniają
+  // proposed i całe alternates, nie zostawiając miejsca outlierom.
+  const normal = Array.from({ length: KEPT }, (_, i) => mk({ distanceM: 10 + i }));
   // 15 price outliers, still within the same 500 m radius step (400..414)
   // but ranked worse than every normal candidate (larger distanceM ⇒ lower
   // score) — so they land past both proposed AND the 40-wide alternates cap,
@@ -234,9 +242,9 @@ describe("toSampleSelectionSnapshot — flags trimming is load-bearing (syntheti
   const sel = selectSample(candidates, P);
   const snap = toSampleSelectionSnapshot(sel, P);
 
-  it("bands 70 candidates (> 52 kept) and flags exactly the 15 price outliers", () => {
-    expect(sel.counts.afterBand).toBe(70);
-    expect(sel.proposed.length + sel.alternates.length).toBeLessThanOrEqual(52);
+  it("bands more candidates than the snapshot keeps and flags exactly the 15 price outliers", () => {
+    expect(sel.counts.afterBand).toBe(KEPT + 15);
+    expect(sel.proposed.length + sel.alternates.length).toBeLessThanOrEqual(KEPT);
     expect(Object.keys(sel.flags)).toHaveLength(15);
   });
 

@@ -276,6 +276,34 @@ describe("sampleSelectionSchema — v3 additive fields (Slice 3)", () => {
   it("accepts a pre-Slice-3 snapshot (no rejected / manualRejections)", () => {
     expect(sampleSelectionSchema.safeParse(base).success).toBe(true);
   });
+  it("przenosi ręczne pasma przez round-trip; szkic bez nich wciąż się parsuje (Slice 6)", () => {
+    const parsed = sampleSelectionSchema.safeParse({
+      ...base,
+      params: {
+        ...base.params,
+        areaRange: { min: 40, max: 60 },
+        unitPriceRange: { min: 9000 },
+      },
+    });
+    expect(parsed.success).toBe(true);
+    // Zod domyślnie ZDEJMUJE nieznane klucze zamiast się wywalić — bez wpisu
+    // w schemacie pasma znikałyby po cichu w drodze powrotnej. Stąd asercja
+    // na WARTOŚĆ, nie na samo `success`.
+    expect(parsed.data?.params.areaRange).toEqual({ min: 40, max: 60 });
+    expect(parsed.data?.params.unitPriceRange).toEqual({ min: 9000 });
+    // Puste pasma i całkowity ich brak to ta sama rzecz dla doboru.
+    expect(sampleSelectionSchema.safeParse(base).success).toBe(true);
+    expect(
+      sampleSelectionSchema.safeParse({ ...base, params: { ...base.params, areaRange: {} } })
+        .success,
+    ).toBe(true);
+  });
+  it("odrzuca pasmo odwrócone i ujemne (granica zaufania — dane z formularza)", () => {
+    const bad = (areaRange: unknown) =>
+      sampleSelectionSchema.safeParse({ ...base, params: { ...base.params, areaRange } }).success;
+    expect(bad({ min: 60, max: 40 })).toBe(false);
+    expect(bad({ min: -1 })).toBe(false);
+  });
   it("accepts compact rejected rows and manual rejections; rejects an unknown reason", () => {
     const ok = sampleSelectionSchema.safeParse({
       ...base,

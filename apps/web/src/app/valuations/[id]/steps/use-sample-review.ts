@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { UseFormSetValue } from "react-hook-form";
 import type { z } from "zod";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
@@ -18,6 +18,7 @@ import {
   type SampleSelectionSnapshot,
 } from "@/domain/sample-snapshot";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
+import type { ManualRanges } from "./sample-ranges";
 
 /** `reselectSample`'s radius union — mirrors `ReselectSampleInput["radiusOverrideM"]` in `@/app/actions/reselect-sample`. */
 type RadiusM = 500 | 1000 | 2000 | 3000;
@@ -232,6 +233,28 @@ export function useSampleReview({
 }) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [isReselecting, setIsReselecting] = useState(false);
+  /**
+   * Koordynator żądań (finding Codexa r2). Wszystkie trzy tory, które
+   * podmieniają snapshot — przyciski promienia, pasma i „Pobierz próbę z RCN" —
+   * biorą numer z tego samego licznika, więc odpowiedź, która przestała być
+   * najnowsza, jest odrzucana bez względu na to, który tor ją wysłał.
+   *
+   * `desired` trzyma NAJNOWSZĄ INTENCJĘ rzeczoznawcy, nie stan snapshotu:
+   * zanim wróci odpowiedź na klik „1000 m", snapshot wciąż mówi 500, więc
+   * żądanie wysłane w międzyczasie (zatwierdzone pasmo) czytałoby z niego
+   * stary promień i po cichu cofało tamtą zmianę.
+   */
+  const requestSeq = useRef(0);
+  const desired = useRef<{ radiusM?: RadiusM; ranges?: ManualRanges }>({});
+  /**
+   * Bieżący snapshot, widziany przez odpowiedzi wracające po czasie. Panel jest
+   * aktywny w trakcie przeliczania, więc ręczny ślad z chwili WYSŁANIA bywa już
+   * nieaktualny, gdy odpowiedź wraca.
+   */
+  const selRef = useRef(sel);
+  useEffect(() => {
+    selRef.current = sel;
+  }, [sel]);
   // Missing pool cache (draft predates Slice 3, or storage cleared) — the
   // radius buttons stay disabled until a fresh "Pobierz próbę z RCN" fetch
   // re-populates it (team-lead condition 1, 2026-08-21: never a silent
@@ -444,30 +467,60 @@ export function useSampleReview({
    * treated identically: both disable the radius buttons until a fresh
    * "Pobierz próbę z RCN" re-populates the cache.
    */
-  const onRadius = async (radiusM: RadiusM) => {
-    if (!sel) return;
+  const runSelection = async () => {
+    const current = selRef.current ?? sel;
+    if (!current) return;
+    const radiusM = desired.current.radiusM ?? (current.radiusUsedM as RadiusM);
+    const ranges = desired.current.ranges ?? {
+      areaRange: current.params.areaRange,
+      unitPriceRange: current.params.unitPriceRange,
+    };
+    // Latest-request-wins. Pola pasm są aktywne w trakcie przeliczania (blokada
+    // odbierała im fokus i zjadała wpisywane znaki), więc żądania mogą lecieć
+    // równolegle: zatwierdzasz „cenę od", zaraz potem „cenę do". Bez tokenu
+    // o snapshocie decydowałaby odpowiedź, która wróciła OSTATNIA — a starsze
+    // żądanie niesie starsze, uboższe pasmo i skasowałoby górną granicę.
+    const token = claimRequest();
     setIsReselecting(true);
     setReselectError(null);
     try {
       const result = await reselectSample({
         valuationId,
         radiusOverrideM: radiusM,
-        manualRejections: sel.manualRejections ?? [],
+        // Ręczne pasma (Slice 6) jadą tą samą drogą co nakładka poniżej —
+        // snapshot jest ich jedynym domem, więc każde przeliczenie musi je
+        // nieść dalej, inaczej zmiana promienia po cichu by je skasowała.
+        ...(ranges.areaRange ? { areaRange: ranges.areaRange } : {}),
+        ...(ranges.unitPriceRange ? { unitPriceRange: ranges.unitPriceRange } : {}),
+        manualRejections: current.manualRejections ?? [],
         // Carried the SAME way `manualRejections` is — `buildProposal`
         // re-injects both into the fresh snapshot (Slice 3c, Task 5), so an
         // out-of-radius inclusion stays in "W próbie" (re-attached, badged
         // "dodana ręcznie") and the review trail survives a radius change
         // instead of silently resetting "przejrzane N/M".
-        manualInclusions: sel.manualInclusions ?? [],
-        reviewed: sel.reviewed ?? [],
+        manualInclusions: current.manualInclusions ?? [],
+        reviewed: current.reviewed ?? [],
       });
+      // Przestarzała odpowiedź — nowsze żądanie już wyszło, to jest jego wynik
+      // do pokazania, nie ten. Dotyczy też błędu: komunikat ze starego żądania
+      // opisywałby stan, którego rzeczoznawca już nie zamawia.
+      if (token !== requestSeq.current) return;
       if ("error" in result) {
         if (result.code === "pool_missing" || result.code === "pool_stale") setPoolMissing(true);
         setReselectError(result.error);
         return;
       }
       setPoolMissing(false);
-      const newSel = result.proposal.sampleSelection;
+      // Ręczny ślad bierzemy z chwili POWROTU, nie wysłania: odrzucenie albo
+      // dodanie zrobione w trakcie przeliczania jest już w snapshocie, a
+      // odpowiedź niesie jego starszą kopię, którą sama by nadpisała.
+      const live = selRef.current;
+      const newSel: SampleSelectionSnapshot = {
+        ...result.proposal.sampleSelection,
+        manualRejections: live?.manualRejections ?? [],
+        manualInclusions: live?.manualInclusions ?? [],
+        reviewed: live?.reviewed ?? [],
+      };
       setValue("sampleSelection", newSel, { shouldDirty: true });
       setValue("sampleMeta", result.proposal.sampleMeta, { shouldDirty: true });
       setValue("streetView", result.proposal.streetView, { shouldDirty: true });
@@ -476,8 +529,62 @@ export function useSampleReview({
       // showing — mirrors `onFetchSample` closing the panel on a new pool.
       setSelectedKey(null);
     } finally {
-      setIsReselecting(false);
+      // Tylko najnowsze żądanie gasi wskaźnik — inaczej powrót starszego
+      // pokazywałby „gotowe", gdy nowsze wciąż leci.
+      if (token === requestSeq.current) setIsReselecting(false);
     }
+  };
+
+  /** Radius button — zapisuje intencję i przelicza z pełną, najnowszą konfiguracją. */
+  const onRadius = (radiusM: RadiusM) => {
+    desired.current.radiusM = radiusM;
+    return runSelection();
+  };
+
+  /** Zatwierdzone pasmo (Slice 6) — jak wyżej: intencja do koordynatora, potem przeliczenie. */
+  const onRanges = (ranges: ManualRanges) => {
+    desired.current.ranges = ranges;
+    return runSelection();
+  };
+
+  /**
+   * Rezerwuje numer dla żądania spoza tego hooka („Pobierz próbę z RCN").
+   * Bez tego świeży fetch stałby poza kolejką i starszy reselect mógłby
+   * nadpisać jego wynik po powrocie.
+   *
+   * Gasi też wskaźnik przeliczania: przejęte żądanie nie ma już kto zamknąć —
+   * jego własne `finally` widzi nieaktualny token i słusznie nic nie robi, a
+   * przejmujący tor pilnuje tylko swojej flagi. Bez tego kontrolki zostawały
+   * wyłączone na stałe (finding Codexa r3).
+   */
+  const claimRequest = () => {
+    setIsReselecting(false);
+    return ++requestSeq.current;
+  };
+  /** Czy odpowiedź o tym numerze jest wciąż tą, na którą czekamy. */
+  const isLatestRequest = (token: number) => token === requestSeq.current;
+  /**
+   * Pasma, z którymi ma pojechać żądanie wysyłane spoza hooka. Najnowsza
+   * intencja z koordynatora, a dopiero w jej braku wartość ze snapshotu —
+   * pasmo zatwierdzone tuż przed pobraniem żyje jeszcze tylko w koordynatorze
+   * (przeliczenie wisi albo padło) i bez tego by przepadło.
+   */
+  const pendingRanges = (): ManualRanges => {
+    const current = selRef.current ?? sel;
+    return (
+      desired.current.ranges ?? {
+        areaRange: current?.params.areaRange,
+        unitPriceRange: current?.params.unitPriceRange,
+      }
+    );
+  };
+  /**
+   * Świeża pula = nowy punkt wyjścia dla PROMIENIA: dobór znów chodzi własnym
+   * spacerem, więc intencja „1000 m" sprzed pobrania przestaje obowiązywać.
+   * Pasma zostają — są parametrem doboru i niesie je snapshot z odpowiedzi.
+   */
+  const resetDesiredRadius = () => {
+    delete desired.current.radiusM;
   };
 
   /** Clears the reselect error banner — called alongside `setPoolMissing(false)` when a fresh "Pobierz próbę z RCN" fetch succeeds (review round 1, minor #2). */
@@ -508,5 +615,10 @@ export function useSampleReview({
     reselectError,
     clearReselectError,
     onRadius,
+    onRanges,
+    claimRequest,
+    isLatestRequest,
+    pendingRanges,
+    resetDesiredRadius,
   };
 }

@@ -10,6 +10,8 @@ export const REJECT_REASON_LABELS: Record<RejectReason, string> = {
   out_of_window: "poza oknem 24 mies.",
   out_of_area_band: "poza pasmem metrażu",
   primary_market: "rynek pierwotny",
+  manual_area_range: "poza Twoim pasmem powierzchni",
+  manual_price_range: "poza Twoim pasmem ceny",
 };
 export type RejectedGroup = {
   key: string;

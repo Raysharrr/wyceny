@@ -21,6 +21,8 @@ import { saveSampleAction } from "@/app/actions/wizard";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import { AutoBanner } from "@/components/wizard/auto-banner";
+import { priceSpread, SPREAD_WARN_THRESHOLD } from "@/domain/price-spread";
+import { SampleRanges } from "./sample-ranges";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
@@ -229,6 +231,11 @@ export function StepSample({
     reselectError,
     clearReselectError,
     onRadius,
+    onRanges,
+    claimRequest,
+    isLatestRequest,
+    pendingRanges,
+    resetDesiredRadius,
   } = useSampleReview({
     valuationId,
     sel,
@@ -280,6 +287,12 @@ export function StepSample({
   // `alternates` — a row still sitting in `sel.alternates` was only just
   // promoted THIS render (e.g. the checkbox's own optimistic re-render) and
   // isn't the "survived a radius change" case the badge exists for.
+  // Rozrzut cen jednostkowych PRÓBY (Slice 6) — z `eff.proposed`, które po
+  // nakładce z 3c zawiera już ręczne dodania, a nie z całej puli po paśmie.
+  // Ręcznie DOPISANE wiersze (`source: "manual"`, spoza RCN) do niego nie
+  // wchodzą: pasek opisuje dobór z rejestru, a nie całą Tabelę 2.
+  const spread = eff ? priceSpread(eff.proposed.map((c) => c.pricePerM2)) : null;
+
   const alternateKeys = new Set((sel?.alternates ?? []).map(candidateKey));
   const includedKeys = new Set(
     (eff?.included ?? []).filter((c) => !alternateKeys.has(candidateKey(c))).map(candidateKey),
@@ -288,12 +301,35 @@ export function StepSample({
   const onFetchSample = async () => {
     setFetchSampleError(null);
     setIsFetchingSample(true);
+    // Pobranie stoi w tej samej kolejce co przeliczenia (finding Codexa r2):
+    // przycisk jest aktywny w trakcie reselectu, więc bez wspólnego numeru
+    // starsze przeliczenie wróciłoby po świeżej puli i by ją cofnęło.
+    const token = claimRequest();
     try {
-      const result = await getSampleProposal({ valuationId, address, area });
+      // Pasma jadą RAZEM z pobraniem (Slice 6): świeże „Pobierz próbę z RCN"
+      // czyści ręczny ślad przeglądania (odrzucenia, dodania, ✓), ale granice
+      // doboru to nie ślad — to parametr, jak promień. Bez tego rzeczoznawca
+      // wpisywałby je od nowa po każdym pobraniu.
+      // `pendingRanges()`, nie `sel.params`: pasmo zatwierdzone tuż przed
+      // kliknięciem żyje jeszcze tylko w koordynatorze, bo jego przeliczenie
+      // wisi albo padło (finding Codexa r3).
+      const ranges = pendingRanges();
+      const result = await getSampleProposal({
+        valuationId,
+        address,
+        area,
+        ...(ranges.areaRange ? { areaRange: ranges.areaRange } : {}),
+        ...(ranges.unitPriceRange ? { unitPriceRange: ranges.unitPriceRange } : {}),
+      });
+      if (!isLatestRequest(token)) return;
       if ("error" in result) {
         setFetchSampleError(result.error);
         return;
       }
+      // Świeża pula to nowy punkt wyjścia — promień wraca do spaceru domeny,
+      // więc intencja „1000 m" sprzed pobrania przestaje obowiązywać. Pasma
+      // przetrwają, bo niesie je snapshot z odpowiedzi.
+      resetDesiredRadius();
       // Rows stay fully editable after this — a hand-edited row keeps
       // `source: "rcn"` even though its values no longer match the fetch;
       // reconciling edited-vs-fetched fidelity is a later gating-slice concern.
@@ -379,6 +415,28 @@ export function StepSample({
                     own refill already promoted into `proposed` is a no-op
                     and would overcount. */}
                 {eff.included.length > 0 ? ` · dodanych: ${eff.included.length}` : null}
+                {/* Vmax − Vmin z Tabeli 2 operatu. Ostrzeżenie NICZEGO nie blokuje —
+                    bramą pozostaje F-4 (próg 12 transakcji); to podpowiedź, że
+                    próby Anety mieszczą się w 0,13–0,23, a szerokie pasmo pozwala
+                    korektom szarpać wynikiem dwukrotnie mocniej. `AutoBanner` sam
+                    jest `role="status"`, więc nic tu nie trzeba dokładać. */}
+                {isFetchingSample
+                  ? " · pobieranie nowej puli z RCN — promień i pasma chwilowo nieaktywne"
+                  : null}
+                {spread ? (
+                  <>
+                    {" · rozrzut cen "}
+                    <b>
+                      {spread.spread.toLocaleString("pl-PL", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </b>
+                    {spread.spread > SPREAD_WARN_THRESHOLD
+                      ? " — szeroki rozrzut, najskuteczniej zawęzi go pasmo ceny (pasmo powierzchni działa na rozrzut słabo); pomaga też odrzucenie skrajnych cen"
+                      : null}
+                  </>
+                ) : null}
               </AutoBanner>
             ) : liveSampleMeta ? (
               // A persisted `sampleMeta` without its v3 selection snapshot (a
@@ -396,7 +454,11 @@ export function StepSample({
                 <SampleRadius
                   value={sel.radiusUsedM}
                   steps={DEFAULTS.radiusStepsM}
-                  busy={isReselecting}
+                  // Także na czas POBIERANIA: przeliczenie wystartowane w
+                  // poprzek zapisu nowej puli czytałoby inną pulę, niż zaraz
+                  // wyląduje w cache — UI rozjechałby się z tym, na czym
+                  // pracuje następny reselect (finding Codexa r3).
+                  busy={isReselecting || isFetchingSample}
                   // The alert below is the single VISIBLE copy of the reason
                   // (minor #3) — `disabledReason` here only drives `disabled`
                   // + the `title` tooltip, so it reuses the SAME text
@@ -413,6 +475,29 @@ export function StepSample({
                   onChange={(radiusM: Parameters<typeof onRadius>[0]) => {
                     setPanelInitialRejecting(null);
                     onRadius(radiusM);
+                  }}
+                />
+                <SampleRanges
+                  areaRange={sel.params.areaRange}
+                  unitPriceRange={sel.params.unitPriceRange}
+                  busy={isReselecting || isFetchingSample}
+                  // Blokada idzie przez POWÓD, nie przez `busy`: samo
+                  // przeliczanie pól nie wyłącza (blokada odbierała im fokus
+                  // i zjadała wpisywane znaki, runda 2), ale pobieranie już
+                  // tak — wtedy nie ma na czym przeliczać.
+                  disabledReason={
+                    isFetchingSample
+                      ? "Trwa pobieranie nowej puli z RCN — za chwilę będzie na czym przeliczać."
+                      : poolMissing
+                        ? reselectError
+                        : null
+                  }
+                  onCommit={(next) => {
+                    // Ta sama higiena co przy zmianie promienia: nowy dobór
+                    // zastępuje całą pulę, więc wskaźnik na wiersz ze starej
+                    // nie może przeżyć.
+                    setPanelInitialRejecting(null);
+                    onRanges(next);
                   }}
                 />
                 {reselectError ? (
