@@ -680,6 +680,58 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
   });
 });
 
+describe("StepSample — rozrzut cen w pasku (Slice 6)", () => {
+  /** Kandydatki różniące się wyłącznie ceną jednostkową — kluczem jest transactionId|lokalId. */
+  function proposedWithPrices(prices: number[]): Candidate[] {
+    return prices.map((pricePerM2, i) =>
+      makeCandidate({
+        transactionId: `T-SPREAD-${i}`,
+        lokalId: `306401_1.0001.34_BUD_5_LOK_S${i}`,
+        pricePerM2,
+      }),
+    );
+  }
+  function renderWithPrices(prices: number[]) {
+    return render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={twelveComparables()}
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection({ proposed: proposedWithPrices(prices) })}
+        streetView={null}
+      />,
+    );
+  }
+
+  it("pasek pokazuje rozrzut cen w próbie", () => {
+    // 10 000 i 12 500 → C śr 11 250, (12 500 − 10 000) / 11 250 = 0,2222.
+    const { container } = renderWithPrices([10000, 12500]);
+    expect(bannerText(container)).toMatch(/rozrzut cen/i);
+    expect(bannerText(container)).toMatch(/0,22/);
+  });
+
+  it("ostrzega, gdy rozrzut przekracza próg", () => {
+    // C min / C max / C śr próby programu dla Heweliusza sprzed poprawek.
+    const { container } = renderWithPrices([7156.05, 15576.83, 11118.68]);
+    expect(bannerText(container)).toMatch(/szeroki rozrzut/i);
+    // Ostrzeżenie niczego nie blokuje — musi być uprzejmym `status`, nie `alert`.
+    const status = container.querySelector('[role="status"]');
+    expect(status?.textContent).toMatch(/szeroki rozrzut/i);
+    expect(container.querySelector('[role="alert"]')?.textContent ?? "").not.toMatch(
+      /szeroki rozrzut/i,
+    );
+  });
+
+  it("nie ostrzega przy wąskim paśmie", () => {
+    // C min / C max z Tabeli 2 operatu Winiary → rozrzut 0,13.
+    const { container } = renderWithPrices([9203.54, 10498.22]);
+    expect(bannerText(container)).toMatch(/0,13/);
+    expect(bannerText(container)).not.toMatch(/szeroki rozrzut/i);
+  });
+});
+
 describe("StepSample — validation", () => {
   beforeEach(() => {
     saveSampleAction.mockClear();

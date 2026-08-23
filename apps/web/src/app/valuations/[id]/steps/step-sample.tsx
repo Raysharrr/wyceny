@@ -21,6 +21,7 @@ import { saveSampleAction } from "@/app/actions/wizard";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
 import { getSampleProposal } from "@/app/actions/get-sample-proposal";
 import { AutoBanner } from "@/components/wizard/auto-banner";
+import { priceSpread, SPREAD_WARN_THRESHOLD } from "@/domain/price-spread";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
@@ -280,6 +281,12 @@ export function StepSample({
   // `alternates` — a row still sitting in `sel.alternates` was only just
   // promoted THIS render (e.g. the checkbox's own optimistic re-render) and
   // isn't the "survived a radius change" case the badge exists for.
+  // Rozrzut cen jednostkowych PRÓBY (Slice 6) — z `eff.proposed`, które po
+  // nakładce z 3c zawiera już ręczne dodania, a nie z całej puli po paśmie.
+  // Ręcznie DOPISANE wiersze (`source: "manual"`, spoza RCN) do niego nie
+  // wchodzą: pasek opisuje dobór z rejestru, a nie całą Tabelę 2.
+  const spread = eff ? priceSpread(eff.proposed.map((c) => c.pricePerM2)) : null;
+
   const alternateKeys = new Set((sel?.alternates ?? []).map(candidateKey));
   const includedKeys = new Set(
     (eff?.included ?? []).filter((c) => !alternateKeys.has(candidateKey(c))).map(candidateKey),
@@ -379,6 +386,25 @@ export function StepSample({
                     own refill already promoted into `proposed` is a no-op
                     and would overcount. */}
                 {eff.included.length > 0 ? ` · dodanych: ${eff.included.length}` : null}
+                {/* Vmax − Vmin z Tabeli 2 operatu. Ostrzeżenie NICZEGO nie blokuje —
+                    bramą pozostaje F-4 (próg 12 transakcji); to podpowiedź, że
+                    próby Anety mieszczą się w 0,13–0,23, a szerokie pasmo pozwala
+                    korektom szarpać wynikiem dwukrotnie mocniej. `AutoBanner` sam
+                    jest `role="status"`, więc nic tu nie trzeba dokładać. */}
+                {spread ? (
+                  <>
+                    {" · rozrzut cen "}
+                    <b>
+                      {spread.spread.toLocaleString("pl-PL", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </b>
+                    {spread.spread > SPREAD_WARN_THRESHOLD
+                      ? " — szeroki rozrzut, rozważ zawężenie pasma powierzchni lub odrzucenie skrajnych cen"
+                      : null}
+                  </>
+                ) : null}
               </AutoBanner>
             ) : liveSampleMeta ? (
               // A persisted `sampleMeta` without its v3 selection snapshot (a
