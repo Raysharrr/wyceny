@@ -788,4 +788,14 @@ describe("buildProseFacts — obszar badania z faktycznego doboru (Slice 5)", ()
     expect("obreby" in proba).toBe(false);
     expect(proba.promien_m).toBe(sel.radiusUsedM);
   });
+
+  it("pomija `obreby`, gdy choć JEDNEJ kandydatki nie da się nazwać — lista nie może zaniżać obszaru", () => {
+    // `obreby-poznan.json` nazywa 24 kody, a Poznań ma ich więcej. Wypisanie
+    // samych rozpoznanych opisałoby węższy obszar badania, niż operat oparł
+    // na próbie — a każda nazwa w takim zdaniu JEST w faktach, więc żadna
+    // straż tego nie złapie.
+    const sel = selection([cand("0021", "tx-a"), { ...cand("0021", "tx-b"), egib: null }]);
+
+    expect("obreby" in factsWith(sel).proba!).toBe(false);
+  });
 });

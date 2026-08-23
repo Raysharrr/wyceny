@@ -238,16 +238,19 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
   // Read through `effectiveSelection`, not `sel.proposed`: a row the appraiser
   // rejected is not in Table 1, so its obręb is not an area the operat speaks
   // about. `obrebName` returns null rather than inventing a name.
+  //
+  // ALL-OR-NOTHING, same doctrine as the aggregates below: `obreby-poznan.json`
+  // names 24 of Poznań's obręb codes, so a sample can easily hold a row whose
+  // obręb has no name. Listing the nameable ones would UNDERSTATE the study
+  // area the operat asserts — "obszar badania – obręb Golęcin" while half the
+  // sample sits elsewhere — and no guard catches that: every name in the
+  // sentence IS in the facts. A missing list is honest; a partial one is not.
   const sel = inputs.sampleSelection ?? null;
-  const obreby = sel
-    ? [
-        ...new Set(
-          effectiveSelection(sel)
-            .proposed.map((c) => obrebName(c.egib))
-            .filter((name) => name !== null),
-        ),
-      ].sort((a, b) => a.localeCompare(b, "pl"))
-    : [];
+  const sampleObreby = sel ? effectiveSelection(sel).proposed.map((c) => obrebName(c.egib)) : [];
+  const obreby =
+    sampleObreby.length > 0 && sampleObreby.every((name) => name !== null)
+      ? [...new Set(sampleObreby)].sort((a, b) => a.localeCompare(b, "pl"))
+      : [];
 
   const proba: ProseSampleFacts | null = kcs
     ? {
