@@ -18,6 +18,7 @@ from app.prose import (
     build_prompt,
     parse_section_file,
     validate_numbers,
+    validate_obreby,
 )
 
 # Synthetic facts in the shape the prompts document (F-9: fictional world only).
@@ -321,3 +322,45 @@ class TestGuardAcceptsOnlyExactForms:
             validate_numbers("Lokal 71,63 m2, średnia 13 123,60 zł, 12 transakcji.", self.FACTS)
             == []
         )
+
+
+class TestValidateObreby:
+    """Slice 5. Aneta: „analizę opisał nam nie z tego obrębu ewidencyjnego".
+    Nazwa obrębu nie niesie żadnej liczby, więc `validate_numbers` jest na nią
+    ślepy — potrzebna osobna straż."""
+
+    FACTS = {"obreb": "0007 Zarzecze", "proba": {"obreby": ["Golęcin", "Sołacz"]}}
+
+    def test_lapie_obreb_spoza_faktow(self):
+        text = "Zbadano rynek lokalny w obrębie Naramowice oraz w obrębach sąsiednich."
+        assert validate_obreby(text, self.FACTS) == ["Naramowice"]
+
+    def test_przepuszcza_obreby_z_proby(self):
+        assert validate_obreby("Zbadano rynek w obrębach Golęcin i Sołacz.", self.FACTS) == []
+
+    def test_przepuszcza_obreb_wycenianej_nieruchomosci(self):
+        # Few-shot otwiera akapit obrębem PRZEDMIOTU wyceny — z pola `obreb`,
+        # nie z próby. Straż, która go odrzuca, kasuje każdą poprawną generację.
+        text = "Przeprowadzono analizę rynku m. Nowogród, obręb nr 0007 Zarzecze."
+        assert validate_obreby(text, self.FACTS) == []
+
+    def test_przepuszcza_odmienione_nazwy(self):
+        # Polszczyzna odmienia nazwy własne; straż nie może karać za gramatykę.
+        assert validate_obreby("Transakcje z obrębu Golęcina i z Sołacza.", self.FACTS) == []
+
+    def test_nie_lapie_slow_pospolitych_po_slowie_obreb(self):
+        assert validate_obreby("Badanie w obrębie jednego budynku.", self.FACTS) == []
+
+    def test_bez_faktow_o_obrebach_kazda_nazwa_jest_naruszeniem(self):
+        assert validate_obreby("Rynek w obrębie Naramowice.", {}) == ["Naramowice"]
+
+    def test_pusty_tekst_i_brak_wzmianki(self):
+        assert validate_obreby("", self.FACTS) == []
+        assert validate_obreby("Ceny mieściły się w przedziale.", self.FACTS) == []
+
+    def test_few_shoty_promptu_sa_czyste(self):
+        # Regresja na samą straż: gdyby odrzucała poprawną polszczyznę, sekcja
+        # byłaby trwale niewypełnialna, a testy syntetyczne by tego nie pokazały.
+        _, examples = parse_section_file(PROMPTS_DIR / "analiza_rynku.md")
+        for facts, answer in examples:
+            assert validate_obreby(answer, facts) == []

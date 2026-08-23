@@ -152,6 +152,78 @@ def validate_numbers(text: str, facts: dict) -> list[str]:
     return violations
 
 
+# --- Obręb guard (Slice 5) -------------------------------------------------
+#
+# `validate_numbers` is blind to an invented obręb: a name carries no digit.
+# Aneta on a generated section: "analizę opisał nam nie z tego obrębu
+# ewidencyjnego". The facts now name the study area (`proba.obreby`, built from
+# the sample the appraiser actually kept), so the text may name no other.
+
+_OBREB_KEYWORD_RE = re.compile(r"\bobręb\w*", re.IGNORECASE)
+# A proper noun: initial capital (Polish letters included). NEVER IGNORECASE —
+# lowercase words after "w obrębie" are ordinary prose ("w obrębie jednego
+# budynku"), and matching them would make every sentence a violation.
+_OBREB_NAME_RE = re.compile(r"[A-ZĄĆĘŁŃÓŚŹŻ][\w-]+")
+# What may follow the keyword: an optional "nr", an optional 4-digit code, then
+# one or more names joined by a comma / "i" / "oraz" ("obrębach Golęcin i
+# Sołacz", "obręb nr 0007 Zarzecze"). `\s` spans the newline the prompt's
+# few-shot wraps on.
+_OBREB_TAIL_RE = re.compile(
+    r"(?:\s+[Nn]r)?(?:\s+\d{1,4})?"
+    r"((?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][\w-]+(?:\s*,|\s+i|\s+oraz)?)+)"
+)
+
+
+def _obreb_stem(name: str) -> str:
+    """Casefolded name minus its last two characters (never below four), so a
+    declined form still matches: "Golęcina" -> stem "golęc" of "Golęcin".
+    Polish declines proper nouns and the guard must not punish grammar.
+
+    # ponytail: prefix on a stem, not a morphological analyser. Poznań's 24
+    # obręb names are single words with no colliding prefixes; a real declension
+    # engine only earns its place if a name ever needs one.
+    """
+    low = name.casefold()
+    return low[: max(4, len(low) - 2)]
+
+
+def _allowed_obreby(facts: dict) -> list[str]:
+    """Obręb names the text may use: the sample's study area plus the SUBJECT's
+    own obręb — the few-shot opens its first paragraph with the latter, so a
+    guard that reads only `proba.obreby` would reject every correct generation.
+    `obreb` arrives as "0007 Zarzecze"; the code is not a name."""
+    proba = facts.get("proba")
+    raw = proba.get("obreby") or [] if isinstance(proba, dict) else []
+    names = [n for n in raw if isinstance(n, str)]
+    subject = facts.get("obreb")
+    if isinstance(subject, str):
+        names.extend(_OBREB_NAME_RE.findall(subject))
+    return [n for n in names if n]
+
+
+def validate_obreby(text: str, facts: dict) -> list[str]:
+    """Obręb names present in the TEXT but absent from the FACTS (empty = clean).
+
+    Only names introduced by the word "obręb" in any of its forms are read —
+    the section also names a city and a street, and those are not obręby.
+    """
+    allowed = _allowed_obreby(facts)
+    stems = [(_obreb_stem(name), len(name.casefold())) for name in allowed]
+
+    violations: list[str] = []
+    for keyword in _OBREB_KEYWORD_RE.finditer(text):
+        tail = _OBREB_TAIL_RE.match(text, keyword.end())
+        if not tail:
+            continue
+        for found in _OBREB_NAME_RE.findall(tail.group(1)):
+            low = found.casefold()
+            if any(low.startswith(stem) and len(low) <= length + 3 for stem, length in stems):
+                continue
+            if found not in violations:
+                violations.append(found)
+    return violations
+
+
 def _dumps(data: dict) -> str:
     return json.dumps(data, indent=1, ensure_ascii=False)
 

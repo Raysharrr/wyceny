@@ -440,3 +440,32 @@ def test_empty_response_is_refused(monkeypatch):
     install_stub_anthropic(monkeypatch, text="   ")
     with pytest.raises(RuntimeError, match="pusta"):
         main._generate_prose_section("opis_lokalu", "PROMPT")
+
+
+# Slice 5: an obręb the facts never named. Carries NO number, so
+# `validate_numbers` waves it through — the section is rejected only because
+# `validate_obreby` runs alongside it.
+OBCY_OBREB = "Zbadano rynek lokalny w obrębie Naramowice, gdzie odnotowano transakcje."
+WLASNY_OBREB = "Zbadano rynek lokalny w obrębie Zarzecze, gdzie odnotowano transakcje."
+
+
+def test_obreb_spoza_faktow_jest_odrzucany_po_ponownej_probie(monkeypatch):
+    monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({"analiza_rynku": [OBCY_OBREB]}))
+    resp = post(mint(), sekcje=["analiza_rynku"])
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sekcje"] == {}
+    assert body["odrzucone"] == {"analiza_rynku": ["Naramowice"]}
+
+
+def test_obreb_spoza_faktow_naprawiony_w_drugiej_probie_przechodzi(monkeypatch):
+    fake = FakeLlm({"analiza_rynku": [OBCY_OBREB, WLASNY_OBREB]})
+    monkeypatch.setattr(main, "_generate_prose_section", fake)
+    resp = post(mint(), sekcje=["analiza_rynku"])
+
+    assert resp.status_code == 200
+    assert resp.json()["sekcje"] == {"analiza_rynku": WLASNY_OBREB}
+    # Poprawka niesie nazwę, nie tylko liczby — inaczej model nie wie, co zmienić.
+    _, _, correction = fake.calls[1]
+    assert "Naramowice" in correction

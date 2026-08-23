@@ -722,8 +722,11 @@ class _SectionOutcome(NamedTuple):
 
 
 PROSE_RETRY_INSTRUCTION = (
-    "UWAGA: poprzednia wersja tej sekcji zawierała liczby spoza DANE: {numbers}. "
-    "Napisz ją ponownie, używając wyłącznie liczb z DANE poniżej.\n\n"
+    # "wartości", not "liczby": since Slice 5 the list can also hold an obręb
+    # name the facts never carried (`prose.validate_obreby`), and telling the
+    # model that "Naramowice" is a number teaches it nothing about the fix.
+    "UWAGA: poprzednia wersja tej sekcji zawierała wartości spoza DANE: {numbers}. "
+    "Napisz ją ponownie, używając wyłącznie liczb i nazw z DANE poniżej.\n\n"
     # Trailing blank line on purpose: this block sits directly in front of the
     # validated prompt, and nothing guarantees the API puts a separator between
     # two adjacent text blocks. Without it the model could see
@@ -734,6 +737,14 @@ PROSE_RETRY_INSTRUCTION = (
 PROSE_FAILED_DETAIL = (
     "Nie udało się wygenerować opisów — spróbuj ponownie albo napisz teksty ręcznie."
 )
+
+
+def _prose_violations(text: str, facts: dict) -> list[str]:
+    """Everything the text asserts that the facts do not carry. Two guards, one
+    list: invented NUMBERS (areas, prices, years) and invented OBRĘB names —
+    the latter carry no digit, so the number guard is blind to exactly the
+    error the appraiser reported ("opisał nam nie z tego obrębu")."""
+    return prose_core.validate_numbers(text, facts) + prose_core.validate_obreby(text, facts)
 
 
 def _prose_section(section: str, facts: dict) -> _SectionOutcome:
@@ -753,7 +764,7 @@ def _prose_section(section: str, facts: dict) -> _SectionOutcome:
         input_tokens += completion.input_tokens
         output_tokens += completion.output_tokens
         text = completion.text.strip()
-        violations = prose_core.validate_numbers(text, facts)
+        violations = _prose_violations(text, facts)
 
         if violations:
             logger.warning("prose_section_retry", section=section, violations=violations)
@@ -765,7 +776,7 @@ def _prose_section(section: str, facts: dict) -> _SectionOutcome:
             input_tokens += retry.input_tokens
             output_tokens += retry.output_tokens
             text = retry.text.strip()
-            violations = prose_core.validate_numbers(text, facts)
+            violations = _prose_violations(text, facts)
             if violations:
                 logger.warning("prose_section_rejected", section=section, violations=violations)
                 text = ""
