@@ -30,6 +30,8 @@ export type PropertyRightDoc = {
   klauzulaPiwnicy: string | null;
   /** Whether the approval gate demands the KW gruntu (księga macierzysta) number. */
   wymagaKwGruntu: boolean;
+  /** Whether the approval gate demands the KW lokalu number (a coop right has no księga of its own). */
+  wymagaKwLokalu: boolean;
 };
 
 export const PROPERTY_RIGHT_DOC: Record<PropertyRight, PropertyRightDoc> = {
@@ -45,6 +47,7 @@ export const PROPERTY_RIGHT_DOC: Record<PropertyRight, PropertyRightDoc> = {
     // comes from the extract, not from a fixed sentence.
     klauzulaPiwnicy: null,
     wymagaKwGruntu: true,
+    wymagaKwLokalu: true,
   },
   spoldzielcze_wlasnosciowe: {
     przedmiot: {
@@ -60,5 +63,6 @@ export const PROPERTY_RIGHT_DOC: Record<PropertyRight, PropertyRightDoc> = {
     klauzulaPiwnicy:
       "Właściciele spółdzielczego własnościowego prawa mają możliwość korzystania z piwnicy, nie jest ona jednak objęta w/w prawem i nie stanowi prawa majątkowego.",
     wymagaKwGruntu: false,
+    wymagaKwLokalu: false,
   },
 };

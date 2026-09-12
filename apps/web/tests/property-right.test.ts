@@ -30,6 +30,7 @@ describe("domain/property-right", () => {
     expect(d.klauzule).toEqual([]);
     expect(d.klauzulaPiwnicy).toBeNull();
     expect(d.wymagaKwGruntu).toBe(true);
+    expect(d.wymagaKwLokalu).toBe(true);
   });
 
   it("spółdzielcze: Piastowskie wording, placeholder publikator, KW gruntu not required", () => {
@@ -48,5 +49,6 @@ describe("domain/property-right", () => {
       "Właściciele spółdzielczego własnościowego prawa mają możliwość korzystania z piwnicy, nie jest ona jednak objęta w/w prawem i nie stanowi prawa majątkowego.",
     );
     expect(d.wymagaKwGruntu).toBe(false);
+    expect(d.wymagaKwLokalu).toBe(false);
   });
 });

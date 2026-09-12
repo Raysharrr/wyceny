@@ -214,15 +214,15 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
     }
     // Same shape as the kwLokalu/deweloperski branch below: the right says
     // whether the księga macierzysta is even a thing for this lokal.
-    const wymagaKwGruntu =
-      PROPERTY_RIGHT_DOC[input.propertyRight ?? "wlasnosc_lokalu"].wymagaKwGruntu;
+    const { wymagaKwGruntu, wymagaKwLokalu } =
+      PROPERTY_RIGHT_DOC[input.propertyRight ?? "wlasnosc_lokalu"];
     if (!input.kw.kwGruntu && wymagaKwGruntu) {
       blockers.push({
         path: "kw.kwGruntu",
         label: "Numer KW gruntu (księgi macierzystej) — brak.",
       });
     }
-    if (!input.kw.kwLokalu && !input.kw.deweloperski) {
+    if (!input.kw.kwLokalu && !input.kw.deweloperski && wymagaKwLokalu) {
       blockers.push({
         path: "kw.kwLokalu",
         label:

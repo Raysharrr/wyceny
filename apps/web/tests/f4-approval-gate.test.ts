@@ -269,6 +269,26 @@ describe("kw group (Slice 6)", () => {
     expect(legacy.ok).toBe(false);
   });
 
+  it("B-3: spółdzielcze + extract without KW lokalu → no kwLokalu blocker; własność → blocker as before", () => {
+    const base = passingInput();
+    const prov = {
+      ...base.provenance,
+      kw: { source: "akt" as const, status: "confirmed" as const },
+    };
+    const noLokal = { ...kwOk, kwLokalu: null, kwGruntu: null };
+    const coop = approvalGate({
+      ...base,
+      provenance: prov,
+      kw: noLokal,
+      propertyRight: "spoldzielcze_wlasnosciowe",
+    });
+    expect(coop.ok).toBe(false);
+    if (!coop.ok) expect(coop.blockers.map((b) => b.path)).toEqual(["document.propertyRight"]);
+    const own = approvalGate({ ...base, provenance: prov, kw: { ...kwOk, kwLokalu: null } });
+    expect(own.ok).toBe(false);
+    if (!own.ok) expect(own.blockers.map((b) => b.path)).toEqual(["kw.kwLokalu"]);
+  });
+
   it("B-2 (temporary, TODO S4): spółdzielcze → 'tekst w przygotowaniu' blocker; własność → none", () => {
     const coop = approvalGate({ ...passingInput(), propertyRight: "spoldzielcze_wlasnosciowe" });
     expect(coop.ok).toBe(false);

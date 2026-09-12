@@ -203,6 +203,7 @@ describe("KwSection", () => {
     expect(screen.queryByTestId("property-right-coop-info")).toBeNull();
     expect(screen.queryByLabelText("Lokal ma przynależną piwnicę")).toBeNull();
     expect(screen.queryByTestId("kw-gruntu-coop-hint")).toBeNull();
+    expect(screen.queryByTestId("kw-lokalu-coop-hint")).toBeNull();
   });
 
   it("switching to spółdzielcze shows the registry note, the basement checkbox and the KW gruntu hint", async () => {
@@ -217,6 +218,9 @@ describe("KwSection", () => {
       "KW gruntu nie jest wymagana",
     );
     expect(screen.getByLabelText("Nr KW gruntu (księga macierzysta)")).toBeTruthy();
+    expect(screen.getByTestId("kw-lokalu-coop-hint").textContent).toContain(
+      "KW lokalu nie jest wymagana",
+    );
   });
 
   it("switching back to własność clears a basement ticked under the coop right (M-2)", async () => {

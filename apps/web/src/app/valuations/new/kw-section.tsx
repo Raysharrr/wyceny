@@ -373,6 +373,15 @@ export function KwSection(props: KwSectionProps) {
                         puste.
                       </p>
                     ) : null}
+                    {f.name === "kw.kwLokalu" && coop ? (
+                      <p
+                        data-testid="kw-lokalu-coop-hint"
+                        className="text-xs text-muted-foreground"
+                      >
+                        Dla spółdzielczego prawa KW lokalu nie jest wymagana — pole możesz zostawić
+                        puste.
+                      </p>
+                    ) : null}
                   </div>
                 )}
               />
