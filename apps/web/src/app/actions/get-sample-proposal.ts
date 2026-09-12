@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSession } from "@/auth/session";
-import { sampleProposal, storage, valuationRepository } from "@/app/valuations/_deps";
+import { sampleProposalFor, storage, valuationRepository } from "@/app/valuations/_deps";
 import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 import { WORKER_RESPONDED_PREFIX } from "@/adapters/sample-http";
@@ -16,8 +16,8 @@ import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 
 const inputSchema = valuationFormObject.pick({ address: true, area: true }).extend({
   valuationId: z.uuid("Nieprawidłowe dane formularza."),
-  // Ręczne pasma rzeczoznawcy (Slice 6) — bez tego "Pobierz próbę z RCN
-  // ponownie" po cichu wyrzucałoby wpisane zakresy.
+  // Ręczne pasma rzeczoznawcy (Slice 6) — bez tego "Pobierz próbę ponownie"
+  // po cichu wyrzucałoby wpisane zakresy.
   areaRange: manualRangeSchema.optional(),
   unitPriceRange: manualRangeSchema.optional(),
 });
@@ -50,10 +50,10 @@ export type GetSampleProposalResult =
   | { error: string };
 
 const GENERIC_ERROR =
-  "Nie udało się pobrać próby z RCN — spróbuj ponownie albo wpisz transakcje ręcznie.";
+  "Nie udało się pobrać próby — spróbuj ponownie albo wpisz transakcje ręcznie.";
 
 /**
- * Server Action backing the "Pobierz próbę z RCN" button (step 3, ADR-015
+ * Server Action backing the "Pobierz próbę" button (step 3, ADR-015
  * "Dobor proby v3"). Session-gated like `createDraft`; validates
  * address/area with the same rules as the main form (reused via `.pick()`),
  * loads the draft's already-resolved subject point (step 1's fetch, if any),
@@ -99,7 +99,13 @@ export async function getSampleProposal(
 
       const meta = valuation.inputs?.subjectMeta ?? null;
       const point = meta ? { x: meta.x, y: meta.y, srid: 2180 as const } : undefined;
-      const pool = await sampleProposal.fetchPool({ address, area, ...(point ? { point } : {}) });
+      // The ONE switch on the right (S3): RCN for ownership, the office coop
+      // register for a cooperative right — `sampleProposalFor` in `_deps.ts`.
+      const pool = await sampleProposalFor(valuation.propertyRight).fetchPool({
+        address,
+        area,
+        ...(point ? { point } : {}),
+      });
 
       // Overwrites any previous cache for this valuation (it's a CACHE, not
       // a versioned snapshot) — a write failure must not cost the appraiser

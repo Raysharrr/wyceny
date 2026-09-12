@@ -2,6 +2,10 @@ import { db } from "@/db/client";
 import { valuationRepo } from "@/adapters/valuation-drizzle";
 import { httpWorker } from "@/adapters/worker-http";
 import { httpSampleProposal } from "@/adapters/sample-http";
+import { coopRegistrySampleProposal } from "@/adapters/sample-coop-registry";
+import { mintWorkerToken } from "@/lib/worker-token";
+import type { PropertyRight } from "@/domain/property-right";
+import type { PortSampleProposal } from "@/ports/sample";
 import { httpSubjectProposal } from "@/adapters/subject-http";
 import { httpAddressSuggest } from "@/adapters/suggest-http";
 import { httpProseProposal } from "@/adapters/prose-http";
@@ -47,6 +51,29 @@ export const coopSheet = httpCoopSheet(process.env.WORKER_URL ?? "http://localho
 export const geocoder = httpGeocoder(process.env.WORKER_URL ?? "http://localhost:8000", (errName) =>
   log.warn({ event: "coop.geocode.chunk_failed", errName }),
 );
+/**
+ * T-14 (S3): the second `PortSampleProposal` — the office coop register. The
+ * subject is geocoded through the worker's batch endpoint (UUG → Nominatim),
+ * one address at a time; a miss is a Polish error the Server Action shows
+ * verbatim, never a silent empty pool.
+ */
+export const coopSampleProposal = coopRegistrySampleProposal(coopRegistry, async (address) => {
+  const token = mintWorkerToken();
+  if (!token) throw new Error("Brak konfiguracji geokodera (WORKER_SHARED_SECRET).");
+  const [hit] = await geocoder.geocodeMany([address], token);
+  if (!hit) {
+    throw new Error(
+      // `geocodeMany` degrades a failed chunk to null too, so a miss and a dead
+      // worker look the same here — the message names both (review 1 MINOR-5).
+      "Nie udało się ustalić położenia przedmiotu wyceny — sprawdź adres w kroku 1 albo spróbuj za chwilę (usługa położenia mogła nie odpowiedzieć).",
+    );
+  }
+  return hit;
+});
+/** The ONE switch on the kind of right in the whole block (spec §4.2): which register feeds step 3. */
+export function sampleProposalFor(right: PropertyRight): PortSampleProposal {
+  return right === "spoldzielcze_wlasnosciowe" ? coopSampleProposal : sampleProposal;
+}
 /** Slice 3: null without GOOGLE_STREET_VIEW_KEY or with NEXT_PUBLIC_STREET_VIEW=off (CI e2e) — step 3 then renders placeholders. */
 export const streetView: PortStreetView | null =
   process.env.NEXT_PUBLIC_STREET_VIEW === "off" || !process.env.GOOGLE_STREET_VIEW_KEY

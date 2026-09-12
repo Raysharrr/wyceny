@@ -484,3 +484,18 @@ describe("SamplePanel — status-aware actions (Task 4)", () => {
     expect(screen.queryByRole("button", { name: "Potwierdź odrzucenie" })).toBeNull();
   });
 });
+
+// S3 (review 2): the "Źródło" row follows the POOL source, like the row badge.
+describe("SamplePanel — wiersz „Źródło” (S3)", () => {
+  it("rejestr_sm → „Rejestr biura · SM „…””, rcn → „RCN”, brak źródła → „RCN”", () => {
+    const { rerender } = render(
+      <SamplePanel {...base} source="rejestr_sm" candidate={{ ...c, cooperative: "SM Test" }} />,
+    );
+    expect(screen.getByText("Rejestr biura · SM „Test”")).toBeTruthy();
+    rerender(<SamplePanel {...base} source="rcn" />);
+    expect(screen.getByText("RCN")).toBeTruthy();
+    expect(screen.queryByText(/Rejestr biura/)).toBeNull();
+    rerender(<SamplePanel {...base} candidate={{ ...c, cooperative: "SM Test" }} />);
+    expect(screen.getByText("RCN")).toBeTruthy();
+  });
+});

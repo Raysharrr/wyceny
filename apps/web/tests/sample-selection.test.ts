@@ -377,3 +377,46 @@ describe("dedupe", () => {
     expect(r.kept.map((x) => x.v).sort()).toEqual([2, 3]);
   });
 });
+
+// S3 (blok "Prawo spółdzielcze"): registry candidates — share/rightType unknown.
+describe("selectSample — registry candidates (S3)", () => {
+  const registry = (over: Partial<Candidate> = {}): Candidate =>
+    mk({
+      egib: null,
+      lokalId: "",
+      buildingRef: "piastowskie|57",
+      function: null,
+      transType: null,
+      market: null,
+      share: null,
+      rightType: null,
+      ...over,
+    });
+  it("share null skips share_not_whole (ADR-010) and raises attributes_unknown", () => {
+    const c = registry({ function: "mieszkalna", transType: "wolnyRynek" });
+    expect(hygieneReasons(c, "2024-08", "2026-08")).toEqual([]);
+    const s = selectSample([c], P);
+    expect(s.proposed).toHaveLength(1);
+    expect(s.flags[candidateKey(c)]).toContain("attributes_unknown");
+  });
+  it("rightType null → prawo_nieznane; RCN rows (rightType absent) get no such flag", () => {
+    const coop = registry();
+    const rcn = mk();
+    const s = selectSample([coop, rcn], P);
+    expect(s.flags[candidateKey(coop)]).toEqual([
+      "market_unknown",
+      "attributes_unknown",
+      "prawo_nieznane",
+    ]);
+    expect(s.flags[candidateKey(rcn)]).toBeUndefined();
+  });
+  it("rule 6 (max 3 per building) holds on registry rows through buildingRef", () => {
+    const pool = [...Array(5)].map((_, i) =>
+      registry({ transactionId: `C${i}`, buildingRef: "piastowskie|57" }),
+    );
+    const s = selectSample(pool, P);
+    expect(s.proposed).toHaveLength(3);
+    expect(s.alternates).toHaveLength(2);
+    expect(buildingKey(pool[0])).toBe("piastowskie|57");
+  });
+});

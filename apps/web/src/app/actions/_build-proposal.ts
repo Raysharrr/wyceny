@@ -148,6 +148,9 @@ export async function buildProposal(
       valuationId,
       meta: {
         fields,
+        // S3: which register fed the pool and for which right — enum classes, F-13.
+        source: pool.source,
+        right: valuation.propertyRight,
         geocoder: pool.point.source,
         radiusUsedM: selection.radiusUsedM,
         truncated: pool.query.truncated,

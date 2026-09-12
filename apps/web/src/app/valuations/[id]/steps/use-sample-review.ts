@@ -5,7 +5,7 @@ import type { UseFormSetValue } from "react-hook-form";
 import type { z } from "zod";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
 import { reselectSample } from "@/app/actions/reselect-sample";
-import { isRegistrySourced } from "@/domain/kcs";
+import { isRegistrySourced, registrySourceOfPool, type PoolSource } from "@/domain/kcs";
 import { buildingKey, candidateKey, type Candidate } from "@/domain/sample-selection";
 import type {
   ManualInclusion,
@@ -36,21 +36,28 @@ type ComparableRow = FormInput["comparables"][number];
  * input" rule, so a manual rejection's backfill can't drift from a fresh
  * fetch's.
  */
-export function rcnRow(t: {
-  date: string;
-  area: number;
-  pricePerM2: number;
-  transactionId: string;
-  lokalId: string;
-}): ComparableRow {
+export function rcnRow(
+  t: {
+    date: string;
+    area: number;
+    pricePerM2: number;
+    transactionId: string;
+    lokalId: string;
+  },
+  /** The pool the candidate came from — the row's `source` is DERIVED from it, never a literal (S3). */
+  poolSource: PoolSource,
+): ComparableRow {
+  const source = registrySourceOfPool(poolSource);
   return {
     date: t.date,
     area: String(Math.round(t.area * 100) / 100),
     pricePerM2: String(Math.round(t.pricePerM2 * 100) / 100),
-    // TODO(S3): źródło z puli (rejestr-sm → rejestr_sm), nie literał.
-    source: "rcn" as const,
+    source,
     transactionId: t.transactionId,
     lokalId: t.lokalId,
+    // The register row id doubles as the unforgeable provenance signal
+    // (`assign-provenance.ts`: coopTxId → rejestr_sm) — an RCN row has none.
+    ...(source === "rejestr_sm" ? { coopTxId: t.transactionId } : {}),
   };
 }
 
@@ -100,6 +107,7 @@ export function rcnRow(t: {
 function rebuildComparables(
   snap: SampleSelectionSnapshot,
   currentRows: ComparableRow[],
+  poolSource: PoolSource,
 ): ComparableRow[] {
   const nextEff = effectiveSelection(snap);
   const currentRcnRows = currentRows.filter(
@@ -133,7 +141,7 @@ function rebuildComparables(
         unclaimedLegacyRows,
         candidatesForTx.get(c.transactionId) ?? 0,
       );
-      if (!matched) return rcnRow(c);
+      if (!matched) return rcnRow(c, poolSource);
       unclaimedLegacyRows.splice(unclaimedLegacyRows.indexOf(matched), 1);
       return matched;
     }),
@@ -226,6 +234,7 @@ export function useSampleReview({
   setValue,
   replaceComparables,
   liveStreetView,
+  poolSource,
 }: {
   valuationId: string;
   sel: SampleSelectionSnapshot | null | undefined;
@@ -233,7 +242,14 @@ export function useSampleReview({
   setValue: UseFormSetValue<FormInput>;
   replaceComparables: (rows: ComparableRow[]) => void;
   liveStreetView: StreetViewSnapshot | null | undefined;
+  /**
+   * `sampleMeta.source` of the live pool (S3) — a rebuilt row takes its
+   * `source` from here. `undefined` only for a draft with a selection but no
+   * meta, which predates the second source and is therefore RCN.
+   */
+  poolSource: PoolSource | undefined;
 }) {
+  const rowSource: PoolSource = poolSource ?? "rcn-wfs-gugik";
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [isReselecting, setIsReselecting] = useState(false);
   /**
@@ -293,7 +309,7 @@ export function useSampleReview({
    * extra read of not-yet-committed form state.
    */
   const syncComparables = (snap: SampleSelectionSnapshot) => {
-    replaceComparables(rebuildComparables(snap, comparables ?? []));
+    replaceComparables(rebuildComparables(snap, comparables ?? [], rowSource));
   };
 
   /** Panel's "Zostaw" — advances to the next candidate in ranking order; past the last, closes the panel. */
@@ -527,7 +543,7 @@ export function useSampleReview({
       setValue("sampleSelection", newSel, { shouldDirty: true });
       setValue("sampleMeta", result.proposal.sampleMeta, { shouldDirty: true });
       setValue("streetView", result.proposal.streetView, { shouldDirty: true });
-      replaceComparables(rebuildComparables(newSel, comparables ?? []));
+      replaceComparables(rebuildComparables(newSel, comparables ?? [], rowSource));
       // A fresh selection may no longer contain the candidate the panel was
       // showing — mirrors `onFetchSample` closing the panel on a new pool.
       setSelectedKey(null);

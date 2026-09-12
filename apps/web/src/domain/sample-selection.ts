@@ -26,6 +26,7 @@
  */
 import { padObreb } from "./egib-id";
 import type { Egib, SubjectEgib } from "./egib-id";
+import type { PropertyRight } from "./property-right";
 export { padObreb } from "./egib-id";
 export type { Egib, SubjectEgib };
 
@@ -61,8 +62,8 @@ export type Candidate = {
   rooms: number | null;
   /** tran_rodzaj_rynku (28% filled in RCN). */
   market: Market;
-  /** nier_udzial, e.g. "1/1". */
-  share: string;
+  /** nier_udzial, e.g. "1/1"; null = source has no such field (coop registry, S3) — rule skipped, flagged. */
+  share: string | null;
   /** tran_rodzaj_trans, e.g. "wolnyRynek"; null = source has no such field (coop registry, B4). */
   transType: string | null;
   /** lok_funkcja, e.g. "mieszkalna"; null = source has no such field (coop registry, B4). */
@@ -84,6 +85,14 @@ export type Candidate = {
   streetNumber?: string | null;
   /** City from the transaction's own record, NOT from the subject (the bug Łukasz hit). */
   city?: string | null;
+  /**
+   * Coop register rows only (S3): the right the register states, `null` when
+   * it has no such column or the value did not parse — one flag for both
+   * (`prawo_nieznane`). Absent on RCN rows (not applicable, no flag).
+   */
+  rightType?: PropertyRight | null;
+  /** Coop register rows only (S3): the cooperative the row came from — step 3's bar and panel name it. */
+  cooperative?: string;
 };
 
 export type ScoreWeights = {
@@ -161,8 +170,10 @@ export type Flag =
   | "price_outlier"
   | "market_unknown"
   | "primary_suspect"
-  /** function/transType unknown at the source (B4) — informative, never demotes. */
-  | "attributes_unknown";
+  /** function/transType/share unknown at the source (B4, S3) — informative, never demotes. */
+  | "attributes_unknown"
+  /** Register row whose right type is unknown (S3) — informative, never demotes. */
+  | "prawo_nieznane";
 
 export type Rejected = {
   candidate: Candidate;
@@ -218,7 +229,8 @@ export function hygieneReasons(c: Candidate, floor: string, todayMonth: string):
   // (ADR-010, no silent defaults) — selectSample flags it `attributes_unknown`.
   if (c.function !== null && c.function !== "mieszkalna") reasons.push("not_residential");
   if (c.transType !== null && c.transType !== "wolnyRynek") reasons.push("not_free_market");
-  if (!isWholeShare(c.share)) reasons.push("share_not_whole");
+  // Same pattern as the two rules above: null = no share column (coop registry, S3).
+  if (c.share !== null && !isWholeShare(c.share)) reasons.push("share_not_whole");
   const month = c.date.slice(0, 7);
   if (month.length !== 7 || month < floor || month > todayMonth) reasons.push("out_of_window");
   if (c.market === "pierwotny") reasons.push("primary_market");
@@ -386,7 +398,9 @@ export function selectSample(candidates: Candidate[], params: SelectionParams): 
   }
   for (const c of chosen.banded) {
     if (c.market === null) addFlag(candidateKey(c), "market_unknown");
-    if (c.function === null || c.transType === null) addFlag(candidateKey(c), "attributes_unknown");
+    if (c.function === null || c.transType === null || c.share === null)
+      addFlag(candidateKey(c), "attributes_unknown");
+    if (c.rightType === null) addFlag(candidateKey(c), "prawo_nieznane");
     if (c.market === null && c.seller === "osobaPrawna")
       addFlag(candidateKey(c), "primary_suspect");
   }

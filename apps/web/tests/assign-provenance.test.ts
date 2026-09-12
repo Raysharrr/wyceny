@@ -293,3 +293,17 @@ describe("scoped provenance (Slice 11a)", () => {
     expect(p.ratings).toEqual({ source: "rzeczoznawca", status: "confirmed" });
   });
 });
+
+// S3: the register's unforgeable signal is `coopTxId` — checked BEFORE
+// `transactionId`, because a register row carries both (the candidate key
+// needs a transactionId) and must never be promoted to rcn.
+describe("assignSampleProvenance — coop register rows (S3)", () => {
+  it("coopTxId → rejestr_sm / to_verify even when transactionId is present", async () => {
+    const { assignSampleProvenance } = await import("../src/lib/assign-provenance");
+    const [c] = assignSampleProvenance({
+      comparables: [{ pricePerM2: 10000, transactionId: "abc", coopTxId: "abc", source: "manual" }],
+    } as never);
+    expect(c.source).toBe("rejestr_sm");
+    expect(c.status).toBe("to_verify");
+  });
+});

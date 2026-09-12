@@ -42,12 +42,11 @@ export type ReselectSampleResult =
   | { proposal: Awaited<ReturnType<typeof buildProposal>> }
   | { error: string; code?: "pool_missing" | "pool_stale" };
 
-const POOL_MISSING = "Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.";
+const POOL_MISSING = "Zmiana promienia wymaga świeżej puli — pobierz próbę ponownie.";
 // The subject's address/area changed (step 1 edit) since the pool was
 // fetched — reusing it would silently rank against the WRONG point/area
 // band (review round 1, Important #2, 2026-08-21).
-const POOL_STALE =
-  "Dane przedmiotu zmieniły się od ostatniego pobrania — pobierz próbę z RCN ponownie.";
+const POOL_STALE = "Dane przedmiotu zmieniły się od ostatniego pobrania — pobierz próbę ponownie.";
 const GENERIC = "Nie udało się przeliczyć próby — spróbuj ponownie.";
 
 /**

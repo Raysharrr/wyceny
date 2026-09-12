@@ -221,8 +221,7 @@ export function KwSection(props: KwSectionProps) {
               data-testid="property-right-coop-info"
               className="rounded-md border border-border bg-muted/40 p-2 text-sm"
             >
-              Próbę porównawczą wpisz ręcznie w kroku 3 (pobieranie z{" "}
-              <strong>rejestru biura</strong> w kolejnym wydaniu, razem z zakładką{" "}
+              Krok 3 pobierze próbę z <strong>rejestru biura</strong> (zakładka{" "}
               <strong>Rejestr spółdzielczy</strong>).
             </p>
             <Controller

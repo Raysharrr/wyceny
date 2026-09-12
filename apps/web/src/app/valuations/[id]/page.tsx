@@ -89,7 +89,12 @@ export default async function ValuationViewPage({
     const max = maxReachedStep(valuation);
     const step = resolveStep((await searchParams).step, max);
     return (
-      <WizardShell currentStep={step} maxReachedStep={max} valuationId={valuation.id}>
+      <WizardShell
+        currentStep={step}
+        maxReachedStep={max}
+        valuationId={valuation.id}
+        propertyRight={valuation.propertyRight}
+      >
         {step === 1 ? (
           <SubjectForm
             valuationId={valuation.id}
@@ -113,6 +118,7 @@ export default async function ValuationViewPage({
             sampleMeta={valuation.inputs?.sampleMeta ?? null}
             sampleSelection={valuation.inputs?.sampleSelection ?? null}
             streetView={valuation.inputs?.streetView ?? null}
+            propertyRight={valuation.propertyRight}
           />
         ) : step === 4 ? (
           <StepFeatures

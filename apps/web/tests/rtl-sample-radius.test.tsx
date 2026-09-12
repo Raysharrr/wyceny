@@ -72,7 +72,7 @@ describe("SampleRadius", () => {
   });
 
   it("a disabledReason disables all buttons and exposes the reason via title (not as a second visible copy — the caller's alert is the single visible one, review round 1 minor #3)", () => {
-    const reason = "Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.";
+    const reason = "Zmiana promienia wymaga świeżej puli — pobierz próbę ponownie.";
     render(
       <SampleRadius
         value={500}

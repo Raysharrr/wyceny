@@ -189,6 +189,7 @@ describe("StepSample — defaults", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -222,13 +223,14 @@ describe("StepSample — RCN fetch", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[]}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await user.click(screen.getByRole("button", { name: /pobierz próbę/i }));
 
     // (a) called with the full v3 input shape, including valuationId.
     await waitFor(() =>
@@ -298,13 +300,14 @@ describe("StepSample — RCN fetch", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[]}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await user.click(screen.getByRole("button", { name: /pobierz próbę/i }));
 
     await waitFor(() =>
       expect(getSampleProposal).toHaveBeenCalledWith({
@@ -332,13 +335,14 @@ describe("StepSample — RCN fetch", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[]}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await user.click(screen.getByRole("button", { name: /pobierz próbę/i }));
 
     await waitFor(() => expect(bannerText(container)).toMatch(/Dobrano/));
     expect(bannerText(container)).toMatch(/pula może być niepełna/);
@@ -361,6 +365,7 @@ describe("StepSample — submit", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -391,6 +396,7 @@ describe("StepSample — submit", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -432,6 +438,7 @@ describe("StepSample — submit", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={existingSelection}
         streetView={existingStreetView}
@@ -480,6 +487,7 @@ describe("StepSample — a hand-typed row carries no transactionId", () => {
         address={ADDRESS}
         area={AREA}
         comparables={fetched}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -529,6 +537,7 @@ describe("StepSample — legacy v2 sampleMeta draft (item A)", () => {
           { date: "2024-02", area: 61, pricePerM2: 10100, source: "manual" },
           { date: "2024-03", area: 62, pricePerM2: 10200, source: "manual" },
         ]}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={
           {
             lat: 52.4,
@@ -566,6 +575,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
           { date: "2024-01", area: 60, pricePerM2: 10000, source: "manual" },
           { date: "2024-02", area: 61, pricePerM2: 12000, source: "manual" },
         ]}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -586,6 +596,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         address={ADDRESS}
         area={AREA}
         comparables={[]}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -603,6 +614,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -619,6 +631,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={null}
         streetView={null}
@@ -629,7 +642,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
     // show, so the banner says so instead of printing question marks.
     const text = bannerText(container);
     expect(text).not.toContain("?");
-    expect(text).toMatch(/pobierz próbę z RCN ponownie/i);
+    expect(text).toMatch(/pobierz próbę ponownie/i);
     expect(text).toMatch(/23\.07\.2026/);
   });
 
@@ -643,6 +656,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
           { date: "2024-01", area: 60, pricePerM2: 10000, source: "manual" },
           { date: "2024-02", area: 61, pricePerM2: 12000, source: "manual" },
         ]}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -666,6 +680,7 @@ describe("StepSample — stats sidebar + RCN banner (Slice 12 visual parity, ADR
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -699,6 +714,7 @@ describe("StepSample — rozrzut cen w pasku (Slice 6)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={makeSampleSelection({ proposed: proposedWithPrices(prices) })}
         streetView={null}
@@ -750,6 +766,7 @@ describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={makeSampleSelection({ params })}
         streetView={null}
@@ -768,7 +785,7 @@ describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
     });
     withRanges({ areaRange: { min: 40, max: 60 }, unitPriceRange: { min: 9000 } });
 
-    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await user.click(screen.getByRole("button", { name: /pobierz próbę/i }));
 
     await waitFor(() =>
       expect(getSampleProposal).toHaveBeenCalledWith({
@@ -801,7 +818,7 @@ describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
     await user.keyboard("11000");
     await user.tab(); // commit → przeliczenie wisi
 
-    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await user.click(screen.getByRole("button", { name: /pobierz próbę/i }));
 
     await waitFor(() =>
       expect(getSampleProposal).toHaveBeenCalledWith(
@@ -818,7 +835,7 @@ describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
     getSampleProposal.mockImplementation(() => new Promise(() => {})); // wisi
     const { container } = withRanges({});
 
-    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await user.click(screen.getByRole("button", { name: /pobierz próbę/i }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "1000 m" })).toBeDisabled());
     expect(screen.getByLabelText(/cena od/i)).toBeDisabled();
@@ -848,6 +865,7 @@ describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={makeSampleSelection({ radiusUsedM: 500 })}
         streetView={null}
@@ -855,7 +873,7 @@ describe("StepSample — ręczne pasma doboru (Slice 6)", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "1000 m" })); // wisi
-    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await user.click(screen.getByRole("button", { name: /pobierz próbę/i }));
     await waitFor(() => expect(bannerText(container)).toMatch(/w promieniu 2000 m/));
 
     // Dopiero teraz wraca starsze przeliczenie — nie ma prawa cofnąć świeżej puli.
@@ -947,6 +965,7 @@ describe("StepSample — validation", () => {
           { date: "2024-01", area: 60, pricePerM2: 10000, source: "manual" },
           { date: "2024-02", area: 61, pricePerM2: 10100, source: "manual" },
         ]}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -973,6 +992,7 @@ describe("StepSample — validation", () => {
           { date: "2024-04", area: 63, pricePerM2: 10300, source: "manual" },
           { date: "2024-05", area: 64, pricePerM2: 10400, source: "manual" },
         ]}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -993,6 +1013,7 @@ describe("StepSample — candidate table (Slice 3)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={makeSampleSelection({ proposed: [makeCandidate()] })}
         streetView={null}
@@ -1021,13 +1042,14 @@ describe("StepSample — candidate table (Slice 3)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={makeSampleSelection({ proposed: [makeCandidate()] })}
         streetView={null}
       />,
     );
 
-    expect(screen.getByRole("button", { name: /pobierz próbę z rcn/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /pobierz próbę/i })).toBeVisible();
   });
 });
 
@@ -1039,6 +1061,7 @@ describe("StepSample — overview map (Task 9)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={makeSampleSelection({ proposed: [makeCandidate()] })}
         streetView={null}
@@ -1055,6 +1078,7 @@ describe("StepSample — overview map (Task 9)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={null}
         sampleSelection={null}
         streetView={null}
@@ -1108,6 +1132,7 @@ describe("StepSample — manual rejection flow", () => {
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1192,6 +1217,7 @@ describe("StepSample — manual rejection flow", () => {
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1233,6 +1259,7 @@ describe("StepSample — manual rejection flow", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1289,6 +1316,7 @@ describe("StepSample — manual rejection flow", () => {
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1443,6 +1471,7 @@ describe("StepSample — radius buttons (Task 8)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1541,6 +1570,7 @@ describe("StepSample — radius buttons (Task 8)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1566,7 +1596,7 @@ describe("StepSample — radius buttons (Task 8)", () => {
     const user = userEvent.setup();
     const sel = makeSampleSelection({ radiusUsedM: 500 });
     reselectSample.mockResolvedValue({
-      error: "Zmiana promienia wymaga świeżej puli — pobierz próbę z RCN ponownie.",
+      error: "Zmiana promienia wymaga świeżej puli — pobierz próbę ponownie.",
       code: "pool_missing",
     });
 
@@ -1576,6 +1606,7 @@ describe("StepSample — radius buttons (Task 8)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={twelveComparables()}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1585,7 +1616,7 @@ describe("StepSample — radius buttons (Task 8)", () => {
     await user.click(screen.getByRole("button", { name: "1000 m" }));
 
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/pobierz próbę z rcn ponownie/i),
+      expect(screen.getByRole("alert").textContent).toMatch(/pobierz próbę ponownie/i),
     );
     for (const r of [500, 1000, 2000, 3000]) {
       expect(screen.getByRole("button", { name: `${r} m` })).toBeDisabled();
@@ -1606,7 +1637,7 @@ describe("StepSample — radius buttons (Task 8)", () => {
         streetView: {},
       },
     });
-    await user.click(screen.getByRole("button", { name: /pobierz próbę z rcn/i }));
+    await user.click(screen.getByRole("button", { name: /pobierz próbę/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: "500 m" })).not.toBeDisabled());
   });
 
@@ -1666,6 +1697,7 @@ describe("StepSample — radius buttons (Task 8)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1758,6 +1790,7 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1856,6 +1889,7 @@ describe("StepSample — multi-lokal act (final wave runtime fix, Heweliusza 3/4
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1958,6 +1992,7 @@ describe("StepSample — reload path (wave 4): lokalId survives draft hydration"
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -1990,6 +2025,7 @@ describe("StepSample — reload path (wave 4): lokalId survives draft hydration"
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2050,6 +2086,7 @@ describe("StepSample — legacy draft path (wave 4): rows without lokalId are ma
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2104,6 +2141,7 @@ describe("StepSample — legacy draft path (wave 4): rows without lokalId are ma
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2179,6 +2217,7 @@ describe("StepSample — legacy draft path (wave 4): rows without lokalId are ma
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2273,6 +2312,7 @@ describe("StepSample — legacy draft path (wave 6): one legacy row, two candida
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2333,6 +2373,7 @@ describe("StepSample — legacy draft path (wave 6): one legacy row, two candida
         address={ADDRESS}
         area={AREA}
         comparables={initialComparables}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2388,6 +2429,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={proposed.map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2439,6 +2481,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, p2, p3].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2497,6 +2540,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2545,6 +2589,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, included].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2583,6 +2628,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, p2].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2673,6 +2719,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, p2, p3].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2745,6 +2792,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, p2].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2789,6 +2837,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, p2].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2812,6 +2861,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2840,6 +2890,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, p2].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2880,6 +2931,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, p2].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2913,6 +2965,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, p2].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2952,6 +3005,7 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
         address={ADDRESS}
         area={AREA}
         comparables={[p1, p2, p3].map(rcnComparable)}
+        propertyRight="wlasnosc_lokalu"
         sampleMeta={makeSampleMeta()}
         sampleSelection={sel}
         streetView={null}
@@ -2985,5 +3039,152 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
     await user.click(screen.getAllByTestId("proposed-row")[0]);
     await waitFor(() => expect(screen.getByRole("button", { name: "Odrzuć" })).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull();
+  });
+});
+
+// S3 (blok „Prawo spółdzielcze"): krok 3 na wycenie spółdzielczej z pulą z rejestru biura.
+describe("StepSample — prawo spółdzielcze, pula rejestr-sm (S3)", () => {
+  const coopCandidate = (i: number): Candidate =>
+    makeCandidate({
+      transactionId: `C-${i}`,
+      lokalId: "",
+      egib: null,
+      buildingRef: `piastowskie|${i}`,
+      market: null,
+      share: null,
+      transType: null,
+      function: null,
+      seller: null,
+      rightType: null,
+      cooperative: "SM Osiedle Młodych",
+    });
+  const coopMeta = (): SampleMeta => ({ ...makeSampleMeta(), source: "rejestr-sm" });
+  const renderCoop = (sel: SampleSelectionSnapshot | null, meta: SampleMeta | null = coopMeta()) =>
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[]}
+        propertyRight="spoldzielcze_wlasnosciowe"
+        sampleMeta={meta}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+  it("przed pierwszą pulą przycisk mówi „Pobierz próbę z rejestru”, nigdy „z RCN”", () => {
+    renderCoop(null, null);
+    expect(screen.getByRole("button", { name: "Pobierz próbę z rejestru" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /z RCN/i })).toBeNull();
+  });
+
+  it("proposed < 12: komunikat niedoboru drukuje TĘ SAMĄ liczbę co warunek i linkuje do /rejestr", () => {
+    // Three rows of ONE building in the sample + a fourth of the same building in
+    // Alternatywy: rule 6 (max 3 per building) keeps it there, so the overlay's own
+    // refill cannot promote it — the exact "13 in band, 6 proposed" shape from E2E.
+    const sameBuilding = (i: number) => ({ ...coopCandidate(i), buildingRef: "piastowskie|1" });
+    const { container } = renderCoop(
+      makeSampleSelection({
+        proposed: [sameBuilding(1), sameBuilding(2), sameBuilding(3)],
+        // The alternate comes from ANOTHER cooperative: the hint names only the
+        // sample's SM, the bar names the whole pool (E2E D-2).
+        alternates: [{ ...sameBuilding(4), cooperative: "SM Inna" }],
+        counts: { afterBand: 13, proposed: 3 },
+      }),
+    );
+    const hint = screen.getByTestId("registry-shortfall");
+    expect(hint.textContent).toMatch(/W rejestrze biura są 3 transakcje spełniające kryteria/);
+    expect(hint.textContent).not.toMatch(/13/);
+    expect(hint.textContent).toMatch(/\(wszystkie ze SM „Osiedle Młodych”\)/);
+    expect(hint.textContent).not.toMatch(/SM „Inna”/);
+    expect(bannerText(container)).toMatch(/dane ze SM „Osiedle Młodych”, SM „Inna”/);
+    expect(hint.textContent).toMatch(/wymagane 12/);
+    // afterBand ≥ 12 while proposed < 12 → the real advice is the Alternatywy section.
+    expect(hint.textContent).toMatch(/W Alternatywach jest 1 wiersz — dodaj go ręcznie/);
+    const link = screen.getByRole("link", { name: /Dodaj transakcje w Rejestrze/ });
+    expect(link.getAttribute("href")).toBe("/rejestr");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.getByRole("button", { name: "Pobierz próbę ponownie" })).toBeTruthy();
+  });
+
+  it("zdanie o alternatywach: brak, gdy alternatyw 0 albo counts.afterBand < 12; „są N wiersze — dodaj je” przy 2–4 (review 2)", () => {
+    // Fresh render per case: `useForm` reads `sampleSelection` from defaultValues once.
+    const sameBuilding = (i: number) => ({ ...coopCandidate(i), buildingRef: "piastowskie|1" });
+    const hintFor = (sel: SampleSelectionSnapshot) => {
+      const view = renderCoop(sel);
+      const text = screen.getByTestId("registry-shortfall").textContent ?? "";
+      view.unmount();
+      return text;
+    };
+    // 0 alternatyw → bez zdania.
+    let text = hintFor(
+      makeSampleSelection({
+        proposed: [coopCandidate(1), coopCandidate(2)],
+        alternates: [],
+        counts: { afterBand: 13, proposed: 2 },
+      }),
+    );
+    expect(text).toMatch(/wymagane 12/);
+    expect(text).not.toMatch(/W Alternatywach/);
+    // afterBand < 12 → bez zdania, choć alternatywa jest.
+    text = hintFor(
+      makeSampleSelection({
+        proposed: [sameBuilding(1), sameBuilding(2), sameBuilding(3)],
+        alternates: [sameBuilding(4)],
+        counts: { afterBand: 4, proposed: 3 },
+      }),
+    );
+    expect(text).not.toMatch(/W Alternatywach/);
+    // 2–4 alternatywy → „są N wiersze — dodaj je”.
+    text = hintFor(
+      makeSampleSelection({
+        proposed: [sameBuilding(1), sameBuilding(2), sameBuilding(3)],
+        alternates: [sameBuilding(4), sameBuilding(5)],
+        counts: { afterBand: 13, proposed: 3 },
+      }),
+    );
+    expect(text).toMatch(/W Alternatywach są 2 wiersze — dodaj je ręcznie/);
+  });
+
+  it("proposed ≥ 12: bez komunikatu niedoboru", () => {
+    renderCoop(
+      makeSampleSelection({
+        proposed: Array.from({ length: 12 }, (_, i) => coopCandidate(i)),
+        counts: { afterBand: 12, proposed: 12 },
+      }),
+    );
+    expect(screen.queryByTestId("registry-shortfall")).toBeNull();
+  });
+
+  it("wiersz z rejestru ma odznakę „Rejestr SM — do weryfikacji”; pasek nazywa rejestr biura i ostatni import", () => {
+    const { container } = renderCoop(
+      makeSampleSelection({ proposed: [coopCandidate(1), coopCandidate(2)] }),
+      { ...coopMeta(), importedAt: "2026-09-07T10:00:00Z" },
+    );
+    const rows = screen.getAllByTestId("proposed-row");
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row.textContent).toContain("Rejestr SM — do weryfikacji");
+    expect(bannerText(container)).toMatch(/z rejestru biura — dane ze SM „Osiedle Młodych”/);
+    expect(bannerText(container)).toMatch(/ostatni import rejestru: 7\.09\.2026/);
+  });
+
+  it("ścieżka własnościowa: wiersz RCN bez odznaki źródła (review 1 MINOR-1)", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[]}
+        propertyRight="wlasnosc_lokalu"
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection()}
+        streetView={null}
+      />,
+    );
+    for (const row of screen.getAllByTestId("proposed-row")) {
+      expect(row.textContent).not.toMatch(/do weryfikacji/);
+    }
+    expect(screen.queryByTestId("registry-shortfall")).toBeNull();
   });
 });
