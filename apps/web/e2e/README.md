@@ -2,11 +2,11 @@
 
 Dwa zestawy, trzy projekty w `playwright.config.ts`:
 
-| Projekt                  | Plik                                                | Konto                                                                            | Kiedy                   |
-| ------------------------ | --------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------- |
-| `smoke`                  | `smoke.spec.ts`                                     | aneta (admin, loguje się sam)                                                    | CI, każdy push          |
-| `setup` → `spoldzielcze` | `auth.setup.ts` → `spoldzielcze.spec.ts`            | zenon (rzeczoznawca, jedno logowanie per przebieg, `storageState` w `.e2e-tmp/`) | CI, każdy push          |
-| `staging`                | `spoldzielcze.spec.ts`, tylko testy `@staging-safe` | zenon na stagingu                                                                | **ręcznie**, nigdy w CI |
+| Projekt                  | Plik                                                                                                                                                                                            | Konto                                                                            | Kiedy                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------- |
+| `smoke`                  | `smoke.spec.ts`                                                                                                                                                                                 | aneta (admin, loguje się sam)                                                    | CI, każdy push          |
+| `setup` → `spoldzielcze` | `auth.setup.ts` → `spoldzielcze.spec.ts`                                                                                                                                                        | zenon (rzeczoznawca, jedno logowanie per przebieg, `storageState` w `.e2e-tmp/`) | CI, każdy push          |
+| `staging`                | `spoldzielcze.spec.ts`, tylko testy `@staging-safe` (import, formularz ręczny, dym własnościowy CL-16 — **bez** wyceny spółdzielczej, bo na stagingu proza jest ON i krok 6 kosztuje generację) | zenon na stagingu                                                                | **ręcznie**, nigdy w CI |
 
 ## Lokalnie (jak CI)
 
@@ -36,17 +36,24 @@ E2E_BASE_URL=https://wyceny-mu.vercel.app SEED_APPRAISER_PASSWORD='<hasło zenon
 E2E_LIVE_RCN=1 E2E_BASE_URL=… SEED_APPRAISER_PASSWORD=… pnpm e2e:staging
 ```
 
-Zasady na stagingu: **nic nie zatwierdza ani nie podpisuje** (podgląd operatu tylko), dane wyłącznie syntetyczne — każdy przebieg zakłada własną spółdzielnię `SM QA E2E <runId>` (klucz deduplikacji jest treściowy, więc ceny i numery mieszkań zależą od `runId`), zamawiający `QA E2E <runId>`. Szkice zostają w bazie stagingu; usuwa je administrator.
+Zasady na stagingu: **nic nie zatwierdza ani nie podpisuje**, dane wyłącznie syntetyczne — każdy przebieg zakłada własną spółdzielnię `SM QA E2E <runId>` (klucz deduplikacji jest treściowy, więc ceny i numery mieszkań zależą od `runId`), zamawiający `QA E2E <runId>`.
+
+**Sprzątanie (obowiązkowe po każdym `e2e:staging`, robi administrator z `DATABASE_PUBLIC_URL` stagingu):** jeden przebieg dokłada ~130 wierszy i ~6 spółdzielni do rejestru, z którego biuro realnie dobiera próby.
+
+```bash
+DATABASE_URL='<DATABASE_PUBLIC_URL stagingu>' pnpm e2e:cleanup   # usuwa SM „QA E2E …” (wiersze, partie, mapowania); szkice „QA E2E …” zostają
+```
 
 ## Flagi
 
-| Zmienna                    | Znaczenie                                                                                      |
-| -------------------------- | ---------------------------------------------------------------------------------------------- |
-| `E2E_BASE_URL`             | cel zamiast lokalnego `pnpm start` (Playwright nie startuje serwera)                           |
-| `E2E_PORT`                 | port lokalnego serwera (domyślnie 3000)                                                        |
-| `E2E_LIVE_RCN=1`           | włącza test pobrania próby z żywego GUGiK (ścieżka własnościowa); bez flagi test jest pomijany |
-| `GEOCODER_STUB=1` (worker) | geokoder offline — w CI zawsze; na stagingu nigdy                                              |
-| `SEED_APPRAISER_PASSWORD`  | hasło zenona (seed lokalnie / staging)                                                         |
+| Zmienna                    | Znaczenie                                                                                                                                                                                                                                                 |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E2E_BASE_URL`             | cel zamiast lokalnego `pnpm start` (Playwright nie startuje serwera)                                                                                                                                                                                      |
+| `E2E_PORT`                 | port lokalnego serwera (domyślnie 3000)                                                                                                                                                                                                                   |
+| `E2E_LIVE_RCN=1`           | włącza test pobrania próby z żywego GUGiK (ścieżka własnościowa); bez flagi test jest pomijany                                                                                                                                                            |
+| `E2E_APPROVE=1`            | włącza test zatwierdzenia operatu (CL-13): wymaga buildu z `NEXT_PUBLIC_SUBJECT_AUTOFETCH=on` (bramka potrzebuje prowenancji geokodowania z kroku 1, czyli żywego GEOPOZ/UUG); bez flagi cała grupa jest pomijana razem z jej importem; nigdy na stagingu |
+| `GEOCODER_STUB=1` (worker) | geokoder offline — w CI zawsze; na stagingu nigdy                                                                                                                                                                                                         |
+| `SEED_APPRAISER_PASSWORD`  | hasło zenona (seed lokalnie / staging)                                                                                                                                                                                                                    |
 
 ## Jak dodać test
 
