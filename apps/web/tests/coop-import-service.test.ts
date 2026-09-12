@@ -314,3 +314,29 @@ describe("batch ownership (review 1 NIT-1)", () => {
     expect(fin).toBeNull();
   });
 });
+
+describe("finalize is one-shot (review 2 N-2)", () => {
+  it("a second finalize of a closed batch returns null and writes nothing", async () => {
+    const { registry, calls } = fakeRegistry();
+    const input = {
+      rows: parsed.rows,
+      skipped: parsed.skipped,
+      warnings: parsed.warnings,
+      rowsTotal: 1,
+      cooperative: COOP,
+      city: "Poznań",
+      fileName: FILE,
+      mapping: {},
+      userId: "u-once",
+      workerToken: "t",
+    };
+    const first = await runCoopImport({ registry, geocoder, eventLog }, input);
+    const before = calls.length;
+    const again = await finalizeCoopImport(
+      { registry, eventLog },
+      { batchId: first.batchId, rowsTotal: 1, userId: "u-once", totals: sumCoopChunks([]) },
+    );
+    expect(again).toBeNull();
+    expect(calls.length).toBe(before);
+  });
+});

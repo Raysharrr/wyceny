@@ -130,6 +130,8 @@ export async function finalizeCoopImport(
   // `startCoopImport` — the client does not send them a second time (review 1 m-2).
   const batch = await deps.registry.getBatch(input.batchId);
   if (!batch || batch.createdBy !== input.userId) return null;
+  // N-2: a batch closes once — a repeated finalize must not double the event_log entries.
+  if (batch.finishedAt) return null;
   const { totals } = input;
   const meta = coopImportEventMeta({
     rowsTotal: input.rowsTotal,
