@@ -17,7 +17,9 @@
  * without "os." / trailing space, a date typed as text ("02.01.2023r."), a
  * decimal comma, a blank row, a non-numeric area, an unparseable date, a
  * second sheet with no header row and a different column order where the
- * flat number sits after a slash in the address cell.
+ * flat number sits after a slash in the address cell, a third sheet shaped
+ * like SM "Przylesie" — no flat-number column at all, address carries only
+ * the building number, a sum row without a label.
  *
  * Hand-rolled XLSX via pizzip (already a dependency through docxtemplater):
  * inline strings, plain numbers, and date cells as serials with the
@@ -108,7 +110,18 @@ const SHEET_2: { name: string; rows: Cell[][] } = {
   ],
 };
 
-const SHEETS = [SHEET_1, SHEET_2];
+/** Przylesie-shaped: address with building only, NO flat column, unit price given, sum row last. */
+const SHEET_3: { name: string; rows: Cell[][] } = {
+  name: "Bez nr mieszkania",
+  rows: [
+    ["Adres", "Pow.", "Cena", "zł/m²", "Data", "Tytuł własności"],
+    ["os. Wymyślone 12", 45, 450000, 10000, { date: "2025-01-14" }, "spółdzielcze własnościowe"],
+    ["os. Wymyślone 12", 52, 450000, 8653.85, { date: "2025-01-14" }, "odrębna własność"],
+    [null, 97, 900000, 9278.35, null, null],
+  ],
+};
+
+const SHEETS = [SHEET_1, SHEET_2, SHEET_3];
 
 // --- expected worker output (the contract) ---------------------------------
 function cellText(c: Cell): string {

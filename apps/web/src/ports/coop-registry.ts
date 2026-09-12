@@ -20,7 +20,11 @@ export type CoopTransaction = {
   /** As typed in the register, trimmed — "Piastowskie", "os. Orła Białego". */
   address: string;
   buildingNumber: string;
-  /** "" when the register has no flat column — dedupe then degrades to (address|date|price). */
+  /**
+   * "" when the register has no flat-number column (mapping `flatNumber:
+   * "absent"`) or the cell was blank — the row is then keyed by area instead
+   * (`coopDedupeKey`) and reported as a `no_flat` warning.
+   */
   flatNumber: string;
   area: number;
   priceTotal: number;
@@ -81,7 +85,11 @@ export type CoopRegistryStats = {
 export interface PortCoopRegistry {
   /** `as` switches the read to `app_role` under the office-level RLS policy (0014); omitted = superuser read. */
   list(q: CoopRegistryQuery, as?: SessionUser): Promise<{ rows: CoopTransaction[]; total: number }>;
-  /** Inserts what is new by `dedupeKey`; re-importing the same file yields `inserted: 0`. */
+  /**
+   * Inserts what is new by `dedupeKey`. The key is content-based (never the
+   * row's position), so re-importing the same file — or an updated one with
+   * rows added — inserts only what is genuinely new.
+   */
   upsertMany(
     rows: NewCoopTransaction[],
     by: { userId: string; batchId: string | null },

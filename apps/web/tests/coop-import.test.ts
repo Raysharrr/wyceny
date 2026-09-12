@@ -161,6 +161,7 @@ describe("coopDedupeKey", () => {
     flatNumber: "43",
     date: "2025-08-25",
     priceTotal: 450000,
+    area: 43.34,
     rep: null,
   };
   it("two identical rows (incl. flat) → same key", () => {
@@ -174,23 +175,68 @@ describe("coopDedupeKey", () => {
     expect(a).toBe(coopDedupeKey({ ...base, rep: "a  1234/2025", priceTotal: 1 }));
     expect(a).not.toBe(coopDedupeKey({ ...base, rep: "A 1234/2025", flatNumber: "44" }));
   });
-  it("blank flat number falls back to the row ordinal — two flats never collapse", () => {
+  const PRZYLESIE = { address: 0, area: 1, priceTotal: 2, date: 3, flatNumber: "absent" as const };
+  const CTX = {
+    cooperative: "SM Przylesie (syntetyczna)",
+    priceKind: "transakcyjna" as const,
+    headerRow: null,
+  };
+
+  it("register without a flat column (Przylesie): 45 m² and 52 m² same day/price stay two rows", () => {
     const rows = [
-      ["Zmyślona", "4", "", "45.5", "455000", "2025-01-14"],
-      ["Zmyślona", "4", "", "45.5", "455000", "2025-01-14"],
+      ["os. Przylesie 12", "45", "450000", "2025-01-14"],
+      ["os. Przylesie 12", "52", "450000", "2025-01-14"],
     ];
-    const r = parseCoopSheet(
-      rows,
-      { address: 0, buildingNumber: 1, flatNumber: 2, area: 3, priceTotal: 4, date: 5 },
-      { cooperative: "SM", priceKind: "nieustalona", headerRow: null },
-    );
+    const r = parseCoopSheet(rows, PRZYLESIE, CTX);
     expect(r.rows).toHaveLength(2);
     expect(r.skipped).toEqual([]);
     expect(r.warnings).toEqual([
       { row: 0, reason: "no_flat" },
       { row: 1, reason: "no_flat" },
     ]);
-    expect(new Set(r.rows.map((x) => x.dedupeKey)).size).toBe(2);
+    // Building split off the address cell — the input of ADR-015 rule 6.
+    expect(r.rows.map((x) => [x.address, x.buildingNumber, x.flatNumber])).toEqual([
+      ["os. Przylesie", "12", ""],
+      ["os. Przylesie", "12", ""],
+    ]);
+    expect(coopBuildingRef(r.rows[0]!)).toBe("przylesie|12");
+    expect(r.rows[0]!.dedupeKey).toBe("przylesie 12|area:45|2025-01-14|450000");
+  });
+
+  it("two no-flat rows equal in building, day, price AND area merge — reported as no_flat_merge", () => {
+    const rows = [
+      ["os. Przylesie 12", "45", "450000", "2025-01-14"],
+      ["os. Przylesie 12", "45", "450000", "2025-01-14"],
+    ];
+    const r = parseCoopSheet(rows, PRZYLESIE, CTX);
+    expect(r.rows).toHaveLength(1);
+    expect(r.skipped).toEqual([{ row: 1, reason: "duplicate" }]);
+    expect(r.warnings).toEqual([
+      { row: 0, reason: "no_flat" },
+      { row: 1, reason: "no_flat_merge" },
+    ]);
+  });
+
+  it("the key never depends on the row's position: an updated file with a row added above re-imports cleanly", () => {
+    const v1 = [
+      ["os. Przylesie 12", "45", "450000", "2025-01-14"],
+      ["os. Przylesie 12", "52", "450000", "2025-01-14"],
+    ];
+    const v2 = [["os. Przylesie 30", "60", "500000", "2025-02-01"], ...v1];
+    const keys1 = parseCoopSheet(v1, PRZYLESIE, CTX).rows.map((x) => x.dedupeKey);
+    const keys2 = parseCoopSheet(v2, PRZYLESIE, CTX).rows.map((x) => x.dedupeKey);
+    expect(keys2.slice(1)).toEqual(keys1);
+    expect(parseCoopSheet(v1, PRZYLESIE, CTX).rows.map((x) => x.dedupeKey)).toEqual(keys1);
+  });
+
+  it("area above 10 000 m² is bad_number — a thousands dot read as area must not enter the register", () => {
+    const r = parseCoopSheet(
+      [["os. Przylesie 12", "56.000", "450000", "2025-01-14"]],
+      PRZYLESIE,
+      CTX,
+    );
+    expect(r.rows).toHaveLength(0);
+    expect(r.skipped).toEqual([{ row: 0, reason: "bad_number" }]);
   });
 
   it("buildingRef = normalised address | building", () => {
@@ -215,8 +261,9 @@ describe("parseCoopSheet on the synthetic fixture", () => {
     ]);
   });
 
-  it("flags the row with a blank flat number instead of skipping it", () => {
+  it("a blank flat cell in a mapped column imports with a no_flat warning, keyed by area", () => {
     expect(result.warnings).toEqual([{ row: 13, reason: "no_flat" }]);
+    expect(result.rows[4]!.dedupeKey).toBe("bukowa 9|area:50|2025-04-01|500000");
   });
 
   it("treats the same-day same-price flat 13 as a separate transaction", () => {
@@ -284,6 +331,10 @@ describe("coopImportEventMeta (F-13)", () => {
         { row: 11, reason: "bad_number" },
         { row: 12, reason: "bad_date" },
       ],
+      warnings: [
+        { row: 13, reason: "no_flat" },
+        { row: 14, reason: "no_flat_merge" },
+      ],
       geocoded: 3,
       needsFix: 1,
     });
@@ -293,6 +344,8 @@ describe("coopImportEventMeta (F-13)", () => {
       duplicates: 2,
       skipped_summary: 1,
       skipped_bad: 2,
+      warned_no_flat: 1,
+      warned_no_flat_merge: 1,
       geocoded: 3,
       needs_fix: 1,
     });

@@ -29,13 +29,28 @@ export const COOP_FIELDS = [
   { key: "buildYear", label: "Rok budowy", required: false },
 ] as const;
 export type CoopFieldKey = (typeof COOP_FIELDS)[number]["key"];
-/** Application field → 0-based column index in the sheet (null/absent = not in this file). */
-export type ColumnMapping = Partial<Record<CoopFieldKey, number | null>>;
+/**
+ * Application field → 0-based column index in the sheet (null/undefined = not
+ * mapped). `flatNumber` alone may be `"absent"`: the appraiser states that
+ * THIS register has no flat-number column at all (SM "Przylesie"). That is a
+ * different fact from "not mapped": the required flag still holds, the
+ * import is allowed, and rows are keyed without a flat — see coopDedupeKey.
+ */
+export type ColumnMapping = { [K in Exclude<CoopFieldKey, "flatNumber">]?: number | null } & {
+  flatNumber?: number | null | "absent";
+};
 
 export type SkipReason = "summary" | "empty" | "bad_number" | "bad_date" | "duplicate";
 export type SkippedRow = { row: number; reason: SkipReason };
-/** Imported, but worth a look: `no_flat` = flat number blank (dedupe fell back to the row ordinal). */
-export type WarnedRow = { row: number; reason: "no_flat" };
+/**
+ * Imported (or merged), but worth a look:
+ * - `no_flat` — keyed without a flat number (column absent, or the cell blank);
+ * - `no_flat_merge` — a no-flat row was merged into an earlier one as a
+ *   duplicate: same building, day, price AND area. The appraiser accepted
+ *   this when marking the column absent; the summary still says it happened.
+ */
+export type WarnReason = "no_flat" | "no_flat_merge";
+export type WarnedRow = { row: number; reason: WarnReason };
 
 export type CoopParseContext = {
   cooperative: string;
@@ -96,6 +111,9 @@ export function parseCoopNumber(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** No flat is 10 000 m²: above it a thousands-dot ("56.000") was read as a decimal-free number (review 2 §8). */
+export const MAX_AREA_M2 = 10_000;
+
 /** ISO "2025-01-14[T…]" or Polish "02.01.2023r." / "2.1.2023" → "YYYY-MM-DD"; else null. */
 export function parseCoopDate(s: string): string | null {
   const t = s.trim();
@@ -146,24 +164,25 @@ function parseIntOrNull(s: string): number | null {
 
 type KeyInput = Pick<
   NewCoopTransaction,
-  "address" | "buildingNumber" | "flatNumber" | "date" | "priceTotal" | "rep"
-> & {
-  /** Sheet row ordinal — last-resort key component when the flat number is blank. */
-  row?: number;
-};
+  "address" | "buildingNumber" | "flatNumber" | "date" | "priceTotal" | "area" | "rep"
+>;
 
 /**
  * Natural key. Rep. of the notarial act when the register has one; otherwise
  * (normalised address + building | flat | date | price). The flat number is
  * part of BOTH — two flats in one building sold the same day for the same
  * price are two transactions (confirmed in the Osiedle Młodych register), and
- * one act can carry two flats (Dębiecka: 135 rows, 133 reps). A blank flat
- * number never collapses rows: the sheet row ordinal stands in for it, so
- * such a row is a `no_flat` warning, not a silent "duplicate".
+ * one act can carry two flats (Dębiecka: 135 rows, 133 reps). Without a flat
+ * number (register has no such column, or the cell is blank) the AREA stands
+ * in for it: 45 m² and 52 m² sold the same day for the same price stay two
+ * rows. The key never depends on the row's position in the file, so a
+ * re-import — also of an updated file with rows added above — is idempotent.
+ * Two no-flat rows equal in all of building, day, price and area DO merge;
+ * parseCoopSheet reports that as `no_flat_merge`.
  */
 export function coopDedupeKey(r: KeyInput): string {
   const addr = `${normalizeCoopAddress(r.address)} ${r.buildingNumber.trim().toLowerCase()}`;
-  const flat = r.flatNumber.trim().toLowerCase() || `row:${r.row ?? "?"}`;
+  const flat = r.flatNumber.trim().toLowerCase() || `area:${r.area}`;
   const rep = (r.rep ?? "").replace(/\s+/g, " ").trim().toUpperCase();
   return rep ? `rep:${rep}|${addr}|${flat}` : `${addr}|${flat}|${r.date}|${r.priceTotal}`;
 }
@@ -188,7 +207,7 @@ export function parseCoopSheet(
     const cells = rows[i]!;
     const cell = (k: CoopFieldKey): string => {
       const idx = mapping[k];
-      return idx === null || idx === undefined ? "" : (cells[idx] ?? "").trim();
+      return typeof idx === "number" ? (cells[idx] ?? "").trim() : "";
     };
     if (cells.every((c) => c.trim() === "")) {
       skipped.push({ row: i, reason: "empty" });
@@ -215,7 +234,13 @@ export function parseCoopSheet(
     }
     const area = parseCoopNumber(cell("area"));
     const priceTotal = parseCoopNumber(cell("priceTotal"));
-    if (area === null || area <= 0 || priceTotal === null || priceTotal <= 0) {
+    if (
+      area === null ||
+      area <= 0 ||
+      area > MAX_AREA_M2 ||
+      priceTotal === null ||
+      priceTotal <= 0
+    ) {
       skipped.push({ row: i, reason: "bad_number" });
       continue;
     }
@@ -246,12 +271,13 @@ export function parseCoopSheet(
       source: "xls",
       dedupeKey: "",
     };
-    row.dedupeKey = coopDedupeKey({ ...row, row: i });
-    if (!flatNumber) warnings.push({ row: i, reason: "no_flat" });
+    row.dedupeKey = coopDedupeKey(row);
     if (seen.has(row.dedupeKey)) {
       skipped.push({ row: i, reason: "duplicate" });
+      if (!flatNumber) warnings.push({ row: i, reason: "no_flat_merge" });
       continue;
     }
+    if (!flatNumber) warnings.push({ row: i, reason: "no_flat" });
     seen.add(row.dedupeKey);
     out.push(row);
   }
@@ -267,6 +293,7 @@ export function coopImportEventMeta(input: {
   inserted: number;
   duplicates: number;
   skipped: readonly SkippedRow[];
+  warnings?: readonly WarnedRow[];
   geocoded: number;
   needsFix: number;
 }): {
@@ -275,19 +302,21 @@ export function coopImportEventMeta(input: {
   duplicates: number;
   skipped_summary: number;
   skipped_bad: number;
+  warned_no_flat: number;
+  warned_no_flat_merge: number;
   geocoded: number;
   needs_fix: number;
 } {
-  const summary = input.skipped.filter((s) => s.reason === "summary").length;
-  const bad = input.skipped.filter(
-    (s) => s.reason === "bad_number" || s.reason === "bad_date",
-  ).length;
+  const count = (xs: readonly { reason: string }[], ...reasons: string[]) =>
+    xs.filter((x) => reasons.includes(x.reason)).length;
   return {
     rows_total: input.rowsTotal,
     inserted: input.inserted,
-    duplicates: input.duplicates + input.skipped.filter((s) => s.reason === "duplicate").length,
-    skipped_summary: summary,
-    skipped_bad: bad,
+    duplicates: input.duplicates + count(input.skipped, "duplicate"),
+    skipped_summary: count(input.skipped, "summary"),
+    skipped_bad: count(input.skipped, "bad_number", "bad_date"),
+    warned_no_flat: count(input.warnings ?? [], "no_flat"),
+    warned_no_flat_merge: count(input.warnings ?? [], "no_flat_merge"),
     geocoded: input.geocoded,
     needs_fix: input.needsFix,
   };

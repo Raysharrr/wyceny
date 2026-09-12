@@ -45,7 +45,7 @@ def test_synthetic_register_matches_the_contract_json():
 
 def test_two_sheets_dates_iso_empty_cells_padded_and_decimal_comma_kept_as_text():
     sheets = post(mint()).json()["sheets"]
-    assert [s["name"] for s in sheets] == ["Rejestr 2025", "Bez nagłówka"]
+    assert [s["name"] for s in sheets] == ["Rejestr 2025", "Bez nagłówka", "Bez nr mieszkania"]
     first = sheets[0]
     assert all(len(r) == first["cols"] for r in first["rows"])
     assert first["rows"][4][6] == "2025-01-14"  # a real date cell → ISO
