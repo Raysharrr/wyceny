@@ -20,12 +20,20 @@ from datetime import date, datetime
 import openpyxl
 
 MAX_XLSX_BYTES = 12 * 1024 * 1024  # largest known register: 9.1 MB, 5 sheets
+# Rows per sheet, not bytes: a small compressed XLSX can unfold into millions of
+# cells (review 1 §10). Largest known sheet: ~320 rows; Dębiecka's six stacked
+# copies of one base ≈ 1 000. 50 000 is two orders above any register.
+MAX_ROWS_PER_SHEET = 50_000
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class NotAWorkbook(ValueError):
     """The bytes are not an XLSX workbook (XLS/CSV/PDF/scan) — not retryable."""
+
+
+class TooManyRows(ValueError):
+    """A sheet exceeds MAX_ROWS_PER_SHEET — a register never does; refuse, do not swap."""
 
 
 def cell_text(value: object) -> str:
@@ -52,7 +60,12 @@ def read_sheets(data: bytes) -> list[dict]:
         raise NotAWorkbook(type(exc).__name__) from exc
     sheets = []
     for ws in workbook.worksheets:
-        rows = [[cell_text(v) for v in row] for row in ws.iter_rows(values_only=True)]
+        rows = []
+        for row in ws.iter_rows(values_only=True):
+            if len(rows) >= MAX_ROWS_PER_SHEET:
+                workbook.close()
+                raise TooManyRows(ws.title)
+            rows.append([cell_text(v) for v in row])
         cols = max((len(r) for r in rows), default=0)
         sheets.append(
             {"name": ws.title, "cols": cols, "rows": [r + [""] * (cols - len(r)) for r in rows]}

@@ -664,6 +664,11 @@ def coop_sheet(file: UploadFile = File(...), token: str = Form(...)) -> CoopShee
         raise HTTPException(
             status_code=422, detail="Nie udało się otworzyć pliku jako arkusza XLSX."
         ) from exc
+    except coop_xls.TooManyRows as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Arkusz ma ponad {coop_xls.MAX_ROWS_PER_SHEET} wierszy — to nie wygląda na rejestr.",
+        ) from exc
     # F-13: counts only — never a cell, never a file name.
     logger.info("coop_sheet_read", sheets=len(sheets), rows=sum(len(s["rows"]) for s in sheets))
     return CoopSheetResponse(sheets=[CoopSheet(**s) for s in sheets])

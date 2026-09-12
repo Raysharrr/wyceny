@@ -80,6 +80,13 @@ def test_rejects_oversize(monkeypatch):
     assert post(mint()).status_code == 413
 
 
+def test_rejects_a_sheet_with_too_many_rows(monkeypatch):
+    monkeypatch.setattr(coop_xls, "MAX_ROWS_PER_SHEET", 5)
+    r = post(mint())
+    assert r.status_code == 413
+    assert "wierszy" in r.json()["detail"]
+
+
 def test_cell_text_conversions():
     from datetime import date, datetime
 
