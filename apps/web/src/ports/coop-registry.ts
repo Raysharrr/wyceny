@@ -62,6 +62,8 @@ export type CoopRegistryQuery = {
   from?: string;
   /** Substring of address (case-insensitive). */
   text?: string;
+  /** Only rows without a location (`pos = null`) — the "Do poprawki" tile's "Pokaż" (S2b). */
+  needsFix?: boolean;
   limit?: number;
   offset?: number;
 };
