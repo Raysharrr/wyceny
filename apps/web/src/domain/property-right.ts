@@ -22,10 +22,14 @@ export const PROPERTY_RIGHT_LABEL: Record<PropertyRight, string> = {
 export type PropertyRightDoc = {
   /** Subject-of-valuation phrase: "prawo …" (nominative) / "prawa …" (genitive). */
   przedmiot: { mianownik: string; dopelniacz: string };
-  /** Entries for §5 "Podstawy prawne" specific to this right. */
-  podstawyPrawne: string[];
-  /** Sentences always inserted for this right (§1, §2, §8.2). */
-  klauzule: string[];
+  /** The one §5 "Podstawy prawne" entry specific to this right — the template has a single slot (poz. 3). */
+  podstawaPrawna: string;
+  /**
+   * Sentence printed in §1, §2 and §8.2 INSTEAD of a KW number when the right
+   * has no księga of its own and none was given; null = the right always has
+   * a KW. A coop right with a KW number prints the number (S4, spec §11).
+   */
+  klauzulaBrakKw: string | null;
   /** Sentence inserted only when step 1 says the lokal has a basement; null = none for this right. */
   klauzulaPiwnicy: string | null;
   /** Whether the approval gate demands the KW gruntu (księga macierzysta) number. */
@@ -40,9 +44,10 @@ export const PROPERTY_RIGHT_DOC: Record<PropertyRight, PropertyRightDoc> = {
       mianownik: "prawo własności nieruchomości lokalowej",
       dopelniacz: "prawa własności nieruchomości lokalowej",
     },
-    // Same citation the current DOCX template prints (tools/spike/2026-06-05-template-seed).
-    podstawyPrawne: ["Ustawa z dnia 24 czerwca 1994 r. o własności lokali (Dz.U. 2026, poz. 39)"],
-    klauzule: [],
+    // Verbatim the line the DOCX template printed before S4 (§5 poz. 3) — the
+    // ownership operat must not change by a character.
+    podstawaPrawna: "Ustawa z dnia 24 czerwca 1994r. o własności lokali (Dz. U. 2026r., poz. 39)",
+    klauzulaBrakKw: null,
     // A basement under własność is a KW fact (przynależność with its own area) — it
     // comes from the extract, not from a fixed sentence.
     klauzulaPiwnicy: null,
@@ -54,12 +59,10 @@ export const PROPERTY_RIGHT_DOC: Record<PropertyRight, PropertyRightDoc> = {
       mianownik: "spółdzielcze własnościowe prawo do lokalu mieszkalnego",
       dopelniacz: "spółdzielczego własnościowego prawa do lokalu mieszkalnego",
     },
-    podstawyPrawne: [
+    podstawaPrawna:
       "Ustawa z dnia 15 grudnia 2000 r. o spółdzielniach mieszkaniowych (Dz. U. — publikator do uzupełnienia)",
-    ],
-    klauzule: [
+    klauzulaBrakKw:
       "Dla spółdzielczego własnościowego prawa do lokalu mieszkalnego nie założono księgi wieczystej.",
-    ],
     klauzulaPiwnicy:
       "Właściciele spółdzielczego własnościowego prawa mają możliwość korzystania z piwnicy, nie jest ona jednak objęta w/w prawem i nie stanowi prawa majątkowego.",
     wymagaKwGruntu: false,

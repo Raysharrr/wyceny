@@ -33,6 +33,19 @@ Gdy pobranie się nie uda, podgląd proponuje „Spróbuj ponownie” albo „Po
 
 Przycisk ponowienia pojawia się przy każdej przyczynie, ale dwie z nich są ostateczne i ponawianie ich nie ruszy: **nierozpoznany adres** („Nie rozpoznano adresu nieruchomości — sprawdź jego pisownię (…) i popraw go w kroku 1.”) oraz **adres poza obsługiwanym obszarem** („Mapy do operatu dostępne na razie dla Poznania.”). Odróżnia je od awarii usługi sama treść komunikatu — warto ją przeczytać, zanim klikniesz. Na pierwszą pomaga wyłącznie poprawienie adresu w [kroku 1](/pomoc/krok-1-przedmiot), a to niesie dalszy koszt: zmiana adresu unieważnia opisy sekcji, więc trzeba je ponownie zatwierdzić w kroku 6. Kwota zostaje — zapis kroku 1 kasuje ją tylko przy zmianie powierzchni.
 
+## Operat dla spółdzielczego własnościowego prawa do lokalu
+
+Gdy w [kroku 1](/pomoc/krok-1-przedmiot) wybrano spółdzielcze własnościowe prawo do lokalu, aplikacja składa operat z tych samych danych, tych samych tabel i tej samej metody — ale w brzmieniu operatu spółdzielczego biura, nie operatu własnościowego. Różni się sześć miejsc:
+
+- **Przedmiot wyceny (§2, a za nim Wyciąg, §3 i strona tytułowa)** — „spółdzielcze własnościowe prawo do lokalu mieszkalnego” zamiast „prawa własności nieruchomości lokalowej wraz z udziałem w nieruchomości wspólnej…”. Udział w nieruchomości wspólnej znika z całego dokumentu.
+- **Podstawy prawne (§5)** — ustawę o własności lokali zastępuje ustawa z dnia 15 grudnia 2000 r. o spółdzielniach mieszkaniowych. Jej publikator stoi w dokumencie jako „Dz. U. — publikator do uzupełnienia” — celowo: operaty wzorcowe podają tę samą pozycję Dziennika Ustaw dla dwóch różnych ustaw, więc do czasu potwierdzenia numer trzeba uzupełnić po pobraniu pliku.
+- **Źródła danych (§7)** — pozycje „Badanie ksiąg wieczystych” i „Wypis aktu notarialnego” wypadają, a informacje o cenach pochodzą ze spółdzielni mieszkaniowej zamiast z GEOPOZ-u.
+- **Stan prawny (§8.2)** — zamiast oznaczenia księgi wieczystej i udziału stoi jedno zdanie: „Dla spółdzielczego własnościowego prawa do lokalu mieszkalnego nie założono księgi wieczystej.” To samo zdanie trafia do Wyciągu i do §2. Jeśli jednak w kroku 1 wpiszesz numer KW, w tych trzech miejscach pojawi się numer księgi — bez księgi gruntu i bez udziału. Dane ewidencyjne (obręb, arkusz, działka, budynek) zostają, bo pochodzą z ewidencji, nie z księgi.
+- **Piwnica (Wyciąg i §8.3)** — przy zaznaczonym w kroku 1 „Lokal ma przynależną piwnicę” operat dostaje klauzulę: „Właściciele spółdzielczego własnościowego prawa mają możliwość korzystania z piwnicy, nie jest ona jednak objęta w/w prawem i nie stanowi prawa majątkowego.” Bez zaznaczenia nie ma ani zdania, ani pustego miejsca po nim. Przy własności lokalu checkbox nie ma wpływu na dokument.
+- **Nagłówek §12 i Tabela 4** — „Określenie wartości rynkowej spółdzielczego własnościowego prawa do lokalu mieszkalnego, wg stanu aktualnego”. Tabele 1–4 i obliczenia są bez zmian — [metoda KCS](/pomoc/metoda-kcs) jest ta sama dla obu praw.
+
+Do tego nagłówki §6, §7 i §8 oraz etykiety Wyciągu mówią o „przedmiocie wyceny” zamiast o „nieruchomości”, a wiersz „Własność” znika z Wyciągu — zamawiający zostaje w §4. Cała reszta operatu, w tym opisy sekcji z kroku 6, jest wspólna.
+
 ## Gdzie potwierdza się dane
 
 Na tym ekranie nie ma przycisków potwierdzeń. Potwierdzasz tam, gdzie dane widzisz — przyciskiem kończącym dany krok:
@@ -50,8 +63,8 @@ Przycisk „Zatwierdź i generuj operat” jest nieaktywny, dopóki lista blokad
 
 - **liczebność próby** — „Próba ma N transakcji — wymagane co najmniej 12.”,
 - **niepotwierdzone dane** — „Transakcja N (RCN) — do weryfikacji.”, „Geokodowanie adresu — do weryfikacji.”, „Dane ewidencyjne przedmiotu (EGiB) — do weryfikacji.”, „Przeznaczenie planistyczne (MPZP) — do weryfikacji.”, „Stan prawny (KW) — do weryfikacji.”, „Powierzchnia — do weryfikacji.”, „Wagi cech — do weryfikacji.”, „Definicje skali ocen — do weryfikacji.”,
-- **braki w danych dokumentu** — „Cel wyceny — brak.”, „Numer księgi wieczystej — brak.”, „Klient — brak.”, „Data oględzin — brak.”, „Wartość rynkowa — kalkulacja niezatwierdzona (krok 5. Kalkulacja).”,
-- **braki w danych z KW** (tylko gdy wgrałeś dokument) — „Numer KW gruntu (księgi macierzystej) — brak.” oraz „Numer KW lokalu — brak (zaznacz wariant deweloperski, jeśli lokal nie ma własnej księgi).”,
+- **braki w danych dokumentu** — „Cel wyceny — brak.”, „Numer księgi wieczystej — brak.” (tylko przy własności lokalu — dla spółdzielczego prawa numer nie jest wymagany), „Klient — brak.”, „Data oględzin — brak.”, „Wartość rynkowa — kalkulacja niezatwierdzona (krok 5. Kalkulacja).”,
+- **braki w danych z KW** (tylko gdy wgrałeś dokument) — „Numer KW gruntu (księgi macierzystej) — brak.” (tylko przy własności lokalu) oraz „Numer KW lokalu — brak (zaznacz wariant deweloperski, jeśli lokal nie ma własnej księgi).”,
 - **opisy sekcji** — „Opisy sekcji nie zostały wygenerowane.”, „_nazwa sekcji_ — brak tekstu.”, „_nazwa sekcji_ — do weryfikacji.” oraz „Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.”. Wszystkie rozwiązuje się w [kroku 6](/pomoc/krok-6-opisy).
 
 Blokady rozwiązuje się tam, gdzie powstały: brakujące pola w krokach 1–2, liczebność próby w kroku 3, kwotę w kroku 5, opisy w kroku 6, a niepotwierdzone dane — zapisem tego kroku, na którym są widoczne. Nie musisz tego pamiętać: przy każdej pozycji listy stoi odnośnik „Przejdź do kroku …”, prowadzący wprost tam, gdzie się ją zdejmuje. Skąd te blokady się biorą i dlaczego brama stoi po stronie serwera, opisują [Zasady zatwierdzania i prowenancja danych](/pomoc/zasady-zatwierdzania).

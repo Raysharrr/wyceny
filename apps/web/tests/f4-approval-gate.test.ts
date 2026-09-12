@@ -253,10 +253,9 @@ describe("kw group (Slice 6)", () => {
       kw: noGrunt,
       propertyRight: "spoldzielcze_wlasnosciowe",
     });
-    // B-2: until S4 composes the operat per right, the coop right carries a
-    // single temporary blocker — and nothing about the KW gruntu.
-    expect(coop.ok).toBe(false);
-    if (!coop.ok) expect(coop.blockers.map((b) => b.path)).toEqual(["document.propertyRight"]);
+    // S4: the operat is composed per right, so nothing blocks — and nothing
+    // about the KW gruntu.
+    expect(coop).toEqual({ ok: true });
     const own = approvalGate({
       ...base,
       provenance: prov,
@@ -282,24 +281,16 @@ describe("kw group (Slice 6)", () => {
       kw: noLokal,
       propertyRight: "spoldzielcze_wlasnosciowe",
     });
-    expect(coop.ok).toBe(false);
-    if (!coop.ok) expect(coop.blockers.map((b) => b.path)).toEqual(["document.propertyRight"]);
+    expect(coop).toEqual({ ok: true });
     const own = approvalGate({ ...base, provenance: prov, kw: { ...kwOk, kwLokalu: null } });
     expect(own.ok).toBe(false);
     if (!own.ok) expect(own.blockers.map((b) => b.path)).toEqual(["kw.kwLokalu"]);
   });
 
-  it("B-2 (temporary, TODO S4): spółdzielcze → 'tekst w przygotowaniu' blocker; własność → none", () => {
-    const coop = approvalGate({ ...passingInput(), propertyRight: "spoldzielcze_wlasnosciowe" });
-    expect(coop.ok).toBe(false);
-    if (!coop.ok) {
-      expect(coop.blockers).toHaveLength(1);
-      expect(coop.blockers[0].path).toBe("document.propertyRight");
-      expect(coop.blockers[0].label).toContain("tekst w przygotowaniu");
+  it("S4: neither right carries a right-specific blocker on a passing input", () => {
+    for (const propertyRight of ["wlasnosc_lokalu", "spoldzielcze_wlasnosciowe"] as const) {
+      expect(approvalGate({ ...passingInput(), propertyRight })).toEqual({ ok: true });
     }
-    expect(approvalGate({ ...passingInput(), propertyRight: "wlasnosc_lokalu" })).toEqual({
-      ok: true,
-    });
   });
 
   it("T-12: the sample threshold is the same for both rights", () => {
