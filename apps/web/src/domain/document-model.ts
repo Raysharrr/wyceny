@@ -560,7 +560,7 @@ export function buildDocumentModel(
     prawo_spoldzielcze: input.propertyRight === "spoldzielcze_wlasnosciowe",
     przedmiot_m: rightDoc.przedmiot.mianownik,
     przedmiot_d: rightDoc.przedmiot.dopelniacz,
-    podstawa_prawa: rightDoc.podstawyPrawne[0],
+    podstawa_prawa: rightDoc.podstawaPrawna,
     ma_kw: !kwBrak,
     kw_brak: kwBrak,
     klauzula_brak_kw: kwBrak ? rightDoc.klauzulaBrakKw! : "",

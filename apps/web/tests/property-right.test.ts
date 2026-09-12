@@ -26,7 +26,7 @@ describe("domain/property-right", () => {
     const d = PROPERTY_RIGHT_DOC.wlasnosc_lokalu;
     expect(d.przedmiot.mianownik).toBe("prawo własności nieruchomości lokalowej");
     expect(d.przedmiot.dopelniacz).toBe("prawa własności nieruchomości lokalowej");
-    expect(d.podstawyPrawne[0]).toMatch(/^Ustawa z dnia 24 czerwca 1994r\. o własności lokali/);
+    expect(d.podstawaPrawna).toMatch(/^Ustawa z dnia 24 czerwca 1994r\. o własności lokali/);
     expect(d.klauzulaBrakKw).toBeNull();
     expect(d.klauzulaPiwnicy).toBeNull();
     expect(d.wymagaKwGruntu).toBe(true);
@@ -39,9 +39,9 @@ describe("domain/property-right", () => {
     expect(d.przedmiot.dopelniacz).toBe(
       "spółdzielczego własnościowego prawa do lokalu mieszkalnego",
     );
-    expect(d.podstawyPrawne).toEqual([
+    expect(d.podstawaPrawna).toBe(
       "Ustawa z dnia 15 grudnia 2000 r. o spółdzielniach mieszkaniowych (Dz. U. — publikator do uzupełnienia)",
-    ]);
+    );
     expect(d.klauzulaBrakKw).toBe(
       "Dla spółdzielczego własnościowego prawa do lokalu mieszkalnego nie założono księgi wieczystej.",
     );
