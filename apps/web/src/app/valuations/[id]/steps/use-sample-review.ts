@@ -47,6 +47,7 @@ export function rcnRow(t: {
     date: t.date,
     area: String(Math.round(t.area * 100) / 100),
     pricePerM2: String(Math.round(t.pricePerM2 * 100) / 100),
+    // TODO(S3): źródło z puli (rejestr-sm → rejestr_sm), nie literał.
     source: "rcn" as const,
     transactionId: t.transactionId,
     lokalId: t.lokalId,
