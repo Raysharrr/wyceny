@@ -100,6 +100,7 @@ describe("coopRegistryRepo", () => {
       mapping: { address: 1 },
       rowsInserted: 5,
       rowsSkipped: parsed.skipped,
+      rowsWarned: parsed.warnings,
       createdBy: USER,
     });
     const s = await repo.stats();

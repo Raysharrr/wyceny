@@ -28,6 +28,7 @@ const parsed = parseCoopSheet(
 function fakeRegistry() {
   const stored: NewCoopTransaction[] = [];
   const calls: string[] = [];
+  const batches: { rowsWarned: unknown[] }[] = [];
   const registry: PortCoopRegistry = {
     async upsertMany(rows) {
       calls.push("upsertMany");
@@ -35,8 +36,9 @@ function fakeRegistry() {
       stored.push(...fresh);
       return { inserted: fresh.length, duplicates: rows.length - fresh.length };
     },
-    async recordBatch() {
+    async recordBatch(b) {
       calls.push("recordBatch");
+      batches.push({ rowsWarned: b.rowsWarned });
     },
     async saveMapping() {
       calls.push("saveMapping");
@@ -47,7 +49,7 @@ function fakeRegistry() {
     stats: async () => ({ total: 0, byCooperative: {}, needsGeocoding: 0, lastImport: null }),
     getMapping: async () => null,
   };
-  return { registry, stored, calls };
+  return { registry, stored, calls, batches };
 }
 
 const geocoderQueries: string[][] = [];
@@ -73,11 +75,12 @@ afterAll(async () => {
 
 describe("runCoopImport", () => {
   it("geocodes with the city prefix, inserts, records batch + mapping, and a re-run inserts 0", async () => {
-    const { registry, stored, calls } = fakeRegistry();
+    const { registry, stored, calls, batches } = fakeRegistry();
     const traceId = newTraceId();
     const input = {
       rows: parsed.rows,
       skipped: parsed.skipped,
+      warnings: parsed.warnings,
       rowsTotal: fixture.sheets[0]!.rows.length,
       cooperative: COOP,
       city: "Poznań",
@@ -93,6 +96,8 @@ describe("runCoopImport", () => {
     expect(geocoderQueries.at(-1)![0]).toBe("Poznań, Zmyślona 4");
     expect(stored.filter((r) => r.pos === null).map((r) => r.address)).toEqual(["Bukowa"]);
     expect(calls).toEqual(["upsertMany", "recordBatch", "saveMapping"]);
+    expect(first.warnings).toEqual([{ row: 13, reason: "no_flat" }]);
+    expect(batches[0]!.rowsWarned).toEqual([{ row: 13, reason: "no_flat" }]);
 
     const again = await runCoopImport({ registry, geocoder, eventLog }, input);
     expect(again).toMatchObject({ inserted: 0, duplicates: 6 });
@@ -107,6 +112,7 @@ describe("runCoopImport", () => {
       {
         rows: parsed.rows,
         skipped: parsed.skipped,
+        warnings: parsed.warnings,
         rowsTotal: 15,
         cooperative: COOP,
         city: "Poznań",
@@ -132,6 +138,8 @@ describe("runCoopImport", () => {
       duplicates: 1,
       skipped_summary: 2,
       skipped_bad: 2,
+      warned_no_flat: 1,
+      warned_no_flat_merge: 0,
       geocoded: 4,
       needs_fix: 1,
     });
@@ -161,6 +169,8 @@ describe("runCoopImport", () => {
       "rows_total",
       "skipped_bad",
       "skipped_summary",
+      "warned_no_flat",
+      "warned_no_flat_merge",
     ]);
   });
 });

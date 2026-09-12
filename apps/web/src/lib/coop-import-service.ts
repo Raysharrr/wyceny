@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { coopImportEventMeta, type ColumnMapping, type SkippedRow } from "../domain/coop-import";
+import {
+  coopImportEventMeta,
+  type ColumnMapping,
+  type SkippedRow,
+  type WarnedRow,
+} from "../domain/coop-import";
 import type { NewCoopTransaction, PortCoopRegistry } from "../ports/coop-registry";
 import type { PortEventLog } from "../ports/event-log";
 import type { PortGeocoder } from "../ports/geocoder";
@@ -17,6 +22,8 @@ import type { PortGeocoder } from "../ports/geocoder";
 export type CoopImportInput = {
   rows: NewCoopTransaction[];
   skipped: readonly SkippedRow[];
+  /** From parseCoopSheet — rows keyed without a flat number; surfaced in the summary, the batch and the event. */
+  warnings: readonly WarnedRow[];
   rowsTotal: number;
   cooperative: string;
   /** City prefix for the geocoder query — registers omit it ("Piastowskie 24"); Przylesie is in Leszno. */
@@ -36,6 +43,7 @@ export type CoopImportSummary = {
   geocoded: number;
   needsFix: number;
   skipped: readonly SkippedRow[];
+  warnings: readonly WarnedRow[];
 };
 
 export async function runCoopImport(
@@ -62,6 +70,7 @@ export async function runCoopImport(
     inserted,
     duplicates: alreadyInRegister,
     skipped: input.skipped,
+    warnings: input.warnings,
     geocoded,
     needsFix,
   });
@@ -72,6 +81,7 @@ export async function runCoopImport(
     mapping: input.mapping,
     rowsInserted: inserted,
     rowsSkipped: [...input.skipped],
+    rowsWarned: [...input.warnings],
     createdBy: input.userId,
   });
   await deps.registry.saveMapping(input.cooperative, input.mapping);
@@ -96,5 +106,6 @@ export async function runCoopImport(
     geocoded,
     needsFix,
     skipped: input.skipped,
+    warnings: input.warnings,
   };
 }

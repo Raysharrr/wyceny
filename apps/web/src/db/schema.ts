@@ -179,6 +179,8 @@ export const coopImportBatch = pgTable("coop_import_batch", {
   mapping: jsonb("mapping").notNull(),
   rowsInserted: integer("rows_inserted").notNull(),
   rowsSkipped: jsonb("rows_skipped").notNull(),
+  // Migration 0015: rows keyed without a flat number (no_flat / no_flat_merge).
+  rowsWarned: jsonb("rows_warned").notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   createdBy: text("created_by").notNull(),
 });

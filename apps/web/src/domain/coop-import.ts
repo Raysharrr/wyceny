@@ -293,7 +293,7 @@ export function coopImportEventMeta(input: {
   inserted: number;
   duplicates: number;
   skipped: readonly SkippedRow[];
-  warnings?: readonly WarnedRow[];
+  warnings: readonly WarnedRow[];
   geocoded: number;
   needsFix: number;
 }): {
@@ -315,8 +315,8 @@ export function coopImportEventMeta(input: {
     duplicates: input.duplicates + count(input.skipped, "duplicate"),
     skipped_summary: count(input.skipped, "summary"),
     skipped_bad: count(input.skipped, "bad_number", "bad_date"),
-    warned_no_flat: count(input.warnings ?? [], "no_flat"),
-    warned_no_flat_merge: count(input.warnings ?? [], "no_flat_merge"),
+    warned_no_flat: count(input.warnings, "no_flat"),
+    warned_no_flat_merge: count(input.warnings, "no_flat_merge"),
     geocoded: input.geocoded,
     needs_fix: input.needsFix,
   };

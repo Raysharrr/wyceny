@@ -1,4 +1,4 @@
-import type { ColumnMapping, SkipReason } from "../domain/coop-import";
+import type { ColumnMapping, SkipReason, WarnReason } from "../domain/coop-import";
 import type { PropertyRight } from "../domain/property-right";
 import type { SessionUser } from "./valuation";
 
@@ -73,6 +73,8 @@ export type CoopImportBatch = {
   mapping: ColumnMapping;
   rowsInserted: number;
   rowsSkipped: { row: number; reason: SkipReason }[];
+  /** Rows imported without a flat number, or merged on that basis — the batch's keying trail. */
+  rowsWarned: { row: number; reason: WarnReason }[];
   createdBy: string;
 };
 

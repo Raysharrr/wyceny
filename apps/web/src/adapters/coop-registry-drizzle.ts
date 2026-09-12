@@ -207,6 +207,7 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
         mapping: batch.mapping,
         rowsInserted: batch.rowsInserted,
         rowsSkipped: batch.rowsSkipped,
+        rowsWarned: batch.rowsWarned,
         createdBy: batch.createdBy,
       });
     },
