@@ -581,3 +581,22 @@ def test_nieznany_rodzaj_prawa_w_build_prompt_nie_rzuca():
     assert prose_core.build_prompt("analiza_rynku", FAKTY, "cos_innego") == prose_core.build_prompt(
         "analiza_rynku", FAKTY
     )
+
+
+def test_potoczna_nazwa_prawa_spoldzielczego_nie_jest_odrzucana():
+    """MINOR-A review 2: „prawo własności” jest prefiksem „prawo własnościowe” —
+    alternatywna kolejność nazwy tego samego prawa nie może dawać trafienia."""
+    for ok in (
+        "spółdzielcze prawo własnościowe do lokalu",
+        "spółdzielczego prawa własnościowego do lokalu",
+        "spółdzielczym prawem własnościowym do lokalu",
+        "spółdzielczym prawie własnościowym do lokalu",
+        "spółdzielcze prawa własnościowe do lokali",
+        "spółdzielczemu prawu własnościowemu do lokalu",
+    ):
+        assert prose_core.validate_property_right(ok, "spoldzielcze_wlasnosciowe") == [], ok
+    # a 13 zamierzonych form nadal łapie — każda w zdaniu, także na końcu tekstu
+    for phrase in prose_core.OWNERSHIP_PHRASES:
+        for text in (f"Mowa o {phrase}.", f"Mowa o {phrase}"):
+            found = prose_core.validate_property_right(text, "spoldzielcze_wlasnosciowe")
+            assert found and phrase in found[0], phrase

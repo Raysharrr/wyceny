@@ -415,8 +415,8 @@ PROPERTY_RIGHT_SENTENCE: dict[str, str] = {
     ),
 }
 
-# Straż słownictwa własnościowego dla prawa spółdzielczego — CZTERY pojęcia z §11 specu
-# bloku (prawo własności, nieruchomość lokalowa, udział w gruncie) w odmianach, jakie
+# Straż słownictwa własnościowego dla prawa spółdzielczego — cztery frazy z §11 specu
+# bloku = trzy pojęcia (prawo własności, nieruchomość lokalowa, udział w gruncie) w odmianach, jakie
 # pisze model; sprawdzana na wygenerowanym tekście, którego F-12 nie widzi (mierzy
 # render z pustą prozą). Świadomie NIE jest to lista F-12 (14 fraz szablonu) — tamta
 # dałaby fałszywe trafienia w prozie. Żadna forma nie jest podciągiem poprawnej nazwy
@@ -446,10 +446,14 @@ def validate_property_right(text: str, property_right: str | None) -> list[str]:
     if property_right != "spoldzielcze_wlasnosciowe":
         return []
     lowered = text.lower()
+    # Word boundary after the phrase (review 2 MINOR-A): „prawo własności” is a PREFIX
+    # of „prawo własnościowe” — the colloquial order of the cooperative right's own
+    # name („spółdzielcze prawo własnościowe do lokalu”) must not be reported as
+    # ownership wording. `re` is unicode-aware for str, so ś/ł/ą count as word chars.
     return [
         f"„{phrase}” (przedmiotem wyceny jest spółdzielcze własnościowe prawo do lokalu)"
         for phrase in OWNERSHIP_PHRASES
-        if phrase in lowered
+        if re.search(re.escape(phrase) + r"\b", lowered)
     ]
 
 
