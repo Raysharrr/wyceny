@@ -117,6 +117,12 @@ export const HELP_PAGES: HelpPage[] = [
       "próba",
       "transakcje",
       "RCN",
+      "rejestr biura",
+      "rejestr spółdzielczy",
+      "Rejestr SM",
+      "prawo nieznane",
+      "atrybuty nieznane",
+      "za mało transakcji",
       "porównawcze",
       "zł/m²",
       "Cśr",
@@ -133,7 +139,7 @@ export const HELP_PAGES: HelpPage[] = [
       "przejrzane",
     ],
     summary:
-      "Przegląd propozycji z RCN z podglądem budynku, odrzucanie z powodem, promień i odrzucone.",
+      "Przegląd propozycji z RCN albo z rejestru biura z podglądem budynku, odrzucanie z powodem, promień i odrzucone.",
     load: () => import("./jak-korzystac/krok-3-proba.mdx"),
   },
   {
@@ -297,6 +303,8 @@ export const HELP_PAGES: HelpPage[] = [
     tags: [
       "RCN",
       "rejestr cen nieruchomości",
+      "rejestr biura",
+      "spółdzielcze",
       "Geoportal",
       "GUGiK",
       "WFS",

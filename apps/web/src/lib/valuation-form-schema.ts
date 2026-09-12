@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { COMPARABLE_SOURCES } from "@/domain/kcs";
+import { COMPARABLE_SOURCES, POOL_SOURCES } from "@/domain/kcs";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
@@ -93,7 +93,8 @@ export const sampleMetaSchema = z.object({
   // Two pool sources since S1 of the "Prawo spółdzielcze" block: RCN via the
   // worker, or the office coop registry. Hyphenated on purpose (this enum keeps
   // the `rcn-wfs-gugik` convention; `Comparable.source` keeps `rcn`/`rejestr_sm`).
-  source: z.enum(["rcn-wfs-gugik", "rejestr-sm"]),
+  source: z.enum(POOL_SOURCES),
+  importedAt: z.string().nullable().optional(),
   query: poolQuerySchema,
   streetIndex: streetIndexStateSchema.optional(),
 });
@@ -129,7 +130,8 @@ export const candidateSchema = z.object({
   floor: z.number().nullable(),
   rooms: z.number().nullable(),
   market: z.enum(["wtorny", "pierwotny"]).nullable(),
-  share: z.string(),
+  // S3 — nullable like function/transType: the coop registry has no share column.
+  share: z.string().nullable(),
   // B4 — nullable: the coop registry has neither field; RCN always fills them.
   transType: z.string().nullable(),
   function: z.string().nullable(),
@@ -140,6 +142,9 @@ export const candidateSchema = z.object({
   street: z.string().nullable().optional(),
   streetNumber: z.string().nullable().optional(),
   city: z.string().nullable().optional(),
+  // S3 — coop register rows only; absent on RCN rows and older pools.
+  rightType: z.enum(PROPERTY_RIGHTS).nullable().optional(),
+  cooperative: z.string().optional(),
 });
 
 /**
@@ -250,7 +255,15 @@ export const sampleSelectionSchema = z.object({
   alternates: z.array(candidateSchema),
   flags: z.record(
     z.string(),
-    z.array(z.enum(["price_outlier", "market_unknown", "primary_suspect", "attributes_unknown"])),
+    z.array(
+      z.enum([
+        "price_outlier",
+        "market_unknown",
+        "primary_suspect",
+        "attributes_unknown",
+        "prawo_nieznane",
+      ]),
+    ),
   ),
   rejectedCounts: z.record(z.string(), z.number()),
   /** Rows rejected by hygiene/band inside `radiusUsedM` (decision a). Optional: pre-Slice-3 snapshots lack it. */

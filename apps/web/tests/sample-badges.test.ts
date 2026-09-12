@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { rowBadges } from "../src/app/valuations/[id]/steps/sample-badges";
+import {
+  cooperativeLabel,
+  cooperativesLabel,
+  registryBadge,
+  rowBadges,
+} from "../src/app/valuations/[id]/steps/sample-badges";
 import type { Candidate } from "../src/domain/sample-selection";
 
 const c = (over: Partial<Candidate> = {}): Candidate => ({
@@ -70,5 +75,41 @@ describe("rowBadges", () => {
   });
   it("no subjectEgib → no identity badges at all", () => {
     expect(rowBadges(c(), [], undefined).map((x) => x.label)).toEqual(["p. 3"]);
+  });
+});
+
+// S3: register badge and cooperative labels.
+describe("rowBadges — źródło puli (S3)", () => {
+  it("rejestr_sm → „Rejestr SM — do weryfikacji” jako pierwsza odznaka; rcn i brak źródła → bez odznaki", () => {
+    expect(rowBadges(c(), [], undefined, "rejestr_sm").map((x) => x.label)).toEqual([
+      "Rejestr SM — do weryfikacji",
+      "p. 3",
+    ]);
+    expect(rowBadges(c(), [], undefined, "rcn").map((x) => x.label)).toEqual(["p. 3"]);
+    expect(rowBadges(c(), [], undefined).map((x) => x.label)).toEqual(["p. 3"]);
+  });
+  it("registryBadge mówi jednym głosem z REGISTRY_LABEL", () => {
+    expect(registryBadge("rcn").label).toBe("RCN — do weryfikacji");
+    expect(registryBadge("rejestr_sm").label).toBe("Rejestr SM — do weryfikacji");
+  });
+  it("flagi S3: prawo nieznane / atrybuty nieznane", () => {
+    expect(
+      rowBadges(c(), ["attributes_unknown", "prawo_nieznane"], undefined).map((x) => x.label),
+    ).toEqual(["p. 3", "atrybuty nieznane", "prawo nieznane"]);
+  });
+});
+
+describe("cooperativeLabel / cooperativesLabel (S3)", () => {
+  it("nie dubluje „SM”, zachowuje kolejność pierwszego wystąpienia, pusta lista dla puli RCN", () => {
+    expect(cooperativeLabel("SM Osiedle Młodych")).toBe("SM „Osiedle Młodych”");
+    expect(cooperativeLabel("Przylesie")).toBe("SM „Przylesie”");
+    expect(
+      cooperativesLabel([
+        c({ cooperative: "SM B" }),
+        c({ cooperative: "SM A" }),
+        c({ cooperative: "SM B" }),
+      ]),
+    ).toBe("SM „B”, SM „A”");
+    expect(cooperativesLabel([c(), c()])).toBe("");
   });
 });

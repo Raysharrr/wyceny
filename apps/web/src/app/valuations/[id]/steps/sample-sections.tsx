@@ -7,10 +7,13 @@ import { candidateKey } from "@/domain/sample-selection";
 import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 import { SampleTable } from "./sample-table";
+import type { RegistrySource } from "@/domain/kcs";
 import type { StreetIndexState } from "@/ports/sample";
 
 export type SampleSectionsProps = {
   selection: SampleSelectionSnapshot;
+  /** Register the pool came from (S3) — every fetched row wears its badge. */
+  source?: RegistrySource;
   streetView: StreetViewSnapshot | null;
   streetViewEnabled: boolean;
   /** Stan indeksu adresów z chwili pobrania puli (Slice 3d) — decyduje, jak wyjaśnić kreskę. */
@@ -39,6 +42,7 @@ export type SampleSectionsProps = {
  */
 export function SampleSections({
   selection,
+  source,
   streetView,
   streetViewEnabled,
   streetIndex,
@@ -80,6 +84,7 @@ export function SampleSections({
           reviewedKeys={reviewedKeys}
           includedKeys={includedKeys}
           selection={selection}
+          source={source}
           streetView={streetView}
           streetViewEnabled={streetViewEnabled}
           streetIndex={streetIndex}
@@ -109,6 +114,7 @@ export function SampleSections({
               reviewedKeys={reviewedKeys}
               includedKeys={includedKeys}
               selection={selection}
+              source={source}
               streetView={streetView}
               streetViewEnabled={streetViewEnabled}
               streetIndex={streetIndex}

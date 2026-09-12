@@ -30,8 +30,11 @@ const depsState = vi.hoisted(() => ({
 
 vi.mock("@/app/valuations/_deps", async () => {
   const { StorageNotFoundError } = await import("../src/ports/storage");
+  const sampleProposal = { fetchPool: vi.fn() };
   return {
-    sampleProposal: { fetchPool: vi.fn() },
+    sampleProposal,
+    // S3: the action picks the adapter by the valuation's right — one stub serves both.
+    sampleProposalFor: vi.fn(() => sampleProposal),
     valuationRepository: { get: vi.fn() },
     storage: {
       async put(k: string, d: Buffer | string) {
@@ -219,7 +222,7 @@ describe("getSampleProposal (v3)", () => {
     );
     const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
     expect(r).toEqual({
-      error: expect.stringMatching(/^Nie udało się pobrać próby z RCN.*\(kod: [0-9a-f]{8}\)$/),
+      error: expect.stringMatching(/^Nie udało się pobrać próby.*\(kod: [0-9a-f]{8}\)$/),
     });
   });
 
@@ -232,7 +235,7 @@ describe("getSampleProposal (v3)", () => {
     );
     const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
     expect(r).toEqual({
-      error: expect.stringMatching(/^Nie udało się pobrać próby z RCN.*\(kod: [0-9a-f]{8}\)$/),
+      error: expect.stringMatching(/^Nie udało się pobrać próby.*\(kod: [0-9a-f]{8}\)$/),
     });
   });
 
@@ -242,7 +245,7 @@ describe("getSampleProposal (v3)", () => {
     fetchPoolMock.mockRejectedValue(zodError);
     const r = await getSampleProposal({ valuationId: valuation.id, address: "a", area: 50 });
     expect(r).toEqual({
-      error: expect.stringMatching(/^Nie udało się pobrać próby z RCN.*\(kod: [0-9a-f]{8}\)$/),
+      error: expect.stringMatching(/^Nie udało się pobrać próby.*\(kod: [0-9a-f]{8}\)$/),
     });
   });
 

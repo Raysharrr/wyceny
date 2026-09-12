@@ -10,6 +10,7 @@
  * this abstraction, never on a concrete adapter (F-10).
  */
 import type { Candidate } from "../domain/sample-selection";
+import type { PoolSource } from "../domain/kcs";
 
 export type { Candidate };
 
@@ -36,7 +37,9 @@ export type CandidatePool = {
   counts: { fetched: number; deduped: number; noPos: number };
   fetchedAt: string;
   /** Which register the pool came from — RCN via the worker, or the office coop registry (S1). */
-  source: "rcn-wfs-gugik" | "rejestr-sm";
+  source: PoolSource;
+  /** Coop register pools only (S3): when the register was last imported — step 3 prints it next to the cooperative. */
+  importedAt?: string | null;
   query: { bbox: number[]; count: number; sort: string; pages: number; truncated: boolean };
   streetIndex?: StreetIndexState;
 };

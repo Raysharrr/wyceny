@@ -134,7 +134,7 @@ describe("reselectSample", () => {
       manualRejections: [],
     });
     expect(r).toEqual({
-      error: expect.stringMatching(/pobierz próbę z RCN ponownie/i),
+      error: expect.stringMatching(/pobierz próbę ponownie/i),
       code: "pool_missing",
     });
   });

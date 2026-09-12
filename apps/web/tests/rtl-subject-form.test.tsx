@@ -370,3 +370,29 @@ describe("SubjectForm — the cost of saving step 1 (Task 8 fix round 1)", () =>
     expect(screen.queryByTestId("step1-recalc-warning")).toBeNull();
   });
 });
+
+// S3 (Task 4b, spec §6.1): the summary tile follows the "Rodzaj prawa" radio.
+describe("SubjectForm — summary tile: rodzaj prawa (S3)", () => {
+  it("shows the right from PROPERTY_RIGHT_LABEL and the 'Co się zmieni dalej' block only for the coop right", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    const tile = screen.getByTestId("subject-summary");
+    expect(tile.textContent).toContain("Rodzaj prawa");
+    expect(tile.textContent).toContain("Własność lokalu");
+    expect(screen.queryByText(/Co się zmieni dalej/)).toBeNull();
+
+    await user.click(
+      screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
+    );
+    expect(tile.textContent).toContain("Spółdzielcze własnościowe prawo do lokalu");
+    expect(screen.getByText(/Co się zmieni dalej/)).toBeTruthy();
+    expect(tile.textContent).toMatch(/Krok 3 pobierze próbę z rejestru biura, nie z RCN/);
+    expect(tile.textContent).not.toMatch(/klauzulą o piwnicy/);
+
+    await user.click(screen.getByLabelText("Lokal ma przynależną piwnicę"));
+    expect(tile.textContent).toMatch(/z klauzulą o piwnicy/);
+
+    await user.click(screen.getByRole("radio", { name: "Własność lokalu" }));
+    expect(screen.queryByText(/Co się zmieni dalej/)).toBeNull();
+  });
+});

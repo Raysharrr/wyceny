@@ -1,6 +1,7 @@
 import { Stepper } from "@/app/valuations/[id]/stepper";
 import { StepHeader } from "./step-header";
 import type { STEP_META } from "./step-meta";
+import type { PropertyRight } from "@/domain/property-right";
 
 /**
  * Chrome for the `[id]` wizard branch (Task 5): sticky Stepper + the
@@ -12,11 +13,14 @@ export function WizardShell({
   currentStep,
   maxReachedStep,
   valuationId,
+  propertyRight,
   children,
 }: {
   currentStep: number;
   maxReachedStep: number;
   valuationId?: string;
+  /** The valuation's right (S3) — step 3's lead names the register it fetches from. */
+  propertyRight?: PropertyRight;
   children: React.ReactNode;
 }) {
   return (
@@ -24,7 +28,7 @@ export function WizardShell({
       <Stepper current={currentStep} maxReached={maxReachedStep} valuationId={valuationId} />
       <main className="px-6 pb-32 pt-7">
         <div className="mx-auto w-full max-w-[1240px]">
-          <StepHeader step={currentStep as keyof typeof STEP_META} />
+          <StepHeader step={currentStep as keyof typeof STEP_META} propertyRight={propertyRight} />
           {children}
         </div>
       </main>

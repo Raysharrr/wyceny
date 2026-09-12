@@ -68,9 +68,11 @@ export function assignSampleProvenance(
     // (domain/valuation.ts) closes that from the other side, against the
     // snapshot the write transaction holds locked — the comparison needs a
     // row this layer cannot read without a race.
-    // TODO(S2a): a coop-registry row needs the same unforgeable signal
-    // (`coopTxId` → "rejestr_sm"); until then the id-derived source is RCN-only.
-    const source = c.transactionId ? "rcn" : (c.source ?? "manual");
+    // A coop-register row carries the SAME unforgeable kind of signal
+    // (`coopTxId`, S3) — checked first, because such a row also carries a
+    // `transactionId` (the candidate key needs one) and must never be
+    // promoted to rcn on that account.
+    const source = c.coopTxId ? "rejestr_sm" : c.transactionId ? "rcn" : (c.source ?? "manual");
     return { ...c, source, status: isRegistrySourced({ source }) ? "to_verify" : "confirmed" };
   });
 }
