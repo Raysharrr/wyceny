@@ -62,6 +62,8 @@ export type CoopRegistryQuery = {
   from?: string;
   /** Substring of address (case-insensitive). */
   text?: string;
+  /** Only rows without a location (`pos = null`) — the "Do poprawki" tile's "Pokaż" (S2b). */
+  needsFix?: boolean;
   limit?: number;
   offset?: number;
 };
@@ -76,6 +78,8 @@ export type CoopImportBatch = {
   /** Rows imported without a flat number, or merged on that basis — the batch's keying trail. */
   rowsWarned: { row: number; reason: WarnReason }[];
   createdBy: string;
+  /** ISO timestamp; null while the chunked import is still running (S2b) — or was abandoned. */
+  finishedAt: string | null;
 };
 
 export type CoopRegistryStats = {
@@ -103,6 +107,12 @@ export interface PortCoopRegistry {
    * row's position), so re-importing the same file — or an updated one with
    * rows added — inserts only what is genuinely new.
    */
+  /**
+   * Which of these dedupe keys are already in the register — the chunked
+   * import filters duplicates out BEFORE geocoding, so `geocoded`/`needsFix`
+   * describe only rows that entered and a re-import costs zero geocoder calls.
+   */
+  existingKeys(keys: readonly string[]): Promise<Set<string>>;
   upsertMany(
     rows: NewCoopTransaction[],
     by: { userId: string; batchId: string | null },
@@ -121,7 +131,10 @@ export interface PortCoopRegistry {
   ): Promise<{ ok: true; row: CoopTransaction } | { ok: false; reason: "duplicate" | "invalid" }>;
   remove(id: string): Promise<void>;
   stats(): Promise<CoopRegistryStats>;
+  /** Upsert by `id`: opened with `rowsInserted: 0, finishedAt: null` before the first chunk, closed with the final counters. */
   recordBatch(batch: CoopImportBatch): Promise<void>;
+  /** The batch as opened by `startCoopImport` — chunk/finalize read owner, mapping and the parser's skip/warn lists from here, never from the client again (review 1 m-2, NIT-1). */
+  getBatch(id: string): Promise<CoopImportBatch | null>;
   getMapping(cooperative: string): Promise<ColumnMapping | null>;
   saveMapping(cooperative: string, mapping: ColumnMapping): Promise<void>;
 }

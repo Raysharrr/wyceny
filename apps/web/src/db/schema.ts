@@ -183,6 +183,10 @@ export const coopImportBatch = pgTable("coop_import_batch", {
   rowsWarned: jsonb("rows_warned").notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   createdBy: text("created_by").notNull(),
+  // Migration 0016 (S2b): the batch row is written BEFORE the first chunk of
+  // rows and closed by the last one — null = import still running (or
+  // abandoned: tab closed, timeout). Rows of an unfinished batch are real.
+  finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
 });
 
 // "Mapowanie zapamiętamy dla tej spółdzielni" — one remembered column mapping per cooperative.

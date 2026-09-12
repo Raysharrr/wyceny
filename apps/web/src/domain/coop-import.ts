@@ -40,6 +40,18 @@ export type ColumnMapping = { [K in Exclude<CoopFieldKey, "flatNumber">]?: numbe
   flatNumber?: number | null | "absent";
 };
 
+/**
+ * Required fields the mapping does not cover — the wizard blocks "Dalej" on a
+ * non-empty result (spec §6: `COOP_FIELDS.required` is enforced by the UI,
+ * not by parseCoopSheet). `flatNumber: "absent"` counts as covered: the
+ * appraiser stated that this register has no such column.
+ */
+export function missingRequiredFields(mapping: ColumnMapping): CoopFieldKey[] {
+  return COOP_FIELDS.filter((f) => f.required && typeof mapping[f.key] !== "number")
+    .map((f) => f.key)
+    .filter((k) => !(k === "flatNumber" && mapping.flatNumber === "absent"));
+}
+
 export type SkipReason = "summary" | "empty" | "bad_number" | "bad_date" | "duplicate";
 export type SkippedRow = { row: number; reason: SkipReason };
 /**
@@ -220,12 +232,21 @@ export function parseCoopSheet(
     let address = cell("address");
     let buildingNumber = cell("buildingNumber");
     let flatNumber = cell("flatNumber");
-    if (!buildingNumber) {
+    // One-cell registers ("Bukowa 12/5", Przylesie's "os. Wymyślone 12"): the
+    // building is mapped to the SAME column as the address, or to none.
+    const flatFromAddress = mapping.flatNumber === mapping.address;
+    if (!buildingNumber || mapping.buildingNumber === mapping.address || flatFromAddress) {
       const split = splitAddressCell(address);
       if (split) {
         address = split.address;
         buildingNumber = split.building;
-        flatNumber = flatNumber || split.flat;
+        // Same column as the address → the flat is the "/5" part, never the whole cell (m-9).
+        flatNumber = flatFromAddress ? split.flat : flatNumber || split.flat;
+      } else {
+        // N-3: the cell could not be split — a field pointed at the address column
+        // must not keep the whole address as its value.
+        if (flatFromAddress) flatNumber = "";
+        if (mapping.buildingNumber === mapping.address) buildingNumber = "";
       }
     }
     if (!address) {

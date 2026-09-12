@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, gte, ilike, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "../db/schema";
 import { coopDedupeKey, type ColumnMapping } from "../domain/coop-import";
@@ -99,7 +99,15 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
       const where = and(
         q.cooperative ? eq(t.cooperative, q.cooperative) : undefined,
         q.from ? gte(t.date, q.from) : undefined,
-        q.text ? ilike(t.address, `%${q.text}%`) : undefined,
+        // The search box promises "adres, nr budynku, rep. aktu…" (mockup) — all three (review 1 M-3).
+        q.text
+          ? or(
+              ilike(t.address, `%${q.text}%`),
+              ilike(t.buildingNumber, `%${q.text}%`),
+              ilike(t.rep, `%${q.text}%`),
+            )
+          : undefined,
+        q.needsFix ? isNull(t.posX) : undefined,
         q.near
           ? sql`${t.posX} is not null and ((${t.posX} - ${q.near.x})^2 + (${t.posY} - ${q.near.y})^2) <= ${q.near.radiusM * q.near.radiusM}`
           : undefined,
@@ -134,6 +142,15 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
         await tx.execute(sql`select set_config('app.user_id', ${as.id}, true)`);
         return run(tx);
       });
+    },
+
+    async existingKeys(keys) {
+      if (keys.length === 0) return new Set();
+      const rows = await db
+        .select({ k: t.dedupeKey })
+        .from(t)
+        .where(inArray(t.dedupeKey, [...keys]));
+      return new Set(rows.map((r) => r.k));
     },
 
     async upsertMany(rows, by) {
@@ -190,6 +207,8 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
         db
           .select()
           .from(schema.coopImportBatch)
+          // An open (or abandoned) batch has no final counters — the tile shows the last one that closed.
+          .where(isNotNull(schema.coopImportBatch.finishedAt))
           .orderBy(desc(schema.coopImportBatch.createdAt))
           .limit(1),
       ]);
@@ -204,16 +223,44 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
     },
 
     async recordBatch(batch: CoopImportBatch) {
-      await db.insert(schema.coopImportBatch).values({
-        id: batch.id,
-        cooperative: batch.cooperative,
-        fileName: batch.fileName,
-        mapping: batch.mapping,
+      const counters = {
         rowsInserted: batch.rowsInserted,
         rowsSkipped: batch.rowsSkipped,
         rowsWarned: batch.rowsWarned,
-        createdBy: batch.createdBy,
-      });
+        finishedAt: batch.finishedAt ? new Date(batch.finishedAt) : null,
+      };
+      await db
+        .insert(schema.coopImportBatch)
+        .values({
+          id: batch.id,
+          cooperative: batch.cooperative,
+          fileName: batch.fileName,
+          mapping: batch.mapping,
+          createdBy: batch.createdBy,
+          ...counters,
+        })
+        .onConflictDoUpdate({ target: schema.coopImportBatch.id, set: counters });
+    },
+
+    async getBatch(id) {
+      const [b] = await db
+        .select()
+        .from(schema.coopImportBatch)
+        .where(eq(schema.coopImportBatch.id, id))
+        .limit(1);
+      return b
+        ? {
+            id: b.id,
+            cooperative: b.cooperative,
+            fileName: b.fileName,
+            mapping: b.mapping as ColumnMapping,
+            rowsInserted: b.rowsInserted,
+            rowsSkipped: b.rowsSkipped as CoopImportBatch["rowsSkipped"],
+            rowsWarned: b.rowsWarned as CoopImportBatch["rowsWarned"],
+            createdBy: b.createdBy,
+            finishedAt: b.finishedAt ? b.finishedAt.toISOString() : null,
+          }
+        : null;
     },
 
     async getMapping(cooperative) {

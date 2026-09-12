@@ -53,6 +53,17 @@ afterAll(async () => {
 });
 
 describe("coopRegistryRepo", () => {
+  it("existingKeys returns only the keys already stored (review 1 M-1)", async () => {
+    const salted = rows.map((r) => {
+      const x = { ...r, cooperative: `${COOP} ek`, flatNumber: `${r.flatNumber}|ek` };
+      return { ...x, dedupeKey: coopDedupeKey(x) };
+    });
+    await repo.upsertMany(salted.slice(0, 2), { userId: USER, batchId: "batch-0" });
+    const found = await repo.existingKeys([...salted.map((r) => r.dedupeKey), "nope"]);
+    expect(found).toEqual(new Set(salted.slice(0, 2).map((r) => r.dedupeKey)));
+    expect(await repo.existingKeys([])).toEqual(new Set());
+  });
+
   it("upsertMany inserts the fixture rows; the same file again inserts 0", async () => {
     expect(parsed.rows).toHaveLength(5);
     expect(await repo.upsertMany(rows, { userId: USER, batchId: "batch-1" })).toEqual({
@@ -107,6 +118,7 @@ describe("coopRegistryRepo", () => {
       rowsSkipped: parsed.skipped,
       rowsWarned: parsed.warnings,
       createdBy: USER,
+      finishedAt: new Date().toISOString(),
     });
     const s = await repo.stats();
     expect(s.total).toBeGreaterThanOrEqual(5);
@@ -163,4 +175,36 @@ describe("coopRegistryRepo", () => {
     await repo.saveMapping(COOP, { address: 2, area: 5 });
     expect(await repo.getMapping(COOP)).toEqual({ address: 2, area: 5 });
   });
+});
+
+it("recordBatch upserts by id, and stats ignores a batch that is still open (S2b, 0016)", async () => {
+  const id = `batch-open-${stamp}`;
+  const base = {
+    id,
+    cooperative: COOP,
+    fileName: "w-toku.xlsx",
+    mapping: { address: 1 },
+    rowsSkipped: [],
+    rowsWarned: [],
+    createdBy: USER,
+  };
+  await repo.recordBatch({ ...base, rowsInserted: 0, finishedAt: null });
+  expect((await repo.stats()).lastImport?.file).not.toBe("w-toku.xlsx");
+  await repo.recordBatch({ ...base, rowsInserted: 7, finishedAt: new Date().toISOString() });
+  expect((await repo.stats()).lastImport).toMatchObject({ file: "w-toku.xlsx", rows: 7 });
+});
+
+it("list text filter matches address, building number and rep (review 1 M-3)", async () => {
+  const { dedupeKey: _k, ...base } = rows[0]!;
+  const saved = await repo.save(
+    { ...base, cooperative: `${COOP} rep`, flatNumber: `r|${stamp}`, rep: `A ${stamp}/2025` },
+    { userId: USER },
+  );
+  expect(saved.ok).toBe(true);
+  const byRep = await repo.list({ cooperative: `${COOP} rep`, text: `${stamp}/2025` });
+  expect(byRep.rows.map((r) => r.rep)).toEqual([`A ${stamp}/2025`]);
+  const byBuilding = await repo.list({ cooperative: COOP, text: rows[0]!.buildingNumber });
+  expect(byBuilding.rows.length).toBeGreaterThanOrEqual(1);
+  const byAddress = await repo.list({ cooperative: COOP, text: rows[0]!.address.slice(0, 4) });
+  expect(byAddress.rows.length).toBeGreaterThanOrEqual(1);
 });

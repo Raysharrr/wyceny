@@ -101,7 +101,7 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
  * przeniesieniu komponentu, a oba historyczne rozjazdy polegaly na tym, ze
  * przycisk PRZESTAL istniec.
  *
- * Zakres na dzis: 36 wystapien, 20 unikalnych etykiet. To siec bezpieczenstwa
+ * Zakres na dzis: 38 wystapien, 20 unikalnych etykiet. To siec bezpieczenstwa
  * na jedna, najczestsza klase bledu — nie dowod zgodnosci Pomocy z aplikacja.
  *
  * T12 potwierdzil to empirycznie po raz trzeci: skasowanie przycisku
@@ -144,12 +144,14 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
   // zakres straznika, a to jest dokladnie ten rodzaj cichej utraty pokrycia,
   // przed ktorym ten plik ma bronic. Rosna, gdy Pomoc cytuje nowy przycisk —
   // wtedy zaktualizuj tez liczby w komentarzu wyzej.
-  it("zna dokladny zakres: 36 wystapien, 20 unikalnych etykiet", () => {
+  it("zna dokladny zakres: 38 wystapien, 20 unikalnych etykiet", () => {
     // 36 / 20 od S3 (blok „Prawo spoldzielcze"): `krok-3-proba` cytuje trzy nowe
     // etykiety — „Pobierz probe z rejestru", „Pobierz probe ponownie" i „Dodaj
     // transakcje w Rejestrze →" — a wiekszosc cytatow „Pobierz probe z RCN"
     // zamienila sie w neutralne „pobranie".
-    expect(cytaty.length).toBe(36);
+    // 38 od S2b (T-13): `rejestr-spoldzielczy` cytuje przycisk „Dodaj transakcje"
+    // dwa razy (tekst i alt zrzutu formularza); etykieta byla juz cytowana.
+    expect(cytaty.length).toBe(38);
     expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(20);
   });
 

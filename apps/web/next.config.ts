@@ -2,6 +2,11 @@ import createMDX from "@next/mdx";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // T-13 (S2b): the XLSX register goes through a Server Action as FormData
+  // (the worker's own ceiling is 12 MB). NOTE: the hosting provider caps
+  // function bodies at 4.5 MB regardless — larger registers (Dębiecka:
+  // 9.1 MB) need the direct-to-worker upload path, see PR follow-ups.
+  experimental: { serverActions: { bodySizeLimit: "12mb" } },
   // Ships the DOCX operat template with the serverless bundle for the
   // route that renders it (Task 4: docx-render adapter, F-12).
   //

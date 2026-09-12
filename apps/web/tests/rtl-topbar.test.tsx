@@ -44,3 +44,16 @@ describe("Topbar", () => {
     expect(screen.queryByText("Użytkownicy i role")).not.toBeInTheDocument();
   });
 });
+
+describe("Topbar — Rejestr spółdzielczy (T-13, S2b)", () => {
+  it("links to /rejestr from the top bar AND from the account menu", async () => {
+    const user = userEvent.setup();
+    render(<Topbar userName="Zenon Dembski" userEmail="z@dembscy.pl" userRole="rzeczoznawca" />);
+    const bar = screen.getByRole("link", { name: "Rejestr spółdzielczy" });
+    expect(bar).toHaveAttribute("href", "/rejestr");
+
+    await user.click(screen.getByRole("button", { name: "Konto" }));
+    const item = screen.getByRole("menuitem", { name: /rejestr spółdzielczy/i });
+    expect(item).toHaveAttribute("href", "/rejestr");
+  });
+});

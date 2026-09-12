@@ -113,6 +113,13 @@
       "when": 1789223457400,
       "tag": "0015_coop_batch_warnings",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789230241120,
+      "tag": "0016_coop_batch_finished",
+      "breakpoints": true
     }
   ]
 }

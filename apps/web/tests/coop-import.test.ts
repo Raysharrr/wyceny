@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COOP_FIELDS,
+  missingRequiredFields,
   coopBuildingRef,
   coopDedupeKey,
   coopImportEventMeta,
@@ -350,5 +351,79 @@ describe("coopImportEventMeta (F-13)", () => {
       needs_fix: 1,
     });
     expect(Object.values(meta).every((v) => typeof v === "number")).toBe(true);
+  });
+});
+
+describe("missingRequiredFields (S2b wizard gate)", () => {
+  it("lists unmapped required fields; 'absent' covers flatNumber, optional fields never count", () => {
+    expect(missingRequiredFields({})).toEqual([
+      "address",
+      "buildingNumber",
+      "flatNumber",
+      "area",
+      "priceTotal",
+      "date",
+    ]);
+    expect(
+      missingRequiredFields({
+        address: 0,
+        buildingNumber: 1,
+        flatNumber: "absent",
+        area: 2,
+        priceTotal: 3,
+        date: 4,
+      }),
+    ).toEqual([]);
+    expect(
+      missingRequiredFields({
+        address: 0,
+        buildingNumber: 1,
+        flatNumber: null,
+        area: 2,
+        priceTotal: 3,
+        date: 4,
+      }),
+    ).toEqual(["flatNumber"]);
+  });
+});
+
+describe("one-cell address mapped to both address and building (S2b, Przylesie)", () => {
+  it("splits 'os. Wymyślone 12' into address + building when both fields point at the same column", () => {
+    const { rows } = parseCoopSheet(
+      [["os. Wymyślone 12", "45", "450000", "2025-01-14"]],
+      { address: 0, buildingNumber: 0, flatNumber: "absent", area: 1, priceTotal: 2, date: 3 },
+      { cooperative: "SM", priceKind: "nieustalona", headerRow: null },
+    );
+    expect(rows[0]).toMatchObject({
+      address: "os. Wymyślone",
+      buildingNumber: "12",
+      flatNumber: "",
+    });
+  });
+});
+
+describe("flat number mapped to the address column (review 1 m-9)", () => {
+  it("takes the '/5' part, never the whole cell", () => {
+    const { rows } = parseCoopSheet(
+      [["Bukowa 12/5", "45", "450000", "2025-01-14"]],
+      { address: 0, buildingNumber: 0, flatNumber: 0, area: 1, priceTotal: 2, date: 3 },
+      { cooperative: "SM", priceKind: "nieustalona", headerRow: null },
+    );
+    expect(rows[0]).toMatchObject({ address: "Bukowa", buildingNumber: "12", flatNumber: "5" });
+  });
+});
+
+describe("address column without a number (review 2 N-3)", () => {
+  it("building/flat mapped to the address column stay empty when the cell cannot be split", () => {
+    const { rows } = parseCoopSheet(
+      [["os. Bezliczbowe", "45", "450000", "2025-01-14"]],
+      { address: 0, buildingNumber: 0, flatNumber: 0, area: 1, priceTotal: 2, date: 3 },
+      { cooperative: "SM", priceKind: "nieustalona", headerRow: null },
+    );
+    expect(rows[0]).toMatchObject({
+      address: "os. Bezliczbowe",
+      buildingNumber: "",
+      flatNumber: "",
+    });
   });
 });
