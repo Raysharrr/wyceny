@@ -153,7 +153,7 @@ export default async function RejestrPage({
 
       {list.truncated ? (
         <p className="rounded-lg border border-[#ecd9a6] bg-[#fbf2dd] px-4 py-2 text-sm text-[#b07a16]">
-          Lista jest niekompletna — rejestr ma więcej niż 5 000 wierszy spełniających filtry. Zawęź
+          Lista jest niekompletna — rejestr ma co najmniej 5 000 wierszy spełniających filtry. Zawęź
           spółdzielnię, okres albo wyszukiwanie.
         </p>
       ) : null}
