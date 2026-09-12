@@ -4,7 +4,7 @@ import { like } from "drizzle-orm";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { coopRegistryRepo } from "../src/adapters/coop-registry-drizzle";
-import { parseCoopSheet } from "../src/domain/coop-import";
+import { coopDedupeKey, parseCoopSheet } from "../src/domain/coop-import";
 import fixture from "./fixtures/coop-registry-synthetic.sheets.json";
 
 /**
@@ -22,13 +22,18 @@ const parsed = parseCoopSheet(
   { address: 1, buildingNumber: 2, flatNumber: 3, area: 4, priceTotal: 5, date: 6, rightType: 7 },
   { cooperative: COOP, priceKind: "nieustalona", headerRow: 3 },
 );
-// Salt the keys so reruns against a shared local DB start from a clean slate.
-const rows = parsed.rows.map((r, i) => ({
-  ...r,
-  dedupeKey: `${r.dedupeKey}|${stamp}`,
-  // Three rows geocoded around (360000, 504000); two left "do poprawki".
-  pos: i < 3 ? { x: 360000 + i * 100, y: 504000 } : null,
-}));
+// Salt the FACTS (flat number), not the key: save() derives the key from the
+// facts, so a hand-salted key would collide with the same fixture imported by
+// another run or by the E2E on the shared local DB.
+const rows = parsed.rows.map((r, i) => {
+  const salted = { ...r, flatNumber: `${r.flatNumber}|${stamp}` };
+  return {
+    ...salted,
+    dedupeKey: coopDedupeKey(salted),
+    // Three rows geocoded around (360000, 504000); two left "do poprawki".
+    pos: i < 3 ? { x: 360000 + i * 100, y: 504000 } : null,
+  };
+});
 
 beforeAll(async () => {
   await migrate(db, { migrationsFolder: "./drizzle" });
@@ -64,7 +69,7 @@ describe("coopRegistryRepo", () => {
     const { rows: listed, total } = await repo.list({ cooperative: COOP });
     expect(total).toBe(5);
     expect(listed.map((r) => r.date)).toEqual([...listed.map((r) => r.date)].sort().reverse());
-    const orla = listed.find((r) => r.address === "Orła Białego" && r.flatNumber === "3")!;
+    const orla = listed.find((r) => r.address === "Orła Białego" && r.flatNumber === `3|${stamp}`)!;
     expect(orla.pricePerM2).toBeCloseTo(520000 / 52.1, 6);
     expect(orla.rightType).toBe("wlasnosc_lokalu");
     expect(orla.priceKind).toBe("nieustalona");
@@ -127,15 +132,7 @@ describe("coopRegistryRepo", () => {
   });
 
   it("save derives the key itself: the same facts as an imported row answer { ok: false, duplicate }", async () => {
-    // rows[0] was imported with a salted key; re-import the facts under that salt via the derived key path.
-    const facts = {
-      ...rows[0]!,
-      source: "manual" as const,
-      flatNumber: `${rows[0]!.flatNumber}|${stamp}`,
-    };
-    const first = await repo.save(facts, { userId: USER });
-    expect(first.ok).toBe(true);
-    const dup = await repo.save(facts, { userId: USER });
+    const dup = await repo.save({ ...rows[0]!, source: "manual" }, { userId: USER });
     expect(dup).toEqual({ ok: false, reason: "duplicate" });
     expect(await repo.save({ ...rows[0]!, area: 0 }, { userId: USER })).toEqual({
       ok: false,
