@@ -39,11 +39,11 @@ export function rowBadges(
   c: Candidate,
   flags: Flag[],
   subjectEgib: SubjectEgib | undefined,
-  /** Which register the pool came from (S3) — omitted by callers that render no source badge. */
+  /** Which register the pool came from (S3). Only a coop-register row wears the badge — the RCN path stays visually as it was (review 1 MINOR-1). */
   source?: RegistrySource,
 ): RowBadge[] {
   const out: RowBadge[] = [];
-  if (source) out.push(registryBadge(source));
+  if (source === "rejestr_sm") out.push(registryBadge(source));
   if (subjectEgib && c.egib) {
     const s = sameness(c, subjectEgib);
     if (s.sameBuilding)

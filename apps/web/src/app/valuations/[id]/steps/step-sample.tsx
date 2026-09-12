@@ -480,15 +480,26 @@ export function StepSample({
                     data-testid="registry-shortfall"
                     className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950"
                   >
-                    W rejestrze biura {plural(sel.counts.afterBand, "jest", "są", "jest")}{" "}
+                    {/* The SAME quantity as the condition above (review 1 MAJOR-1): what the
+                        appraiser really has in the sample — never counts.afterBand, which rule 6
+                        (max 3 per building) and the outlier demotion can leave above 12. */}
+                    W rejestrze biura {plural(eff.proposed.length, "jest", "są", "jest")}{" "}
                     <b>
-                      {sel.counts.afterBand}{" "}
-                      {plural(sel.counts.afterBand, "transakcja", "transakcje", "transakcji")}
+                      {eff.proposed.length}{" "}
+                      {plural(eff.proposed.length, "transakcja", "transakcje", "transakcji")}
                     </b>{" "}
-                    {plural(sel.counts.afterBand, "spełniająca", "spełniające", "spełniających")}{" "}
+                    {plural(eff.proposed.length, "spełniająca", "spełniające", "spełniających")}{" "}
                     kryteria
                     {cooperatives ? ` (wszystkie ze ${cooperatives})` : ""}; wymagane{" "}
                     {REQUIRED_SAMPLE_SIZE} — poszerz pasmo lub dodaj transakcje w Rejestrze.{" "}
+                    {sel.counts.afterBand >= REQUIRED_SAMPLE_SIZE && eff.alternates.length > 0 ? (
+                      <>
+                        W Alternatywach {plural(eff.alternates.length, "jest", "są", "jest")}{" "}
+                        {eff.alternates.length}{" "}
+                        {plural(eff.alternates.length, "wiersz", "wiersze", "wierszy")} — dodaj je
+                        ręcznie.{" "}
+                      </>
+                    ) : null}
                     <a
                       href="/rejestr"
                       target="_blank"
