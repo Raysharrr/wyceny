@@ -25,6 +25,7 @@ import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
 import { cn } from "@/lib/utils";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 import { KwSection, type KwFetchState, type KwSource } from "./kw-section";
+import { PROPERTY_RIGHT_LABEL } from "@/domain/property-right";
 import {
   MapPreview,
   SubjectSection,
@@ -173,6 +174,11 @@ export function SubjectForm({
   // same watched values used by the KW mismatch check above, reused rather
   // than re-subscribed.
   const watchedAddress = useWatch({ control, name: "address" });
+  // S3 (spec §6.1): the summary tile names the right and, for the coop right,
+  // says what changes downstream — copy from the Krok1 mockup.
+  const watchedRight = useWatch({ control, name: "propertyRight" }) ?? "wlasnosc_lokalu";
+  const watchedBasement = useWatch({ control, name: "hasBasement" }) ?? false;
+  const watchedKwNumber = useWatch({ control, name: "kwNumber" }) ?? "";
   const areaDisplay = formatAreaDisplay(areaValue);
 
   // Surfaced only when a document gave a usable area AND the form's own area
@@ -529,14 +535,38 @@ export function SubjectForm({
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
           <MapPreview state={mapPreview} />
-          <section className="rounded-[14px] border border-border bg-card p-5 shadow-sm">
+          <section
+            data-testid="subject-summary"
+            className="rounded-[14px] border border-border bg-card p-5 shadow-sm"
+          >
             <p className="text-[14.5px] font-semibold">{watchedAddress || "—"}</p>
             <dl className="mt-3 grid grid-cols-2 gap-2 text-[12.5px]">
               <div>
                 <dt className="text-muted-foreground">Powierzchnia</dt>
                 <dd className="num text-[15px]">{areaDisplay ? `${areaDisplay} m²` : "—"}</dd>
               </div>
+              <div>
+                <dt className="text-muted-foreground">Rodzaj prawa</dt>
+                <dd className="text-[13px] font-medium">{PROPERTY_RIGHT_LABEL[watchedRight]}</dd>
+              </div>
             </dl>
+            {watchedRight === "spoldzielcze_wlasnosciowe" ? (
+              <div className="mt-4 border-t pt-3 text-[12.5px]">
+                <p className="mb-1.5 font-semibold">Co się zmieni dalej</p>
+                <ul className="flex list-disc flex-col gap-1 pl-4 text-muted-foreground">
+                  <li>
+                    Krok 3 pobierze próbę z <b>rejestru biura</b>, nie z RCN.
+                  </li>
+                  <li>
+                    Operat opisze <b>spółdzielcze własnościowe prawo do lokalu</b>
+                    {watchedBasement ? ", z klauzulą o piwnicy" : ""}.
+                  </li>
+                  {!watchedKwNumber.trim() ? (
+                    <li>§8.2 nie będzie zawierał wypisu z księgi wieczystej lokalu.</li>
+                  ) : null}
+                </ul>
+              </div>
+            ) : null}
           </section>
         </aside>
       </div>
