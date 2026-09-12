@@ -52,6 +52,26 @@ def test_stub_refuses_to_run_next_to_a_hosting_marker(monkeypatch, marker):
         main.geocoder_stub_enabled()
 
 
+def test_worker_does_not_start_with_stub_next_to_hosting_marker():
+    """The guard runs at import time (MINOR-1 review 2): a worker deployed with
+    GEOCODER_STUB=1 next to RAILWAY_ENVIRONMENT must fail to boot, not serve hashes."""
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "GEOCODER_STUB": "1", "RAILWAY_ENVIRONMENT": "production"}
+    proc = subprocess.run(
+        [sys.executable, "-c", "import app.main"],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert proc.returncode != 0
+    assert "GEOCODER_STUB" in proc.stderr
+
+
 def test_stub_off_by_default(monkeypatch):
     monkeypatch.delenv("GEOCODER_STUB")
     assert main.geocoder_stub_enabled() is False

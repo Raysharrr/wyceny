@@ -49,9 +49,6 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="wyceny-worker", lifespan=lifespan)
 
-if os.environ.get("GEOCODER_STUB") == "1":
-    # Loud on purpose: a stubbed geocoder must never go unnoticed in a log.
-    logger.warning("geocoder_stub_enabled", note="CI/E2E only — positions are hashes, not geocodes")
 app.add_middleware(RequestIdMiddleware)
 
 # CORS: the KW upload posts directly from the browser (Vercel 4.5 MB body
@@ -238,6 +235,11 @@ def geocoder_stub_enabled() -> bool:
             "— stub geokodera wolno włączać wyłącznie w CI i lokalnym E2E."
         )
     return True
+
+
+if geocoder_stub_enabled():  # raises next to a hosting marker → the worker does not start
+    # Loud on purpose: a stubbed geocoder must never go unnoticed in a log.
+    logger.warning("geocoder_stub_enabled", note="CI/E2E only — positions are hashes, not geocodes")
 
 
 def _stub_point(address: str) -> tuple[float, float]:
