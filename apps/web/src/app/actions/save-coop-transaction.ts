@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSession } from "@/auth/session";
@@ -88,6 +89,7 @@ export async function saveCoopTransaction(
         actorId: session.user.id,
         meta: { geocoded: hit ? 1 : 0 },
       });
+      revalidatePath("/rejestr");
       return { ok: true, id: saved.row.id, needsFix: !hit };
     } catch (err) {
       await recordFailure({ event: "coop.manual.failed", error: err, actorId: session.user.id });

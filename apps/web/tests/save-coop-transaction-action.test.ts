@@ -16,6 +16,7 @@ let hit: { x: number; y: number; source: "uug" } | null = { x: 1, y: 2, source: 
 vi.mock("@/auth/session", () => ({
   getSession: async () => ({ user: { id: "u1", role: "appraiser" } }),
 }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/worker-token", () => ({ mintWorkerToken: () => "tok" }));
 vi.mock("@/app/valuations/_deps", () => ({
   coopRegistry: {

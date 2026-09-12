@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSession } from "@/auth/session";
@@ -213,6 +214,7 @@ export async function finalizeCoopImportAction(
         { ...parsed.data, userId: session.user.id, traceId: currentTraceId() },
       ),
     );
+    if (r) revalidatePath("/rejestr");
     return r ?? { error: INVALID };
   } catch (err) {
     await recordFailure({
