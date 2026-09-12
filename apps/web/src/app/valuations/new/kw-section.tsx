@@ -222,7 +222,8 @@ export function KwSection(props: KwSectionProps) {
               className="rounded-md border border-border bg-muted/40 p-2 text-sm"
             >
               Transakcje do próby porównawczej pobierzemy z <strong>rejestru biura</strong> zamiast
-              z RCN. Rejestrem zarządzasz w zakładce <strong>Rejestr spółdzielczy</strong>.
+              z RCN. Zakładka <strong>Rejestr spółdzielczy</strong> pojawi się w kolejnym wydaniu —
+              do tego czasu próbę wpisz ręcznie w kroku 3.
             </p>
             <Controller
               control={control}
