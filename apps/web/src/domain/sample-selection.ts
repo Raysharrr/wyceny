@@ -63,10 +63,10 @@ export type Candidate = {
   market: Market;
   /** nier_udzial, e.g. "1/1". */
   share: string;
-  /** tran_rodzaj_trans, e.g. "wolnyRynek". */
-  transType: string;
-  /** lok_funkcja, e.g. "mieszkalna". */
-  function: string;
+  /** tran_rodzaj_trans, e.g. "wolnyRynek"; null = source has no such field (coop registry, B4). */
+  transType: string | null;
+  /** lok_funkcja, e.g. "mieszkalna"; null = source has no such field (coop registry, B4). */
+  function: string | null;
   /** tran_sprzedajacy: "osobaPrawna" | "osobaFizyczna" | … — developer sales are osobaPrawna. */
   seller: string | null;
   /** gml:pos normalised to {x: easting, y: northing}. */
@@ -157,7 +157,12 @@ export type RejectReason =
   /** Outside the appraiser's own unit-price band (Slice 6). */
   | "manual_price_range";
 
-export type Flag = "price_outlier" | "market_unknown" | "primary_suspect";
+export type Flag =
+  | "price_outlier"
+  | "market_unknown"
+  | "primary_suspect"
+  /** function/transType unknown at the source (B4) — informative, never demotes. */
+  | "attributes_unknown";
 
 export type Rejected = {
   candidate: Candidate;
@@ -209,8 +214,10 @@ export function isWholeShare(share: string): boolean {
 export function hygieneReasons(c: Candidate, floor: string, todayMonth: string): RejectReason[] {
   const reasons: RejectReason[] = [];
   if (!(c.pricePerM2 > 0) || !(c.area > 0)) reasons.push("no_price");
-  if (c.function !== "mieszkalna") reasons.push("not_residential");
-  if (c.transType !== "wolnyRynek") reasons.push("not_free_market");
+  // null = the source never had the field (B4): unknown is not a failed rule
+  // (ADR-010, no silent defaults) — selectSample flags it `attributes_unknown`.
+  if (c.function !== null && c.function !== "mieszkalna") reasons.push("not_residential");
+  if (c.transType !== null && c.transType !== "wolnyRynek") reasons.push("not_free_market");
   if (!isWholeShare(c.share)) reasons.push("share_not_whole");
   const month = c.date.slice(0, 7);
   if (month.length !== 7 || month < floor || month > todayMonth) reasons.push("out_of_window");
@@ -379,6 +386,7 @@ export function selectSample(candidates: Candidate[], params: SelectionParams): 
   }
   for (const c of chosen.banded) {
     if (c.market === null) addFlag(candidateKey(c), "market_unknown");
+    if (c.function === null || c.transType === null) addFlag(candidateKey(c), "attributes_unknown");
     if (c.market === null && c.seller === "osobaPrawna")
       addFlag(candidateKey(c), "primary_suspect");
   }

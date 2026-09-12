@@ -14,6 +14,7 @@ const FLAG_BADGE: Record<Flag, RowBadge> = {
     tone: "destructive",
   },
   market_unknown: { key: "market_unknown", label: "rynek?", tone: "outline" },
+  attributes_unknown: { key: "attributes_unknown", label: "cechy?", tone: "outline" },
 };
 
 /**

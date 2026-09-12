@@ -126,8 +126,9 @@ export const candidateSchema = z.object({
   rooms: z.number().nullable(),
   market: z.enum(["wtorny", "pierwotny"]).nullable(),
   share: z.string(),
-  transType: z.string(),
-  function: z.string(),
+  // B4 — nullable: the coop registry has neither field; RCN always fills them.
+  transType: z.string().nullable(),
+  function: z.string().nullable(),
   seller: z.string().nullable(),
   pos: z.object({ x: z.number(), y: z.number() }).nullable(),
   // Slice 3d — adres z eksportu GEOPOZ. `.optional()`, bo kandydatki zamrożone przed
@@ -245,7 +246,7 @@ export const sampleSelectionSchema = z.object({
   alternates: z.array(candidateSchema),
   flags: z.record(
     z.string(),
-    z.array(z.enum(["price_outlier", "market_unknown", "primary_suspect"])),
+    z.array(z.enum(["price_outlier", "market_unknown", "primary_suspect", "attributes_unknown"])),
   ),
   rejectedCounts: z.record(z.string(), z.number()),
   /** Rows rejected by hygiene/band inside `radiusUsedM` (decision a). Optional: pre-Slice-3 snapshots lack it. */

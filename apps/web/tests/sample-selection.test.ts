@@ -72,6 +72,26 @@ describe("helpers", () => {
       "primary_market",
     ]);
   });
+  // B4 (blok "Prawo spółdzielcze", S1): a registry row does not carry lok_funkcja /
+  // tran_rodzaj_trans. Unknown ≠ failing the rule (ADR-010: no silent defaults):
+  // hygiene skips the rule, and selectSample raises `attributes_unknown` instead.
+  it("hygieneReasons skips not_residential/not_free_market when function/transType are null", () => {
+    const c = mk({ function: null, transType: null });
+    expect(hygieneReasons(c, "2024-08", "2026-08")).toEqual([]);
+    const filled = mk({ function: "uslugowa", transType: "przetarg" });
+    expect(hygieneReasons(filled, "2024-08", "2026-08")).toEqual([
+      "not_residential",
+      "not_free_market",
+    ]);
+  });
+  it("selectSample flags attributes_unknown on rows with null function/transType and still proposes them", () => {
+    const unknown = mk({ function: null, transType: null });
+    const known = mk();
+    const s = selectSample([unknown, known], P);
+    expect(s.proposed).toHaveLength(2);
+    expect(s.flags[candidateKey(unknown)]).toEqual(["attributes_unknown"]);
+    expect(s.flags[candidateKey(known)]).toBeUndefined();
+  });
   it("candidateKey pairs transactionId with lokalId", () => {
     expect(candidateKey({ transactionId: "A", lokalId: "L" })).toBe("A|L");
   });
