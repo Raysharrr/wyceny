@@ -144,7 +144,11 @@ describe("coopRegistryRepo", () => {
   });
 
   it("correcting an imported row keeps its source and import batch", async () => {
-    const imported = (await repo.list({ cooperative: COOP, text: "Zmyślona" })).rows[0]!;
+    // Pick the imported row explicitly: the previous test added a manual row with the
+    // same date, and same-date rows order by random id.
+    const imported = (await repo.list({ cooperative: COOP, text: "Zmyślona" })).rows.find(
+      (r) => r.source === "xls",
+    )!;
     const fixed = await repo.save({ ...imported, pos: { x: 9, y: 9 } }, { userId: "someone-else" });
     if (!fixed.ok) throw new Error(fixed.reason);
     expect(fixed.row.source).toBe("xls");
