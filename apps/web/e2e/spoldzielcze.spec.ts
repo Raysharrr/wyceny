@@ -317,14 +317,20 @@ test.describe("wycena spółdzielcza @coop @staging-safe", () => {
     expect(text).toContain("pozyskane ze spółdzielni mieszkaniowej");
     expect(text).toMatch(/nie założono księgi/);
     expect(text).toMatch(/korzystania z piwnicy/);
-    // All 13 forms the worker's prose guard refuses — except the two places where the
-    // TEMPLATE itself still says „nieruchomości lokalowych” (§12.2 and the caption of
-    // Tabela 1; known follow-up from review 2 of PR #39, decision for Aneta). Those two
-    // are pinned exactly, so a third occurrence (e.g. from prose) still fails.
-    const lower = text.toLowerCase();
-    for (const phrase of OWNERSHIP_PHRASES.filter((p) => p !== "nieruchomości lokalowych"))
-      expect(lower).not.toContain(phrase);
-    expect(lower.match(/nieruchomości lokalowych/g) ?? []).toHaveLength(2);
+    // All 13 forms the worker's prose guard refuses — after cutting out the two
+    // sentences where the TEMPLATE itself still says „nieruchomości lokalowych”
+    // (§12.2 and the caption of Tabela 1; known follow-up from review 2 of PR #39,
+    // decision for Aneta). Cut by wording, not by count: the caption repeats on a
+    // continuation page and poppler on Linux paginates differently than on macOS.
+    const templateConstants = [
+      /rynku wtórnego nieruchomości lokalowych/g, // §12.2, zdanie 1
+      /rynek nieruchomości lokalowych o funkcji mieszkalnej/g, // §12.2, zdanie 2
+      /charakterystyka wybranych nieruchomości lokalowych/g, // podpis Tabeli 1 (także na stronie kontynuacji)
+    ];
+    // pdftotext wraps lines mid-sentence, differently per platform — compare on one line
+    const flat = text.toLowerCase().replace(/\s+/g, " ");
+    const outsideTemplate = templateConstants.reduce((t, re) => t.replace(re, ""), flat);
+    for (const phrase of OWNERSHIP_PHRASES) expect(outsideTemplate).not.toContain(phrase);
     const rows = tabela1(text);
     expect(rows).toHaveLength(rowsBefore);
     for (const [miasto, ulica] of rows) {
