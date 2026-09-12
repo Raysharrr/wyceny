@@ -12,6 +12,7 @@ import {
   type ManualRejection,
   type ManualRejectionReason,
 } from "@/domain/sample-manual";
+import { REGISTRY_LABEL, type RegistrySource } from "@/domain/kcs";
 import { obrebLabel } from "@/domain/obreb-name";
 import { PROPERTY_RIGHT_LABEL } from "@/domain/property-right";
 import { cooperativeLabel } from "./sample-badges";
@@ -24,6 +25,8 @@ import { kiegWmsUrl, mapEmbedUrl, ortoWmsUrl, streetViewEmbedUrl } from "./embed
 export type SamplePanelProps = {
   /** Stan indeksu adresów z chwili pobrania puli (Slice 3d) — decyduje, jak wyjaśnić kreskę. */
   streetIndex?: StreetIndexState;
+  /** Register the pool came from (S3) — the "Źródło" row reads it from the same place as the row badge (review 1 MINOR-6). */
+  source?: RegistrySource;
   candidate: Candidate;
   index: number;
   total: number;
@@ -117,6 +120,7 @@ export function SamplePanel({
   embedKey,
   streetViewEnabled,
   streetIndex,
+  source,
   status,
   initialRejecting = false,
   rejection,
@@ -422,9 +426,9 @@ export function SamplePanel({
               </Field>
             ) : null}
             <Field label="Źródło">
-              {candidate.cooperative
-                ? `Rejestr biura · ${cooperativeLabel(candidate.cooperative)}`
-                : "RCN"}
+              {source === "rejestr_sm"
+                ? `Rejestr biura${candidate.cooperative ? ` · ${cooperativeLabel(candidate.cooperative)}` : ""}`
+                : REGISTRY_LABEL.rcn}
             </Field>
             <Field label="Obręb">{obrebLabel(candidate.egib)}</Field>
             <Field label="Działka · budynek">
