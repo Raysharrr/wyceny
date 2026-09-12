@@ -213,7 +213,7 @@ export async function approveValuation(
         address: valuation.address,
         area: valuation.area,
         purpose: valuation.purpose as OperatPurpose,
-        kwNumber: valuation.kwNumber ?? "",
+        kwNumber: valuation.kwNumber,
         client: valuation.client ?? "",
         inspectionDate: valuation.inspectionDate ?? "",
         approvedAt: now,
