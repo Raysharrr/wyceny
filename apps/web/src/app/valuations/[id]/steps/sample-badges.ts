@@ -3,6 +3,7 @@ import { sameness, type Candidate, type Flag } from "@/domain/sample-selection";
 import type { SubjectEgib } from "@/domain/egib-id";
 import { POZNAN_TERYT_PREFIX } from "@/domain/obreb-name";
 import type { StreetIndexState } from "@/ports/sample";
+import { cooperativeLabel } from "@/lib/coop-format";
 
 export type BadgeTone = "outline" | "secondary" | "destructive";
 export type RowBadge = { key: string; label: string; tone: BadgeTone };
@@ -62,10 +63,7 @@ export function rowBadges(
 
 // --------------------------------------------------------------- Rejestr SM (S3)
 
-/** `SM „Osiedle Młodych”` — the register stores the name as typed ("SM Osiedle Młodych"), so a leading "SM" is not doubled. */
-export function cooperativeLabel(name: string): string {
-  return `SM „${name.replace(/^SM\s+/i, "").trim()}”`;
-}
+export { cooperativeLabel };
 
 /** The cooperatives behind a set of candidates, in first-seen order — "SM „A”, SM „B”"; "" when none (RCN pool). */
 export function cooperativesLabel(candidates: readonly Candidate[]): string {

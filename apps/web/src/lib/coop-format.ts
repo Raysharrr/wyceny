@@ -15,3 +15,8 @@ export function plural(n: number, one: string, few: string, many: string): strin
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
   return many;
 }
+
+/** `SM „Osiedle Młodych”` — the register stores the name as typed ("SM Osiedle Młodych"), so a leading "SM" is not doubled. Shared by step 3 of the wizard and step 3 of the valuation (S5, Task 4f — E2E S2b O-4). */
+export function cooperativeLabel(name: string): string {
+  return `SM „${name.replace(/^SM\s+/i, "").trim()}”`;
+}

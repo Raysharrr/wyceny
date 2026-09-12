@@ -23,7 +23,7 @@ import {
 } from "@/domain/coop-import";
 import { IMPORT_CHUNK, sumCoopChunks, type CoopChunkResult } from "@/lib/coop-import-chunks";
 import type { CoopImportSummary } from "@/lib/coop-import-service";
-import { plural } from "@/lib/coop-format";
+import { cooperativeLabel, plural } from "@/lib/coop-format";
 import { NeedsFixNotice } from "./needs-fix-notice";
 import { PRICE_KINDS, type NewCoopTransaction, type PriceKind } from "@/ports/coop-registry";
 import type { CoopSheet } from "@/ports/coop-sheet";
@@ -487,7 +487,7 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
       ) : null}
 
       {step === 3 && parsed ? (
-        <Card title="Podsumowanie" sub={`plik ${file?.name}, SM „${cooperative}”`}>
+        <Card title="Podsumowanie" sub={`plik ${file?.name}, ${cooperativeLabel(cooperative)}`}>
           {(() => {
             const n = parsed.rows.length;
             const d = count(parsed.skipped, "duplicate");
@@ -646,8 +646,8 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
                       ← Wstecz
                     </Button>
                     <span className="text-sm text-muted-foreground">
-                      Wiersze trafią do wspólnego rejestru biura; mapowanie zapamiętamy dla SM „
-                      {cooperative}”.
+                      Wiersze trafią do wspólnego rejestru biura; mapowanie zapamiętamy dla{" "}
+                      {cooperativeLabel(cooperative)}.
                     </span>
                     <Button onClick={runImport} disabled={phase.kind === "running" || n === 0}>
                       <Upload data-icon="inline-start" />
