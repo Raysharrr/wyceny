@@ -76,6 +76,8 @@ export type CoopImportBatch = {
   /** Rows imported without a flat number, or merged on that basis — the batch's keying trail. */
   rowsWarned: { row: number; reason: WarnReason }[];
   createdBy: string;
+  /** ISO timestamp; null while the chunked import is still running (S2b) — or was abandoned. */
+  finishedAt: string | null;
 };
 
 export type CoopRegistryStats = {
@@ -121,6 +123,7 @@ export interface PortCoopRegistry {
   ): Promise<{ ok: true; row: CoopTransaction } | { ok: false; reason: "duplicate" | "invalid" }>;
   remove(id: string): Promise<void>;
   stats(): Promise<CoopRegistryStats>;
+  /** Upsert by `id`: opened with `rowsInserted: 0, finishedAt: null` before the first chunk, closed with the final counters. */
   recordBatch(batch: CoopImportBatch): Promise<void>;
   getMapping(cooperative: string): Promise<ColumnMapping | null>;
   saveMapping(cooperative: string, mapping: ColumnMapping): Promise<void>;

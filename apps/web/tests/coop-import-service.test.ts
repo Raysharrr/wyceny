@@ -3,7 +3,13 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import { eventLogRepo } from "../src/adapters/event-log-drizzle";
 import { parseCoopSheet } from "../src/domain/coop-import";
-import { runCoopImport } from "../src/lib/coop-import-service";
+import {
+  finalizeCoopImport,
+  importCoopChunk,
+  runCoopImport,
+  startCoopImport,
+  sumCoopChunks,
+} from "../src/lib/coop-import-service";
 import type { NewCoopTransaction, PortCoopRegistry } from "../src/ports/coop-registry";
 import type { PortGeocoder } from "../src/ports/geocoder";
 import { newTraceId } from "../src/lib/trace";
@@ -28,7 +34,7 @@ const parsed = parseCoopSheet(
 function fakeRegistry() {
   const stored: NewCoopTransaction[] = [];
   const calls: string[] = [];
-  const batches: { rowsWarned: unknown[] }[] = [];
+  const batches: { rowsWarned: unknown[]; rowsInserted: number; finishedAt: string | null }[] = [];
   const registry: PortCoopRegistry = {
     async upsertMany(rows) {
       calls.push("upsertMany");
@@ -38,7 +44,11 @@ function fakeRegistry() {
     },
     async recordBatch(b) {
       calls.push("recordBatch");
-      batches.push({ rowsWarned: b.rowsWarned });
+      batches.push({
+        rowsWarned: b.rowsWarned,
+        rowsInserted: b.rowsInserted,
+        finishedAt: b.finishedAt,
+      });
     },
     async saveMapping() {
       calls.push("saveMapping");
@@ -95,7 +105,7 @@ describe("runCoopImport", () => {
     expect(first).toMatchObject({ inserted: 5, duplicates: 1, geocoded: 4, needsFix: 1 });
     expect(geocoderQueries.at(-1)![0]).toBe("Poznań, Zmyślona 4");
     expect(stored.filter((r) => r.pos === null).map((r) => r.address)).toEqual(["Bukowa"]);
-    expect(calls).toEqual(["upsertMany", "recordBatch", "saveMapping"]);
+    expect(calls).toEqual(["recordBatch", "upsertMany", "recordBatch", "saveMapping"]);
     expect(first.warnings).toEqual([{ row: 13, reason: "no_flat" }]);
     expect(batches[0]!.rowsWarned).toEqual([{ row: 13, reason: "no_flat" }]);
 
@@ -172,5 +182,55 @@ describe("runCoopImport", () => {
       "warned_no_flat",
       "warned_no_flat_merge",
     ]);
+  });
+});
+
+describe("chunked import (S2b): start → chunks → finalize equals the one-shot", () => {
+  it("opens the batch before any row, sums chunk counters, closes with finishedAt", async () => {
+    const { registry, stored, calls, batches } = fakeRegistry();
+    const common = {
+      skipped: parsed.skipped,
+      warnings: parsed.warnings,
+      rowsTotal: fixture.sheets[0]!.rows.length,
+      cooperative: COOP,
+      fileName: FILE,
+      mapping: { address: 1, buildingNumber: 2 },
+      userId: "u-chunks",
+    };
+    const { batchId } = await startCoopImport({ registry }, common);
+    expect(batches[0]).toMatchObject({ rowsInserted: 0, finishedAt: null });
+    expect(stored).toHaveLength(0);
+
+    const chunks = [];
+    for (let i = 0; i < parsed.rows.length; i += 2) {
+      chunks.push(
+        await importCoopChunk(
+          { registry, geocoder },
+          {
+            batchId,
+            rows: parsed.rows.slice(i, i + 2),
+            city: "Poznań",
+            userId: "u-chunks",
+            workerToken: "t",
+          },
+        ),
+      );
+    }
+    expect(chunks).toHaveLength(3);
+    const summary = await finalizeCoopImport(
+      { registry, eventLog },
+      { ...common, batchId, totals: sumCoopChunks(chunks) },
+    );
+    expect(summary).toMatchObject({
+      batchId,
+      inserted: 5,
+      duplicates: 1,
+      geocoded: 4,
+      needsFix: 1,
+    });
+    expect(batches.at(-1)).toMatchObject({ rowsInserted: 5 });
+    expect(batches.at(-1)!.finishedAt).not.toBeNull();
+    expect(calls.filter((c) => c === "upsertMany")).toHaveLength(3);
+    expect(calls.at(-1)).toBe("saveMapping");
   });
 });

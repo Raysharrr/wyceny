@@ -107,6 +107,7 @@ describe("coopRegistryRepo", () => {
       rowsSkipped: parsed.skipped,
       rowsWarned: parsed.warnings,
       createdBy: USER,
+      finishedAt: new Date().toISOString(),
     });
     const s = await repo.stats();
     expect(s.total).toBeGreaterThanOrEqual(5);
@@ -163,4 +164,21 @@ describe("coopRegistryRepo", () => {
     await repo.saveMapping(COOP, { address: 2, area: 5 });
     expect(await repo.getMapping(COOP)).toEqual({ address: 2, area: 5 });
   });
+});
+
+it("recordBatch upserts by id, and stats ignores a batch that is still open (S2b, 0016)", async () => {
+  const id = `batch-open-${stamp}`;
+  const base = {
+    id,
+    cooperative: COOP,
+    fileName: "w-toku.xlsx",
+    mapping: { address: 1 },
+    rowsSkipped: [],
+    rowsWarned: [],
+    createdBy: USER,
+  };
+  await repo.recordBatch({ ...base, rowsInserted: 0, finishedAt: null });
+  expect((await repo.stats()).lastImport?.file).not.toBe("w-toku.xlsx");
+  await repo.recordBatch({ ...base, rowsInserted: 7, finishedAt: new Date().toISOString() });
+  expect((await repo.stats()).lastImport).toMatchObject({ file: "w-toku.xlsx", rows: 7 });
 });
