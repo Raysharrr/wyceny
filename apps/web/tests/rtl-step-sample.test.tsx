@@ -3041,3 +3041,107 @@ describe("StepSample — Slice 3c sections integration (Task 5)", () => {
     expect(screen.queryByRole("button", { name: /Potwierdź odrzucenie/i })).toBeNull();
   });
 });
+
+// S3 (blok „Prawo spółdzielcze"): krok 3 na wycenie spółdzielczej z pulą z rejestru biura.
+describe("StepSample — prawo spółdzielcze, pula rejestr-sm (S3)", () => {
+  const coopCandidate = (i: number): Candidate =>
+    makeCandidate({
+      transactionId: `C-${i}`,
+      lokalId: "",
+      egib: null,
+      buildingRef: `piastowskie|${i}`,
+      market: null,
+      share: null,
+      transType: null,
+      function: null,
+      seller: null,
+      rightType: null,
+      cooperative: "SM Osiedle Młodych",
+    });
+  const coopMeta = (): SampleMeta => ({ ...makeSampleMeta(), source: "rejestr-sm" });
+  const renderCoop = (sel: SampleSelectionSnapshot | null, meta: SampleMeta | null = coopMeta()) =>
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[]}
+        propertyRight="spoldzielcze_wlasnosciowe"
+        sampleMeta={meta}
+        sampleSelection={sel}
+        streetView={null}
+      />,
+    );
+
+  it("przed pierwszą pulą przycisk mówi „Pobierz próbę z rejestru”, nigdy „z RCN”", () => {
+    renderCoop(null, null);
+    expect(screen.getByRole("button", { name: "Pobierz próbę z rejestru" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /z RCN/i })).toBeNull();
+  });
+
+  it("proposed < 12: komunikat niedoboru drukuje TĘ SAMĄ liczbę co warunek i linkuje do /rejestr", () => {
+    // Three rows of ONE building in the sample + a fourth of the same building in
+    // Alternatywy: rule 6 (max 3 per building) keeps it there, so the overlay's own
+    // refill cannot promote it — the exact "13 in band, 6 proposed" shape from E2E.
+    const sameBuilding = (i: number) => ({ ...coopCandidate(i), buildingRef: "piastowskie|1" });
+    renderCoop(
+      makeSampleSelection({
+        proposed: [sameBuilding(1), sameBuilding(2), sameBuilding(3)],
+        alternates: [sameBuilding(4)],
+        counts: { afterBand: 13, proposed: 3 },
+      }),
+    );
+    const hint = screen.getByTestId("registry-shortfall");
+    expect(hint.textContent).toMatch(/W rejestrze biura są 3 transakcje spełniające kryteria/);
+    expect(hint.textContent).not.toMatch(/13/);
+    expect(hint.textContent).toMatch(/wszystkie ze SM „Osiedle Młodych”/);
+    expect(hint.textContent).toMatch(/wymagane 12/);
+    // afterBand ≥ 12 while proposed < 12 → the real advice is the Alternatywy section.
+    expect(hint.textContent).toMatch(/W Alternatywach jest 1 wiersz — dodaj je ręcznie/);
+    const link = screen.getByRole("link", { name: /Dodaj transakcje w Rejestrze/ });
+    expect(link.getAttribute("href")).toBe("/rejestr");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.getByRole("button", { name: "Pobierz próbę ponownie" })).toBeTruthy();
+  });
+
+  it("proposed ≥ 12: bez komunikatu niedoboru", () => {
+    renderCoop(
+      makeSampleSelection({
+        proposed: Array.from({ length: 12 }, (_, i) => coopCandidate(i)),
+        counts: { afterBand: 12, proposed: 12 },
+      }),
+    );
+    expect(screen.queryByTestId("registry-shortfall")).toBeNull();
+  });
+
+  it("wiersz z rejestru ma odznakę „Rejestr SM — do weryfikacji”; pasek nazywa rejestr biura i ostatni import", () => {
+    const { container } = renderCoop(
+      makeSampleSelection({ proposed: [coopCandidate(1), coopCandidate(2)] }),
+      { ...coopMeta(), importedAt: "2026-09-07T10:00:00Z" },
+    );
+    const rows = screen.getAllByTestId("proposed-row");
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row.textContent).toContain("Rejestr SM — do weryfikacji");
+    expect(bannerText(container)).toMatch(/z rejestru biura — dane ze SM „Osiedle Młodych”/);
+    expect(bannerText(container)).toMatch(/ostatni import rejestru: 7\.09\.2026/);
+  });
+
+  it("ścieżka własnościowa: wiersz RCN bez odznaki źródła (review 1 MINOR-1)", () => {
+    render(
+      <StepSample
+        valuationId={VID}
+        address={ADDRESS}
+        area={AREA}
+        comparables={[]}
+        propertyRight="wlasnosc_lokalu"
+        sampleMeta={makeSampleMeta()}
+        sampleSelection={makeSampleSelection()}
+        streetView={null}
+      />,
+    );
+    for (const row of screen.getAllByTestId("proposed-row")) {
+      expect(row.textContent).not.toMatch(/do weryfikacji/);
+    }
+    expect(screen.queryByTestId("registry-shortfall")).toBeNull();
+  });
+});
