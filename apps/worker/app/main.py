@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 import app.rcn as rcn
 import app.street_index as street_index
 import app.subject as subject
+from app import coop_xls
 from app import kw as kw_core
 import app.maps as maps
 from app import photo as photo_core
@@ -614,6 +615,120 @@ def kw_extract(
         docTypeDetected=payload.docType,
         typeMismatch=payload.docType != expected_type,
         model=KW_MODEL,
+    )
+
+
+# --- T-13: cooperative register import (S2a) --------------------------------
+
+
+def _require_token(token: str) -> None:
+    secret = os.environ.get("WORKER_SHARED_SECRET", "")
+    if not secret or not kw_core.verify_token(token, secret, time.time()):
+        raise HTTPException(
+            status_code=401,
+            detail="Nieprawidłowy lub wygasły token — odśwież stronę i spróbuj ponownie.",
+        )
+
+
+def coop_max_bytes() -> int:
+    # Seam for tests, like kw_max_bytes.
+    return coop_xls.MAX_XLSX_BYTES
+
+
+class CoopSheet(BaseModel):
+    name: str
+    cols: int
+    rows: list[list[str]]
+
+
+class CoopSheetResponse(BaseModel):
+    sheets: list[CoopSheet]
+
+
+@app.post("/coop-sheet")
+def coop_sheet(file: UploadFile = File(...), token: str = Form(...)) -> CoopSheetResponse:
+    """Raw cells of an XLSX register — text only, dates ISO, zero interpretation."""
+    _require_token(token)
+    if file.content_type != coop_xls.XLSX_MIME and not (file.filename or "").lower().endswith(
+        ".xlsx"
+    ):
+        raise HTTPException(
+            status_code=415, detail="Obsługiwane są wyłącznie arkusze XLSX (skany PDF: nie)."
+        )
+    data = file.file.read()
+    if len(data) > coop_max_bytes():
+        raise HTTPException(status_code=413, detail="Plik jest za duży (limit 12 MB).")
+    try:
+        sheets = coop_xls.read_sheets(data)
+    except coop_xls.NotAWorkbook as exc:
+        raise HTTPException(
+            status_code=422, detail="Nie udało się otworzyć pliku jako arkusza XLSX."
+        ) from exc
+    except coop_xls.TooManyRows as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Arkusz ma ponad {coop_xls.MAX_ROWS_PER_SHEET} wierszy — to nie wygląda na rejestr.",
+        ) from exc
+    # F-13: counts only — never a cell, never a file name.
+    logger.info("coop_sheet_read", sheets=len(sheets), rows=sum(len(s["rows"]) for s in sheets))
+    return CoopSheetResponse(sheets=[CoopSheet(**s) for s in sheets])
+
+
+# 20, not 50: a chunk that goes entirely through the Nominatim fallback costs
+# ~(UUG miss + Nominatim + 1 s pause) ≈ 2.5 s per address — 20 × 2.5 s = 50 s,
+# inside the web adapter's 55 s timeout (adapters/geocoder-http.ts).
+GEOCODE_BATCH_MAX = 20
+NOMINATIM_PAUSE_S = 1.0
+
+
+class GeocodeBatchRequest(BaseModel):
+    token: str
+    addresses: list[str] = Field(max_length=GEOCODE_BATCH_MAX)
+
+
+class GeocodeHit(BaseModel):
+    x: float
+    y: float
+    source: Literal["uug", "nominatim"]
+
+
+class GeocodeBatchResponse(BaseModel):
+    results: list[GeocodeHit | None]
+    attempted: int
+    resolved: int
+    failed: int
+
+
+@app.post("/geocode-batch")
+def geocode_batch(request: GeocodeBatchRequest) -> GeocodeBatchResponse:
+    """Sequential UUG → Nominatim chain (same as /sample-proposal) for register rows.
+
+    Per address: a hit or None — never an exception, an unresolved address is a
+    row "do poprawki", not a failed import. Sequential on purpose: both
+    geocoders are shared public services (Nominatim policy: 1 req/s).
+    """
+    _require_token(request.token)
+    results: list[GeocodeHit | None] = []
+    for address in request.addresses:
+        touched_nominatim = True  # resolve_point reaches Nominatim whenever UUG misses
+        try:
+            x, y, source = resolve_point(address, None)
+            results.append(GeocodeHit(x=x, y=y, source=source))  # type: ignore[arg-type]
+            touched_nominatim = source == "nominatim"
+        except Exception:
+            results.append(None)
+        # Politeness pause after EVERY Nominatim contact, hit or miss (1 req/s
+        # policy on a service the RCN path shares) — review 1 §4.
+        if touched_nominatim:
+            time.sleep(NOMINATIM_PAUSE_S)
+    resolved = sum(1 for r in results if r is not None)
+    # F-13: numbers only — no address ever reaches the log.
+    logger.info("coop_geocode_batch", attempted=len(results), resolved=resolved)
+    return GeocodeBatchResponse(
+        results=results,
+        attempted=len(results),
+        resolved=resolved,
+        failed=len(results) - resolved,
     )
 
 

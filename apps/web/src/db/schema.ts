@@ -3,10 +3,13 @@ import {
   customType,
   date,
   doublePrecision,
+  integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -130,4 +133,61 @@ export const eventLog = pgTable("event_log", {
   valuationId: uuid("valuation_id"),
   actorId: text("actor_id"),
   meta: jsonb("meta"),
+});
+
+// Rejestr transakcji spółdzielni mieszkaniowych (T-13, migration 0014). The
+// office's own transaction base: rows come from XLS imports (`source: xls`)
+// or the manual form (`manual`). `price_per_m2` is deliberately NOT a column
+// — derived as price_total / area on read, one source of truth. RLS on this
+// table (office-level, SELECT-only) lives in the hand-written half of 0014
+// and is not mirrored here, same as 0003 for `valuation`.
+export const coopTransaction = pgTable(
+  "coop_transaction",
+  {
+    id: text("id").primaryKey(),
+    cooperative: text("cooperative").notNull(),
+    address: text("address").notNull(),
+    buildingNumber: text("building_number").notNull(),
+    flatNumber: text("flat_number").notNull(),
+    area: numeric("area", { mode: "number" }).notNull(),
+    priceTotal: numeric("price_total", { mode: "number" }).notNull(),
+    date: date("date").notNull(),
+    // transakcyjna | ofertowa | nieustalona — never defaulted (spec §5).
+    priceKind: text("price_kind").notNull(),
+    // NULL = the register had no such column; never a default (spec §5).
+    rightType: text("right_type"),
+    rep: text("rep"),
+    floor: integer("floor"),
+    rooms: integer("rooms"),
+    buildYear: integer("build_year"),
+    // EPSG:2180; NULL = geocoder failed → "do poprawki", excluded from radius search.
+    posX: doublePrecision("pos_x"),
+    posY: doublePrecision("pos_y"),
+    source: text("source").notNull(),
+    dedupeKey: text("dedupe_key").notNull(),
+    importBatchId: text("import_batch_id"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    createdBy: text("created_by").notNull(),
+  },
+  (t) => [uniqueIndex("coop_transaction_dedupe").on(t.dedupeKey)],
+);
+
+export const coopImportBatch = pgTable("coop_import_batch", {
+  id: text("id").primaryKey(),
+  cooperative: text("cooperative").notNull(),
+  fileName: text("file_name").notNull(),
+  mapping: jsonb("mapping").notNull(),
+  rowsInserted: integer("rows_inserted").notNull(),
+  rowsSkipped: jsonb("rows_skipped").notNull(),
+  // Migration 0015: rows keyed without a flat number (no_flat / no_flat_merge).
+  rowsWarned: jsonb("rows_warned").notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  createdBy: text("created_by").notNull(),
+});
+
+// "Mapowanie zapamiętamy dla tej spółdzielni" — one remembered column mapping per cooperative.
+export const coopColumnMapping = pgTable("coop_column_mapping", {
+  cooperative: text("cooperative").primaryKey(),
+  mapping: jsonb("mapping").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });

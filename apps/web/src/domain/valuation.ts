@@ -347,7 +347,10 @@ function sameComparable(a: Comparable, b: Comparable): boolean {
     a.area === b.area &&
     a.source === b.source &&
     a.transactionId === b.transactionId &&
-    a.lokalId === b.lokalId
+    a.lokalId === b.lokalId &&
+    // Register rows (S2a): two coop transactions can share price, date and
+    // area — coopTxId is what tells them apart (review 2 NIT 15).
+    a.coopTxId === b.coopTxId
   );
 }
 

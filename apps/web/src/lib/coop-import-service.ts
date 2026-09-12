@@ -1,0 +1,111 @@
+import { randomUUID } from "node:crypto";
+import {
+  coopImportEventMeta,
+  type ColumnMapping,
+  type SkippedRow,
+  type WarnedRow,
+} from "../domain/coop-import";
+import type { NewCoopTransaction, PortCoopRegistry } from "../ports/coop-registry";
+import type { PortEventLog } from "../ports/event-log";
+import type { PortGeocoder } from "../ports/geocoder";
+
+/**
+ * The import itself (T-13, S2a Task 8): geocode every parsed row through the
+ * worker chain, insert what is new, remember the mapping, record the batch
+ * and two `event_log` entries. The screen (S2b) parses the sheet with
+ * `parseCoopSheet` and calls this. Ports only — no adapter import (F-10).
+ *
+ * F-13: `event_log` gets counts and classes ONLY. No address, flat number,
+ * cooperative name or file name — those live in `coop_transaction` and
+ * `coop_import_batch`, which are data, not the operational trail.
+ */
+export type CoopImportInput = {
+  rows: NewCoopTransaction[];
+  skipped: readonly SkippedRow[];
+  /** From parseCoopSheet — rows keyed without a flat number; surfaced in the summary, the batch and the event. */
+  warnings: readonly WarnedRow[];
+  rowsTotal: number;
+  cooperative: string;
+  /** City prefix for the geocoder query — registers omit it ("Piastowskie 24"); Przylesie is in Leszno. */
+  city: string;
+  fileName: string;
+  mapping: ColumnMapping;
+  userId: string;
+  workerToken: string;
+  traceId?: string;
+};
+
+export type CoopImportSummary = {
+  batchId: string;
+  inserted: number;
+  /** ONE number: duplicates inside the file + rows already in the register — the same the event carries (review 1 §8). */
+  duplicates: number;
+  geocoded: number;
+  needsFix: number;
+  skipped: readonly SkippedRow[];
+  warnings: readonly WarnedRow[];
+};
+
+export async function runCoopImport(
+  deps: { registry: PortCoopRegistry; geocoder: PortGeocoder; eventLog: PortEventLog },
+  input: CoopImportInput,
+): Promise<CoopImportSummary> {
+  const queries = input.rows.map((r) => `${input.city}, ${r.address} ${r.buildingNumber}`.trim());
+  const hits = queries.length ? await deps.geocoder.geocodeMany(queries, input.workerToken) : [];
+  const rows = input.rows.map((r, i) => {
+    const hit = hits[i] ?? null;
+    return { ...r, pos: hit ? { x: hit.x, y: hit.y } : null };
+  });
+  const geocoded = rows.filter((r) => r.pos !== null).length;
+  const needsFix = rows.length - geocoded;
+  const usedNominatim = hits.some((h) => h?.source === "nominatim");
+
+  const batchId = randomUUID();
+  const { inserted, duplicates: alreadyInRegister } = await deps.registry.upsertMany(rows, {
+    userId: input.userId,
+    batchId,
+  });
+  const meta = coopImportEventMeta({
+    rowsTotal: input.rowsTotal,
+    inserted,
+    duplicates: alreadyInRegister,
+    skipped: input.skipped,
+    warnings: input.warnings,
+    geocoded,
+    needsFix,
+  });
+  await deps.registry.recordBatch({
+    id: batchId,
+    cooperative: input.cooperative,
+    fileName: input.fileName,
+    mapping: input.mapping,
+    rowsInserted: inserted,
+    rowsSkipped: [...input.skipped],
+    rowsWarned: [...input.warnings],
+    createdBy: input.userId,
+  });
+  await deps.registry.saveMapping(input.cooperative, input.mapping);
+
+  const common = { traceId: input.traceId, actorId: input.userId };
+  await deps.eventLog.record({
+    ...common,
+    level: needsFix ? "warn" : "info",
+    event: "coop.geocode",
+    meta: {
+      attempted: rows.length,
+      resolved: geocoded,
+      failed: needsFix,
+      geocoder: usedNominatim ? "uug+nominatim" : "uug",
+    },
+  });
+  await deps.eventLog.record({ ...common, level: "info", event: "coop.import", meta });
+  return {
+    batchId,
+    inserted,
+    duplicates: meta.duplicates,
+    geocoded,
+    needsFix,
+    skipped: input.skipped,
+    warnings: input.warnings,
+  };
+}
