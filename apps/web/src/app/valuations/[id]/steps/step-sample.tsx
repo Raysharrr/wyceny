@@ -409,8 +409,10 @@ export function StepSample({
                 {fromRegister ? (
                   <>
                     rejestru biura — dane ze <b>{cooperatives || "rejestru"}</b>
+                    {/* `importedAt` is the register's LAST import of any cooperative, so it is
+                        named as such and not glued to the SM above (review 1 MINOR-2). */}
                     {liveSampleMeta.importedAt
-                      ? `, import ${new Date(liveSampleMeta.importedAt).toLocaleDateString("pl-PL")}`
+                      ? `; ostatni import rejestru: ${new Date(liveSampleMeta.importedAt).toLocaleDateString("pl-PL")}`
                       : null}
                   </>
                 ) : (
