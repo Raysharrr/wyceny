@@ -395,7 +395,6 @@ describe("selectSample — registry candidates (S3)", () => {
   it("share null skips share_not_whole (ADR-010) and raises attributes_unknown", () => {
     const c = registry({ function: "mieszkalna", transType: "wolnyRynek" });
     expect(hygieneReasons(c, "2024-08", "2026-08")).toEqual([]);
-    expect(isWholeShare(null)).toBe(true);
     const s = selectSample([c], P);
     expect(s.proposed).toHaveLength(1);
     expect(s.flags[candidateKey(c)]).toContain("attributes_unknown");

@@ -63,7 +63,9 @@ export const coopSampleProposal = coopRegistrySampleProposal(coopRegistry, async
   const [hit] = await geocoder.geocodeMany([address], token);
   if (!hit) {
     throw new Error(
-      "Nie udało się ustalić położenia przedmiotu wyceny — popraw adres w kroku 1 i spróbuj ponownie.",
+      // `geocodeMany` degrades a failed chunk to null too, so a miss and a dead
+      // worker look the same here — the message names both (review 1 MINOR-5).
+      "Nie udało się ustalić położenia przedmiotu wyceny — sprawdź adres w kroku 1 albo spróbuj za chwilę (usługa położenia mogła nie odpowiedzieć).",
     );
   }
   return hit;

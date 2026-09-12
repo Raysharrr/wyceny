@@ -215,9 +215,7 @@ export function floorMonth(todayMonth: string, windowMonths: number): string {
   return `${fy}-${String(fm + 1).padStart(2, "0")}`;
 }
 
-/** `null` = the source has no share column (coop registry, S3): unknown is not a failed rule. */
-export function isWholeShare(share: string | null): boolean {
-  if (share === null) return true;
+export function isWholeShare(share: string): boolean {
   const s = share.trim();
   if (s === "" || s === "1" || s === "1/1") return s !== "";
   const m = /^(\d+)\s*\/\s*(\d+)$/.exec(s);
@@ -231,7 +229,8 @@ export function hygieneReasons(c: Candidate, floor: string, todayMonth: string):
   // (ADR-010, no silent defaults) — selectSample flags it `attributes_unknown`.
   if (c.function !== null && c.function !== "mieszkalna") reasons.push("not_residential");
   if (c.transType !== null && c.transType !== "wolnyRynek") reasons.push("not_free_market");
-  if (!isWholeShare(c.share)) reasons.push("share_not_whole");
+  // Same pattern as the two rules above: null = no share column (coop registry, S3).
+  if (c.share !== null && !isWholeShare(c.share)) reasons.push("share_not_whole");
   const month = c.date.slice(0, 7);
   if (month.length !== 7 || month < floor || month > todayMonth) reasons.push("out_of_window");
   if (c.market === "pierwotny") reasons.push("primary_market");
