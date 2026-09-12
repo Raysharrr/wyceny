@@ -242,6 +242,11 @@ export function parseCoopSheet(
         buildingNumber = split.building;
         // Same column as the address → the flat is the "/5" part, never the whole cell (m-9).
         flatNumber = flatFromAddress ? split.flat : flatNumber || split.flat;
+      } else {
+        // N-3: the cell could not be split — a field pointed at the address column
+        // must not keep the whole address as its value.
+        if (flatFromAddress) flatNumber = "";
+        if (mapping.buildingNumber === mapping.address) buildingNumber = "";
       }
     }
     if (!address) {

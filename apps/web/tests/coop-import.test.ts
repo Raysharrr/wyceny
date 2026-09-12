@@ -412,3 +412,18 @@ describe("flat number mapped to the address column (review 1 m-9)", () => {
     expect(rows[0]).toMatchObject({ address: "Bukowa", buildingNumber: "12", flatNumber: "5" });
   });
 });
+
+describe("address column without a number (review 2 N-3)", () => {
+  it("building/flat mapped to the address column stay empty when the cell cannot be split", () => {
+    const { rows } = parseCoopSheet(
+      [["os. Bezliczbowe", "45", "450000", "2025-01-14"]],
+      { address: 0, buildingNumber: 0, flatNumber: 0, area: 1, priceTotal: 2, date: 3 },
+      { cooperative: "SM", priceKind: "nieustalona", headerRow: null },
+    );
+    expect(rows[0]).toMatchObject({
+      address: "os. Bezliczbowe",
+      buildingNumber: "",
+      flatNumber: "",
+    });
+  });
+});
