@@ -9,6 +9,7 @@ import {
   runCoopImport,
   startCoopImport,
   sumCoopChunks,
+  type CoopChunkResult,
 } from "../src/lib/coop-import-service";
 import type { NewCoopTransaction, PortCoopRegistry } from "../src/ports/coop-registry";
 import type { PortGeocoder } from "../src/ports/geocoder";
@@ -35,6 +36,7 @@ function fakeRegistry() {
   const stored: NewCoopTransaction[] = [];
   const calls: string[] = [];
   const batches: { rowsWarned: unknown[]; rowsInserted: number; finishedAt: string | null }[] = [];
+  const full = new Map<string, import("../src/ports/coop-registry").CoopImportBatch>();
   const registry: PortCoopRegistry = {
     async existingKeys(keys) {
       calls.push("existingKeys");
@@ -53,6 +55,10 @@ function fakeRegistry() {
         rowsInserted: b.rowsInserted,
         finishedAt: b.finishedAt,
       });
+      full.set(b.id, b);
+    },
+    async getBatch(id) {
+      return full.get(id) ?? null;
     },
     async saveMapping() {
       calls.push("saveMapping");
@@ -211,10 +217,10 @@ describe("chunked import (S2b): start → chunks → finalize equals the one-sho
     expect(batches[0]).toMatchObject({ rowsInserted: 0, finishedAt: null });
     expect(stored).toHaveLength(0);
 
-    const chunks = [];
+    const chunks: CoopChunkResult[] = [];
     for (let i = 0; i < parsed.rows.length; i += 2) {
       chunks.push(
-        await importCoopChunk(
+        (await importCoopChunk(
           { registry, geocoder },
           {
             batchId,
@@ -223,13 +229,18 @@ describe("chunked import (S2b): start → chunks → finalize equals the one-sho
             userId: "u-chunks",
             workerToken: "t",
           },
-        ),
+        ))!,
       );
     }
     expect(chunks).toHaveLength(3);
     const summary = await finalizeCoopImport(
       { registry, eventLog },
-      { ...common, batchId, totals: sumCoopChunks(chunks) },
+      {
+        batchId,
+        rowsTotal: common.rowsTotal,
+        userId: common.userId,
+        totals: sumCoopChunks(chunks),
+      },
     );
     expect(summary).toMatchObject({
       batchId,
@@ -267,5 +278,39 @@ describe("re-import (review 1 M-1/M-2)", () => {
     expect(geocoderQueries.length).toBe(before);
     // 5 already in the register + 1 inside the file; nothing geocoded, nothing "do poprawki".
     expect(again).toMatchObject({ inserted: 0, duplicates: 6, geocoded: 0, needsFix: 0 });
+  });
+});
+
+describe("batch ownership (review 1 NIT-1)", () => {
+  it("a chunk or finalize under someone else's batchId is refused with null", async () => {
+    const { registry, stored } = fakeRegistry();
+    const { batchId } = await startCoopImport(
+      { registry },
+      {
+        cooperative: COOP,
+        fileName: FILE,
+        mapping: {},
+        skipped: [],
+        warnings: [],
+        userId: "owner",
+      },
+    );
+    const chunk = await importCoopChunk(
+      { registry, geocoder },
+      {
+        batchId,
+        rows: parsed.rows.slice(0, 1),
+        city: "Poznań",
+        userId: "intruder",
+        workerToken: "t",
+      },
+    );
+    expect(chunk).toBeNull();
+    expect(stored).toHaveLength(0);
+    const fin = await finalizeCoopImport(
+      { registry, eventLog },
+      { batchId, rowsTotal: 1, userId: "intruder", totals: sumCoopChunks([]) },
+    );
+    expect(fin).toBeNull();
   });
 });

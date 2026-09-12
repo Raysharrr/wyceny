@@ -133,6 +133,8 @@ export interface PortCoopRegistry {
   stats(): Promise<CoopRegistryStats>;
   /** Upsert by `id`: opened with `rowsInserted: 0, finishedAt: null` before the first chunk, closed with the final counters. */
   recordBatch(batch: CoopImportBatch): Promise<void>;
+  /** The batch as opened by `startCoopImport` — chunk/finalize read owner, mapping and the parser's skip/warn lists from here, never from the client again (review 1 m-2, NIT-1). */
+  getBatch(id: string): Promise<CoopImportBatch | null>;
   getMapping(cooperative: string): Promise<ColumnMapping | null>;
   saveMapping(cooperative: string, mapping: ColumnMapping): Promise<void>;
 }

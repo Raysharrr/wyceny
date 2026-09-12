@@ -87,7 +87,10 @@ export async function startCoopImport(
 export async function importCoopChunk(
   deps: { registry: PortCoopRegistry; geocoder: PortGeocoder },
   input: Pick<CoopImportInput, "rows" | "city" | "userId" | "workerToken"> & { batchId: string },
-): Promise<CoopChunkResult> {
+): Promise<CoopChunkResult | null> {
+  // NIT-1: only the user who opened the batch may add rows under its id.
+  const batch = await deps.registry.getBatch(input.batchId);
+  if (!batch || batch.createdBy !== input.userId) return null;
   // Review 1 M-1/M-2: rows already in the register never reach the geocoder,
   // so the counters (and `coop.geocode` in event_log) describe only rows that
   // entered, and re-importing the same file costs zero geocoder calls.
@@ -115,33 +118,34 @@ export async function importCoopChunk(
 
 export async function finalizeCoopImport(
   deps: { registry: PortCoopRegistry; eventLog: PortEventLog },
-  input: Omit<CoopImportInput, "rows" | "city" | "workerToken"> & {
+  input: {
     batchId: string;
+    rowsTotal: number;
     totals: CoopChunkResult;
+    userId: string;
+    traceId?: string;
   },
-): Promise<CoopImportSummary> {
+): Promise<CoopImportSummary | null> {
+  // Skipped/warned rows, mapping and file name come from the batch opened in
+  // `startCoopImport` — the client does not send them a second time (review 1 m-2).
+  const batch = await deps.registry.getBatch(input.batchId);
+  if (!batch || batch.createdBy !== input.userId) return null;
   const { totals } = input;
   const meta = coopImportEventMeta({
     rowsTotal: input.rowsTotal,
     inserted: totals.inserted,
     duplicates: totals.duplicates,
-    skipped: input.skipped,
-    warnings: input.warnings,
+    skipped: batch.rowsSkipped,
+    warnings: batch.rowsWarned,
     geocoded: totals.geocoded,
     needsFix: totals.needsFix,
   });
   await deps.registry.recordBatch({
-    id: input.batchId,
-    cooperative: input.cooperative,
-    fileName: input.fileName,
-    mapping: input.mapping,
+    ...batch,
     rowsInserted: totals.inserted,
-    rowsSkipped: [...input.skipped],
-    rowsWarned: [...input.warnings],
-    createdBy: input.userId,
     finishedAt: new Date().toISOString(),
   });
-  await deps.registry.saveMapping(input.cooperative, input.mapping);
+  await deps.registry.saveMapping(batch.cooperative, batch.mapping);
 
   const common = { traceId: input.traceId, actorId: input.userId };
   await deps.eventLog.record({
@@ -162,8 +166,8 @@ export async function finalizeCoopImport(
     duplicates: meta.duplicates,
     geocoded: totals.geocoded,
     needsFix: totals.needsFix,
-    skipped: input.skipped,
-    warnings: input.warnings,
+    skipped: batch.rowsSkipped,
+    warnings: batch.rowsWarned,
   };
 }
 
@@ -173,5 +177,8 @@ export async function runCoopImport(
 ): Promise<CoopImportSummary> {
   const { batchId } = await startCoopImport(deps, input);
   const totals = await importCoopChunk(deps, { ...input, batchId });
-  return finalizeCoopImport(deps, { ...input, batchId, totals });
+  if (!totals) throw new Error("coop import batch vanished between start and chunk");
+  const summary = await finalizeCoopImport(deps, { ...input, batchId, totals });
+  if (!summary) throw new Error("coop import batch vanished between start and finalize");
+  return summary;
 }

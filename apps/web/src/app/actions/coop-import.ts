@@ -120,7 +120,7 @@ const chunkSchema = z.object({
   rows: z.array(rowSchema).min(1).max(IMPORT_CHUNK),
 });
 
-const finalizeSchema = startSchema.extend({
+const finalizeSchema = z.object({
   batchId: z.string().uuid(),
   rowsTotal: z.number().int().min(0),
   totals: z.object({
@@ -177,7 +177,7 @@ export async function importCoopChunkAction(
     dedupeKey: coopDedupeKey(r),
   }));
   try {
-    return await withTrace(() =>
+    const r = await withTrace(() =>
       importCoopChunk(
         { registry: coopRegistry, geocoder },
         {
@@ -189,6 +189,7 @@ export async function importCoopChunkAction(
         },
       ),
     );
+    return r ?? { error: INVALID };
   } catch (err) {
     await recordFailure({
       event: "coop.import.chunk.failed",
@@ -206,16 +207,13 @@ export async function finalizeCoopImportAction(
   const parsed = finalizeSchema.safeParse(input);
   if (!parsed.success) return { error: INVALID };
   try {
-    return await withTrace(() =>
+    const r = await withTrace(() =>
       finalizeCoopImport(
         { registry: coopRegistry, eventLog },
-        {
-          ...parsed.data,
-          userId: session.user.id,
-          traceId: currentTraceId(),
-        },
+        { ...parsed.data, userId: session.user.id, traceId: currentTraceId() },
       ),
     );
+    return r ?? { error: INVALID };
   } catch (err) {
     await recordFailure({
       event: "coop.import.finalize.failed",

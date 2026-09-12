@@ -242,6 +242,27 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
         .onConflictDoUpdate({ target: schema.coopImportBatch.id, set: counters });
     },
 
+    async getBatch(id) {
+      const [b] = await db
+        .select()
+        .from(schema.coopImportBatch)
+        .where(eq(schema.coopImportBatch.id, id))
+        .limit(1);
+      return b
+        ? {
+            id: b.id,
+            cooperative: b.cooperative,
+            fileName: b.fileName,
+            mapping: b.mapping as ColumnMapping,
+            rowsInserted: b.rowsInserted,
+            rowsSkipped: b.rowsSkipped as CoopImportBatch["rowsSkipped"],
+            rowsWarned: b.rowsWarned as CoopImportBatch["rowsWarned"],
+            createdBy: b.createdBy,
+            finishedAt: b.finishedAt ? b.finishedAt.toISOString() : null,
+          }
+        : null;
+    },
+
     async getMapping(cooperative) {
       const [row] = await db
         .select()
