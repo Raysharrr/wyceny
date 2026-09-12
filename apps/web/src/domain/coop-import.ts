@@ -40,6 +40,18 @@ export type ColumnMapping = { [K in Exclude<CoopFieldKey, "flatNumber">]?: numbe
   flatNumber?: number | null | "absent";
 };
 
+/**
+ * Required fields the mapping does not cover — the wizard blocks "Dalej" on a
+ * non-empty result (spec §6: `COOP_FIELDS.required` is enforced by the UI,
+ * not by parseCoopSheet). `flatNumber: "absent"` counts as covered: the
+ * appraiser stated that this register has no such column.
+ */
+export function missingRequiredFields(mapping: ColumnMapping): CoopFieldKey[] {
+  return COOP_FIELDS.filter((f) => f.required && typeof mapping[f.key] !== "number")
+    .map((f) => f.key)
+    .filter((k) => !(k === "flatNumber" && mapping.flatNumber === "absent"));
+}
+
 export type SkipReason = "summary" | "empty" | "bad_number" | "bad_date" | "duplicate";
 export type SkippedRow = { row: number; reason: SkipReason };
 /**

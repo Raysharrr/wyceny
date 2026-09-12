@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COOP_FIELDS,
+  missingRequiredFields,
   coopBuildingRef,
   coopDedupeKey,
   coopImportEventMeta,
@@ -350,5 +351,38 @@ describe("coopImportEventMeta (F-13)", () => {
       needs_fix: 1,
     });
     expect(Object.values(meta).every((v) => typeof v === "number")).toBe(true);
+  });
+});
+
+describe("missingRequiredFields (S2b wizard gate)", () => {
+  it("lists unmapped required fields; 'absent' covers flatNumber, optional fields never count", () => {
+    expect(missingRequiredFields({})).toEqual([
+      "address",
+      "buildingNumber",
+      "flatNumber",
+      "area",
+      "priceTotal",
+      "date",
+    ]);
+    expect(
+      missingRequiredFields({
+        address: 0,
+        buildingNumber: 1,
+        flatNumber: "absent",
+        area: 2,
+        priceTotal: 3,
+        date: 4,
+      }),
+    ).toEqual([]);
+    expect(
+      missingRequiredFields({
+        address: 0,
+        buildingNumber: 1,
+        flatNumber: null,
+        area: 2,
+        priceTotal: 3,
+        date: 4,
+      }),
+    ).toEqual(["flatNumber"]);
   });
 });

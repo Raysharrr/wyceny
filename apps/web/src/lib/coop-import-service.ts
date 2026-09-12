@@ -57,6 +57,9 @@ export type CoopImportSummary = {
   warnings: readonly WarnedRow[];
 };
 
+/** Rows per `importCoopChunk` call from the screen: one geocoder call (adapter CHUNK = 20), ≈ 20 × 1.4 s worst case < the action timeout. */
+export const IMPORT_CHUNK = 20;
+
 /** Counters of one chunk; summed by the caller across chunks, then handed to `finalizeCoopImport`. */
 export type CoopChunkResult = {
   attempted: number;

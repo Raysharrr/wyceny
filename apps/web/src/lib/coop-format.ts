@@ -6,3 +6,12 @@ export const fmtDate = (iso: string): string => {
   const [y, m, d] = iso.slice(0, 10).split("-");
   return `${d}.${m}.${y}`;
 };
+
+/** Polish plural: plural(5, "wiersz", "wiersze", "wierszy") → "wierszy". */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (n === 1) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}

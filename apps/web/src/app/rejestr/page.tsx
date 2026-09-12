@@ -4,7 +4,7 @@ import { Plus, Upload } from "lucide-react";
 import { getSession } from "@/auth/session";
 import { coopRegistry } from "@/app/valuations/_deps";
 import { Button } from "@/components/ui/button";
-import { fmtDate } from "@/lib/coop-format";
+import { fmtDate, plural } from "@/lib/coop-format";
 import { PERIODS, RegistryFilters, type PeriodKey } from "./registry-filters";
 import { periodFrom } from "./period";
 import { RegistryTable } from "./registry-table";
@@ -190,12 +190,4 @@ function Tile({
       {children}
     </div>
   );
-}
-
-function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (n === 1) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
 }
