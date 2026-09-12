@@ -5,6 +5,7 @@ import {
   type ProvenanceStatus,
   type Sourced,
 } from "@wyceny/shared";
+import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 
 /**
@@ -44,7 +45,7 @@ export type GateResult = { ok: true } | { ok: false; blockers: Blocker[] };
 
 /** Structurally compatible with KcsInput — callers pass the snapshot directly. */
 export type GateInput = {
-  comparables: Array<{ source?: "rcn" | "manual"; status?: ProvenanceStatus }>;
+  comparables: Array<{ source?: ComparableSource; status?: ProvenanceStatus }>;
   sampleMeta?: unknown | null;
   subject?: unknown | null;
   kw?: {
@@ -124,13 +125,14 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
   }
 
   input.comparables.forEach((c, i) => {
-    const source = c.source === "rcn" ? "rcn" : "rzeczoznawca";
+    const source = isRegistrySourced(c) ? c.source : "rzeczoznawca";
     const status: ProvenanceStatus = c.status ?? "none";
     const s = sourced(c, source, status);
     if (isBlocking(s)) {
+      const origin = isRegistrySourced(c) ? ` (${REGISTRY_LABEL[c.source]})` : "";
       blockers.push({
         path: `comparables[${i}]`,
-        label: `Transakcja ${i + 1}${source === "rcn" ? " (RCN)" : ""} — ${statusLabel(status)}.`,
+        label: `Transakcja ${i + 1}${origin} — ${statusLabel(status)}.`,
       });
     }
   });

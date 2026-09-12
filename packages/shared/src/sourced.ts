@@ -11,6 +11,8 @@ export type ProvenanceSource =
   | "odpis_kw"
   | "akt"
   | "rcn"
+  // Office coop registry (spółdzielcze prawo, S1 2026-09) — a register like "rcn".
+  | "rejestr_sm"
   | "ogledziny"
   | "rzeczoznawca"
   | "preset"

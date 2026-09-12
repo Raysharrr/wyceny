@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { COMPARABLE_SOURCES } from "@/domain/kcs";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
 import type { CandidatePool } from "@/ports/sample";
@@ -17,7 +18,7 @@ export const comparableSchema = z.object({
   // Provenance (F-5) — set when a comparable came from the RCN auto-fetch
   // rather than manual entry. Optional so manual-only submissions keep
   // validating exactly as before.
-  source: z.enum(["rcn", "manual"]).optional(),
+  source: z.enum(COMPARABLE_SOURCES).optional(),
   transactionId: z.string().optional(),
   // One notarial act (transactionId) can carry several lokale — this
   // distinguishes them (mirrors Candidate.lokalId/candidateKey in

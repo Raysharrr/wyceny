@@ -5,6 +5,7 @@ import type { UseFormSetValue } from "react-hook-form";
 import type { z } from "zod";
 import { sampleStepSchema } from "@/app/actions/wizard-schemas";
 import { reselectSample } from "@/app/actions/reselect-sample";
+import { isRegistrySourced } from "@/domain/kcs";
 import { buildingKey, candidateKey, type Candidate } from "@/domain/sample-selection";
 import type {
   ManualInclusion,
@@ -101,7 +102,8 @@ function rebuildComparables(
 ): ComparableRow[] {
   const nextEff = effectiveSelection(snap);
   const currentRcnRows = currentRows.filter(
-    (c): c is ComparableRow & { transactionId: string } => c.source === "rcn" && !!c.transactionId,
+    (c): c is ComparableRow & { transactionId: string } =>
+      isRegistrySourced(c) && !!c.transactionId,
   );
   const byCandidateKey = new Map(
     currentRcnRows
@@ -120,7 +122,7 @@ function rebuildComparables(
   for (const c of nextEff.proposed) {
     candidatesForTx.set(c.transactionId, (candidatesForTx.get(c.transactionId) ?? 0) + 1);
   }
-  const manualRows = currentRows.filter((c) => c.source !== "rcn");
+  const manualRows = currentRows.filter((c) => !isRegistrySourced(c));
   return [
     ...nextEff.proposed.map((c) => {
       const byKey = byCandidateKey.get(candidateKey(c));
