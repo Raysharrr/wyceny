@@ -111,8 +111,9 @@ describe("coopRegistryRepo", () => {
   });
 
   it("save inserts a manual row and corrects it by id (pos); remove deletes it", async () => {
+    // rows[4] is the fixture's blank-flat row; give it a flat so its derived key is unique.
     const saved = await repo.save(
-      { ...rows[4]!, source: "manual", dedupeKey: `manual|${stamp}`, pos: null },
+      { ...rows[4]!, source: "manual", flatNumber: `m-${stamp}`, pos: null },
       { userId: USER },
     );
     if (!saved.ok) throw new Error(saved.reason);
@@ -125,8 +126,16 @@ describe("coopRegistryRepo", () => {
     expect((await repo.list({ text: rows[4]!.address, cooperative: COOP })).total).toBe(1);
   });
 
-  it("save on an existing dedupe key answers { ok: false, duplicate } without leaking the key", async () => {
-    const dup = await repo.save({ ...rows[0]!, source: "manual" }, { userId: USER });
+  it("save derives the key itself: the same facts as an imported row answer { ok: false, duplicate }", async () => {
+    // rows[0] was imported with a salted key; re-import the facts under that salt via the derived key path.
+    const facts = {
+      ...rows[0]!,
+      source: "manual" as const,
+      flatNumber: `${rows[0]!.flatNumber}|${stamp}`,
+    };
+    const first = await repo.save(facts, { userId: USER });
+    expect(first.ok).toBe(true);
+    const dup = await repo.save(facts, { userId: USER });
     expect(dup).toEqual({ ok: false, reason: "duplicate" });
     expect(await repo.save({ ...rows[0]!, area: 0 }, { userId: USER })).toEqual({
       ok: false,

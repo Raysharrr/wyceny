@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, count, desc, eq, gte, ilike, isNull, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "../db/schema";
-import type { ColumnMapping } from "../domain/coop-import";
+import { coopDedupeKey, type ColumnMapping } from "../domain/coop-import";
 import type {
   CoopImportBatch,
   CoopRegistryQuery,
@@ -154,7 +154,11 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
       // Import guards area > 0 (bad_number); the manual path must too, or
       // pricePerM2 becomes Infinity (review 1 §16).
       if (!(row.area > 0) || !(row.priceTotal > 0)) return { ok: false, reason: "invalid" };
-      const values = toInsert(row, row.id ?? randomUUID(), { userId: by.userId, batchId: null });
+      // The key is derived here, never taken from the form (review 2 §7).
+      const values = toInsert({ ...row, dedupeKey: coopDedupeKey(row) }, row.id ?? randomUUID(), {
+        userId: by.userId,
+        batchId: null,
+      });
       // A correction replaces the facts, never identity, authorship or
       // provenance: source and import batch stay as imported (review 1 §7).
       const update = { ...values };

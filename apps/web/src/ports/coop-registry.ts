@@ -109,12 +109,14 @@ export interface PortCoopRegistry {
   ): Promise<{ inserted: number; duplicates: number }>;
   /**
    * Manual form: insert, or correct the row with that `id` (e.g. a fixed `pos`).
-   * A correction keeps the row's `source` and import batch. `duplicate` =
-   * another row already carries this `dedupeKey` — the screen says so in
-   * Polish; the key itself (address + flat) never leaves the adapter (F-13).
+   * A correction keeps the row's `source` and import batch. The dedupe key
+   * is NOT accepted from the caller: the adapter derives it from the facts
+   * with `coopDedupeKey` (domain), on insert and on every correction alike.
+   * `duplicate` = another row already carries that key — the screen says so
+   * in Polish; the key itself (address + flat) never leaves the adapter (F-13).
    */
   save(
-    row: NewCoopTransaction & { id?: string },
+    row: Omit<NewCoopTransaction, "dedupeKey"> & { id?: string },
     by: { userId: string },
   ): Promise<{ ok: true; row: CoopTransaction } | { ok: false; reason: "duplicate" | "invalid" }>;
   remove(id: string): Promise<void>;
