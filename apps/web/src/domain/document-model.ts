@@ -624,6 +624,15 @@ export function buildDocumentModel(
         // about a comparable, so an unmatched row prints a dash rather than a guess
         // (Heweliusza 3/43 is exactly this shape: 16 lokale under one act).
         const matchedByLokal = Boolean(c.transactionId && c.lokalId && candidate);
+        // S5 (Task 4d, defekt D-3): a coop-register row has `lokalId: ""` (one lokal
+        // per row) and `transactionId` = `coopTxId`, so the transactionId-only join
+        // above IS exact for it — not "some lokal of that act". Street comes from the
+        // register record; city stays a dash, because the register does not store it
+        // (ADR-010, coordinator decision 12.09 — variant a; column `city` is a follow-up).
+        const matchedCoop = Boolean(
+          c.coopTxId && candidate && candidate.transactionId === c.coopTxId,
+        );
+        const matched = matchedByLokal || matchedCoop;
         return {
           data_msc: maskMonth(c.date),
           // Slice 3d: city and street from the transaction's OWN record (the GEOPOZ
@@ -634,8 +643,8 @@ export function buildDocumentModel(
           // albo lokal bez adresu), bierzemy je z TERYT-u — decyzja użytkownika
           // 2026-08-22: operat nie może stracić informacji o położeniu porównania,
           // którą miał przed 3d w kolumnie „Obręb”.
-          miasto: matchedByLokal ? (candidate!.city ?? cityLabel(candidate!.egib) ?? DASH) : DASH,
-          ulica: matchedByLokal ? operatStreet(candidate!.street) : DASH,
+          miasto: matched ? (candidate!.city ?? cityLabel(candidate!.egib) ?? DASH) : DASH,
+          ulica: matched ? operatStreet(candidate!.street) : DASH,
           pow: c.area != null ? formatNumber(c.area, 2) : DASH,
           cena_jedn: formatPln(c.pricePerM2),
         };
