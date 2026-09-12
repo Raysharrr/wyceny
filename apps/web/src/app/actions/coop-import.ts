@@ -129,7 +129,10 @@ const chunkSchema = z.object({
 const finalizeSchema = z.object({
   batchId: z.string().uuid(),
   rowsTotal: z.number().int().min(0),
-  headers: z.array(z.string().max(500)).max(200).nullable().optional(),
+  // Headers are a convenience for the remembered mapping, never a condition of the
+  // import — rows are already in the register when finalize runs, so an oversized
+  // header row must not fail it (review 1 MINOR-3).
+  headers: z.array(z.string().max(500)).max(200).nullable().optional().catch(null),
   totals: z.object({
     attempted: z.number().int().min(0),
     inserted: z.number().int().min(0),

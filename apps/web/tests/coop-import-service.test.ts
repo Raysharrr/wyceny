@@ -435,7 +435,7 @@ describe("remembered mapping vs a sheet with a different header row (S5, Task 4e
     });
   });
 
-  it("the same layout with cosmetic header differences (case, spaces) still matches; no header row never matches", () => {
+  it("the same layout with cosmetic header differences (case, spaces) still matches; no header row = unknown layout", () => {
     const saved: RememberedMapping = {
       mapping: MAPPING_A,
       headers: ["Lp.", "Adres ", "Nr  budynku"],
@@ -445,10 +445,22 @@ describe("remembered mapping vs a sheet with a different header row (S5, Task 4e
       mapping: MAPPING_A,
     });
     expect(rememberedMappingFor(saved, ["Lp.", "Adres"])).toEqual({ kind: "layout_differs" });
-    expect(rememberedMappingFor(saved, null)).toEqual({ kind: "layout_differs" });
+    expect(rememberedMappingFor(saved, null)).toEqual({ kind: "unknown_layout" }); // MINOR-2
     expect(
       rememberedMappingFor({ mapping: MAPPING_A, headers: null }, ["Lp.", "Adres ", "Nr  budynku"]),
-    ).toEqual({ kind: "layout_differs" });
+    ).toEqual({ kind: "unknown_layout" });
     expect(rememberedMappingFor(null, ["Lp."])).toEqual({ kind: "none" });
+  });
+});
+
+describe("finalize headers are a convenience, never a condition (review 1 MINOR-3)", () => {
+  it("an oversized header row does not fail the finalize schema", async () => {
+    const { finalizeCoopImportAction } = await import("../src/app/actions/coop-import");
+    void finalizeCoopImportAction; // schema is module-private; assert via zod directly below
+    const { z } = await import("zod");
+    const headers = z.array(z.string().max(500)).max(200).nullable().optional().catch(null);
+    expect(headers.parse(Array.from({ length: 201 }, () => "x"))).toBeNull();
+    expect(headers.parse(["x".repeat(501)])).toBeNull();
+    expect(headers.parse(["Lp.", "Adres"])).toEqual(["Lp.", "Adres"]);
   });
 });

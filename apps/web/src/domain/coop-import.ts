@@ -73,18 +73,23 @@ export function headerSignature(headers: readonly string[] | null | undefined): 
  * transactions entered the register twice under „0 duplikatów”. So the mapping
  * is reused only when the header row matches the one it was made for;
  * otherwise the wizard starts from scratch AND says why. A sheet with no header
- * row, or a mapping remembered without headers, cannot be checked — treated as
- * a different layout, never as a match.
+ * row, or a mapping remembered before headers were stored, cannot be checked —
+ * that is `unknown_layout` (review 1 MINOR-2): not a match, but not "a different
+ * layout" either, and the wizard must not claim one.
  */
 export function rememberedMappingFor(
   saved: RememberedMapping | null,
   headers: readonly string[] | null | undefined,
-): { kind: "none" } | { kind: "match"; mapping: ColumnMapping } | { kind: "layout_differs" } {
+):
+  | { kind: "none" }
+  | { kind: "match"; mapping: ColumnMapping }
+  | { kind: "layout_differs" }
+  | { kind: "unknown_layout" } {
   if (!saved) return { kind: "none" };
   const a = headerSignature(saved.headers);
   const b = headerSignature(headers);
-  if (!a || !b || a.length !== b.length || a.some((h, i) => h !== b[i]))
-    return { kind: "layout_differs" };
+  if (!a || !b) return { kind: "unknown_layout" };
+  if (a.length !== b.length || a.some((h, i) => h !== b[i])) return { kind: "layout_differs" };
   return { kind: "match", mapping: saved.mapping };
 }
 
