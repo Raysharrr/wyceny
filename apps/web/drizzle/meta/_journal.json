@@ -99,6 +99,13 @@
       "when": 1789208830740,
       "tag": "0013_property_right",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789217765715,
+      "tag": "0014_coop_registry",
+      "breakpoints": true
     }
   ]
 }
