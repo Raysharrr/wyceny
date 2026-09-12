@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
+import type { PoolSource } from "@/domain/kcs";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
@@ -183,7 +184,11 @@ function makeSel(
  * that simulate an appraiser's in-place price edit (bramka A1) without
  * routing through an actual `<input>`.
  */
-function useHarness(initial: { sel: SampleSelectionSnapshot; comparables: ComparableRow[] }) {
+function useHarness(initial: {
+  sel: SampleSelectionSnapshot;
+  comparables: ComparableRow[];
+  poolSource?: PoolSource;
+}) {
   const { control, setValue } = useForm<FormInput>({
     defaultValues: { sampleSelection: initial.sel },
   });
@@ -191,7 +196,7 @@ function useHarness(initial: { sel: SampleSelectionSnapshot; comparables: Compar
   const replaceComparables = vi.fn((rows: ComparableRow[]) => setComparables(rows));
   const sel = useWatch({ control, name: "sampleSelection" });
   const review = useSampleReview({
-    poolSource: "rcn-wfs-gugik",
+    poolSource: initial.poolSource ?? "rcn-wfs-gugik",
     valuationId: "11111111-2222-3333-4444-555555555555",
     sel,
     comparables,
@@ -555,5 +560,24 @@ describe("useSampleReview — wyścig przeliczeń (latest-request-wins)", () => 
     });
 
     expect(result.current.sel?.params.unitPriceRange).toEqual({ min: 10000, max: 13000 });
+  });
+});
+
+// S3: a register row rebuilt after Odrzuć/Przywróć keeps its register source —
+// `rcnRow` derives it from the pool, never from a literal (HANDOFF Task 1).
+describe("useSampleReview — rejestr-sm pool keeps source rejestr_sm on rebuild (S3)", () => {
+  it("reject on a coop pool backfills rows with source rejestr_sm and coopTxId", () => {
+    const A = mk();
+    const B = mk();
+    const C = mk();
+    const sel = makeSel({ proposed: [A, B], alternates: [C] });
+    const comparables = [A, B].map((c) => rcnRow(c, "rejestr-sm"));
+    expect(comparables[0]).toMatchObject({ source: "rejestr_sm", coopTxId: A.transactionId });
+    const { result } = renderHook(() => useHarness({ sel, comparables, poolSource: "rejestr-sm" }));
+    act(() => result.current.review.setSelectedKey(candidateKey(A)));
+    act(() => result.current.review.reject({ reason: "inna_zabudowa" }));
+    const rows = result.current.comparables;
+    expect(rows.map((r) => r.source)).toEqual(["rejestr_sm", "rejestr_sm"]);
+    expect(rows.map((r) => r.coopTxId)).toEqual([B.transactionId, C.transactionId]);
   });
 });

@@ -480,12 +480,13 @@ export function StepSample({
                     data-testid="registry-shortfall"
                     className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950"
                   >
-                    W rejestrze biura {sel.counts.afterBand === 1 ? "jest" : "są"}{" "}
+                    W rejestrze biura {plural(sel.counts.afterBand, "jest", "są", "jest")}{" "}
                     <b>
                       {sel.counts.afterBand}{" "}
                       {plural(sel.counts.afterBand, "transakcja", "transakcje", "transakcji")}
                     </b>{" "}
-                    {sel.counts.afterBand === 1 ? "spełniająca" : "spełniające"} kryteria
+                    {plural(sel.counts.afterBand, "spełniająca", "spełniające", "spełniających")}{" "}
+                    kryteria
                     {cooperatives ? ` (wszystkie ze ${cooperatives})` : ""}; wymagane{" "}
                     {REQUIRED_SAMPLE_SIZE} — poszerz pasmo lub dodaj transakcje w Rejestrze.{" "}
                     <a
