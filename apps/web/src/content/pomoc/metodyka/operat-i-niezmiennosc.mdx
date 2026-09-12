@@ -1,11 +1,11 @@
-import { OPERAT_SECTIONS } from "@/domain/operat-sections";
+import { OPERAT_SECTION_TEMPLATES } from "@/domain/operat-sections";
 import { plural } from "@/components/wizard/plural";
 
 Operat nie jest w tej aplikacji plikiem, który się redaguje — jest wynikiem złożenia zamrożonych danych wyceny z produkcyjnym szablonem, wykonanego raz, w chwili zatwierdzenia. Ta strona opisuje, z czego ten dokument powstaje i jakie gwarancje ma po powstaniu: co dokładnie jest niezmienne, od kiedy, co pilnuje tej niezmienności i czego ona nie obejmuje. Rozróżnienia są tu istotniejsze niż hasła — „niezmienny" znaczy co innego dla operatu zatwierdzonego, a co innego dla podpisanego.
 
 ## Z czego składa się operat
 
-Dokument ma **{OPERAT_SECTIONS.length} {plural(OPERAT_SECTIONS.length, "numerowaną sekcję", "numerowane sekcje", "numerowanych sekcji")}** — od wyciągu z operatu, przez podstawy prawne, opis stanu nieruchomości, przeznaczenie planistyczne i metodologię, po uzasadnienie wyniku, zastrzeżenia i załączniki. Kanoniczna lista tytułów nie jest pisana ręcznie: została wygenerowana z produkcyjnego szablonu i żyje w kodzie (`apps/web/src/domain/operat-sections.ts`), skąd ta strona bierze ich liczbę. Osobny test składa dokument z prawdziwego szablonu na danych syntetycznych i sprawdza, że wszystkie sekcje są obecne, że nie został żaden nierozwiązany znacznik, że nigdzie nie pojawia się słowo „undefined" i że nic z operatu źródłowego, na którym szablon powstał, nie przecieka do cudzego dokumentu.
+Dokument ma **{OPERAT_SECTION_TEMPLATES.length} {plural(OPERAT_SECTION_TEMPLATES.length, "numerowaną sekcję", "numerowane sekcje", "numerowanych sekcji")}** — od wyciągu z operatu, przez podstawy prawne, opis stanu nieruchomości, przeznaczenie planistyczne i metodologię, po uzasadnienie wyniku, zastrzeżenia i załączniki. Kanoniczna lista tytułów nie jest pisana ręcznie: została wygenerowana z produkcyjnego szablonu i żyje w kodzie (`apps/web/src/domain/operat-sections.ts`), skąd ta strona bierze ich liczbę. Osobny test składa dokument z prawdziwego szablonu na danych syntetycznych i sprawdza, że wszystkie sekcje są obecne, że nie został żaden nierozwiązany znacznik, że nigdzie nie pojawia się słowo „undefined" i że nic z operatu źródłowego, na którym szablon powstał, nie przecieka do cudzego dokumentu.
 
 Treść wypełniana jest z jednego miejsca — modelu dokumentu (`apps/web/src/domain/document-model.ts`), czystej funkcji, która zamienia dane wyceny na gotowe polskie napisy. Renderowanie robi już tylko podstawienie. Do modelu wchodzą: dane przedmiotu i pola nagłówkowe wyceny, zamrożona migawka wejść, wynik kalkulacji, kwota słownie wyliczona przez worker oraz data zatwierdzenia — to ona jest datą sporządzenia operatu i podpisem pod blokiem map.
 
