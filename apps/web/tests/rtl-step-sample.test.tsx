@@ -3097,11 +3097,50 @@ describe("StepSample — prawo spółdzielcze, pula rejestr-sm (S3)", () => {
     expect(hint.textContent).toMatch(/wszystkie ze SM „Osiedle Młodych”/);
     expect(hint.textContent).toMatch(/wymagane 12/);
     // afterBand ≥ 12 while proposed < 12 → the real advice is the Alternatywy section.
-    expect(hint.textContent).toMatch(/W Alternatywach jest 1 wiersz — dodaj je ręcznie/);
+    expect(hint.textContent).toMatch(/W Alternatywach jest 1 wiersz — dodaj go ręcznie/);
     const link = screen.getByRole("link", { name: /Dodaj transakcje w Rejestrze/ });
     expect(link.getAttribute("href")).toBe("/rejestr");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(screen.getByRole("button", { name: "Pobierz próbę ponownie" })).toBeTruthy();
+  });
+
+  it("zdanie o alternatywach: brak, gdy alternatyw 0 albo counts.afterBand < 12; „są N wiersze — dodaj je” przy 2–4 (review 2)", () => {
+    // Fresh render per case: `useForm` reads `sampleSelection` from defaultValues once.
+    const sameBuilding = (i: number) => ({ ...coopCandidate(i), buildingRef: "piastowskie|1" });
+    const hintFor = (sel: SampleSelectionSnapshot) => {
+      const view = renderCoop(sel);
+      const text = screen.getByTestId("registry-shortfall").textContent ?? "";
+      view.unmount();
+      return text;
+    };
+    // 0 alternatyw → bez zdania.
+    let text = hintFor(
+      makeSampleSelection({
+        proposed: [coopCandidate(1), coopCandidate(2)],
+        alternates: [],
+        counts: { afterBand: 13, proposed: 2 },
+      }),
+    );
+    expect(text).toMatch(/wymagane 12/);
+    expect(text).not.toMatch(/W Alternatywach/);
+    // afterBand < 12 → bez zdania, choć alternatywa jest.
+    text = hintFor(
+      makeSampleSelection({
+        proposed: [sameBuilding(1), sameBuilding(2), sameBuilding(3)],
+        alternates: [sameBuilding(4)],
+        counts: { afterBand: 4, proposed: 3 },
+      }),
+    );
+    expect(text).not.toMatch(/W Alternatywach/);
+    // 2–4 alternatywy → „są N wiersze — dodaj je”.
+    text = hintFor(
+      makeSampleSelection({
+        proposed: [sameBuilding(1), sameBuilding(2), sameBuilding(3)],
+        alternates: [sameBuilding(4), sameBuilding(5)],
+        counts: { afterBand: 13, proposed: 3 },
+      }),
+    );
+    expect(text).toMatch(/W Alternatywach są 2 wiersze — dodaj je ręcznie/);
   });
 
   it("proposed ≥ 12: bez komunikatu niedoboru", () => {

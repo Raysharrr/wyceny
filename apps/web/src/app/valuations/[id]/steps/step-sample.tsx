@@ -498,8 +498,8 @@ export function StepSample({
                       <>
                         W Alternatywach {plural(eff.alternates.length, "jest", "są", "jest")}{" "}
                         {eff.alternates.length}{" "}
-                        {plural(eff.alternates.length, "wiersz", "wiersze", "wierszy")} — dodaj je
-                        ręcznie.{" "}
+                        {plural(eff.alternates.length, "wiersz", "wiersze", "wierszy")} — dodaj{" "}
+                        {plural(eff.alternates.length, "go", "je", "je")} ręcznie.{" "}
                       </>
                     ) : null}
                     <a
