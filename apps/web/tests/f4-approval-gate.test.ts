@@ -253,7 +253,10 @@ describe("kw group (Slice 6)", () => {
       kw: noGrunt,
       propertyRight: "spoldzielcze_wlasnosciowe",
     });
-    expect(coop).toEqual({ ok: true });
+    // B-2: until S4 composes the operat per right, the coop right carries a
+    // single temporary blocker — and nothing about the KW gruntu.
+    expect(coop.ok).toBe(false);
+    if (!coop.ok) expect(coop.blockers.map((b) => b.path)).toEqual(["document.propertyRight"]);
     const own = approvalGate({
       ...base,
       provenance: prov,
@@ -264,6 +267,19 @@ describe("kw group (Slice 6)", () => {
     if (!own.ok) expect(own.blockers.map((b) => b.path)).toEqual(["kw.kwGruntu"]);
     const legacy = approvalGate({ ...base, provenance: prov, kw: noGrunt });
     expect(legacy.ok).toBe(false);
+  });
+
+  it("B-2 (temporary, TODO S4): spółdzielcze → 'tekst w przygotowaniu' blocker; własność → none", () => {
+    const coop = approvalGate({ ...passingInput(), propertyRight: "spoldzielcze_wlasnosciowe" });
+    expect(coop.ok).toBe(false);
+    if (!coop.ok) {
+      expect(coop.blockers).toHaveLength(1);
+      expect(coop.blockers[0].path).toBe("document.propertyRight");
+      expect(coop.blockers[0].label).toContain("tekst w przygotowaniu");
+    }
+    expect(approvalGate({ ...passingInput(), propertyRight: "wlasnosc_lokalu" })).toEqual({
+      ok: true,
+    });
   });
 
   it("T-12: the sample threshold is the same for both rights", () => {

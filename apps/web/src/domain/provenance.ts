@@ -231,6 +231,18 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
     }
   }
 
+  // TODO(S4): usunąć, gdy DocumentModel składa tekst per rodzaj prawa.
+  // Until then the DOCX prints ownership wording for every right, and a
+  // signed operat is irreversible (F-7) — so a coop valuation may be
+  // previewed and walked through, but never approved.
+  if (input.propertyRight === "spoldzielcze_wlasnosciowe") {
+    blockers.push({
+      path: "document.propertyRight",
+      label:
+        "Operat dla spółdzielczego własnościowego prawa do lokalu — tekst w przygotowaniu (kolejne wydanie); zatwierdzenie niedostępne.",
+    });
+  }
+
   // Prose (FR-6 / ADR-014): no operat leaves without descriptions the
   // appraiser has read and accepted. Kept LAST so the pre-FR-6 groups keep
   // owning `blockers[0]` — the action shows only the first one.
