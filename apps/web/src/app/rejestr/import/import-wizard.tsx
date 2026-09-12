@@ -23,6 +23,7 @@ import {
 import { IMPORT_CHUNK, sumCoopChunks, type CoopChunkResult } from "@/lib/coop-import-chunks";
 import type { CoopImportSummary } from "@/lib/coop-import-service";
 import { plural } from "@/lib/coop-format";
+import { NeedsFixNotice } from "./needs-fix-notice";
 import { PRICE_KINDS, type NewCoopTransaction, type PriceKind } from "@/ports/coop-registry";
 import type { CoopSheet } from "@/ports/coop-sheet";
 
@@ -489,13 +490,7 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
                     </span>
                   </p>
                   {g !== null ? (
-                    <p className="mt-2 pl-6">
-                      Wiersze bez lokalizacji zaimportowaliśmy, ale nie wejdą do doboru po
-                      promieniu, dopóki nie poprawisz adresu.{" "}
-                      <Link href="/rejestr?lokalizacja=do-poprawki&okres=all" className="underline">
-                        Pokaż {g} {plural(g, "wiersz", "wiersze", "wierszy")}
-                      </Link>
-                    </p>
+                    <NeedsFixNotice needsFix={g} />
                   ) : (
                     <p className="mt-2 pl-6">
                       Wiersze bez lokalizacji zaimportujemy, ale nie wejdą do doboru po promieniu,
