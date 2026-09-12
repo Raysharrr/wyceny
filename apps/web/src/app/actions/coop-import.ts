@@ -9,12 +9,11 @@ import { COOP_FIELDS, coopDedupeKey, type ColumnMapping } from "@/domain/coop-im
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import {
   finalizeCoopImport,
-  IMPORT_CHUNK,
   importCoopChunk,
   startCoopImport,
-  type CoopChunkResult,
   type CoopImportSummary,
 } from "@/lib/coop-import-service";
+import { IMPORT_CHUNK, type CoopChunkResult } from "@/lib/coop-import-chunks";
 import { mintWorkerToken } from "@/lib/worker-token";
 import { currentTraceId, withTrace } from "@/lib/trace";
 import { PRICE_KINDS, type NewCoopTransaction } from "@/ports/coop-registry";

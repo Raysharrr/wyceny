@@ -20,12 +20,8 @@ import {
   type CoopFieldKey,
   type ColumnMapping,
 } from "@/domain/coop-import";
-import {
-  IMPORT_CHUNK,
-  sumCoopChunks,
-  type CoopChunkResult,
-  type CoopImportSummary,
-} from "@/lib/coop-import-service";
+import { IMPORT_CHUNK, sumCoopChunks, type CoopChunkResult } from "@/lib/coop-import-chunks";
+import type { CoopImportSummary } from "@/lib/coop-import-service";
 import { plural } from "@/lib/coop-format";
 import { PRICE_KINDS, type NewCoopTransaction, type PriceKind } from "@/ports/coop-registry";
 import type { CoopSheet } from "@/ports/coop-sheet";
