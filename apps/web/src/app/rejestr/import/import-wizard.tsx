@@ -156,23 +156,29 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
         return setPhase({ kind: "failed", message: started.error, done: 0, total });
       const batchId = started.batchId;
       const chunks: CoopChunkResult[] = [];
+      // m-1: a failed chunk still closes the batch with the rows that DID enter,
+      // so "Ostatni import" and the remembered mapping tell the truth; the next
+      // import of the same file adds only what is missing (content-based key).
+      const closeWithWhatGotIn = async () =>
+        finalizeCoopImportAction({
+          batchId,
+          rowsTotal: sheet?.rows.length ?? total,
+          totals: sumCoopChunks(chunks),
+        });
       for (let i = 0; i < total; i += IMPORT_CHUNK) {
         const r = await importCoopChunkAction({
           batchId,
           city,
           rows: parsed.rows.slice(i, i + IMPORT_CHUNK).map(toWire),
         });
-        if (r.error !== undefined)
+        if (r.error !== undefined) {
+          await closeWithWhatGotIn();
           return setPhase({ kind: "failed", message: r.error, done: i, total });
+        }
         chunks.push(r);
         setPhase({ kind: "running", done: Math.min(i + IMPORT_CHUNK, total), total });
       }
-      const fin = await finalizeCoopImportAction({
-        ...base,
-        batchId,
-        rowsTotal: sheet?.rows.length ?? total,
-        totals: sumCoopChunks(chunks),
-      });
+      const fin = await closeWithWhatGotIn();
       if (fin.error !== undefined)
         return setPhase({ kind: "failed", message: fin.error, done: total, total });
       setPhase({ kind: "done", summary: fin });
