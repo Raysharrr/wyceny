@@ -575,7 +575,7 @@ describe("useSampleReview — rejestr-sm pool keeps source rejestr_sm on rebuild
     expect(comparables[0]).toMatchObject({ source: "rejestr_sm", coopTxId: A.transactionId });
     const { result } = renderHook(() => useHarness({ sel, comparables, poolSource: "rejestr-sm" }));
     act(() => result.current.review.setSelectedKey(candidateKey(A)));
-    act(() => result.current.review.reject({ reason: "inna_zabudowa" }));
+    act(() => result.current.review.reject({ reason: "different_building_type" }));
     const rows = result.current.comparables;
     expect(rows.map((r) => r.source)).toEqual(["rejestr_sm", "rejestr_sm"]);
     expect(rows.map((r) => r.coopTxId)).toEqual([B.transactionId, C.transactionId]);
