@@ -58,6 +58,7 @@ describe("PortProseProposal contract", () => {
         sekcje: ["analiza_rynku", "opis_lokalu"],
         fakty: REQUEST.facts,
         transakcje: REQUEST.transactions,
+        rodzaj_prawa: null,
       }),
     });
     expect(result).toEqual({
@@ -66,6 +67,27 @@ describe("PortProseProposal contract", () => {
       model: "claude-sonnet-5",
       usage: { inputTokens: 3120, outputTokens: 480 },
     });
+  });
+
+  it("S5: the valued right rides BESIDE the facts (`rodzaj_prawa`), never inside `fakty`", async () => {
+    const fetchMock = mockFetch({
+      ok: true,
+      json: async () => ({
+        sekcje: {},
+        odrzucone: {},
+        model: "m",
+        usage: { input_tokens: 0, output_tokens: 0 },
+      }),
+    });
+    await httpProseProposal("http://worker.test").fetchProposal({
+      ...REQUEST,
+      sections: [...REQUEST.sections],
+      propertyRight: "spoldzielcze_wlasnosciowe",
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body as string);
+    expect(body.rodzaj_prawa).toBe("spoldzielcze_wlasnosciowe");
+    expect(body.fakty).toEqual(REQUEST.facts);
+    expect(JSON.stringify(body.fakty)).not.toContain("spoldzielcze");
   });
 
   it("502: the worker's Polish detail reaches the caller verbatim", async () => {

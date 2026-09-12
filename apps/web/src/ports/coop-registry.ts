@@ -1,4 +1,9 @@
-import type { ColumnMapping, SkipReason, WarnReason } from "../domain/coop-import";
+import type {
+  ColumnMapping,
+  RememberedMapping,
+  SkipReason,
+  WarnReason,
+} from "../domain/coop-import";
 import type { PropertyRight } from "../domain/property-right";
 import type { SessionUser } from "./valuation";
 
@@ -135,6 +140,7 @@ export interface PortCoopRegistry {
   recordBatch(batch: CoopImportBatch): Promise<void>;
   /** The batch as opened by `startCoopImport` — chunk/finalize read owner, mapping and the parser's skip/warn lists from here, never from the client again (review 1 m-2, NIT-1). */
   getBatch(id: string): Promise<CoopImportBatch | null>;
-  getMapping(cooperative: string): Promise<ColumnMapping | null>;
-  saveMapping(cooperative: string, mapping: ColumnMapping): Promise<void>;
+  /** With the header row it was made for (S5, Task 4e); `headers: null` for a mapping remembered before that. */
+  getMapping(cooperative: string): Promise<RememberedMapping | null>;
+  saveMapping(cooperative: string, mapping: ColumnMapping, headers: string[] | null): Promise<void>;
 }

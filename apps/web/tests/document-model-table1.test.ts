@@ -3,8 +3,6 @@ import { buildDocumentModel } from "../src/domain/document-model";
 import { syntheticDocumentInput } from "./fixtures/document-model-fixture";
 import type { Candidate } from "../src/domain/sample-selection";
 
-const NBSP = " "; // non-breaking space (escape — a pasted literal is invisible to review)
-
 const cand = (
   id: string,
   teryt: string,
@@ -295,5 +293,92 @@ describe("Tabela 1 — miasto, gdy eksport nie ma adresu (decyzja użytkownika 2
   it("nieparsowalny identyfikator: kreska w obu — nigdy zgadywanie", () => {
     const broken = { ...cand("T1", "306401_1", "0039", 120), egib: null };
     expect(render(broken)).toMatchObject({ miasto: "—", ulica: "—" });
+  });
+});
+
+describe("Tabela 1 — wiersze z rejestru SM (S5, Task 4d / defekt D-3)", () => {
+  // Wiersz rejestru: `lokalId: ""` (jeden lokal na wiersz), adres tekstowy w `street`,
+  // `city: null` i `egib: null` — model dokumentu dopasowuje go po `coopTxId`.
+  const coopCand = (id: string, street: string, buildingNumber: string): Candidate => ({
+    ...cand(id, "", "", 465, { street, streetNumber: buildingNumber, city: null }),
+    lokalId: "",
+    egib: null,
+    market: null,
+    share: null,
+    transType: null,
+    function: null,
+    rightType: null,
+    cooperative: "SM Osiedle Testowe",
+  });
+
+  it("drukuje ulicę z rekordu rejestru (bez numeru budynku) i „—” zamiast miasta, którego źródło nie niesie", () => {
+    const input = syntheticDocumentInput();
+    input.address = "os. Piastowskie 1, Poznań";
+    input.inputs.comparables = [
+      {
+        date: "2025-01-10",
+        area: 45.5,
+        pricePerM2: 10000,
+        source: "rejestr_sm",
+        transactionId: "C1",
+        lokalId: "",
+        coopTxId: "C1",
+      },
+      {
+        date: "2025-02-10",
+        area: 48.2,
+        pricePerM2: 10000,
+        source: "rejestr_sm",
+        transactionId: "C2",
+        lokalId: "",
+        coopTxId: "C2",
+      },
+    ] as typeof input.inputs.comparables;
+    input.inputs.sampleSelection = {
+      version: 3,
+      proposed: [coopCand("C1", "os. Piastowskie", "24"), coopCand("C2", "os. Zmyślona", "4")],
+      alternates: [],
+      flags: {},
+      rejectedCounts: {},
+      radiusUsedM: 3000,
+      radiusWalk: [],
+      counts: { pool: 0, inRadius: 0, afterHygiene: 0, afterBand: 0, proposed: 2 },
+      params: { subjectArea: 45, todayMonth: "2026-09" },
+    };
+    const m = buildDocumentModel(input);
+    expect(m.transakcje.map((r) => [r.miasto, r.ulica])).toEqual([
+      ["—", "os. Piastowskie"], // miasto: ADR-010 — rejestr nie zapisuje miasta (decyzja koordynatora 12.09, wariant a)
+      ["—", "os. Zmyślona"],
+    ]);
+    // Numer budynku nie trafia do dokumentu — konwencja Tabeli 1 z operatu wzorcowego (F-12).
+    expect(JSON.stringify(m.transakcje)).not.toContain("24");
+    expect(JSON.stringify(m.transakcje)).not.toContain("C1");
+  });
+
+  it("wiersz z coopTxId, którego kandydatki nie ma w snapshotcie, drukuje kreski (nie zgaduje)", () => {
+    const input = syntheticDocumentInput();
+    input.inputs.comparables = [
+      {
+        date: "2025-01-10",
+        area: 45.5,
+        pricePerM2: 10000,
+        source: "rejestr_sm",
+        transactionId: "C9",
+        lokalId: "",
+        coopTxId: "C9",
+      },
+    ] as typeof input.inputs.comparables;
+    input.inputs.sampleSelection = {
+      version: 3,
+      proposed: [coopCand("C1", "os. Piastowskie", "24")],
+      alternates: [],
+      flags: {},
+      rejectedCounts: {},
+      radiusUsedM: 3000,
+      radiusWalk: [],
+      counts: { pool: 0, inRadius: 0, afterHygiene: 0, afterBand: 0, proposed: 1 },
+      params: { subjectArea: 45, todayMonth: "2026-09" },
+    };
+    expect(buildDocumentModel(input).transakcje[0]).toMatchObject({ miasto: "—", ulica: "—" });
   });
 });

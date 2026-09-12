@@ -230,6 +230,7 @@ describe("proposeProse — happy path", () => {
         { data: "03-2025", cena_m2: 12480 },
         { data: "12-2024", cena_m2: 10725 },
       ],
+      propertyRight: "wlasnosc_lokalu",
     });
 
     const expectedSnapshot = {
@@ -275,6 +276,33 @@ describe("proposeProse — happy path", () => {
 });
 
 describe("proposeProse — regenerates only the sections whose facts moved (T3)", () => {
+  it("S5: the valued right reaches the worker beside the facts and leaves every section fingerprint untouched", async () => {
+    // A cooperative draft — same facts, different right. The fingerprints the
+    // snapshot is stamped with must be byte-identical to the ownership draft's:
+    // the right rides outside the hash, or every confirmed section of every
+    // existing valuation would go stale after deploy.
+    const coop: Valuation = { ...draft, propertyRight: "spoldzielcze_wlasnosciowe" };
+    getMock.mockResolvedValue(coop);
+    fetchProposalMock.mockResolvedValue(PROPOSAL);
+    saveProseMock.mockResolvedValue(coop);
+
+    await proposeProse(VALUATION_ID);
+
+    expect(fetchProposalMock.mock.calls[0]![0].propertyRight).toBe("spoldzielcze_wlasnosciowe");
+    expect(fetchProposalMock.mock.calls[0]![0].facts).toEqual(
+      buildProseFacts({ address: ADDRESS, inputs: INPUTS }),
+    );
+    const factsHashes = saveProseMock.mock.calls[0]![2].factsHashes;
+    expect(factsHashes).toEqual(
+      Object.fromEntries(
+        ALL_SECTIONS.map((section) => [
+          section,
+          currentSectionFactsHash(section, { address: ADDRESS, inputs: INPUTS }),
+        ]),
+      ),
+    );
+  });
+
   it("regenerates only the sections whose facts moved", async () => {
     const { fetchProposal } = setupWithStaleSample();
 

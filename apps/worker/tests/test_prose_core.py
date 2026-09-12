@@ -53,6 +53,16 @@ def test_prompt_analiza_rynku_nie_kaze_orzekac_o_trendzie():
         assert word not in text, f"prompt wciąż mówi o trendzie: {word!r}"
 
 
+def test_few_shoty_nie_ucza_slownictwa_wlasnosciowego():
+    """MAJOR-2 review 2 S5: few-shoty analiza_rynku demonstrowały 8× frazy, które
+    straż odrzuca przy prawie spółdzielczym — model przepisywał je dosłownie.
+    Słownictwo neutralne dla obu praw („lokal mieszkalny”) we WSZYSTKICH promptach."""
+    for path in sorted(PROMPTS_DIR.glob("*.md")):
+        text = path.read_text(encoding="utf-8").lower()
+        for phrase in app.prose.OWNERSHIP_PHRASES:
+            assert phrase not in text, f"{path.name} wciąż uczy: {phrase!r}"
+
+
 def test_fakty_proby_nie_niosa_trend_cen():
     prompt = build_prompt("analiza_rynku", FACTS_RYNEK)
     assert "trend_cen" not in prompt

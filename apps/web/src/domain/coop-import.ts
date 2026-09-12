@@ -52,6 +52,47 @@ export function missingRequiredFields(mapping: ColumnMapping): CoopFieldKey[] {
     .filter((k) => !(k === "flatNumber" && mapping.flatNumber === "absent"));
 }
 
+/**
+ * The mapping remembered for a cooperative, together with the header row it was
+ * made for (S5, Task 4e). `headers: null` — remembered before headers were stored,
+ * or for a sheet without a header row — means "layout unknown".
+ */
+export type RememberedMapping = { mapping: ColumnMapping; headers: string[] | null };
+
+/** Header cells as compared: trimmed, case-folded, whitespace collapsed. */
+export function headerSignature(headers: readonly string[] | null | undefined): string[] | null {
+  if (!headers) return null;
+  return headers.map((h) => h.trim().toLowerCase().replace(/\s+/g, " "));
+}
+
+/**
+ * Whether the remembered mapping may be applied to THIS sheet (S5, Task 4e —
+ * staging O-1). A mapping is a set of column INDEXES; applied to a sheet whose
+ * columns are laid out differently it maps „Rep. aktu” onto „Lp.”, and the
+ * dedup key switches to the rep-variant with values „1”…„6” — five known
+ * transactions entered the register twice under „0 duplikatów”. So the mapping
+ * is reused only when the header row matches the one it was made for;
+ * otherwise the wizard starts from scratch AND says why. A sheet with no header
+ * row, or a mapping remembered before headers were stored, cannot be checked —
+ * that is `unknown_layout` (review 1 MINOR-2): not a match, but not "a different
+ * layout" either, and the wizard must not claim one.
+ */
+export function rememberedMappingFor(
+  saved: RememberedMapping | null,
+  headers: readonly string[] | null | undefined,
+):
+  | { kind: "none" }
+  | { kind: "match"; mapping: ColumnMapping }
+  | { kind: "layout_differs" }
+  | { kind: "unknown_layout" } {
+  if (!saved) return { kind: "none" };
+  const a = headerSignature(saved.headers);
+  const b = headerSignature(headers);
+  if (!a || !b) return { kind: "unknown_layout" };
+  if (a.length !== b.length || a.some((h, i) => h !== b[i])) return { kind: "layout_differs" };
+  return { kind: "match", mapping: saved.mapping };
+}
+
 export type SkipReason = "summary" | "empty" | "bad_number" | "bad_date" | "duplicate";
 export type SkippedRow = { row: number; reason: SkipReason };
 /**

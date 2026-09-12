@@ -9,6 +9,7 @@
 
 import type { ProseFacts, ProseTransactionPayload } from "../domain/prose";
 import type { ProseSection } from "../domain/prose-snapshot";
+import type { PropertyRight } from "../domain/property-right";
 
 export interface ProseProposalRequest {
   /** Short-lived HMAC, same mechanism as the KW upload token. */
@@ -21,6 +22,15 @@ export interface ProseProposalRequest {
    * would authorise the model to write any of them anywhere).
    */
   transactions: ProseTransactionPayload[];
+  /**
+   * The valued right (S5, Task 4c) — OUTSIDE the facts on purpose: the
+   * per-section fingerprint (`currentSectionFactsHash`) is computed from the
+   * facts alone, and putting the right in there would mark every confirmed
+   * section of every existing valuation stale after deploy. The worker adds
+   * one sentence to the prompt and, for the cooperative right, refuses text
+   * that speaks of „prawo własności”. Optional: an older caller keeps working.
+   */
+  propertyRight?: PropertyRight;
 }
 
 export interface ProseProposal {

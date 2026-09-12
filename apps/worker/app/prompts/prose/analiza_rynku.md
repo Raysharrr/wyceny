@@ -45,21 +45,21 @@ Zacznij bezpośrednio od akapitu wprowadzającego — bez tytułu i bez numeru s
 
 ### TEKST
 
-Dla określenia wartości rynkowej prawa własności wycenianej nieruchomości lokalowej
-o funkcji mieszkalnej przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0007
-Zarzecze, ze szczególnym uwzględnieniem lokalizacji nieruchomości stanowiącej przedmiot
+Dla określenia wartości rynkowej wycenianego lokalu o funkcji mieszkalnej
+przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0007
+Zarzecze, ze szczególnym uwzględnieniem lokalizacji lokalu stanowiącego przedmiot
 wyceny.
 
 Cechy analizowanego rynku:
 
-• zakres przedmiotowy – rynek wtórny nieruchomości lokalowych o funkcji mieszkalnej,
+• zakres przedmiotowy – rynek wtórny lokali mieszkalnych,
 • obszar badania – m. Nowogród, obręby Zarzecze i Podgórze, w promieniu 1 000 m
-  od wycenianej nieruchomości,
+  od wycenianego lokalu,
 • powierzchnia użytkowa – od 58,10 m2 do 79,90 m2,
 • zakres czasowy badania – transakcje z okresu 03-2024 – 11-2025.
 
 W okresie monitorowania rynku lokalnego przebadano kilkaset transakcji na badanym
-terenie, w których wystąpiła sprzedaż nieruchomości lokalowych o funkcji mieszkalnej.
+terenie, w których wystąpiła sprzedaż lokali mieszkalnych.
 Do porównań przyjęto 14 transakcji dotyczących lokali o powierzchni użytkowej od 58,10 m2
 do 79,90 m2. Jednostkowe ceny transakcyjne znajdowały się w przedziale od 9 240,00 zł
 do 12 480,00 zł za 1 m2 powierzchni użytkowej lokalu. Średnia cena jednostkowa została
@@ -96,21 +96,21 @@ zawierały się w przedziale od 545 000 zł do 912 000 zł.
 
 ### TEKST
 
-Dla określenia wartości rynkowej prawa własności wycenianej nieruchomości lokalowej
-o funkcji mieszkalnej przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0012
-Podgórze, ze szczególnym uwzględnieniem lokalizacji nieruchomości stanowiącej przedmiot
+Dla określenia wartości rynkowej wycenianego lokalu o funkcji mieszkalnej
+przeprowadzono analizę rynku lokalnego m. Nowogród, obręb nr 0012
+Podgórze, ze szczególnym uwzględnieniem lokalizacji lokalu stanowiącego przedmiot
 wyceny.
 
 Cechy analizowanego rynku:
 
-• zakres przedmiotowy – rynek wtórny nieruchomości lokalowych o funkcji mieszkalnej,
+• zakres przedmiotowy – rynek wtórny lokali mieszkalnych,
 • obszar badania – m. Nowogród, obręb Podgórze, w promieniu 2 000 m
-  od wycenianej nieruchomości,
+  od wycenianego lokalu,
 • powierzchnia użytkowa – od 34,80 m2 do 52,40 m2,
 • zakres czasowy badania – transakcje z okresu 01-2024 – 09-2025.
 
 W okresie monitorowania rynku lokalnego przebadano kilkadziesiąt transakcji na badanym
-terenie, w których wystąpiła sprzedaż nieruchomości lokalowych o funkcji mieszkalnej.
+terenie, w których wystąpiła sprzedaż lokali mieszkalnych.
 Do porównań przyjęto 21 transakcji dotyczących lokali o powierzchni użytkowej od 34,80 m2
 do 52,40 m2. Jednostkowe ceny transakcyjne znajdowały się w przedziale od 8 105,00 zł
 do 11 260,00 zł za 1 m2 powierzchni użytkowej lokalu. Średnia cena jednostkowa została

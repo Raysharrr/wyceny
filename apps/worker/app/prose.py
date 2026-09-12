@@ -398,17 +398,80 @@ def _dumps(data: dict) -> str:
     return json.dumps(data, indent=1, ensure_ascii=False)
 
 
-def build_prompt(section: str, facts: dict) -> str:
+# S5 (Task 4c): jedno zdanie o rodzaju prawa doklejane do ZADANIA. Klucze = wartości
+# `PropertyRight` po stronie web (domain/property-right.ts). Pole jedzie OBOK faktów,
+# nigdy w nich — odcisk sekcji (prose-hash.ts) liczy się z faktów, a wejście tam
+# unieważniłoby każdą potwierdzoną sekcję każdej istniejącej wyceny.
+PROPERTY_RIGHT_SENTENCE: dict[str, str] = {
+    "wlasnosc_lokalu": (
+        "Przedmiotem wyceny jest prawo własności lokalu (nieruchomość lokalowa) — "
+        "tak nazywaj przedmiot wyceny."
+    ),
+    "spoldzielcze_wlasnosciowe": (
+        "Przedmiotem wyceny jest spółdzielcze własnościowe prawo do lokalu — tak nazywaj "
+        "przedmiot wyceny; NIE pisz o „prawie własności” (ani „prawo/prawa własności”), "
+        "„nieruchomości lokalowej” (ani „nieruchomość lokalowa/lokalowych”) ani „udziale w gruncie”, "
+        "bo lokal nie jest odrębną nieruchomością."
+    ),
+}
+
+# Straż słownictwa własnościowego dla prawa spółdzielczego — cztery frazy z §11 specu
+# bloku = trzy pojęcia (prawo własności, nieruchomość lokalowa, udział w gruncie) w odmianach, jakie
+# pisze model; sprawdzana na wygenerowanym tekście, którego F-12 nie widzi (mierzy
+# render z pustą prozą). Świadomie NIE jest to lista F-12 (14 fraz szablonu) — tamta
+# dałaby fałszywe trafienia w prozie. Żadna forma nie jest podciągiem poprawnej nazwy
+# „spółdzielcze własnościowe prawo do lokalu” w żadnym przypadku (test).
+OWNERSHIP_PHRASES: tuple[str, ...] = (
+    "prawa własności",
+    "prawo własności",
+    "prawem własności",
+    "prawie własności",
+    "nieruchomość lokalowa",
+    "nieruchomość lokalową",
+    "nieruchomości lokalowej",
+    "nieruchomości lokalowych",
+    "nieruchomościami lokalowymi",
+    "udział w gruncie",
+    "udziału w gruncie",
+    "udziałem w gruncie",
+    "udziale w gruncie",
+)
+
+
+def validate_property_right(text: str, property_right: str | None) -> list[str]:
+    """Phrases the text must not carry for the given right. Only the cooperative
+    right has a forbidden vocabulary; ownership and an unknown right pass.
+    Each finding is self-describing — it lands in front of the appraiser next
+    to the number guard's findings, and „prawa własności” alone reads like a typo."""
+    if property_right != "spoldzielcze_wlasnosciowe":
+        return []
+    lowered = text.lower()
+    # Word boundary after the phrase (review 2 MINOR-A): „prawo własności” is a PREFIX
+    # of „prawo własnościowe” — the colloquial order of the cooperative right's own
+    # name („spółdzielcze prawo własnościowe do lokalu”) must not be reported as
+    # ownership wording. `re` is unicode-aware for str, so ś/ł/ą count as word chars.
+    return [
+        f"„{phrase}” (przedmiotem wyceny jest spółdzielcze własnościowe prawo do lokalu)"
+        for phrase in OWNERSHIP_PHRASES
+        if re.search(re.escape(phrase) + r"\b", lowered)
+    ]
+
+
+def build_prompt(section: str, facts: dict, property_right: str | None = None) -> str:
     """Assemble the section prompt: style + task + few-shot examples + facts.
 
     The layout (separators included) is the one validated in the spike — do not
-    reshape it. Unknown section -> ValueError.
+    reshape it. Unknown section -> ValueError. `property_right` (S5) adds ONE
+    sentence to the task; `None` yields the exact pre-S5 prompt.
     """
     if section not in SECTIONS:
         raise ValueError(f"nieznana sekcja: {section!r}")
 
     style = (PROMPTS_DIR / "_style.md").read_text(encoding="utf-8").strip()
     task, examples = parse_section_file(PROMPTS_DIR / f"{section}.md")
+    sentence = PROPERTY_RIGHT_SENTENCE.get(property_right) if property_right else None
+    if sentence:
+        task = f"{task}\n{sentence}"
 
     blocks = [
         f"PRZYKŁAD — DANE:\n{_dumps(data)}\nPRZYKŁAD — TEKST SEKCJI:\n{text}"

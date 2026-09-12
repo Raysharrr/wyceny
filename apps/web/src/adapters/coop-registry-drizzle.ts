@@ -268,16 +268,24 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
         .select()
         .from(schema.coopColumnMapping)
         .where(eq(schema.coopColumnMapping.cooperative, cooperative));
-      return row ? (row.mapping as ColumnMapping) : null;
+      if (!row) return null;
+      // S5 (Task 4e): stored as { fields, headers }; a row written before that is
+      // the bare mapping — its layout is unknown, so `headers: null`.
+      const stored = row.mapping as
+        { fields: ColumnMapping; headers: string[] | null } | ColumnMapping;
+      return "fields" in stored
+        ? { mapping: stored.fields, headers: stored.headers ?? null }
+        : { mapping: stored, headers: null };
     },
 
-    async saveMapping(cooperative, mapping) {
+    async saveMapping(cooperative, mapping, headers) {
+      const stored = { fields: mapping, headers };
       await db
         .insert(schema.coopColumnMapping)
-        .values({ cooperative, mapping })
+        .values({ cooperative, mapping: stored })
         .onConflictDoUpdate({
           target: schema.coopColumnMapping.cooperative,
-          set: { mapping, updatedAt: new Date() },
+          set: { mapping: stored, updatedAt: new Date() },
         });
     },
   };

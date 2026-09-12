@@ -51,6 +51,7 @@ export function httpProseProposal(baseUrl: string): PortProseProposal {
           sekcje: request.sections,
           fakty: request.facts,
           transakcje: request.transactions,
+          rodzaj_prawa: request.propertyRight ?? null,
         }),
       });
       if (!response.ok) {

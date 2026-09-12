@@ -156,6 +156,8 @@ export async function proposeProse(
         sections,
         facts,
         transactions: buildProseTransactions(valuation.inputs.comparables),
+        // Beside the facts, never inside them — see `ProseProposalRequest.propertyRight`.
+        propertyRight: valuation.propertyRight,
       });
     } catch (error) {
       await recordFailure({
