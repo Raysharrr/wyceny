@@ -330,6 +330,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
             address: updated.address,
             area: updated.area,
             purpose: updated.purpose,
+            propertyRight: updated.propertyRight,
             kwNumber: updated.kwNumber,
             client: updated.client,
             // `updated.wr`, NOT a hardcoded null: `applySubjectUpdate` decides

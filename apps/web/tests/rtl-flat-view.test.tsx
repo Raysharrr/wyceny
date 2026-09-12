@@ -32,6 +32,7 @@ const baseValuation: Valuation = {
   docUrl: "https://example.test/operat.pdf",
   docxUrl: "https://example.test/operat.docx",
   purpose: "sprzedaz",
+  propertyRight: "wlasnosc_lokalu",
   kwNumber: "PO1P/1/6",
   client: "Jan Testowy",
   inspectionDate: "2026-07-01",

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COMPARABLE_SOURCES } from "@/domain/kcs";
+import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
 import type { CandidatePool } from "@/ports/sample";
@@ -395,6 +396,10 @@ export const valuationFormObject = z.object({
   purpose: z.enum(["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"], {
     message: "Wybierz cel wyceny.",
   }),
+  // T-12. The radio always submits a value; the defaults exist for callers that
+  // predate the block (tests, e2e) and mean "the app as it was": własność, no basement.
+  propertyRight: z.enum(PROPERTY_RIGHTS).default("wlasnosc_lokalu"),
+  hasBasement: z.boolean().default(false),
   kwNumber: z.string().trim().optional(),
   client: z.string().trim().min(1, "Podaj zamawiającego wycenę."),
   inspectionDate: z.string().min(1, "Podaj datę oględzin."),
@@ -407,7 +412,8 @@ export const valuationFormObject = z.object({
  * extract is present (Slice 6).
  */
 export const valuationFormSchema = valuationFormObject.superRefine((values, ctx) => {
-  if (!values.kw && !values.kwNumber) {
+  // A coop right has no KW of its own (T-12) — the number is optional there.
+  if (!values.kw && !values.kwNumber && values.propertyRight !== "spoldzielcze_wlasnosciowe") {
     ctx.addIssue({
       code: "custom",
       path: ["kwNumber"],

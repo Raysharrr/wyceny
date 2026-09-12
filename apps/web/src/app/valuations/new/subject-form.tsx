@@ -157,6 +157,8 @@ export function SubjectForm({
       // starts on it and zod's required-enum message fires until the user
       // picks a real value.
       purpose: "" as never,
+      propertyRight: "wlasnosc_lokalu",
+      hasBasement: false,
       kwNumber: "",
       client: "",
       subject: { ...EMPTY_SUBJECT },

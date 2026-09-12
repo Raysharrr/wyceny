@@ -124,6 +124,8 @@ export type KcsInput = {
   kw?: KwSnapshot | null;
   /** Extraction provenance for the kw snapshot (F-5) — display/audit metadata only. */
   kwMeta?: KwMetaSnapshot | null;
+  /** Step 1 "Lokal ma przynależną piwnicę" (T-12) — render only (basement clause, S4); computeKcs never reads this. Absent on drafts saved before S1. */
+  hasBasement?: boolean | null;
   /** Inspection photos manifest + note (Slice 10, FR-2) — display/render only; computeKcs never reads this. */
   inspection?: InspectionSnapshot | null;
   /** LLM prose proposals + appraiser-confirmed text (ADR-014) — display/render only; computeKcs never reads this. */

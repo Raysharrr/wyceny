@@ -10,6 +10,7 @@ import { FileInput } from "@/components/ui/file-input";
 import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/wizard/section-card";
 import { cn } from "@/lib/utils";
+import { PROPERTY_RIGHT_LABEL, PROPERTY_RIGHTS } from "@/domain/property-right";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 
 type FormInput = z.input<typeof valuationFormSchema>;
@@ -40,6 +41,11 @@ const nf = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFra
 // text via role name); `description` is new tile copy (mockup v3-r4
 // KwSourcePicker), appended inside the same button — a substring match on
 // `label` still passes.
+// Tile styling shared by the source picker and the property-right radio (T-12).
+const TILE = "h-auto flex-col items-start gap-0.5 whitespace-normal rounded-lg px-4 py-3 text-left";
+const TILE_SELECTED = "border-primary bg-[var(--accent-050)]";
+const TILE_IDLE = "border-border bg-background";
+
 const SOURCES: Array<{ value: KwSource; label: string; description: string }> = [
   {
     value: "akt",
@@ -145,6 +151,10 @@ export function KwSection(props: KwSectionProps) {
   const kw = useWatch({ control, name: "kw" });
   const hasExtract = !!kw;
   const deweloperski = kw?.deweloperski;
+  // T-12: the right decides the wording below and, in the gate, whether KW
+  // gruntu is demanded. Absent (pre-block harness) reads as własność.
+  const propertyRight = useWatch({ control, name: "propertyRight" }) ?? "wlasnosc_lokalu";
+  const coop = propertyRight === "spoldzielcze_wlasnosciowe";
   const dzialPresent: Record<string, boolean> = {
     "kw.dzial3": !!kw?.dzial3,
     "kw.dzial4": !!kw?.dzial4,
@@ -159,6 +169,80 @@ export function KwSection(props: KwSectionProps) {
       }
     >
       <div className="flex flex-col gap-3">
+        {/* T-12 — rodzaj prawa, first thing on the card: like "zakup deweloperski"
+            it decides which KW facts the form can even ask for. */}
+        <Controller
+          control={control}
+          name="propertyRight"
+          render={({ field }) => (
+            <div className="flex flex-col gap-2">
+              <span id="property-right-label" className="text-sm font-medium">
+                Rodzaj prawa
+              </span>
+              <div
+                role="radiogroup"
+                aria-labelledby="property-right-label"
+                className="grid gap-2 sm:grid-cols-2"
+              >
+                {PROPERTY_RIGHTS.map((r) => {
+                  const selected = propertyRight === r;
+                  return (
+                    <Button
+                      key={r}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      variant="outline"
+                      onClick={() => field.onChange(r)}
+                      onBlur={field.onBlur}
+                      className={cn(TILE, selected ? TILE_SELECTED : TILE_IDLE)}
+                    >
+                      <span className="text-sm font-medium text-foreground">
+                        {PROPERTY_RIGHT_LABEL[r]}
+                      </span>
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        />
+
+        {coop ? (
+          <>
+            <p
+              data-testid="property-right-coop-info"
+              className="rounded-md border border-border bg-muted/40 p-2 text-sm"
+            >
+              Transakcje do próby porównawczej pobierzemy z <strong>rejestru biura</strong> zamiast
+              z RCN. Rejestrem zarządzasz w zakładce <strong>Rejestr spółdzielczy</strong>.
+            </p>
+            <Controller
+              control={control}
+              name="hasBasement"
+              render={({ field }) => (
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="has-basement"
+                    checked={field.value ?? false}
+                    onCheckedChange={(checked) => field.onChange(checked === true)}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                  />
+                  <div className="flex flex-col">
+                    <label htmlFor="has-basement" className="text-sm">
+                      Lokal ma przynależną piwnicę
+                    </label>
+                    <span className="text-xs text-muted-foreground">
+                      Dodaje klauzulę o pomieszczeniu przynależnym do operatu.
+                    </span>
+                  </div>
+                </div>
+              )}
+            />
+          </>
+        ) : null}
+
         <div className="grid gap-2 sm:grid-cols-3">
           {SOURCES.filter((s) => uploadEnabled || s.value === "reczny").map((s) => {
             const selected = source === s.value;
@@ -168,12 +252,7 @@ export function KwSection(props: KwSectionProps) {
                 type="button"
                 variant="outline"
                 onClick={() => onSourceChange(s.value)}
-                className={cn(
-                  "h-auto flex-col items-start gap-0.5 whitespace-normal rounded-lg px-4 py-3 text-left",
-                  selected
-                    ? "border-primary bg-[var(--accent-050)]"
-                    : "border-border bg-background",
-                )}
+                className={cn(TILE, selected ? TILE_SELECTED : TILE_IDLE)}
               >
                 <span className="text-sm font-medium text-foreground">{s.label}</span>
                 <span className="text-xs font-normal text-muted-foreground">{s.description}</span>
@@ -211,6 +290,11 @@ export function KwSection(props: KwSectionProps) {
                   Numer księgi wieczystej
                 </label>
                 <Input id="kwNumber" autoComplete="off" {...field} value={field.value ?? ""} />
+                {coop ? (
+                  <p data-testid="kw-number-coop-hint" className="text-xs text-muted-foreground">
+                    Dla spółdzielczego własnościowego prawa KW nie jest wymagana
+                  </p>
+                ) : null}
                 {fieldState.error ? (
                   <p className="text-sm text-destructive">{fieldState.error.message}</p>
                 ) : null}
@@ -272,6 +356,15 @@ export function KwSection(props: KwSectionProps) {
                       disabled={f.name === "kw.kwLokalu" && !!deweloperski}
                       value={field.value == null ? "" : String(field.value)}
                     />
+                    {f.name === "kw.kwGruntu" && coop ? (
+                      <p
+                        data-testid="kw-gruntu-coop-hint"
+                        className="text-xs text-muted-foreground"
+                      >
+                        Dla spółdzielczego prawa KW gruntu nie jest wymagana — pole możesz zostawić
+                        puste.
+                      </p>
+                    ) : null}
                   </div>
                 )}
               />

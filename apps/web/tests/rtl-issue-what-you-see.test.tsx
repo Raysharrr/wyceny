@@ -185,6 +185,7 @@ describe("StepOperat — the wiring, not just the mechanism", () => {
     docUrl: null,
     docxUrl: null,
     purpose: "sprzedaz",
+    propertyRight: "wlasnosc_lokalu",
     kwNumber: "KW-TEST-1",
     client: "Jan Testowy",
     inspectionDate: "2026-07-10",

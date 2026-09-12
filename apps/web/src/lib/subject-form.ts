@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { PropertyRight } from "@/domain/property-right";
 import type { KcsInput } from "@/domain/kcs";
 import type { KwSnapshot } from "@/domain/kw-snapshot";
 import type { SubjectSnapshot } from "@/domain/subject-snapshot";
@@ -135,6 +136,7 @@ export function step1DefaultsFromInputs(v: {
   address: string;
   area: number;
   purpose: string | null;
+  propertyRight: PropertyRight;
   kwNumber: string | null;
   client: string | null;
   inputs: KcsInput | null;
@@ -143,6 +145,8 @@ export function step1DefaultsFromInputs(v: {
     address: v.address,
     area: String(v.area),
     purpose: (v.purpose ?? "") as never,
+    propertyRight: v.propertyRight,
+    hasBasement: v.inputs?.hasBasement ?? false,
     kwNumber: v.kwNumber ?? "",
     client: v.client ?? "",
     subject: v.inputs?.subject

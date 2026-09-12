@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { step1Schema } from "../src/app/actions/wizard-schemas";
 import {
   DEFAULT_FEATURES,
   subjectSchema,
@@ -205,6 +206,29 @@ describe("valuationFormSchema — RCN provenance (F-5)", () => {
 
   it("accepts an optional sampleMeta object", () => {
     expect(valuationFormSchema.safeParse({ ...valid, sampleMeta }).success).toBe(true);
+  });
+
+  it("T-12: propertyRight/hasBasement default to własność/false for callers that predate the block", () => {
+    const parsed = valuationFormSchema.safeParse(valid);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.propertyRight).toBe("wlasnosc_lokalu");
+      expect(parsed.data.hasBasement).toBe(false);
+    }
+    expect(valuationFormSchema.safeParse({ ...valid, propertyRight: "inne" }).success).toBe(false);
+  });
+
+  it("T-12: kwNumber is optional on the manual path only for the coop right", () => {
+    const { kwNumber: _k, kw: _kw, ...noKw } = valid as Record<string, unknown>;
+    expect(valuationFormSchema.safeParse(noKw).success).toBe(false);
+    expect(
+      valuationFormSchema.safeParse({ ...noKw, propertyRight: "spoldzielcze_wlasnosciowe" })
+        .success,
+    ).toBe(true);
+    expect(
+      step1Schema.safeParse({ ...noKw, propertyRight: "spoldzielcze_wlasnosciowe" }).success,
+    ).toBe(true);
+    expect(step1Schema.safeParse(noKw).success).toBe(false);
   });
 
   it("still validates when sampleMeta is absent", () => {

@@ -1,6 +1,7 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
 import { computeKcs, isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
+import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
 import {
@@ -41,6 +42,7 @@ export function newValuation(input: NewValuationInput): Omit<Valuation, "id" | "
     docUrl: input.docUrl,
     docxUrl: input.docxUrl ?? null,
     purpose: input.purpose ?? null,
+    propertyRight: input.propertyRight ?? "wlasnosc_lokalu",
     kwNumber: input.kwNumber ?? null,
     client: input.client ?? null,
     inspectionDate: input.inspectionDate ?? null,
@@ -500,6 +502,10 @@ export type SubjectUpdate = {
   address: string;
   area: number;
   purpose: NonNullable<Valuation["purpose"]>;
+  /** T-12. Optional = "leave as is" (legacy callers/tests); the step-1 form always sends both. */
+  propertyRight?: PropertyRight;
+  /** Step-1 checkbox "Lokal ma przynależną piwnicę" — lands in `inputs`, read by the document (S4). */
+  hasBasement?: boolean;
   kwNumber: string | null;
   client: string;
   subject: KcsInput["subject"];
@@ -563,12 +569,14 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
     address: u.address,
     area: u.area,
     purpose: u.purpose,
+    propertyRight: u.propertyRight ?? v.propertyRight,
     kwNumber: u.kwNumber,
     client: u.client,
     ...(areaMoved ? { wr: null } : {}),
     inputs: {
       ...v.inputs,
       area: u.area,
+      hasBasement: u.hasBasement ?? v.inputs.hasBasement ?? false,
       subject: u.subject ?? null,
       subjectMeta: u.subjectMeta ?? null,
       kw: u.kw ?? null,
@@ -814,6 +822,7 @@ export function newVersionOf(v: Valuation): Omit<Valuation, "id" | "createdAt"> 
     docUrl: null,
     docxUrl: null,
     purpose: v.purpose,
+    propertyRight: v.propertyRight,
     kwNumber: v.kwNumber,
     client: v.client,
     inspectionDate: v.inspectionDate,

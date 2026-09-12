@@ -26,6 +26,8 @@ const step1Object = valuationFormObject.pick({
   kw: true,
   kwMeta: true,
   purpose: true,
+  propertyRight: true,
+  hasBasement: true,
   kwNumber: true,
   client: true,
 });
@@ -35,7 +37,7 @@ const step1Object = valuationFormObject.pick({
  * mirrors `valuationFormSchema`'s own superRefine (valuation-form-schema.ts:161-169).
  */
 export const step1Schema = step1Object.superRefine((values, ctx) => {
-  if (!values.kw && !values.kwNumber) {
+  if (!values.kw && !values.kwNumber && values.propertyRight !== "spoldzielcze_wlasnosciowe") {
     ctx.addIssue({
       code: "custom",
       path: ["kwNumber"],
