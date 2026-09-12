@@ -38,7 +38,7 @@ Lista jest przy tym drobnoziarnista tam, gdzie ma to znaczenie: blokuje **każda
 - **Liczebność próby** — mniej niż {REQUIRED_SAMPLE_SIZE} transakcji blokuje. Etykieta podaje liczbę faktyczną i wymaganą; próg jest importowany do tej strony wprost ze stałej `REQUIRED_SAMPLE_SIZE`.
 - **Każda transakcja z osobna** — pozycja o statusie innym niż potwierdzona daje własną blokadę z numerem wiersza. Dopisek „(RCN)" pojawia się tylko przy transakcjach z rejestru; transakcje wpisane ręcznie są w tym miejscu opisane bez dopisku.
 - **Cztery wartości skalarne** — adres, powierzchnia, wagi cech, oceny cech.
-- **Cztery pola nagłówkowe dokumentu i kwota** — cel wyceny, numer księgi wieczystej, klient, data oględzin oraz wartość rynkowa. Ta ostatnia blokuje, dopóki kalkulacja nie zostanie zatwierdzona [w kroku kalkulacji](/pomoc/krok-5-kalkulacja).
+- **Cztery pola nagłówkowe dokumentu i kwota** — cel wyceny, numer księgi wieczystej, klient, data oględzin oraz wartość rynkowa. Numer księgi jest warunkiem tylko przy własności lokalu: spółdzielcze własnościowe prawo zwykle księgi nie ma, więc przy tym prawie pole może zostać puste, a operat mówi wtedy wprost, że księgi nie założono. Ta ostatnia blokuje, dopóki kalkulacja nie zostanie zatwierdzona [w kroku kalkulacji](/pomoc/krok-5-kalkulacja).
 - **Opisy sekcji** — każda z {PROSE_SECTIONS.length} sekcji opisowych [kroku 6](/pomoc/krok-6-opisy) musi mieć niepusty tekst przyjęty przez rzeczoznawcę. Wycena, przy której nie ma jeszcze żadnych opisów, dostaje jedną blokadę („Opisy sekcji nie zostały wygenerowane."); dalej blokuje osobno każda sekcja pusta („— brak tekstu.") oraz każda z tekstem, którego rzeczoznawca jeszcze nie przyjął („— do weryfikacji."). Propozycja modelu językowego nie przechodzi tej bramy nigdy: status „potwierdzona" nadaje wyłącznie zapis kroku 6.
 - **Aktualność opisów** — przy opisach zapisany jest odcisk danych, wobec których zostały przyjęte. Gdy dane wyceny zmienią się później, blokuje pozycja „Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.". Jest to prozatorski odpowiednik kasowania zatwierdzonej kwoty przy zmianie wejść silnika: tekst zatwierdzony wcześniej nie może opisywać próby, której już nie ma. Wyjściem jest ponowne przeczytanie i zatwierdzenie tekstów — bez nowej generacji.
 
@@ -53,8 +53,10 @@ Pozostałe grupy **istnieją tylko wtedy, gdy do wyceny dołączono odpowiednią
 
 Grupa stanu prawnego ma dodatkowo dwa warunki, które nie dotyczą statusów, tylko kompletności:
 
-- **brak numeru KW gruntu** (księgi macierzystej) blokuje zawsze,
-- **brak numeru KW lokalu** blokuje, chyba że zaznaczono wariant deweloperski. Lokal bez własnej księgi jest stanem dopuszczalnym, ale musi zostać zadeklarowany, a nie przemilczany.
+- **brak numeru KW gruntu** (księgi macierzystej) blokuje przy własności lokalu; przy spółdzielczym własnościowym prawie księga macierzysta gruntu nie jest warunkiem i jej brak niczego nie blokuje,
+- **brak numeru KW lokalu** blokuje, chyba że zaznaczono wariant deweloperski albo wyceniane jest spółdzielcze własnościowe prawo. Lokal bez własnej księgi jest stanem dopuszczalnym, ale musi zostać zadeklarowany — wariantem deweloperskim albo rodzajem prawa — a nie przemilczany.
+
+O tym, które z tych warunków obowiązują, rozstrzyga rodzaj prawa wybrany w kroku 1 (`apps/web/src/domain/property-right.ts`) — ta sama reguła, którą operat czyta przy składaniu tekstu, więc brama i dokument nie mogą się rozjechać.
 
 ## Domyślna odmowa
 
