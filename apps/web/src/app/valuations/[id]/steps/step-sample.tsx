@@ -26,7 +26,9 @@ import { SampleRanges } from "./sample-ranges";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
-import type { Comparable, KcsInput } from "@/domain/kcs";
+import { registrySourceOfPool, type Comparable, type KcsInput } from "@/domain/kcs";
+import type { PropertyRight } from "@/domain/property-right";
+import { cooperativesLabel } from "./sample-badges";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
 import { candidateKey, DEFAULTS } from "@/domain/sample-selection";
 import { SampleMap } from "./sample-map";
@@ -108,6 +110,7 @@ export function StepSample({
   sampleMeta,
   sampleSelection,
   streetView,
+  propertyRight,
 }: {
   valuationId: string;
   address: string;
@@ -116,7 +119,10 @@ export function StepSample({
   sampleMeta: KcsInput["sampleMeta"];
   sampleSelection: KcsInput["sampleSelection"];
   streetView: KcsInput["streetView"];
+  /** The right being valued (S3) — names the register the step fetches from; the switch itself lives server-side. */
+  propertyRight: PropertyRight;
 }) {
+  const coop = propertyRight === "spoldzielcze_wlasnosciowe";
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isFetchingSample, setIsFetchingSample] = useState(false);
@@ -243,7 +249,12 @@ export function StepSample({
     setValue,
     replaceComparables,
     liveStreetView,
+    poolSource: liveSampleMeta?.source,
   });
+  // Register badge on every fetched row (S3): derived from the pool, never from the right.
+  const rowSource = liveSampleMeta ? registrySourceOfPool(liveSampleMeta.source) : undefined;
+  const fromRegister = liveSampleMeta?.source === "rejestr-sm";
+  const cooperatives = eff ? cooperativesLabel([...eff.proposed, ...eff.alternates]) : "";
 
   // Manually-rejected rows aren't in `combined` (proposed ∪ alternates) —
   // "Odrzucone" opening the panel on one (Task 4) needs `eff.removed`
@@ -340,7 +351,9 @@ export function StepSample({
       // A fresh proposal has no `manualRejections` yet, so this is the same
       // result `syncComparables` would produce — going through it here would
       // just add a needless extra read of the (not-yet-updated) form state.
-      replaceComparables(result.proposal.comparables.map(rcnRow));
+      replaceComparables(
+        result.proposal.comparables.map((c) => rcnRow(c, result.proposal.sampleMeta.source)),
+      );
       setValue("sampleMeta", result.proposal.sampleMeta, {
         shouldDirty: true,
         shouldValidate: true,
@@ -392,8 +405,18 @@ export function StepSample({
                 <b>
                   {eff.proposed.length} z {sel.counts.afterBand} pasujących
                 </b>{" "}
-                w promieniu <b>{sel.radiusUsedM} m</b> (przebadano {sel.counts.pool} transakcji z
-                RCN, {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")})
+                w promieniu <b>{sel.radiusUsedM} m</b> (przebadano {sel.counts.pool} transakcji z{" "}
+                {fromRegister ? (
+                  <>
+                    rejestru biura — dane ze <b>{cooperatives || "rejestru"}</b>
+                    {liveSampleMeta.importedAt
+                      ? `, import ${new Date(liveSampleMeta.importedAt).toLocaleDateString("pl-PL")}`
+                      : null}
+                  </>
+                ) : (
+                  <>RCN, {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")}</>
+                )}
+                )
                 {liveSampleMeta.query.truncated
                   ? " — pobieranie przerwano przed pokryciem 24 miesięcy (limit stron lub czasu), pula może być niepełna"
                   : null}
@@ -421,7 +444,7 @@ export function StepSample({
                     korektom szarpać wynikiem dwukrotnie mocniej. `AutoBanner` sam
                     jest `role="status"`, więc nic tu nie trzeba dokładać. */}
                 {isFetchingSample
-                  ? " · pobieranie nowej puli z RCN — promień i pasma chwilowo nieaktywne"
+                  ? " · pobieranie nowej puli — promień i pasma chwilowo nieaktywne"
                   : null}
                 {spread ? (
                   <>
@@ -443,14 +466,38 @@ export function StepSample({
               // hand-edited sample, test data) — no counts to show, so say that
               // instead of printing question marks.
               <AutoBanner>
-                Próba z RCN z {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")}{" "}
-                zapisana bez szczegółów doboru — pobierz próbę z RCN ponownie, żeby zobaczyć promień
-                i liczniki.
+                Próba z {new Date(liveSampleMeta.fetchedAt).toLocaleDateString("pl-PL")} zapisana
+                bez szczegółów doboru — pobierz próbę ponownie, żeby zobaczyć promień i liczniki.
               </AutoBanner>
             ) : null}
 
             {sel ? (
               <>
+                {/* S3: too few register rows — a hint, never a bypass: the F-4 gate (12) is untouched. */}
+                {fromRegister && eff && eff.proposed.length < REQUIRED_SAMPLE_SIZE ? (
+                  <div
+                    role="status"
+                    data-testid="registry-shortfall"
+                    className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950"
+                  >
+                    W rejestrze biura {sel.counts.afterBand === 1 ? "jest" : "są"}{" "}
+                    <b>
+                      {sel.counts.afterBand}{" "}
+                      {plural(sel.counts.afterBand, "transakcja", "transakcje", "transakcji")}
+                    </b>{" "}
+                    {sel.counts.afterBand === 1 ? "spełniająca" : "spełniające"} kryteria
+                    {cooperatives ? ` (wszystkie ze ${cooperatives})` : ""}; wymagane{" "}
+                    {REQUIRED_SAMPLE_SIZE} — poszerz pasmo lub dodaj transakcje w Rejestrze.{" "}
+                    <a
+                      href="/rejestr"
+                      target="_blank"
+                      rel="noopener"
+                      className="font-medium underline underline-offset-2"
+                    >
+                      Dodaj transakcje w Rejestrze →
+                    </a>
+                  </div>
+                ) : null}
                 <SampleRadius
                   value={sel.radiusUsedM}
                   steps={DEFAULTS.radiusStepsM}
@@ -487,7 +534,7 @@ export function StepSample({
                   // tak — wtedy nie ma na czym przeliczać.
                   disabledReason={
                     isFetchingSample
-                      ? "Trwa pobieranie nowej puli z RCN — za chwilę będzie na czym przeliczać."
+                      ? "Trwa pobieranie nowej puli — za chwilę będzie na czym przeliczać."
                       : poolMissing
                         ? reselectError
                         : null
@@ -515,6 +562,7 @@ export function StepSample({
                 ) : null}
                 <SampleSections
                   selection={sel}
+                  source={rowSource}
                   streetView={liveStreetView ?? null}
                   streetViewEnabled={!NEXT_PUBLIC_STREET_VIEW_OFF}
                   streetIndex={liveSampleMeta?.streetIndex}
@@ -673,7 +721,7 @@ export function StepSample({
 
             {errors.sampleMeta || errors.sampleSelection ? (
               <p role="alert" className="text-sm text-destructive">
-                Ta próba pochodzi ze starszej wersji doboru — pobierz próbę z RCN ponownie, a potem
+                Ta próba pochodzi ze starszej wersji doboru — pobierz próbę ponownie, a potem
                 zatwierdź.
               </p>
             ) : null}
@@ -686,7 +734,15 @@ export function StepSample({
               disabled={isFetchingSample}
               onClick={onFetchSample}
             >
-              {isFetchingSample ? "Pobieranie…" : "Pobierz próbę z RCN"}
+              {/* Neutral for both registers (user decision, S3): the right decides the source server-side.
+                  "ponownie" only once a pool exists — on a fresh step there is nothing to fetch "again". */}
+              {isFetchingSample
+                ? "Pobieranie…"
+                : liveSampleMeta
+                  ? "Pobierz próbę ponownie"
+                  : coop
+                    ? "Pobierz próbę z rejestru"
+                    : "Pobierz próbę z RCN"}
             </Button>
 
             {fetchSampleError ? (

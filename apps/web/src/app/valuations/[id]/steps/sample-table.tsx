@@ -17,6 +17,7 @@ import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 import { padObreb } from "@/domain/egib-id";
 import { obrebName } from "@/domain/obreb-name";
 import { rowBadges, streetMissingReason, streetMissingTitle } from "./sample-badges";
+import type { RegistrySource } from "@/domain/kcs";
 import type { StreetIndexState } from "@/ports/sample";
 
 export type SampleTableProps = {
@@ -31,6 +32,8 @@ export type SampleTableProps = {
   includedKeys?: ReadonlySet<string>;
   /** Only `flags` and `params.subjectEgib` are read off this — row membership comes from `rows`, not from re-deriving `effectiveSelection` here. */
   selection: SampleSelectionSnapshot;
+  /** Register the pool came from (S3) — omitted: no source badge (pre-S3 callers). */
+  source?: RegistrySource;
   streetView: StreetViewSnapshot | null;
   streetViewEnabled: boolean;
   /**
@@ -133,6 +136,7 @@ export function SampleTable({
   reviewedKeys,
   includedKeys = NO_INCLUDED_KEYS,
   selection,
+  source,
   streetView,
   streetViewEnabled,
   streetIndex,
@@ -244,7 +248,7 @@ export function SampleTable({
         <TableCell>
           <div className="flex flex-wrap gap-1">
             {includedKeys.has(key) ? <Badge variant="secondary">dodana ręcznie</Badge> : null}
-            {rowBadges(c, selection.flags[key] ?? [], subjectEgib).map((b) => (
+            {rowBadges(c, selection.flags[key] ?? [], subjectEgib, source).map((b) => (
               <Badge key={b.key} variant={b.tone}>
                 {b.label}
               </Badge>

@@ -1,3 +1,4 @@
+import { REGISTRY_LABEL, type RegistrySource } from "@/domain/kcs";
 import { sameness, type Candidate, type Flag } from "@/domain/sample-selection";
 import type { SubjectEgib } from "@/domain/egib-id";
 import { POZNAN_TERYT_PREFIX } from "@/domain/obreb-name";
@@ -14,8 +15,19 @@ const FLAG_BADGE: Record<Flag, RowBadge> = {
     tone: "destructive",
   },
   market_unknown: { key: "market_unknown", label: "rynek?", tone: "outline" },
-  attributes_unknown: { key: "attributes_unknown", label: "cechy?", tone: "outline" },
+  // S3: wording from the Krok3 mockup — one label, one flag (S1 shipped it as "cechy?").
+  attributes_unknown: { key: "attributes_unknown", label: "atrybuty nieznane", tone: "outline" },
+  prawo_nieznane: { key: "prawo_nieznane", label: "prawo nieznane", tone: "outline" },
 };
+
+/**
+ * The register badge a fetched row wears in step 3 AND the wording the F-4
+ * gate's blocker uses (`domain/provenance.ts` composes the same `REGISTRY_LABEL`
+ * + "do weryfikacji") — one voice, no third literal (S3).
+ */
+export function registryBadge(source: RegistrySource): RowBadge {
+  return { key: "source", label: `${REGISTRY_LABEL[source]} — do weryfikacji`, tone: "outline" };
+}
 
 /**
  * Badges for one candidate row (spec §Krok 3 UI, ADR-015 rule 10: storeys are
@@ -27,8 +39,11 @@ export function rowBadges(
   c: Candidate,
   flags: Flag[],
   subjectEgib: SubjectEgib | undefined,
+  /** Which register the pool came from (S3) — omitted by callers that render no source badge. */
+  source?: RegistrySource,
 ): RowBadge[] {
   const out: RowBadge[] = [];
+  if (source) out.push(registryBadge(source));
   if (subjectEgib && c.egib) {
     const s = sameness(c, subjectEgib);
     if (s.sameBuilding)
@@ -43,6 +58,19 @@ export function rowBadges(
   }
   for (const f of flags) out.push(FLAG_BADGE[f]);
   return out;
+}
+
+// --------------------------------------------------------------- Rejestr SM (S3)
+
+/** `SM „Osiedle Młodych”` — the register stores the name as typed ("SM Osiedle Młodych"), so a leading "SM" is not doubled. */
+export function cooperativeLabel(name: string): string {
+  return `SM „${name.replace(/^SM\s+/i, "").trim()}”`;
+}
+
+/** The cooperatives behind a set of candidates, in first-seen order — "SM „A”, SM „B”"; "" when none (RCN pool). */
+export function cooperativesLabel(candidates: readonly Candidate[]): string {
+  const names = [...new Set(candidates.map((c) => c.cooperative).filter((n): n is string => !!n))];
+  return names.map(cooperativeLabel).join(", ");
 }
 
 // --------------------------------------------------------------- Ulica (Slice 3d)

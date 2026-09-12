@@ -51,6 +51,20 @@ export const REGISTRY_LABEL: Record<RegistrySource, string> = {
   rcn: "RCN",
   rejestr_sm: "Rejestr SM",
 };
+/**
+ * Where a candidate POOL came from (`CandidatePool.source`, hyphenated by
+ * convention) and the one mapping onto `Comparable.source` — S3: the only
+ * place "rejestr-sm" becomes "rejestr_sm".
+ */
+export const POOL_SOURCES = ["rcn-wfs-gugik", "rejestr-sm"] as const;
+export type PoolSource = (typeof POOL_SOURCES)[number];
+const POOL_TO_COMPARABLE: Record<PoolSource, RegistrySource> = {
+  "rcn-wfs-gugik": "rcn",
+  "rejestr-sm": "rejestr_sm",
+};
+export function registrySourceOfPool(pool: PoolSource): RegistrySource {
+  return POOL_TO_COMPARABLE[pool];
+}
 /** True for rows fetched from a register — the ones provenance re-verifies. */
 export function isRegistrySourced<T extends { source?: ComparableSource }>(
   c: T,

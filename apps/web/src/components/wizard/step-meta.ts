@@ -1,3 +1,16 @@
+import type { PropertyRight } from "@/domain/property-right";
+
+/** Step 3's lead names the register (S3): the coop register for a cooperative right, RCN otherwise. */
+export function stepDescription(
+  step: keyof typeof STEP_META,
+  propertyRight?: PropertyRight,
+): string {
+  if (step === 3 && propertyRight === "spoldzielcze_wlasnosciowe") {
+    return "Pobierz transakcje z rejestru spółdzielczego i zbuduj próbę (min. 12).";
+  }
+  return STEP_META[step].description;
+}
+
 export const STEP_META = {
   1: {
     eyebrow: "KROK 1/7 — PRZEDMIOT WYCENY",

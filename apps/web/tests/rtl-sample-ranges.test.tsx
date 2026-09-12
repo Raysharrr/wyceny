@@ -60,7 +60,7 @@ describe("SampleRanges", () => {
   });
 
   it("brak zapamiętanej puli blokuje pola — przeliczyć i tak nie ma z czego", () => {
-    renderRanges({ disabledReason: "Pobierz próbę z RCN ponownie." });
+    renderRanges({ disabledReason: "Pobierz próbę ponownie." });
     expect(screen.getByLabelText(/cena do/i)).toBeDisabled();
   });
 

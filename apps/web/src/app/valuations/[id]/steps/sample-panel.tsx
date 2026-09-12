@@ -13,6 +13,8 @@ import {
   type ManualRejectionReason,
 } from "@/domain/sample-manual";
 import { obrebLabel } from "@/domain/obreb-name";
+import { PROPERTY_RIGHT_LABEL } from "@/domain/property-right";
+import { cooperativeLabel } from "./sample-badges";
 import type { StreetIndexState } from "@/ports/sample";
 import { streetMissingReason, streetMissingTitle } from "./sample-badges";
 import { candidateKey, DEFAULTS, type Candidate } from "@/domain/sample-selection";
@@ -410,7 +412,20 @@ export function SamplePanel({
             </Field>
             <Field label="Rynek">{marketLabel(candidate.market)}</Field>
             <Field label="Sprzedający">{sellerLabel(candidate.seller)}</Field>
-            <Field label="Udział">{candidate.share}</Field>
+            <Field label="Udział">{candidate.share ?? "—"}</Field>
+            {/* S3: register rows carry the right as stated (or not) by the register; RCN rows have no such field. */}
+            {candidate.rightType !== undefined ? (
+              <Field label="Rodzaj prawa">
+                {candidate.rightType
+                  ? PROPERTY_RIGHT_LABEL[candidate.rightType]
+                  : "nieznany — brak kolumny w rejestrze"}
+              </Field>
+            ) : null}
+            <Field label="Źródło">
+              {candidate.cooperative
+                ? `Rejestr biura · ${cooperativeLabel(candidate.cooperative)}`
+                : "RCN"}
+            </Field>
             <Field label="Obręb">{obrebLabel(candidate.egib)}</Field>
             <Field label="Działka · budynek">
               {candidate.egib?.dzialka ?? "—"} · bud. {candidate.egib?.budynek ?? "—"}

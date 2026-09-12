@@ -1,9 +1,16 @@
 import Link from "next/link";
 import { CircleQuestionMark } from "lucide-react";
 import { getPage } from "@/content/pomoc/manifest";
-import { STEP_META } from "./step-meta";
+import { STEP_META, stepDescription } from "./step-meta";
+import type { PropertyRight } from "@/domain/property-right";
 
-export function StepHeader({ step }: { step: keyof typeof STEP_META }) {
+export function StepHeader({
+  step,
+  propertyRight,
+}: {
+  step: keyof typeof STEP_META;
+  propertyRight?: PropertyRight;
+}) {
   const m = STEP_META[step];
   // Zero dead links (Slice 12): the icon appears only once this step's Pomoc
   // page is really in the manifest. Tasks 7-8 add the seven pages one at a
@@ -26,7 +33,9 @@ export function StepHeader({ step }: { step: keyof typeof STEP_META }) {
           </Link>
         )}
       </div>
-      <p className="max-w-[70ch] text-[14.5px] text-muted-foreground">{m.description}</p>
+      <p className="max-w-[70ch] text-[14.5px] text-muted-foreground">
+        {stepDescription(step, propertyRight)}
+      </p>
     </div>
   );
 }

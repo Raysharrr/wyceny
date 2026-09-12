@@ -49,20 +49,20 @@ describe("matchLegacyRow", () => {
   };
 
   it("matches the single legacy row for this transactionId (one candidate, one row), content identical", () => {
-    const row = rcnRow({ ...candidate, lokalId: "" });
+    const row = rcnRow({ ...candidate, lokalId: "" }, "rcn-wfs-gugik");
     expect(row.area).toBe("50.63");
     expect(row.pricePerM2).toBe("7505.43");
     expect(matchLegacyRow(candidate, [row], 1)).toBe(row);
   });
 
   it("a SINGLE legacy row is reused AS-IS even with an EDITED/mismatched price, when it's ALSO the only candidate of that act (wave 5) — a single-lokal act cannot be confused with another lokal", () => {
-    const row = rcnRow({ ...candidate, lokalId: "" });
+    const row = rcnRow({ ...candidate, lokalId: "" }, "rcn-wfs-gugik");
     const edited = { ...row, pricePerM2: "12345" };
     expect(matchLegacyRow(candidate, [edited], 1)).toBe(edited);
   });
 
   it("a SINGLE legacy row does NOT get the shortcut when 2 candidates share that transactionId (wave 6) — content decides instead, correctly matching the candidate the row actually belongs to", () => {
-    const row = rcnRow({ ...candidate, lokalId: "" }); // this row IS candidate's own (unedited) data
+    const row = rcnRow({ ...candidate, lokalId: "" }, "rcn-wfs-gugik"); // this row IS candidate's own (unedited) data
     const otherCandidateSameAct = { ...candidate, area: 38.19, pricePerM2: 7541.24 };
     // `candidatesForTx: 2` — the shortcut is disabled; content still
     // correctly places the row with the candidate it matches.
@@ -76,8 +76,8 @@ describe("matchLegacyRow", () => {
   it("2 legacy rows / 2 candidates with DISTINCT content each match their OWN row", () => {
     const candA = { transactionId: "T1", date: "2026-05-10", area: 50.63, pricePerM2: 7505.43 };
     const candB = { transactionId: "T1", date: "2026-05-10", area: 38.19, pricePerM2: 7541.24 };
-    const rowA = rcnRow({ ...candA, lokalId: "" });
-    const rowB = rcnRow({ ...candB, lokalId: "" });
+    const rowA = rcnRow({ ...candA, lokalId: "" }, "rcn-wfs-gugik");
+    const rowB = rcnRow({ ...candB, lokalId: "" }, "rcn-wfs-gugik");
     expect(matchLegacyRow(candA, [rowA, rowB], 2)).toBe(rowA);
     expect(matchLegacyRow(candB, [rowA, rowB], 2)).toBe(rowB);
   });
@@ -85,8 +85,11 @@ describe("matchLegacyRow", () => {
   it("2+ legacy rows share one transactionId, one is edited: content matches the candidate whose fresh content it still equals (the UNEDITED row); the EDITED row's own candidate finds nothing and regenerates — accepted trade-off, only for a genuine multi-lokal act", () => {
     const candA = { transactionId: "T1", date: "2026-05-10", area: 50.63, pricePerM2: 7505.43 };
     const candB = { transactionId: "T1", date: "2026-05-10", area: 38.19, pricePerM2: 7541.24 };
-    const rowA = rcnRow({ ...candA, lokalId: "" }); // unedited — still matches candA's own content
-    const rowBEdited = { ...rcnRow({ ...candB, lokalId: "" }), pricePerM2: "99999" }; // B's row, edited
+    const rowA = rcnRow({ ...candA, lokalId: "" }, "rcn-wfs-gugik"); // unedited — still matches candA's own content
+    const rowBEdited = {
+      ...rcnRow({ ...candB, lokalId: "" }, "rcn-wfs-gugik"),
+      pricePerM2: "99999",
+    }; // B's row, edited
     // A's candidate finds its own unedited row, unaffected by B's edit.
     expect(matchLegacyRow(candA, [rowA, rowBEdited], 2)).toBe(rowA);
     // B's candidate no longer content-matches its OWN (now edited) row.
@@ -94,14 +97,14 @@ describe("matchLegacyRow", () => {
   });
 
   it("returns undefined (ambiguous) when 2 legacy rows share transactionId + IDENTICAL content and 2 candidates share it too — never guesses which one, both regenerate", () => {
-    const row = rcnRow({ ...candidate, lokalId: "" });
+    const row = rcnRow({ ...candidate, lokalId: "" }, "rcn-wfs-gugik");
     const rows = [row, { ...row }];
     expect(matchLegacyRow(candidate, rows, 2)).toBeUndefined();
     expect(matchLegacyRow(candidate, rows, 2)).toBeUndefined();
   });
 
   it("ignores a legacy row for a DIFFERENT transactionId even with identical content — zero rows for THIS transactionId, not one", () => {
-    const row = rcnRow({ ...candidate, transactionId: "T-OTHER", lokalId: "" });
+    const row = rcnRow({ ...candidate, transactionId: "T-OTHER", lokalId: "" }, "rcn-wfs-gugik");
     expect(matchLegacyRow(candidate, [row], 1)).toBeUndefined();
   });
 });
@@ -188,6 +191,7 @@ function useHarness(initial: { sel: SampleSelectionSnapshot; comparables: Compar
   const replaceComparables = vi.fn((rows: ComparableRow[]) => setComparables(rows));
   const sel = useWatch({ control, name: "sampleSelection" });
   const review = useSampleReview({
+    poolSource: "rcn-wfs-gugik",
     valuationId: "11111111-2222-3333-4444-555555555555",
     sel,
     comparables,
@@ -213,7 +217,7 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     // appends non-"rcn" rows after the RCN block (review round 1, Important
     // #1: an earlier bug dropped exactly this kind of row on resync).
     const manualRow = { date: "2024-01", area: 60, pricePerM2: 10000, source: "manual" as const };
-    const comparables = [...proposed.map((c) => rcnRow(c)), manualRow];
+    const comparables = [...proposed.map((c) => rcnRow(c, "rcn-wfs-gugik")), manualRow];
     const { result } = renderHook(() => useHarness({ sel, comparables }));
 
     act(() => {
@@ -249,7 +253,7 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     const A = mk();
     const B = mk();
     const sel = makeSel({ proposed: [A, B] });
-    const comparables = [A, B].map((c) => rcnRow(c));
+    const comparables = [A, B].map((c) => rcnRow(c, "rcn-wfs-gugik"));
     const { result } = renderHook(() => useHarness({ sel, comparables }));
 
     act(() => result.current.review.setSelectedKey(candidateKey(A)));
@@ -266,7 +270,7 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
   it("skip(key) marks reviewed but never touches comparables (no resync)", () => {
     const A = mk();
     const sel = makeSel({ proposed: [A] });
-    const comparables = [rcnRow(A)];
+    const comparables = [rcnRow(A, "rcn-wfs-gugik")];
     const { result } = renderHook(() => useHarness({ sel, comparables }));
 
     act(() => result.current.review.skip(candidateKey(A)));
@@ -283,7 +287,7 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     const A = mk();
     const B = mk();
     const sel = makeSel({ proposed: [A, B] });
-    const comparables = [A, B].map((c) => rcnRow(c));
+    const comparables = [A, B].map((c) => rcnRow(c, "rcn-wfs-gugik"));
     const { result } = renderHook(() => useHarness({ sel, comparables }));
 
     act(() => result.current.review.setSelectedKey(candidateKey(A)));
@@ -304,7 +308,7 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     const A = mk();
     const B = mk();
     const sel = makeSel({ proposed: [A, B] });
-    const comparables = [A, B].map((c) => rcnRow(c));
+    const comparables = [A, B].map((c) => rcnRow(c, "rcn-wfs-gugik"));
     const { result } = renderHook(() => useHarness({ sel, comparables }));
 
     act(() => result.current.review.setSelectedKey(candidateKey(A)));
@@ -327,7 +331,7 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     const B = mk();
     const C = mk();
     const sel = makeSel({ proposed, alternates: [B, C] });
-    const comparables = proposed.map((c) => rcnRow(c));
+    const comparables = proposed.map((c) => rcnRow(c, "rcn-wfs-gugik"));
     const { result } = renderHook(() => useHarness({ sel, comparables }));
 
     expect(result.current.review.statusOf(candidateKey(A))).toBe("proposed");
@@ -344,7 +348,7 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
   it("markReviewed(key) only touches `reviewed` (leaves rejections/inclusions/comparables alone) and is idempotent", () => {
     const A = mk();
     const sel = makeSel({ proposed: [A] });
-    const comparables = [rcnRow(A)];
+    const comparables = [rcnRow(A, "rcn-wfs-gugik")];
     const { result } = renderHook(() => useHarness({ sel, comparables }));
 
     act(() => result.current.review.markReviewed(candidateKey(A)));
@@ -362,7 +366,7 @@ describe("useSampleReview — include/skip/keep/markReviewed (Slice 3c, Task 2)"
     const B = mk({ pricePerM2: 12000, distanceM: 102 });
     const C = mk({ pricePerM2: 13000, distanceM: 200 });
     const sel = makeSel({ proposed: [A1, A2, B], alternates: [C] });
-    const comparables = [A1, A2, B].map((c) => rcnRow(c));
+    const comparables = [A1, A2, B].map((c) => rcnRow(c, "rcn-wfs-gugik"));
 
     const { result } = renderHook(() => useHarness({ sel, comparables }));
 
@@ -495,7 +499,7 @@ describe("useSampleReview — wyścig przeliczeń (latest-request-wins)", () => 
     const { result } = renderHook(() =>
       useHarness({
         sel: makeSel({ proposed: [victim, other] }),
-        comparables: [victim, other].map((c) => rcnRow(c)),
+        comparables: [victim, other].map((c) => rcnRow(c, "rcn-wfs-gugik")),
       }),
     );
 
