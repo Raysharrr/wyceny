@@ -386,3 +386,18 @@ describe("missingRequiredFields (S2b wizard gate)", () => {
     ).toEqual(["flatNumber"]);
   });
 });
+
+describe("one-cell address mapped to both address and building (S2b, Przylesie)", () => {
+  it("splits 'os. Wymyślone 12' into address + building when both fields point at the same column", () => {
+    const { rows } = parseCoopSheet(
+      [["os. Wymyślone 12", "45", "450000", "2025-01-14"]],
+      { address: 0, buildingNumber: 0, flatNumber: "absent", area: 1, priceTotal: 2, date: 3 },
+      { cooperative: "SM", priceKind: "nieustalona", headerRow: null },
+    );
+    expect(rows[0]).toMatchObject({
+      address: "os. Wymyślone",
+      buildingNumber: "12",
+      flatNumber: "",
+    });
+  });
+});

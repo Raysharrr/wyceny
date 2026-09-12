@@ -426,6 +426,10 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
               </tbody>
             </table>
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Gdy rejestr trzyma adres i numer budynku w jednej komórce („os. Wymyślone 12”, „Bukowa
+            12/5”), wskaż tę samą kolumnę przy „Adres” i „Nr budynku” — rozdzielimy je.
+          </p>
           {missing.length ? (
             <p className="mt-3 text-sm text-[#b07a16]">
               Zmapuj pola wymagane: {missing.map((k) => FIELD_LABEL[k]).join(", ")}.

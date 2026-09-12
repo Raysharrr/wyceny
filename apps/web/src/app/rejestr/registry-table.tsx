@@ -18,19 +18,19 @@ export const RIGHT_BADGE = {
 
 export function RegistryTable({ rows }: { rows: CoopTransaction[] }) {
   return (
-    <Table>
+    <Table className="table-fixed text-[13px]">
       <TableHeader>
         <TableRow>
-          <TableHead>Spółdzielnia</TableHead>
-          <TableHead>Adres</TableHead>
-          <TableHead>Nr bud./m.</TableHead>
-          <TableHead className="text-right">Pow.</TableHead>
-          <TableHead className="text-right">Cena</TableHead>
-          <TableHead className="text-right">zł/m²</TableHead>
-          <TableHead>Data</TableHead>
-          <TableHead>Prawo</TableHead>
-          <TableHead>Źródło</TableHead>
-          <TableHead>Lokalizacja</TableHead>
+          <TableHead className="w-[15%]">Spółdzielnia</TableHead>
+          <TableHead className="w-[17%]">Adres</TableHead>
+          <TableHead className="w-[9%]">Nr bud./m.</TableHead>
+          <TableHead className="w-[7%] text-right">Pow.</TableHead>
+          <TableHead className="w-[10%] text-right">Cena</TableHead>
+          <TableHead className="w-[9%] text-right">zł/m²</TableHead>
+          <TableHead className="w-[9%]">Data</TableHead>
+          <TableHead className="w-[9%]">Prawo</TableHead>
+          <TableHead className="w-[6%]">Źródło</TableHead>
+          <TableHead className="w-[9%]">Lokalizacja</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -43,9 +43,13 @@ export function RegistryTable({ rows }: { rows: CoopTransaction[] }) {
         ) : null}
         {rows.map((r) => (
           <TableRow key={r.id}>
-            <TableCell>{r.cooperative}</TableCell>
-            <TableCell>{r.address}</TableCell>
-            <TableCell className="font-mono">
+            <TableCell className="truncate" title={r.cooperative}>
+              {r.cooperative}
+            </TableCell>
+            <TableCell className="truncate" title={r.address}>
+              {r.address}
+            </TableCell>
+            <TableCell className="truncate font-mono">
               {r.buildingNumber}
               {r.flatNumber ? ` / ${r.flatNumber}` : ""}
             </TableCell>

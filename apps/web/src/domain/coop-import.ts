@@ -232,7 +232,9 @@ export function parseCoopSheet(
     let address = cell("address");
     let buildingNumber = cell("buildingNumber");
     let flatNumber = cell("flatNumber");
-    if (!buildingNumber) {
+    // One-cell registers ("Bukowa 12/5", Przylesie's "os. Wymyślone 12"): the
+    // building is mapped to the SAME column as the address, or to none.
+    if (!buildingNumber || mapping.buildingNumber === mapping.address) {
       const split = splitAddressCell(address);
       if (split) {
         address = split.address;
