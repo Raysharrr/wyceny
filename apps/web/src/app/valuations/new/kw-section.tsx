@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText } from "lucide-react";
-import { Controller, useWatch, type Control } from "react-hook-form";
+import { Controller, useController, useWatch, type Control } from "react-hook-form";
 import type { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -155,6 +155,10 @@ export function KwSection(props: KwSectionProps) {
   // gruntu is demanded. Absent (pre-block harness) reads as własność.
   const propertyRight = useWatch({ control, name: "propertyRight" }) ?? "wlasnosc_lokalu";
   const coop = propertyRight === "spoldzielcze_wlasnosciowe";
+  // Owned here (not in a nested Controller) so switching back to własność can
+  // clear it: a basement ticked under the coop right must not ride hidden into
+  // the inputs of an ownership valuation.
+  const basement = useController({ control, name: "hasBasement" }).field;
   const dzialPresent: Record<string, boolean> = {
     "kw.dzial3": !!kw?.dzial3,
     "kw.dzial4": !!kw?.dzial4,
@@ -193,7 +197,10 @@ export function KwSection(props: KwSectionProps) {
                       role="radio"
                       aria-checked={selected}
                       variant="outline"
-                      onClick={() => field.onChange(r)}
+                      onClick={() => {
+                        field.onChange(r);
+                        if (r === "wlasnosc_lokalu") basement.onChange(false);
+                      }}
                       onBlur={field.onBlur}
                       className={cn(TILE, selected ? TILE_SELECTED : TILE_IDLE)}
                     >
@@ -217,29 +224,23 @@ export function KwSection(props: KwSectionProps) {
               Transakcje do próby porównawczej pobierzemy z <strong>rejestru biura</strong> zamiast
               z RCN. Rejestrem zarządzasz w zakładce <strong>Rejestr spółdzielczy</strong>.
             </p>
-            <Controller
-              control={control}
-              name="hasBasement"
-              render={({ field }) => (
-                <div className="flex items-start gap-2">
-                  <Checkbox
-                    id="has-basement"
-                    checked={field.value ?? false}
-                    onCheckedChange={(checked) => field.onChange(checked === true)}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                  />
-                  <div className="flex flex-col">
-                    <label htmlFor="has-basement" className="text-sm">
-                      Lokal ma przynależną piwnicę
-                    </label>
-                    <span className="text-xs text-muted-foreground">
-                      Dodaje klauzulę o pomieszczeniu przynależnym do operatu.
-                    </span>
-                  </div>
-                </div>
-              )}
-            />
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="has-basement"
+                checked={basement.value ?? false}
+                onCheckedChange={(checked) => basement.onChange(checked === true)}
+                onBlur={basement.onBlur}
+                ref={basement.ref}
+              />
+              <div className="flex flex-col">
+                <label htmlFor="has-basement" className="text-sm">
+                  Lokal ma przynależną piwnicę
+                </label>
+                <span className="text-xs text-muted-foreground">
+                  Dodaje klauzulę o pomieszczeniu przynależnym do operatu.
+                </span>
+              </div>
+            </div>
           </>
         ) : null}
 

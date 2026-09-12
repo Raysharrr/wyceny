@@ -219,6 +219,40 @@ describe("KwSection", () => {
     expect(screen.getByLabelText("Nr KW gruntu (księga macierzysta)")).toBeTruthy();
   });
 
+  it("switching back to własność clears a basement ticked under the coop right (M-2)", async () => {
+    const user = userEvent.setup();
+    function BasementHarness() {
+      const { control } = useForm<FormInput, unknown, FormOutput>({
+        defaultValues: {
+          propertyRight: "spoldzielcze_wlasnosciowe",
+          hasBasement: false,
+        } as FormInput,
+      });
+      const value = useWatch({ control, name: "hasBasement" });
+      return (
+        <>
+          <KwSection
+            control={control}
+            state={{ status: "idle" }}
+            source="reczny"
+            onSourceChange={() => {}}
+            onFileSelected={() => {}}
+            onRetry={() => {}}
+            onUseDocumentArea={() => {}}
+            areaMismatch={null}
+          />
+          <output data-testid="basement-json">{JSON.stringify(value)}</output>
+        </>
+      );
+    }
+    render(<BasementHarness />);
+    await user.click(screen.getByLabelText("Lokal ma przynależną piwnicę"));
+    expect(screen.getByTestId("basement-json").textContent).toBe("true");
+    await user.click(screen.getByRole("radio", { name: "Własność lokalu" }));
+    expect(screen.queryByLabelText("Lokal ma przynależną piwnicę")).toBeNull();
+    expect(screen.getByTestId("basement-json").textContent).toBe("false");
+  });
+
   it("manual path + spółdzielcze: the KW number stays visible with the 'not required' hint", () => {
     render(<Harness source="reczny" propertyRight="spoldzielcze_wlasnosciowe" />);
     expect(screen.getByLabelText("Numer księgi wieczystej")).toBeTruthy();
