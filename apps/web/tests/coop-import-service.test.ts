@@ -36,6 +36,10 @@ function fakeRegistry() {
   const calls: string[] = [];
   const batches: { rowsWarned: unknown[]; rowsInserted: number; finishedAt: string | null }[] = [];
   const registry: PortCoopRegistry = {
+    async existingKeys(keys) {
+      calls.push("existingKeys");
+      return new Set(keys.filter((k) => stored.some((s) => s.dedupeKey === k)));
+    },
     async upsertMany(rows) {
       calls.push("upsertMany");
       const fresh = rows.filter((r) => !stored.some((s) => s.dedupeKey === r.dedupeKey));
@@ -105,7 +109,13 @@ describe("runCoopImport", () => {
     expect(first).toMatchObject({ inserted: 5, duplicates: 1, geocoded: 4, needsFix: 1 });
     expect(geocoderQueries.at(-1)![0]).toBe("Poznań, Zmyślona 4");
     expect(stored.filter((r) => r.pos === null).map((r) => r.address)).toEqual(["Bukowa"]);
-    expect(calls).toEqual(["recordBatch", "upsertMany", "recordBatch", "saveMapping"]);
+    expect(calls).toEqual([
+      "recordBatch",
+      "existingKeys",
+      "upsertMany",
+      "recordBatch",
+      "saveMapping",
+    ]);
     expect(first.warnings).toEqual([{ row: 13, reason: "no_flat" }]);
     expect(batches[0]!.rowsWarned).toEqual([{ row: 13, reason: "no_flat" }]);
 
@@ -232,5 +242,30 @@ describe("chunked import (S2b): start → chunks → finalize equals the one-sho
     expect(batches.at(-1)!.finishedAt).not.toBeNull();
     expect(calls.filter((c) => c === "upsertMany")).toHaveLength(3);
     expect(calls.at(-1)).toBe("saveMapping");
+  });
+});
+
+describe("re-import (review 1 M-1/M-2)", () => {
+  it("rows already in the register are skipped BEFORE geocoding: zero geocoder calls, counters only for rows that entered", async () => {
+    const { registry } = fakeRegistry();
+    const common = {
+      skipped: parsed.skipped,
+      warnings: parsed.warnings,
+      rowsTotal: fixture.sheets[0]!.rows.length,
+      cooperative: COOP,
+      fileName: FILE,
+      mapping: { address: 1 },
+      userId: "u-re",
+      city: "Poznań",
+      workerToken: "t",
+      rows: parsed.rows,
+    };
+    const first = await runCoopImport({ registry, geocoder, eventLog }, common);
+    expect(first).toMatchObject({ inserted: 5, geocoded: 4, needsFix: 1 });
+    const before = geocoderQueries.length;
+    const again = await runCoopImport({ registry, geocoder, eventLog }, common);
+    expect(geocoderQueries.length).toBe(before);
+    // 5 already in the register + 1 inside the file; nothing geocoded, nothing "do poprawki".
+    expect(again).toMatchObject({ inserted: 0, duplicates: 6, geocoded: 0, needsFix: 0 });
   });
 });

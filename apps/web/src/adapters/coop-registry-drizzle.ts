@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, gte, ilike, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "../db/schema";
 import { coopDedupeKey, type ColumnMapping } from "../domain/coop-import";
@@ -135,6 +135,15 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
         await tx.execute(sql`select set_config('app.user_id', ${as.id}, true)`);
         return run(tx);
       });
+    },
+
+    async existingKeys(keys) {
+      if (keys.length === 0) return new Set();
+      const rows = await db
+        .select({ k: t.dedupeKey })
+        .from(t)
+        .where(inArray(t.dedupeKey, [...keys]));
+      return new Set(rows.map((r) => r.k));
     },
 
     async upsertMany(rows, by) {

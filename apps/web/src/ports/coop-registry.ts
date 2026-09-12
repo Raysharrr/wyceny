@@ -107,6 +107,12 @@ export interface PortCoopRegistry {
    * row's position), so re-importing the same file — or an updated one with
    * rows added — inserts only what is genuinely new.
    */
+  /**
+   * Which of these dedupe keys are already in the register — the chunked
+   * import filters duplicates out BEFORE geocoding, so `geocoded`/`needsFix`
+   * describe only rows that entered and a re-import costs zero geocoder calls.
+   */
+  existingKeys(keys: readonly string[]): Promise<Set<string>>;
   upsertMany(
     rows: NewCoopTransaction[],
     by: { userId: string; batchId: string | null },

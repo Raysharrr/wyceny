@@ -53,6 +53,17 @@ afterAll(async () => {
 });
 
 describe("coopRegistryRepo", () => {
+  it("existingKeys returns only the keys already stored (review 1 M-1)", async () => {
+    const salted = rows.map((r) => {
+      const x = { ...r, cooperative: `${COOP} ek`, flatNumber: `${r.flatNumber}|ek` };
+      return { ...x, dedupeKey: coopDedupeKey(x) };
+    });
+    await repo.upsertMany(salted.slice(0, 2), { userId: USER, batchId: "batch-0" });
+    const found = await repo.existingKeys([...salted.map((r) => r.dedupeKey), "nope"]);
+    expect(found).toEqual(new Set(salted.slice(0, 2).map((r) => r.dedupeKey)));
+    expect(await repo.existingKeys([])).toEqual(new Set());
+  });
+
   it("upsertMany inserts the fixture rows; the same file again inserts 0", async () => {
     expect(parsed.rows).toHaveLength(5);
     expect(await repo.upsertMany(rows, { userId: USER, batchId: "batch-1" })).toEqual({

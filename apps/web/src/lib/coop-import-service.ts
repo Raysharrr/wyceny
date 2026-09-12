@@ -113,21 +113,25 @@ export async function importCoopChunk(
   deps: { registry: PortCoopRegistry; geocoder: PortGeocoder },
   input: Pick<CoopImportInput, "rows" | "city" | "userId" | "workerToken"> & { batchId: string },
 ): Promise<CoopChunkResult> {
-  const queries = input.rows.map((r) => `${input.city}, ${r.address} ${r.buildingNumber}`.trim());
+  // Review 1 M-1/M-2: rows already in the register never reach the geocoder,
+  // so the counters (and `coop.geocode` in event_log) describe only rows that
+  // entered, and re-importing the same file costs zero geocoder calls.
+  const present = await deps.registry.existingKeys(input.rows.map((r) => r.dedupeKey));
+  const fresh = input.rows.filter((r) => !present.has(r.dedupeKey));
+  const queries = fresh.map((r) => `${input.city}, ${r.address} ${r.buildingNumber}`.trim());
   const hits = queries.length ? await deps.geocoder.geocodeMany(queries, input.workerToken) : [];
-  const rows = input.rows.map((r, i) => {
+  const rows = fresh.map((r, i) => {
     const hit = hits[i] ?? null;
     return { ...r, pos: hit ? { x: hit.x, y: hit.y } : null };
   });
   const geocoded = rows.filter((r) => r.pos !== null).length;
-  const { inserted, duplicates } = await deps.registry.upsertMany(rows, {
-    userId: input.userId,
-    batchId: input.batchId,
-  });
+  const { inserted, duplicates } = rows.length
+    ? await deps.registry.upsertMany(rows, { userId: input.userId, batchId: input.batchId })
+    : { inserted: 0, duplicates: 0 };
   return {
     attempted: rows.length,
     inserted,
-    duplicates,
+    duplicates: duplicates + (input.rows.length - fresh.length),
     geocoded,
     needsFix: rows.length - geocoded,
     usedNominatim: hits.some((h) => h?.source === "nominatim"),
