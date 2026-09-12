@@ -238,6 +238,42 @@ describe("kw group (Slice 6)", () => {
     expect(result.ok).toBe(true);
   });
 
+  // T-12 (S1): the right decides whether KW gruntu is demanded. Absent = legacy
+  // caller = własność (the gate stays default-deny for every existing draft).
+  it("T-12: spółdzielcze + missing kwGruntu → no blocker; własność/absent → blocker as before", () => {
+    const base = passingInput();
+    const prov = {
+      ...base.provenance,
+      kw: { source: "akt" as const, status: "confirmed" as const },
+    };
+    const noGrunt = { ...kwOk, kwGruntu: null };
+    const coop = approvalGate({
+      ...base,
+      provenance: prov,
+      kw: noGrunt,
+      propertyRight: "spoldzielcze_wlasnosciowe",
+    });
+    expect(coop).toEqual({ ok: true });
+    const own = approvalGate({
+      ...base,
+      provenance: prov,
+      kw: noGrunt,
+      propertyRight: "wlasnosc_lokalu",
+    });
+    expect(own.ok).toBe(false);
+    if (!own.ok) expect(own.blockers.map((b) => b.path)).toEqual(["kw.kwGruntu"]);
+    const legacy = approvalGate({ ...base, provenance: prov, kw: noGrunt });
+    expect(legacy.ok).toBe(false);
+  });
+
+  it("T-12: the sample threshold is the same for both rights", () => {
+    for (const propertyRight of ["wlasnosc_lokalu", "spoldzielcze_wlasnosciowe"] as const) {
+      const r = approvalGate({ ...passingInput(), comparables: manualRows(11), propertyRight });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.blockers[0].path).toBe("comparables");
+    }
+  });
+
   it("no kw snapshot -> no kw blockers (manual path regression)", () => {
     expect(approvalGate(passingInput()).ok).toBe(true);
   });

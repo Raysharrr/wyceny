@@ -6,6 +6,7 @@ import {
   type Sourced,
 } from "@wyceny/shared";
 import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
+import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 
 /**
@@ -55,6 +56,12 @@ export type GateInput = {
     deweloperski: boolean;
   } | null;
   provenance?: InputsProvenance | null;
+  /**
+   * Rodzaj prawa (T-12) — a valuation column, not part of `inputs`, so the
+   * caller spreads it in. Absent = legacy caller = własność: the KW gruntu
+   * blocker stays on (default-deny), exactly as before the block.
+   */
+  propertyRight?: PropertyRight;
   /** Prose snapshot (FR-6) — gated only when the caller asks for it, see `GateOptions`. */
   prose?: {
     sections: Partial<Record<ProseSection, Sourced<string>>>;
@@ -205,7 +212,11 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
         label: `Stan prawny (KW) — ${statusLabel(kwProv?.status ?? "none")}.`,
       });
     }
-    if (!input.kw.kwGruntu) {
+    // Same shape as the kwLokalu/deweloperski branch below: the right says
+    // whether the księga macierzysta is even a thing for this lokal.
+    const wymagaKwGruntu =
+      PROPERTY_RIGHT_DOC[input.propertyRight ?? "wlasnosc_lokalu"].wymagaKwGruntu;
+    if (!input.kw.kwGruntu && wymagaKwGruntu) {
       blockers.push({
         path: "kw.kwGruntu",
         label: "Numer KW gruntu (księgi macierzystej) — brak.",

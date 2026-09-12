@@ -95,15 +95,18 @@ export async function approveValuation(
 
     // Fail fast with the first blocker before any expensive generation work.
     if (valuation.inputs) {
-      const gate = approvalGate(valuation.inputs, {
-        requireProse,
-        // Lets the gate see the sections whose facts have since moved on (T6
-        // review, I-2; per section since T4). Derived here, never taken from
-        // the client.
-        currentSectionHashes: requireProse
-          ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
-          : undefined,
-      });
+      const gate = approvalGate(
+        { ...valuation.inputs, propertyRight: valuation.propertyRight },
+        {
+          requireProse,
+          // Lets the gate see the sections whose facts have since moved on (T6
+          // review, I-2; per section since T4). Derived here, never taken from
+          // the client.
+          currentSectionHashes: requireProse
+            ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
+            : undefined,
+        },
+      );
       const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(valuation)];
       if (blockers.length > 0) {
         // `error` stays the one-line summary it has always been; `blockers`

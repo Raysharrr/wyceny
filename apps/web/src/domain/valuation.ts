@@ -681,7 +681,7 @@ export function approveValuation(
   if (!v.inputs) {
     throw new ApprovalBlockedError([{ path: "inputs", label: "Brak danych wejściowych operatu." }]);
   }
-  const gate = approvalGate(v.inputs, gateOptions);
+  const gate = approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, gateOptions);
   const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(v)];
   if (blockers.length > 0) {
     throw new ApprovalBlockedError(blockers);
