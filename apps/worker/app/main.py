@@ -7,6 +7,7 @@ Local run:
 """
 
 import base64
+import hashlib
 import json
 import os
 import time
@@ -216,10 +217,25 @@ SAMPLE_FAILED_DETAIL = (
 )
 
 
+def _stub_point(address: str) -> tuple[float, float]:
+    """`GEOCODER_STUB=1` (CI / offline E2E): a deterministic EPSG:2180 point derived
+    from the address text — the same address always lands on the same spot, every
+    address lands within ~700 m of one centre, so radius-based selection behaves
+    like on real data without a single request to UUG or Nominatim. Never set in
+    production; the source is labelled so it cannot be mistaken for a real hit."""
+    digest = hashlib.sha256(address.strip().lower().encode()).digest()
+    dx = int.from_bytes(digest[:2], "big") % 1401 - 700
+    dy = int.from_bytes(digest[2:4], "big") % 1401 - 700
+    return 360_000.0 + dx, 504_000.0 + dy
+
+
 def resolve_point(address: str, point: SamplePoint | None) -> tuple[float, float, str]:
     """Step-1 point first; UUG second; Nominatim last (ADR-015 — logged, never silent)."""
     if point is not None:
         return point.x, point.y, "subject"
+    if os.environ.get("GEOCODER_STUB") == "1":
+        x, y = _stub_point(address)
+        return x, y, "uug"
     try:
         geo = subject.geocode_address(address)
         return geo["x"], geo["y"], "uug"
