@@ -124,6 +124,8 @@ export async function finalizeCoopImport(
     totals: CoopChunkResult;
     userId: string;
     traceId?: string;
+    /** Header row of the imported sheet — remembered next to the mapping (S5, Task 4e); null for a sheet without one. */
+    headers?: string[] | null;
   },
 ): Promise<CoopImportSummary | null> {
   // Skipped/warned rows, mapping and file name come from the batch opened in
@@ -147,7 +149,7 @@ export async function finalizeCoopImport(
     rowsInserted: totals.inserted,
     finishedAt: new Date().toISOString(),
   });
-  await deps.registry.saveMapping(batch.cooperative, batch.mapping);
+  await deps.registry.saveMapping(batch.cooperative, batch.mapping, input.headers ?? null);
 
   const common = { traceId: input.traceId, actorId: input.userId };
   await deps.eventLog.record({

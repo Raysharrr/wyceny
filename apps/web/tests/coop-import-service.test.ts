@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import { eventLogRepo } from "../src/adapters/event-log-drizzle";
-import { parseCoopSheet } from "../src/domain/coop-import";
+import {
+  parseCoopSheet,
+  rememberedMappingFor,
+  type ColumnMapping,
+  type RememberedMapping,
+} from "../src/domain/coop-import";
 import {
   finalizeCoopImport,
   importCoopChunk,
@@ -37,6 +42,7 @@ function fakeRegistry() {
   const calls: string[] = [];
   const batches: { rowsWarned: unknown[]; rowsInserted: number; finishedAt: string | null }[] = [];
   const full = new Map<string, import("../src/ports/coop-registry").CoopImportBatch>();
+  const remembered: { mapping: RememberedMapping | null } = { mapping: null };
   const registry: PortCoopRegistry = {
     async existingKeys(keys) {
       calls.push("existingKeys");
@@ -60,14 +66,15 @@ function fakeRegistry() {
     async getBatch(id) {
       return full.get(id) ?? null;
     },
-    async saveMapping() {
+    async saveMapping(_cooperative, mapping, headers) {
       calls.push("saveMapping");
+      remembered.mapping = { mapping, headers };
     },
     list: async () => ({ rows: [], total: 0, hasMore: false, truncated: false }),
     save: async () => ({ ok: false, reason: "invalid" }),
     remove: async () => {},
     stats: async () => ({ total: 0, byCooperative: {}, needsGeocoding: 0, lastImport: null }),
-    getMapping: async () => null,
+    getMapping: async () => remembered.mapping,
   };
   return { registry, stored, calls, batches };
 }
@@ -338,5 +345,110 @@ describe("finalize is one-shot (review 2 N-2)", () => {
     );
     expect(again).toBeNull();
     expect(calls.length).toBe(before);
+  });
+});
+
+describe("remembered mapping vs a sheet with a different header row (S5, Task 4e — staging O-1)", () => {
+  // Sheet A: "Rejestr 2025" (header row 3: Lp. | Adres | Nr budynku | …).
+  // Sheet B: "Bez nr mieszkania" (header row 0: Adres | Pow. | Cena | zł/m² | Data | Tytuł własności).
+  // Same cooperative, different layouts — exactly Aneta's registers (five layouts, four SMs).
+  const A = fixture.sheets[0]!;
+  const B = fixture.sheets[2]!;
+  const MAPPING_A: ColumnMapping = {
+    address: 1,
+    buildingNumber: 2,
+    flatNumber: 3,
+    area: 4,
+    priceTotal: 5,
+    date: 6,
+    rightType: 7,
+  };
+  const MAPPING_B: ColumnMapping = {
+    address: 0,
+    buildingNumber: 0,
+    flatNumber: "absent",
+    area: 1,
+    priceTotal: 2,
+    date: 4,
+    rightType: 5,
+  };
+  const headersOf = (sheet: { rows: string[][] }, headerRow: number) => sheet.rows[headerRow]!;
+
+  async function importSheet(
+    registry: PortCoopRegistry,
+    sheet: { rows: string[][] },
+    mapping: ColumnMapping,
+    headerRow: number,
+  ) {
+    const p = parseCoopSheet(sheet.rows, mapping, {
+      cooperative: COOP,
+      priceKind: "nieustalona",
+      headerRow,
+    });
+    const { batchId } = await startCoopImport(
+      { registry },
+      {
+        cooperative: COOP,
+        fileName: FILE,
+        mapping,
+        skipped: p.skipped,
+        warnings: p.warnings,
+        userId: "u",
+      },
+    );
+    const chunk = await importCoopChunk(
+      { registry, geocoder },
+      { batchId, city: "Poznań", rows: p.rows, userId: "u", workerToken: "tok" },
+    );
+    const summary = await finalizeCoopImport(
+      { registry, eventLog },
+      {
+        batchId,
+        rowsTotal: sheet.rows.length,
+        totals: sumCoopChunks([chunk!]),
+        userId: "u",
+        headers: headersOf(sheet, headerRow),
+      },
+    );
+    return summary!;
+  }
+
+  it("A → B (other layout) → A again: the mapping remembered from B is NOT laid over A, and A re-imports 0 new rows", async () => {
+    const { registry } = fakeRegistry();
+    const first = await importSheet(registry, A, MAPPING_A, 3);
+    expect(first.inserted).toBe(5);
+    await importSheet(registry, B, MAPPING_B, 0);
+
+    // The wizard's decision for sheet A after B was imported last:
+    const remembered = await registry.getMapping(COOP);
+    expect(remembered?.headers).toEqual(headersOf(B, 0));
+    const decision = rememberedMappingFor(remembered, headersOf(A, 3));
+    expect(decision).toEqual({ kind: "layout_differs" });
+    // …so the appraiser maps A from scratch (MAPPING_A), not with B's indexes —
+    // and the re-import adds nothing. With B's mapping laid over A, `rep` would have
+    // read column 0 („Lp.”: 1, 2, 3…) and every row would have entered again.
+    const again = await importSheet(registry, A, MAPPING_A, 3);
+    expect(again.inserted).toBe(0);
+    expect(rememberedMappingFor(await registry.getMapping(COOP), headersOf(A, 3))).toEqual({
+      kind: "match",
+      mapping: MAPPING_A,
+    });
+  });
+
+  it("the same layout with cosmetic header differences (case, spaces) still matches; no header row never matches", () => {
+    const saved: RememberedMapping = {
+      mapping: MAPPING_A,
+      headers: ["Lp.", "Adres ", "Nr  budynku"],
+    };
+    expect(rememberedMappingFor(saved, ["lp.", "adres", "nr budynku"])).toEqual({
+      kind: "match",
+      mapping: MAPPING_A,
+    });
+    expect(rememberedMappingFor(saved, ["Lp.", "Adres"])).toEqual({ kind: "layout_differs" });
+    expect(rememberedMappingFor(saved, null)).toEqual({ kind: "layout_differs" });
+    expect(
+      rememberedMappingFor({ mapping: MAPPING_A, headers: null }, ["Lp.", "Adres ", "Nr  budynku"]),
+    ).toEqual({ kind: "layout_differs" });
+    expect(rememberedMappingFor(null, ["Lp."])).toEqual({ kind: "none" });
   });
 });

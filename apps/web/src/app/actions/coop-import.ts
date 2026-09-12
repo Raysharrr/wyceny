@@ -6,7 +6,12 @@ import { z } from "zod";
 import { getSession } from "@/auth/session";
 import { coopRegistry, coopSheet, eventLog, geocoder } from "@/app/valuations/_deps";
 import { recordFailure } from "@/app/actions/_record-failure";
-import { COOP_FIELDS, coopDedupeKey, type ColumnMapping } from "@/domain/coop-import";
+import {
+  COOP_FIELDS,
+  coopDedupeKey,
+  type ColumnMapping,
+  type RememberedMapping,
+} from "@/domain/coop-import";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import {
   finalizeCoopImport,
@@ -62,7 +67,7 @@ export async function readCoopSheet(
   });
 }
 
-export async function getCoopMapping(cooperative: string): Promise<ColumnMapping | null> {
+export async function getCoopMapping(cooperative: string): Promise<RememberedMapping | null> {
   await requireSession();
   return cooperative.trim() ? coopRegistry.getMapping(cooperative.trim()) : null;
 }
@@ -124,6 +129,7 @@ const chunkSchema = z.object({
 const finalizeSchema = z.object({
   batchId: z.string().uuid(),
   rowsTotal: z.number().int().min(0),
+  headers: z.array(z.string().max(500)).max(200).nullable().optional(),
   totals: z.object({
     attempted: z.number().int().min(0),
     inserted: z.number().int().min(0),

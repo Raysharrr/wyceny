@@ -169,11 +169,27 @@ describe("coopRegistryRepo", () => {
     expect(raw!.createdBy).toBe(USER);
   });
 
-  it("remembers one column mapping per cooperative", async () => {
+  it("remembers one column mapping per cooperative — with the header row it was made for (S5, Task 4e)", async () => {
     expect(await repo.getMapping(COOP)).toBeNull();
-    await repo.saveMapping(COOP, { address: 1, area: 4 });
-    await repo.saveMapping(COOP, { address: 2, area: 5 });
-    expect(await repo.getMapping(COOP)).toEqual({ address: 2, area: 5 });
+    await repo.saveMapping(COOP, { address: 1, area: 4 }, ["Lp.", "Adres"]);
+    await repo.saveMapping(COOP, { address: 2, area: 5 }, ["Rep. aktu", "Data", "Adres"]);
+    expect(await repo.getMapping(COOP)).toEqual({
+      mapping: { address: 2, area: 5 },
+      headers: ["Rep. aktu", "Data", "Adres"],
+    });
+    await repo.saveMapping(COOP, { address: 0 }, null);
+    expect(await repo.getMapping(COOP)).toEqual({ mapping: { address: 0 }, headers: null });
+  });
+
+  it("reads a mapping stored before S5 (bare jsonb) as layout unknown — headers null", async () => {
+    await db
+      .insert(schema.coopColumnMapping)
+      .values({ cooperative: `${COOP} legacy`, mapping: { address: 1, area: 4 } })
+      .onConflictDoNothing();
+    expect(await repo.getMapping(`${COOP} legacy`)).toEqual({
+      mapping: { address: 1, area: 4 },
+      headers: null,
+    });
   });
 });
 

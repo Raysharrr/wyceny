@@ -17,6 +17,7 @@ import {
   COOP_FIELDS,
   missingRequiredFields,
   parseCoopSheet,
+  rememberedMappingFor,
   type CoopFieldKey,
   type ColumnMapping,
 } from "@/domain/coop-import";
@@ -97,7 +98,10 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
 
   // Step 2
   const [mapping, setMapping] = useState<ColumnMapping>({});
+  // S5 (Task 4e): why the remembered mapping was NOT applied — said out loud, never silent.
+  const [mappingNotice, setMappingNotice] = useState<string | null>(null);
   const sheet = file?.sheets[sheetIdx] ?? null;
+  const headers = sheet && headerRow !== null ? (sheet.rows[headerRow] ?? null) : null;
   const preview = useMemo(
     () => (sheet ? sheet.rows.slice(headerRow === null ? 0 : headerRow + 1).slice(0, 3) : []),
     [sheet, headerRow],
@@ -133,9 +137,23 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
   const goMapping = () =>
     start(async () => {
       const remembered = await getCoopMapping(cooperative);
-      if (remembered && sheet) {
-        const ok = Object.values(remembered).every((v) => typeof v !== "number" || v < sheet.cols);
-        setMapping(ok ? remembered : {});
+      const decision = rememberedMappingFor(remembered, headers);
+      // Staging O-1: a remembered mapping laid over a sheet with a different header
+      // row put „Rep. aktu” on „Lp.” and switched dedup off. Reuse it only for the
+      // same layout; otherwise start from scratch and say so.
+      if (decision.kind === "match" && sheet) {
+        const ok = Object.values(decision.mapping).every(
+          (v) => typeof v !== "number" || v < sheet.cols,
+        );
+        setMapping(ok ? decision.mapping : {});
+        setMappingNotice(null);
+      } else {
+        setMapping({});
+        setMappingNotice(
+          decision.kind === "layout_differs"
+            ? "Ten plik ma inny układ kolumn niż poprzedni import tej spółdzielni — zmapuj kolumny jeszcze raz. Zapamiętane mapowanie nie zostało zastosowane."
+            : null,
+        );
       }
       setStep(2);
     });
@@ -165,6 +183,7 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
           batchId,
           rowsTotal: sheet?.rows.length ?? total,
           totals: sumCoopChunks(chunks),
+          headers,
         });
       for (let i = 0; i < total; i += IMPORT_CHUNK) {
         const r = await importCoopChunkAction({
@@ -337,6 +356,16 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
 
       {step === 2 && sheet ? (
         <Card title="Mapowanie kolumn" sub="pola oznaczone * są wymagane">
+          {mappingNotice ? (
+            <p
+              role="status"
+              data-testid="mapping-layout-notice"
+              className="mb-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+            >
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span>{mappingNotice}</span>
+            </p>
+          ) : null}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
