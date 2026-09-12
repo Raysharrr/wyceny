@@ -166,7 +166,7 @@ export default async function RejestrPage({
         <span>
           Pokazano {list.rows.length} z {list.total} · sortowanie: data malejąco
         </span>
-        {list.hasMore ? (
+        {list.hasMore && pages < MAX_PAGES ? (
           <Button asChild variant="outline" size="sm">
             <Link href={moreHref}>Pokaż więcej</Link>
           </Button>
