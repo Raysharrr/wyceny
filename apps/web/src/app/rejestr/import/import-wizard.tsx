@@ -294,6 +294,7 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
               <div className="flex flex-col gap-1 text-sm font-medium">
                 <span>Spółdzielnia{REQ}</span>
                 <select
+                  aria-label="Spółdzielnia"
                   className={SELECT}
                   value={coopChoice}
                   onChange={(e) => setCoopChoice(e.target.value)}

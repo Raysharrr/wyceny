@@ -16,7 +16,8 @@
     "test": "vitest run",
     "seed": "tsx scripts/seed.ts",
     "trace": "tsx scripts/trace.mts",
-    "e2e": "playwright test"
+    "e2e": "playwright test --project=smoke --project=spoldzielcze",
+    "e2e:staging": "playwright test --project=staging"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
