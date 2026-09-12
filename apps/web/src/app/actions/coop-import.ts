@@ -44,7 +44,9 @@ export async function readCoopSheet(
 ): Promise<Ok<{ sheets: CoopSheet[] }> | Fail> {
   const session = await requireSession();
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "Wybierz plik XLS lub XLSX." };
+  // Duck-typed: the runtime's File class may differ from the global one across the RSC boundary.
+  if (!file || typeof file === "string" || file.size === 0)
+    return { error: "Wybierz plik XLS lub XLSX." };
   const token = mintWorkerToken();
   if (!token) return { error: NOT_CONFIGURED };
   return withTrace(async () => {

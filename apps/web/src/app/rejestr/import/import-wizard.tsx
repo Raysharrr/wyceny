@@ -468,7 +468,7 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
             return (
               <div className="flex flex-col gap-4">
                 <div className="rounded-lg border border-[#ecd9a6] bg-[#fbf2dd] p-4 text-sm text-[#b07a16]">
-                  <p className="flex items-start gap-2 font-semibold">
+                  <p className="flex items-start gap-2 font-semibold" data-testid="import-summary">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                     <span>
                       {n} {plural(n, "wiersz", "wiersze", "wierszy")}, {d}{" "}
