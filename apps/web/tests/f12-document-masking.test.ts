@@ -38,6 +38,7 @@ function goldenInput() {
     area: 54.3,
     purpose: "sprzedaz" as const,
     kwNumber: "KW-TEST-1",
+    propertyRight: "wlasnosc_lokalu" as const,
     client: "p. Test Testowy",
     inspectionDate: "2026-07-01",
     approvedAt: new Date("2026-07-15T10:00:00Z"),
@@ -77,6 +78,7 @@ describe("F-12: professional-secrecy masking in the document model", () => {
       area: 1,
       purpose: "zabezpieczenie_kredytu",
       kwNumber: "KW-TEST-1",
+      propertyRight: "wlasnosc_lokalu" as const,
       client: "k",
       inspectionDate: "2026-07-01",
       approvedAt: new Date("2026-07-15T10:00:00Z"),
@@ -309,6 +311,7 @@ describe("documentFieldBlockers", () => {
       documentFieldBlockers({
         purpose: null,
         kwNumber: null,
+        propertyRight: "wlasnosc_lokalu" as const,
         client: null,
         inspectionDate: null,
         wr: 1_044_400,
@@ -317,6 +320,7 @@ describe("documentFieldBlockers", () => {
     const blockers = documentFieldBlockers({
       purpose: "sprzedaz",
       kwNumber: null,
+      propertyRight: "wlasnosc_lokalu" as const,
       client: "k",
       inspectionDate: "2026-07-01",
       wr: 1_044_400,
@@ -326,6 +330,7 @@ describe("documentFieldBlockers", () => {
       documentFieldBlockers({
         purpose: "sprzedaz",
         kwNumber: "KW-TEST-1",
+        propertyRight: "wlasnosc_lokalu" as const,
         client: "k",
         inspectionDate: "2026-07-01",
         wr: 1_044_400,

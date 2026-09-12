@@ -196,6 +196,10 @@ export const HELP_PAGES: HelpPage[] = [
       "PDF",
       "DOCX",
       "kwota słownie",
+      "spółdzielcze",
+      "rodzaj prawa",
+      "piwnica",
+      "publikator",
     ],
     summary: "Potwierdzenia danych, lista blokad i wygenerowanie operatu w PDF oraz DOCX.",
     load: () => import("./jak-korzystac/krok-7-operat.mdx"),
@@ -462,6 +466,8 @@ export const HELP_PAGES: HelpPage[] = [
       "źródło danych",
       "ADR-010",
       "F-4",
+      "rodzaj prawa",
+      "spółdzielcze",
       "domyślna odmowa",
       "wpis ręczny",
     ],
@@ -471,7 +477,7 @@ export const HELP_PAGES: HelpPage[] = [
   },
   /**
    * Uwaga dla utrzymujących treść: `operat-i-niezmiennosc.mdx` importuje
-   * `OPERAT_SECTIONS` i renderuje ich liczbę — nie wpisywać jej ręcznie.
+   * `OPERAT_SECTION_TEMPLATES` i renderuje ich liczbę — nie wpisywać jej ręcznie.
    * Liczba sekcji zmienia się razem z szablonem, więc rzeczownik przy niej
    * odmienia `plural()` (dziś 23 → "numerowane sekcje", ale np. 25 →
    * "numerowanych sekcji"); nie zastępować tego wywołania stałym napisem.
@@ -487,7 +493,7 @@ export const HELP_PAGES: HelpPage[] = [
    *   apps/web/drizzle/0009_f7_immutability_audit_sign.sql:47  document_frozen — tylko dokumenty podpisanej wyceny
    *
    * Źródła do sprawdzenia przy każdej zmianie operatu, audytu lub podpisu:
-   *   apps/web/src/domain/operat-sections.ts:7          OPERAT_SECTIONS (IMPORTOWANE do MDX)
+   *   apps/web/src/domain/operat-sections.ts:14         OPERAT_SECTION_TEMPLATES (IMPORTOWANE do MDX)
    *   apps/web/src/domain/document-model.ts:78          maskowanie: miesiąc zamiast pełnej daty (F-12)
    *   apps/web/src/domain/document-model.ts:277         mpzp / mpzp_brak — wzajemnie wykluczające się
    *   apps/web/src/domain/document-model.ts:285         cechy o wadze 0 poza dokumentem

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import PizZip from "pizzip";
 import { computeKcs, type KcsInput } from "../src/domain/kcs";
-import { buildDocumentModel } from "../src/domain/document-model";
-import { OPERAT_SECTIONS } from "../src/domain/operat-sections";
+import { buildDocumentModel, type BuildDocumentInput } from "../src/domain/document-model";
+import { operatSections } from "../src/domain/operat-sections";
 import { renderOperatDocx } from "../src/adapters/docx-render";
 import type { SubjectSnapshot } from "../src/domain/subject-snapshot";
 import type { KwSnapshot } from "../src/domain/kw-snapshot";
@@ -71,6 +71,7 @@ function renderGoldenNoDefinitions(subject?: SubjectSnapshot, kw?: KwSnapshot): 
     area: 48.2,
     purpose: "informacyjny",
     kwNumber: "KW-TEST-9",
+    propertyRight: "wlasnosc_lokalu" as const,
     client: "p. Anna Przykładowa",
     inspectionDate: "2026-06-30",
     approvedAt: new Date("2026-07-15T09:00:00Z"),
@@ -90,8 +91,9 @@ describe("F-12: rendered operat completeness (real template, golden data)", () =
   const text = renderGolden(SUBJECT_WITH_MPZP);
 
   it("contains every canonical section heading (≥19)", () => {
-    expect(OPERAT_SECTIONS.length).toBeGreaterThanOrEqual(19);
-    for (const heading of OPERAT_SECTIONS) {
+    const headings = operatSections(buildDocumentModel(syntheticDocumentInput(SUBJECT_WITH_MPZP)));
+    expect(headings.length).toBeGreaterThanOrEqual(19);
+    for (const heading of headings) {
       expect(text, `missing section "${heading}"`).toContain(heading);
     }
   });
@@ -195,6 +197,7 @@ describe("F-12: rendered operat — legacy, no subject fetched", () => {
       area: 48.2,
       purpose: "informacyjny",
       kwNumber: "KW-TEST-9",
+      propertyRight: "wlasnosc_lokalu" as const,
       client: "p. Anna Przykładowa",
       inspectionDate: "2026-06-30",
       approvedAt: new Date("2026-07-15T09:00:00Z"),
@@ -254,6 +257,7 @@ describe("F-12: rendered operat — KW examination block (standard variant)", ()
       area: 48.2,
       purpose: "informacyjny",
       kwNumber: "KW-TEST-9",
+      propertyRight: "wlasnosc_lokalu" as const,
       client: "p. Anna Przykładowa",
       inspectionDate: "2026-06-30",
       approvedAt: new Date("2026-07-15T09:00:00Z"),
@@ -316,6 +320,7 @@ describe("F-12: rendered operat — akt notarialny with no dział III/IV info (d
       area: 48.2,
       purpose: "informacyjny",
       kwNumber: "KW-TEST-9",
+      propertyRight: "wlasnosc_lokalu" as const,
       client: "p. Anna Przykładowa",
       inspectionDate: "2026-06-30",
       approvedAt: new Date("2026-07-15T09:00:00Z"),
@@ -350,6 +355,7 @@ describe("F-12: rendered operat — KW examined but udział absent (akt, udzial 
       area: 48.2,
       purpose: "informacyjny",
       kwNumber: "KW-TEST-9",
+      propertyRight: "wlasnosc_lokalu" as const,
       client: "p. Anna Przykładowa",
       inspectionDate: "2026-06-30",
       approvedAt: new Date("2026-07-15T09:00:00Z"),
@@ -462,5 +468,181 @@ describe("F-12: the house number never reaches the document (Slice 3d)", () => {
     expect(text).toContain("ul. Kościelna");
     expect(text).toContain("Poznań");
     expect(text).not.toContain("33A");
+  });
+});
+
+/**
+ * T-12 (S4): the operat composed per property right. Five renders of the same
+ * synthetic valuation — własność, własność with a STALE basement checkbox, coop
+ * without a KW number (with and without a basement), coop with a KW number —
+ * and a text guard in both directions (the obręb-guard pattern from Slice 5).
+ */
+function renderRight(
+  overrides: Partial<BuildDocumentInput>,
+  inputOverrides: Partial<KcsInput> = {},
+) {
+  const base = syntheticDocumentInput(SUBJECT_WITH_MPZP);
+  const inputs = { ...base.inputs, ...inputOverrides };
+  const model = buildDocumentModel({ ...base, ...overrides, inputs, kcs: computeKcs(inputs) });
+  const xml = new PizZip(renderOperatDocx(model)).files["word/document.xml"].asText();
+  const text = xml.replace(/<[^>]+>/g, "").replace(/ /g, " ");
+  const paragraphs = (xml.match(/<w:p[ >]/g) ?? []).length;
+  return { model, text, paragraphs, count: (s: string) => text.split(s).length - 1 };
+}
+
+const COOP = { propertyRight: "spoldzielcze_wlasnosciowe" as const, kwNumber: null };
+const NO_KW_SENTENCE =
+  "Dla spółdzielczego własnościowego prawa do lokalu mieszkalnego nie założono księgi wieczystej.";
+const BASEMENT_CLAUSE =
+  "Właściciele spółdzielczego własnościowego prawa mają możliwość korzystania z piwnicy, nie jest ona jednak objęta w/w prawem i nie stanowi prawa majątkowego.";
+
+describe("F-12 / T-12: operat per property right", () => {
+  const own = renderRight({});
+  const ownStaleBasement = renderRight({}, { hasBasement: true });
+  const coop = renderRight(COOP);
+  const coopBasement = renderRight(COOP, { hasBasement: true });
+  const coopWithKw = renderRight({ ...COOP, kwNumber: "KW-TEST-9" });
+
+  it.each([
+    ["własność", own],
+    ["własność + stale hasBasement", ownStaleBasement],
+    ["spółdzielcze bez KW", coop],
+    ["spółdzielcze bez KW + piwnica", coopBasement],
+    ["spółdzielcze z KW", coopWithKw],
+  ])("%s: no unresolved tags, no 'undefined', every heading of ITS OWN section list", (_, r) => {
+    expect(r.text).not.toContain("undefined");
+    expect(r.text).not.toMatch(/\{[a-z_#/.^]+\}/i);
+    const headings = operatSections(r.model);
+    expect(headings.length).toBeGreaterThanOrEqual(19);
+    for (const heading of headings) {
+      expect(r.text, `missing section "${heading}"`).toContain(heading);
+    }
+  });
+
+  it("własność: reads exactly as before S4 (headings, act, sources, owner row, udział) and never says spółdzielcz", () => {
+    for (const s of [
+      "6. Daty istotne dla określenia wartości nieruchomości",
+      "7. Źródła danych o nieruchomości",
+      "8. Opis stanu nieruchomości",
+      "12. Określenie wartości rynkowej prawa własności nieruchomości lokalowej, wg stanu",
+      "Ustawa z dnia 24 czerwca 1994r. o własności lokali (Dz. U. 2026r., poz. 39),",
+      "Badanie ksiąg wieczystych – nieruchomości lokalowej o funkcji mieszkalnej oraz nieruchomości gruntowej,",
+      "Wypis aktu notarialnego – umowa ustanowienia odrębnej własności lokalu i sprzedaży,",
+      "GEOPOZ w Poznaniu",
+      "Własność",
+      "p. Anna Przykładowa",
+      "wraz z udziałem w nieruchomości wspólnej",
+      "Dla nieruchomości gruntowej właściwy sąd rejonowy prowadzi odrębną księgę wieczystą.",
+      "Oznaczenie księgi wieczystej: KW-TEST-9.",
+      "Udział w nieruchomości wspólnej:",
+    ]) {
+      expect(own.text, `własność lost "${s}"`).toContain(s);
+    }
+    expect(own.text).not.toContain("spółdzielcz");
+    expect(own.text).not.toContain("nie założono księgi wieczystej");
+    expect(own.text).not.toContain("przedmiotu wyceny, wg stanu");
+  });
+
+  it("własność + hasBasement: true (stale checkbox) → not a single 'piwnic'", () => {
+    expect(ownStaleBasement.text).not.toMatch(/piwnic/i);
+    expect(ownStaleBasement.model.ma_piwnice).toBe(false);
+    expect(ownStaleBasement.text).toBe(own.text);
+  });
+
+  it("spółdzielcze: the six places of the mockup + the four mechanisms", () => {
+    for (const s of [
+      // 1. §2 przedmiot (+ §1, §3, title page)
+      "Przedmiot wyceny stanowi spółdzielcze własnościowe prawo do lokalu mieszkalnego o powierzchni użytkowej 48,20 m2, położonego pod adresem:",
+      "Celem wyceny jest określenie wartości rynkowej spółdzielczego własnościowego prawa do lokalu mieszkalnego, wg stanu aktualnego",
+      "Wyciąg z operatu szacunkowego dotyczącego określenia wartości rynkowej spółdzielczego własnościowego prawa do lokalu mieszkalnego, położonego pod adresem:",
+      // 2. §5 podstawy prawne — placeholder publikator, never a guessed one
+      "Ustawa z dnia 15 grudnia 2000 r. o spółdzielniach mieszkaniowych (Dz. U. — publikator do uzupełnienia),",
+      // 3. §7 źródła — the cooperative instead of GEOPOZ
+      "oraz pozyskane ze spółdzielni mieszkaniowej,",
+      // 4. §8.2 — no KW extract, the one sentence instead; EGiB facts STAY
+      "Dane ewidencyjne (EGiB): obręb Jeżyce, arkusz",
+      // 6. §12 heading (+ TOC entry) and Tabela 4
+      "12. Określenie wartości rynkowej spółdzielczego własnościowego prawa do lokalu mieszkalnego, wg stanu",
+      "Tabela 4. Określenie wartości rynkowej spółdzielczego własnościowego prawa do lokalu mieszkalnego",
+      "Wartość rynkowa spółdzielczego własnościowego prawa do lokalu mieszkalnego [zł]",
+      // mechanism 2: carrier word
+      "6. Daty istotne dla określenia wartości rynkowej",
+      "7. Źródła danych o przedmiocie wyceny",
+      "8. Opis stanu przedmiotu wyceny",
+      "Opis lokalu mieszkalnego",
+    ]) {
+      expect(coop.text, `spółdzielcze lacks "${s}"`).toContain(s);
+    }
+    // §12 heading appears in the TOC and as the heading itself
+    expect(
+      coop.count("12. Określenie wartości rynkowej spółdzielczego własnościowego prawa do lokalu"),
+    ).toBe(2);
+  });
+
+  it("spółdzielcze: text guard — no ownership wording, no udział, no KW/deed sources, no owner row", () => {
+    for (const s of [
+      // any form — §10.1 "przedmiotem prawa własności" and §12.1 slipped past the
+      // 30-slot diff; Piastowskie has neither
+      "prawa własności",
+      "prawo własności",
+      "wraz z udziałem w nieruchomości wspólnej",
+      "Udział w nieruchomości wspólnej",
+      "o własności lokali",
+      "Badanie ksiąg wieczystych",
+      "Wypis aktu notarialnego",
+      "GEOPOZ",
+      "Dla nieruchomości gruntowej",
+      "Własność",
+      "Położenie nieruchomości",
+      "Opis nieruchomości",
+      "Określona wartość rynkowa nieruchomości",
+      "oględzin nieruchomości:",
+    ]) {
+      expect(coop.text, `spółdzielcze still says "${s}"`).not.toContain(s);
+    }
+    expect(coop.text).not.toMatch(/\d+\/\d+ cz\./);
+    // the client still appears in §4 (zlecenie) — only the Wyciąg owner row is gone
+    expect(coop.text).toContain("zlecenia złożonego przez p. Anna Przykładowa");
+  });
+
+  it("spółdzielcze bez KW: the no-KW sentence ×3 (§1, §2, §8.2) and no KW number anywhere", () => {
+    expect(coop.count(NO_KW_SENTENCE)).toBe(3);
+    expect(coop.text).not.toContain("Oznaczenie księgi wieczystej");
+    expect(coop.text).not.toContain("prowadzi księgę wieczystą nr");
+    expect(coop.text).not.toContain("V Wydział Ksiąg Wieczystych");
+    expect(coop.model.kw_brak).toBe(true);
+    expect(coop.model.ma_kw).toBe(false);
+  });
+
+  it("spółdzielcze z KW: prints the number like własność, never the no-KW sentence, still no land KW / udział", () => {
+    expect(coopWithKw.count(NO_KW_SENTENCE)).toBe(0);
+    expect(coopWithKw.text).toContain("Oznaczenie księgi wieczystej: KW-TEST-9.");
+    expect(coopWithKw.text).toContain(
+      "Dla lokalu mieszkalnego Sąd Rejonowy Poznań – Stare Miasto w Poznaniu prowadzi księgę wieczystą nr KW-TEST-9.",
+    );
+    expect(coopWithKw.text).not.toContain("Dla nieruchomości gruntowej");
+    expect(coopWithKw.text).not.toContain("udział");
+    expect(coopWithKw.model.kw_brak).toBe(false);
+    expect(coopWithKw.model.ma_kw).toBe(true);
+  });
+
+  it("basement clause: ×2 (§1 Wyciąg + §8.3) only with the checkbox — otherwise honest silence, no empty paragraph", () => {
+    expect(coop.text).not.toMatch(/piwnic/i);
+    expect(coopBasement.count(BASEMENT_CLAUSE)).toBe(2);
+    // exactly the two clause paragraphs — the fence paragraphs vanish with them
+    expect(coopBasement.paragraphs - coop.paragraphs).toBe(2);
+    expect(coop.paragraphs).toBeLessThan(own.paragraphs); // fenced blocks leave no shells
+  });
+
+  it("model pairs are mutually exclusive and the texts come from PROPERTY_RIGHT_DOC", () => {
+    for (const r of [own, coop, coopWithKw]) {
+      expect(r.model.prawo_wlasnosc).toBe(!r.model.prawo_spoldzielcze);
+      expect(r.model.ma_kw).toBe(!r.model.kw_brak);
+    }
+    expect(own.model.przedmiot_d).toBe("prawa własności nieruchomości lokalowej");
+    expect(coop.model.przedmiot_m).toBe("spółdzielcze własnościowe prawo do lokalu mieszkalnego");
+    expect(coop.model.klauzula_brak_kw).toBe(NO_KW_SENTENCE);
+    expect(coopWithKw.model.klauzula_brak_kw).toBe("");
+    expect(coopBasement.model.klauzula_piwnicy).toBe(BASEMENT_CLAUSE);
   });
 });

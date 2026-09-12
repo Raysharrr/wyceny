@@ -157,6 +157,7 @@ export function syntheticDocumentInput(
     area: 48.2,
     purpose: "informacyjny",
     kwNumber: "KW-TEST-9",
+    propertyRight: "wlasnosc_lokalu" as const,
     client: "p. Anna Przykładowa",
     inspectionDate: "2026-06-30",
     approvedAt: new Date("2026-07-15T09:00:00Z"),

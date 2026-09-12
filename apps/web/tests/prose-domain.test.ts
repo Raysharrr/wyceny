@@ -123,6 +123,7 @@ describe("buildProseFacts", () => {
       area: INPUTS.area,
       purpose: "sprzedaz",
       kwNumber: "KW-TEST-1",
+      propertyRight: "wlasnosc_lokalu" as const,
       client: "Bank Przykładowy S.A.",
       inspectionDate: "2026-01-15",
       approvedAt: new Date("2026-01-20T09:00:00.000Z"),
