@@ -133,7 +133,11 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
           rows: rows.map(toTransaction),
           total: n,
           hasMore,
-          truncated: limit === LIST_CAP && hasMore,
+          // Race-free (E2E PR #40): `hasMore` compares against a SEPARATE count query,
+          // so a row inserted between the two (another appraiser's import) made a
+          // complete pool look truncated and step 3 refused the sample. The cap is
+          // hit exactly when the page is full — that is the only truncation there is.
+          truncated: limit === LIST_CAP && rows.length >= LIST_CAP,
         };
       };
       if (!as) return run(db);
