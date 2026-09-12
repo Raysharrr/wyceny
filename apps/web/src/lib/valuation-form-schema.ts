@@ -85,7 +85,10 @@ export const sampleMetaSchema = z.object({
   maxRadiusM: z.number(),
   counts: poolCountsSchema,
   fetchedAt: z.string(),
-  source: z.literal("rcn-wfs-gugik"),
+  // Two pool sources since S1 of the "Prawo spółdzielcze" block: RCN via the
+  // worker, or the office coop registry. Hyphenated on purpose (this enum keeps
+  // the `rcn-wfs-gugik` convention; `Comparable.source` keeps `rcn`/`rejestr_sm`).
+  source: z.enum(["rcn-wfs-gugik", "rejestr-sm"]),
   query: poolQuerySchema,
   streetIndex: streetIndexStateSchema.optional(),
 });

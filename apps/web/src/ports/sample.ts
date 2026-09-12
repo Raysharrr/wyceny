@@ -35,7 +35,8 @@ export type CandidatePool = {
   candidates: Candidate[];
   counts: { fetched: number; deduped: number; noPos: number };
   fetchedAt: string;
-  source: "rcn-wfs-gugik";
+  /** Which register the pool came from — RCN via the worker, or the office coop registry (S1). */
+  source: "rcn-wfs-gugik" | "rejestr-sm";
   query: { bbox: number[]; count: number; sort: string; pages: number; truncated: boolean };
   streetIndex?: StreetIndexState;
 };

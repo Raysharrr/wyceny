@@ -4,7 +4,11 @@ import {
   subjectSchema,
   valuationFormSchema,
 } from "../src/lib/valuation-form-schema";
-import { sampleSelectionSchema, streetViewSchema } from "../src/lib/valuation-form-schema";
+import {
+  sampleMetaSchema,
+  sampleSelectionSchema,
+  streetViewSchema,
+} from "../src/lib/valuation-form-schema";
 
 const valid = {
   address: "ul. Kościelna 33A, Poznań",
@@ -205,6 +209,15 @@ describe("valuationFormSchema — RCN provenance (F-5)", () => {
 
   it("still validates when sampleMeta is absent", () => {
     expect(valuationFormSchema.safeParse(valid).success).toBe(true);
+  });
+
+  // B2 (blok "Prawo spółdzielcze", S1): a second pool source must pass the
+  // same boundary — a literal here would reject every registry pool on save.
+  it("accepts sampleMeta.source 'rejestr-sm' (coop registry pool) next to 'rcn-wfs-gugik'", () => {
+    const registry = { ...sampleMeta, source: "rejestr-sm" as const };
+    expect(valuationFormSchema.safeParse({ ...valid, sampleMeta: registry }).success).toBe(true);
+    expect(sampleMetaSchema.safeParse(registry).success).toBe(true);
+    expect(sampleMetaSchema.safeParse({ ...sampleMeta, source: "inne" }).success).toBe(false);
   });
 });
 
