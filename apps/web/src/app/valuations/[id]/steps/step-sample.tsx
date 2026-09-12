@@ -254,7 +254,10 @@ export function StepSample({
   // Register badge on every fetched row (S3): derived from the pool, never from the right.
   const rowSource = liveSampleMeta ? registrySourceOfPool(liveSampleMeta.source) : undefined;
   const fromRegister = liveSampleMeta?.source === "rejestr-sm";
+  // The bar describes the POOL (proposed ∪ alternates); the shortfall hint says
+  // "wszystkie ze SM …" about the SAMPLE, so it names only the proposed rows (E2E D-2).
   const cooperatives = eff ? cooperativesLabel([...eff.proposed, ...eff.alternates]) : "";
+  const sampleCooperatives = eff ? cooperativesLabel(eff.proposed) : "";
 
   // Manually-rejected rows aren't in `combined` (proposed ∪ alternates) —
   // "Odrzucone" opening the panel on one (Task 4) needs `eff.removed`
@@ -492,7 +495,7 @@ export function StepSample({
                     </b>{" "}
                     {plural(eff.proposed.length, "spełniająca", "spełniające", "spełniających")}{" "}
                     kryteria
-                    {cooperatives ? ` (wszystkie ze ${cooperatives})` : ""}; wymagane{" "}
+                    {sampleCooperatives ? ` (wszystkie ze ${sampleCooperatives})` : ""}; wymagane{" "}
                     {REQUIRED_SAMPLE_SIZE} — poszerz pasmo lub dodaj transakcje w Rejestrze.{" "}
                     {sel.counts.afterBand >= REQUIRED_SAMPLE_SIZE && eff.alternates.length > 0 ? (
                       <>

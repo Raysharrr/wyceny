@@ -3084,17 +3084,21 @@ describe("StepSample — prawo spółdzielcze, pula rejestr-sm (S3)", () => {
     // Alternatywy: rule 6 (max 3 per building) keeps it there, so the overlay's own
     // refill cannot promote it — the exact "13 in band, 6 proposed" shape from E2E.
     const sameBuilding = (i: number) => ({ ...coopCandidate(i), buildingRef: "piastowskie|1" });
-    renderCoop(
+    const { container } = renderCoop(
       makeSampleSelection({
         proposed: [sameBuilding(1), sameBuilding(2), sameBuilding(3)],
-        alternates: [sameBuilding(4)],
+        // The alternate comes from ANOTHER cooperative: the hint names only the
+        // sample's SM, the bar names the whole pool (E2E D-2).
+        alternates: [{ ...sameBuilding(4), cooperative: "SM Inna" }],
         counts: { afterBand: 13, proposed: 3 },
       }),
     );
     const hint = screen.getByTestId("registry-shortfall");
     expect(hint.textContent).toMatch(/W rejestrze biura są 3 transakcje spełniające kryteria/);
     expect(hint.textContent).not.toMatch(/13/);
-    expect(hint.textContent).toMatch(/wszystkie ze SM „Osiedle Młodych”/);
+    expect(hint.textContent).toMatch(/\(wszystkie ze SM „Osiedle Młodych”\)/);
+    expect(hint.textContent).not.toMatch(/SM „Inna”/);
+    expect(bannerText(container)).toMatch(/dane ze SM „Osiedle Młodych”, SM „Inna”/);
     expect(hint.textContent).toMatch(/wymagane 12/);
     // afterBand ≥ 12 while proposed < 12 → the real advice is the Alternatywy section.
     expect(hint.textContent).toMatch(/W Alternatywach jest 1 wiersz — dodaj go ręcznie/);
