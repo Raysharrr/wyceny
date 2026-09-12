@@ -214,6 +214,12 @@ jobs:
       SEED_LUKASZ_PASSWORD: "ci-only-not-a-real-secret"
       SEED_MONIKA_PASSWORD: "ci-only-not-a-real-secret"
       SEED_ADAM_PASSWORD: "ci-only-not-a-real-secret"
+      # Blok „Prawo spółdzielcze” E2E: server actions mint a worker token (import
+      # XLSX, manual save), and the worker's geocoder must stay off the network —
+      # `GEOCODER_STUB=1` derives a deterministic point from the address text
+      # (see `_stub_point` in apps/worker/app/main.py). CI-only values.
+      WORKER_SHARED_SECRET: "ci-only-worker-secret-not-a-real-secret"
+      GEOCODER_STUB: "1"
     services:
       postgres:
         image: postgres:16
@@ -276,8 +282,8 @@ jobs:
             timeout 300 sudo apt-get update
           fi
           if ! command -v soffice >/dev/null; then
-            timeout 600 sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui \
-              || timeout 600 sudo apt-get install -y --no-install-recommends libreoffice-writer
+            timeout 600 sudo apt-get install -y --no-install-recommends poppler-utils libreoffice-writer-nogui \
+              || timeout 600 sudo apt-get install -y --no-install-recommends poppler-utils libreoffice-writer
           fi
           if ! fc-list | grep -qi carlito; then
             timeout 300 sudo apt-get install -y --no-install-recommends fonts-crosextra-carlito
