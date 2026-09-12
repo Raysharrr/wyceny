@@ -88,13 +88,15 @@ describe("runCoopImport", () => {
       traceId,
     };
     const first = await runCoopImport({ registry, geocoder, eventLog }, input);
-    expect(first).toMatchObject({ inserted: 5, duplicates: 0, geocoded: 4, needsFix: 1 });
+    // duplicates = 1 inside the file (row 5) + 0 already in the register — one number, same as the event.
+    expect(first).toMatchObject({ inserted: 5, duplicates: 1, geocoded: 4, needsFix: 1 });
     expect(geocoderQueries.at(-1)![0]).toBe("Poznań, Zmyślona 4");
     expect(stored.filter((r) => r.pos === null).map((r) => r.address)).toEqual(["Bukowa"]);
     expect(calls).toEqual(["upsertMany", "recordBatch", "saveMapping"]);
 
     const again = await runCoopImport({ registry, geocoder, eventLog }, input);
-    expect(again).toMatchObject({ inserted: 0, duplicates: 5 });
+    expect(again).toMatchObject({ inserted: 0, duplicates: 6 });
+    expect((await eventLog.byTrace(traceId)).at(-1)!.meta).toMatchObject({ duplicates: 6 });
   });
 
   it("F-13: event_log carries counts and classes only — never an address, flat, cooperative or file name", async () => {
@@ -133,15 +135,32 @@ describe("runCoopImport", () => {
       geocoded: 4,
       needs_fix: 1,
     });
-    const dump = JSON.stringify(rows.map((r) => r.meta));
-    for (const secret of ["Zmyślona", "Orła", "Bukowa", "12", COOP, FILE, "Poznań", "xlsx"]) {
-      expect(dump, `event_log must not contain ${secret}`).not.toContain(secret);
-    }
-    // Every meta value is a number or a geocoder class — nothing free-text.
+    // The gate is on the VALUES, not on substrings of the JSON (a legal count
+    // of 12 must not turn it red — review 1 §12): every meta value is a number
+    // or one of the closed geocoder classes, and the keys are the documented set.
+    const GEOCODER_CLASSES = ["uug", "uug+nominatim"];
     for (const r of rows) {
-      for (const v of Object.values(r.meta as Record<string, unknown>)) {
-        expect(typeof v === "number" || v === "uug" || v === "uug+nominatim").toBe(true);
+      for (const [k, v] of Object.entries(r.meta as Record<string, unknown>)) {
+        expect(
+          typeof v === "number" || GEOCODER_CLASSES.includes(v as string),
+          `${r.event}.${k}`,
+        ).toBe(true);
       }
     }
+    expect(Object.keys(rows[0]!.meta as object).sort()).toEqual([
+      "attempted",
+      "failed",
+      "geocoder",
+      "resolved",
+    ]);
+    expect(Object.keys(rows[1]!.meta as object).sort()).toEqual([
+      "duplicates",
+      "geocoded",
+      "inserted",
+      "needs_fix",
+      "rows_total",
+      "skipped_bad",
+      "skipped_summary",
+    ]);
   });
 });

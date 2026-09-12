@@ -31,6 +31,7 @@ export type CoopImportInput = {
 export type CoopImportSummary = {
   batchId: string;
   inserted: number;
+  /** ONE number: duplicates inside the file + rows already in the register — the same the event carries (review 1 §8). */
   duplicates: number;
   geocoded: number;
   needsFix: number;
@@ -52,9 +53,17 @@ export async function runCoopImport(
   const usedNominatim = hits.some((h) => h?.source === "nominatim");
 
   const batchId = randomUUID();
-  const { inserted, duplicates } = await deps.registry.upsertMany(rows, {
+  const { inserted, duplicates: alreadyInRegister } = await deps.registry.upsertMany(rows, {
     userId: input.userId,
     batchId,
+  });
+  const meta = coopImportEventMeta({
+    rowsTotal: input.rowsTotal,
+    inserted,
+    duplicates: alreadyInRegister,
+    skipped: input.skipped,
+    geocoded,
+    needsFix,
   });
   await deps.registry.recordBatch({
     id: batchId,
@@ -79,18 +88,13 @@ export async function runCoopImport(
       geocoder: usedNominatim ? "uug+nominatim" : "uug",
     },
   });
-  await deps.eventLog.record({
-    ...common,
-    level: "info",
-    event: "coop.import",
-    meta: coopImportEventMeta({
-      rowsTotal: input.rowsTotal,
-      inserted,
-      duplicates,
-      skipped: input.skipped,
-      geocoded,
-      needsFix,
-    }),
-  });
-  return { batchId, inserted, duplicates, geocoded, needsFix, skipped: input.skipped };
+  await deps.eventLog.record({ ...common, level: "info", event: "coop.import", meta });
+  return {
+    batchId,
+    inserted,
+    duplicates: meta.duplicates,
+    geocoded,
+    needsFix,
+    skipped: input.skipped,
+  };
 }

@@ -66,6 +66,25 @@ describe("coop_transaction RLS (office-level, 0014)", () => {
     expect(await countAsAppRole(null)).toBe(0);
   });
 
+  it("app_role cannot write: INSERT / UPDATE / DELETE are refused (SELECT-only grant)", async () => {
+    // Not a policy — the absence of a grant. Pinned so a future GRANT INSERT
+    // "for convenience" turns this red (review 1 §13).
+    for (const stmt of [
+      sql`insert into coop_transaction (id, cooperative, address, building_number, flat_number, area, price_total, date, price_kind, source, dedupe_key, created_by) values ('x', 'c', 'a', '1', '2', 1, 1, '2025-01-01', 'nieustalona', 'manual', 'k', 'u')`,
+      sql`update coop_transaction set price_total = 1 where id = ${rowId}`,
+      sql`delete from coop_transaction where id = ${rowId}`,
+    ]) {
+      await expect(
+        db.transaction(async (tx) => {
+          await tx.execute(sql`set local role app_role`);
+          await tx.execute(sql`select set_config('app.user_id', ${userA}, true)`);
+          await tx.execute(stmt);
+        }),
+      ).rejects.toMatchObject({ cause: { code: "42501" } }); // insufficient_privilege
+    }
+    expect(await countAsAppRole(userA)).toBe(1);
+  });
+
   it("migration 0014 is re-runnable (IF NOT EXISTS / DO $$ / DROP POLICY IF EXISTS)", async () => {
     // Replays the file verbatim against the already-migrated database. This
     // is the property 0003 lacks (bare CREATE ROLE) and the reason 0014 must
