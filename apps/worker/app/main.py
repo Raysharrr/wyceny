@@ -843,8 +843,12 @@ PROSE_RETRY_INSTRUCTION = (
     # "wartości", not "liczby": since Slice 5 the list can also hold an obręb
     # name the facts never carried (`prose.validate_obreby`), and telling the
     # model that "Naramowice" is a number teaches it nothing about the fix.
-    "UWAGA: poprzednia wersja tej sekcji zawierała wartości spoza DANE: {numbers}. "
-    "Napisz ją ponownie, używając wyłącznie liczb i nazw z DANE poniżej.\n\n"
+    # S5: the list can also carry an ownership phrase forbidden for the cooperative
+    # right (`prose.validate_property_right`) — "stick to DANE" is the wrong fix for
+    # that one, so the closing sentence stays neutral: fix the named spots, keep the rest.
+    "UWAGA: poprzednia wersja tej sekcji zawierała niedozwolone wartości lub sformułowania: "
+    "{numbers}. Napisz ją ponownie — popraw wskazane miejsca, nie zmieniając pozostałej treści, "
+    "i używaj wyłącznie liczb i nazw z DANE poniżej.\n\n"
     # Trailing blank line on purpose: this block sits directly in front of the
     # validated prompt, and nothing guarantees the API puts a separator between
     # two adjacent text blocks. Without it the model could see

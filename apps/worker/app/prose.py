@@ -409,19 +409,32 @@ PROPERTY_RIGHT_SENTENCE: dict[str, str] = {
     ),
     "spoldzielcze_wlasnosciowe": (
         "Przedmiotem wyceny jest spółdzielcze własnościowe prawo do lokalu — tak nazywaj "
-        "przedmiot wyceny; NIE pisz o „prawie własności”, „nieruchomości lokalowej” ani "
-        "„udziale w gruncie”, bo lokal nie jest odrębną nieruchomością."
+        "przedmiot wyceny; NIE pisz o „prawie własności” (ani „prawo/prawa własności”), "
+        "„nieruchomości lokalowej” (ani „nieruchomość lokalowa/lokalowych”) ani „udziale w gruncie”, "
+        "bo lokal nie jest odrębną nieruchomością."
     ),
 }
 
-# Straż słownictwa własnościowego dla prawa spółdzielczego — ta sama lista co straż
-# tekstowa F-12 po stronie web (f12-document-sections.test.ts), sprawdzana na
-# wygenerowanym tekście, którego F-12 nie widzi (mierzy render z pustą prozą).
+# Straż słownictwa własnościowego dla prawa spółdzielczego — CZTERY pojęcia z §11 specu
+# bloku (prawo własności, nieruchomość lokalowa, udział w gruncie) w odmianach, jakie
+# pisze model; sprawdzana na wygenerowanym tekście, którego F-12 nie widzi (mierzy
+# render z pustą prozą). Świadomie NIE jest to lista F-12 (14 fraz szablonu) — tamta
+# dałaby fałszywe trafienia w prozie. Żadna forma nie jest podciągiem poprawnej nazwy
+# „spółdzielcze własnościowe prawo do lokalu” w żadnym przypadku (test).
 OWNERSHIP_PHRASES: tuple[str, ...] = (
     "prawa własności",
     "prawo własności",
+    "prawem własności",
+    "prawie własności",
+    "nieruchomość lokalowa",
+    "nieruchomość lokalową",
     "nieruchomości lokalowej",
+    "nieruchomości lokalowych",
+    "nieruchomościami lokalowymi",
     "udział w gruncie",
+    "udziału w gruncie",
+    "udziałem w gruncie",
+    "udziale w gruncie",
 )
 
 
@@ -452,8 +465,9 @@ def build_prompt(section: str, facts: dict, property_right: str | None = None) -
 
     style = (PROMPTS_DIR / "_style.md").read_text(encoding="utf-8").strip()
     task, examples = parse_section_file(PROMPTS_DIR / f"{section}.md")
-    if property_right is not None:
-        task = f"{task}\n{PROPERTY_RIGHT_SENTENCE[property_right]}"
+    sentence = PROPERTY_RIGHT_SENTENCE.get(property_right) if property_right else None
+    if sentence:
+        task = f"{task}\n{sentence}"
 
     blocks = [
         f"PRZYKŁAD — DANE:\n{_dumps(data)}\nPRZYKŁAD — TEKST SEKCJI:\n{text}"

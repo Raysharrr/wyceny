@@ -552,3 +552,32 @@ def test_rodzaj_prawa_wchodzi_do_promptu_poza_faktami(monkeypatch):
 
 def test_nieznany_rodzaj_prawa_422():
     assert post_right(mint(), ["analiza_rynku"], "uzytkowanie_wieczyste").status_code == 422
+
+
+def test_odmiany_pojec_wlasnosciowych_sa_lapane_i_nie_koliduja_z_nazwa_prawa(monkeypatch):
+    """MAJOR-1 review 1: „nieruchomości lokalowych” (żywa proza ze zrzutu PR) przechodziła."""
+    text = (
+        "Rynek wtórny nieruchomości lokalowych o funkcji mieszkalnej; lokal z udziałem w gruncie."
+    )
+    found = prose_core.validate_property_right(text, "spoldzielcze_wlasnosciowe")
+    assert any("nieruchomości lokalowych" in f for f in found)
+    assert any("udziałem w gruncie" in f for f in found)
+    # poprawna nazwa prawa w każdym przypadku NIE jest odrzucana
+    for ok in (
+        "spółdzielcze własnościowe prawo do lokalu",
+        "spółdzielczego własnościowego prawa do lokalu",
+        "spółdzielczym własnościowym prawem do lokalu",
+        "spółdzielczemu własnościowemu prawu do lokalu",
+        "spółdzielczym własnościowym prawie do lokalu",
+    ):
+        assert prose_core.validate_property_right(ok, "spoldzielcze_wlasnosciowe") == []
+    # zdanie promptu i straż mówią o tych samych pojęciach
+    for phrase in ("prawie własności", "nieruchomości lokalowej", "udziale w gruncie"):
+        assert phrase in prose_core.PROPERTY_RIGHT_SENTENCE["spoldzielcze_wlasnosciowe"]
+        assert phrase in prose_core.OWNERSHIP_PHRASES
+
+
+def test_nieznany_rodzaj_prawa_w_build_prompt_nie_rzuca():
+    assert prose_core.build_prompt("analiza_rynku", FAKTY, "cos_innego") == prose_core.build_prompt(
+        "analiza_rynku", FAKTY
+    )
