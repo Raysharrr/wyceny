@@ -70,6 +70,16 @@ function toInsert(
 }
 
 const t = schema.coopTransaction;
+
+function isDedupeConflict(err: unknown): boolean {
+  const e = err as {
+    code?: string;
+    constraint?: string;
+    cause?: { code?: string; constraint?: string };
+  };
+  const pg = e.code ? e : e.cause;
+  return pg?.code === "23505" && pg.constraint === "coop_transaction_dedupe";
+}
 const INSERT_CHUNK = 200;
 /** Paged listing (screens) — a radius query is a POOL, not a page: see `LIST_CAP`. */
 const DEFAULT_PAGE = 50;
@@ -133,17 +143,27 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
     },
 
     async save(row, by) {
+      // Import guards area > 0 (bad_number); the manual path must too, or
+      // pricePerM2 becomes Infinity (review 1 §16).
+      if (!(row.area > 0) || !(row.priceTotal > 0)) return { ok: false, reason: "invalid" };
       const values = toInsert(row, row.id ?? randomUUID(), { userId: by.userId, batchId: null });
-      // Replace everything but identity and authorship on conflict.
+      // A correction replaces the facts, never identity, authorship or
+      // provenance: source and import batch stay as imported (review 1 §7).
       const update = { ...values };
-      delete (update as { id?: string }).id;
-      delete (update as { createdBy?: string }).createdBy;
-      const [saved] = await db
-        .insert(t)
-        .values(values)
-        .onConflictDoUpdate({ target: t.id, set: update })
-        .returning();
-      return toTransaction(saved!);
+      for (const k of ["id", "createdBy", "source", "importBatchId"] as const) delete update[k];
+      try {
+        const [saved] = await db
+          .insert(t)
+          .values(values)
+          .onConflictDoUpdate({ target: t.id, set: update })
+          .returning();
+        return { ok: true, row: toTransaction(saved!) };
+      } catch (err) {
+        // 23505 on coop_transaction_dedupe: the Postgres DETAIL carries the
+        // dedupe key (address + flat) — swallowed here, never re-thrown (F-13).
+        if (isDedupeConflict(err)) return { ok: false, reason: "duplicate" };
+        throw err;
+      }
     },
 
     async remove(id) {

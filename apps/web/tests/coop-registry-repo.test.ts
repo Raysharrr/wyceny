@@ -109,17 +109,41 @@ describe("coopRegistryRepo", () => {
     expect(s.lastImport).toMatchObject({ file: "syntetyczny.xlsx", rows: 5 });
   });
 
-  it("save inserts a manual row and replaces it by id (corrected pos); remove deletes it", async () => {
-    const manual = await repo.save(
+  it("save inserts a manual row and corrects it by id (pos); remove deletes it", async () => {
+    const saved = await repo.save(
       { ...rows[4]!, source: "manual", dedupeKey: `manual|${stamp}`, pos: null },
       { userId: USER },
     );
-    expect(manual.pos).toBeNull();
-    const fixed = await repo.save({ ...manual, pos: { x: 1, y: 2 } }, { userId: USER });
-    expect(fixed.id).toBe(manual.id);
-    expect(fixed.pos).toEqual({ x: 1, y: 2 });
-    await repo.remove(manual.id);
+    if (!saved.ok) throw new Error(saved.reason);
+    expect(saved.row.pos).toBeNull();
+    const fixed = await repo.save({ ...saved.row, pos: { x: 1, y: 2 } }, { userId: USER });
+    if (!fixed.ok) throw new Error(fixed.reason);
+    expect(fixed.row.id).toBe(saved.row.id);
+    expect(fixed.row.pos).toEqual({ x: 1, y: 2 });
+    await repo.remove(saved.row.id);
     expect((await repo.list({ text: rows[4]!.address, cooperative: COOP })).total).toBe(1);
+  });
+
+  it("save on an existing dedupe key answers { ok: false, duplicate } without leaking the key", async () => {
+    const dup = await repo.save({ ...rows[0]!, source: "manual" }, { userId: USER });
+    expect(dup).toEqual({ ok: false, reason: "duplicate" });
+    expect(await repo.save({ ...rows[0]!, area: 0 }, { userId: USER })).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
+  });
+
+  it("correcting an imported row keeps its source and import batch", async () => {
+    const imported = (await repo.list({ cooperative: COOP, text: "Zmyślona" })).rows[0]!;
+    const fixed = await repo.save({ ...imported, pos: { x: 9, y: 9 } }, { userId: "someone-else" });
+    if (!fixed.ok) throw new Error(fixed.reason);
+    expect(fixed.row.source).toBe("xls");
+    const [raw] = await db
+      .select()
+      .from(schema.coopTransaction)
+      .where(like(schema.coopTransaction.id, fixed.row.id));
+    expect(raw!.importBatchId).toBe("batch-1");
+    expect(raw!.createdBy).toBe(USER);
   });
 
   it("remembers one column mapping per cooperative", async () => {

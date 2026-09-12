@@ -86,8 +86,16 @@ export interface PortCoopRegistry {
     rows: NewCoopTransaction[],
     by: { userId: string; batchId: string | null },
   ): Promise<{ inserted: number; duplicates: number }>;
-  /** Manual form: insert, or replace the row with that `id` (e.g. a corrected `pos`). */
-  save(row: NewCoopTransaction & { id?: string }, by: { userId: string }): Promise<CoopTransaction>;
+  /**
+   * Manual form: insert, or correct the row with that `id` (e.g. a fixed `pos`).
+   * A correction keeps the row's `source` and import batch. `duplicate` =
+   * another row already carries this `dedupeKey` — the screen says so in
+   * Polish; the key itself (address + flat) never leaves the adapter (F-13).
+   */
+  save(
+    row: NewCoopTransaction & { id?: string },
+    by: { userId: string },
+  ): Promise<{ ok: true; row: CoopTransaction } | { ok: false; reason: "duplicate" | "invalid" }>;
   remove(id: string): Promise<void>;
   stats(): Promise<CoopRegistryStats>;
   recordBatch(batch: CoopImportBatch): Promise<void>;
