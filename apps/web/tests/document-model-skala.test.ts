@@ -23,6 +23,7 @@ function modelWith(features: KcsInput["features"]) {
     area: 50,
     purpose: "sprzedaz",
     kwNumber: "AB1C/1/1",
+    propertyRight: "wlasnosc_lokalu" as const,
     client: "Klient Testowy",
     inspectionDate: "2026-07-01",
     approvedAt: new Date("2026-07-02T00:00:00Z"),

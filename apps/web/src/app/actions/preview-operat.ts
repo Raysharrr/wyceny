@@ -169,6 +169,7 @@ export async function previewOperat(
           area: valuation.area,
           purpose: valuation.purpose as OperatPurpose,
           kwNumber: valuation.kwNumber,
+          propertyRight: valuation.propertyRight,
           client: valuation.client ?? "",
           inspectionDate: valuation.inspectionDate ?? "",
           // The preview's "data sporządzenia" is TODAY; the issued operat gets

@@ -1,5 +1,5 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
-import type { PropertyRight } from "./property-right";
+import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
@@ -293,6 +293,24 @@ export type DocumentModel = {
   mpzp: MpzpBlock | null;
   mpzp_brak: boolean;
   przeznaczenie_studium: string;
+  // Property right (T-12, S4) — the four mechanisms of the Piastowskie diff:
+  // `prawo_wlasnosc`/`prawo_spoldzielcze` are a mutually exclusive pair (exactly
+  // one true) switching the template's inline alternatives and fenced blocks;
+  // `przedmiot_m`/`przedmiot_d` carry the subject phrase (nominative/genitive);
+  // `ma_kw`/`kw_brak` are a second exclusive pair — the no-KW sentence prints
+  // ONLY when the right has no księga of its own AND no number was given;
+  // `ma_piwnice` prints the basement clause ONLY when the right has one AND
+  // step 1 ticked the box (własność: never, whatever the stale checkbox says).
+  prawo_wlasnosc: boolean;
+  prawo_spoldzielcze: boolean;
+  przedmiot_m: string;
+  przedmiot_d: string;
+  podstawa_prawa: string;
+  ma_kw: boolean;
+  kw_brak: boolean;
+  klauzula_brak_kw: string;
+  ma_piwnice: boolean;
+  klauzula_piwnicy: string;
   wr: string;
   wr_slownie: string;
   wr_dokladna: string;
@@ -394,8 +412,10 @@ export type BuildDocumentInput = {
   address: string;
   area: number;
   purpose: OperatPurpose;
-  /** null = no KW (coop right, T-12); printed as "—" until S4 adds the "nie założono KW" wording. */
+  /** null = no KW number given; with a coop right that prints the "nie założono KW" sentence (S4). */
   kwNumber: string | null;
+  /** Rodzaj prawa (T-12) — `Valuation.propertyRight`, never null (legacy rows = własność). */
+  propertyRight: PropertyRight;
   client: string;
   /** ISO date from the form (YYYY-MM-DD). */
   inspectionDate: string;
@@ -431,6 +451,9 @@ export function buildDocumentModel(
     subject.mpzpAbsent !== true &&
     Boolean(subject.mpzpSymbol || subject.mpzpNazwa || subject.mpzpUchwala);
   const kw = inputs.kw ?? null;
+  const rightDoc = PROPERTY_RIGHT_DOC[input.propertyRight];
+  const kwBrak = rightDoc.klauzulaBrakKw !== null && !input.kwNumber;
+  const maPiwnice = rightDoc.klauzulaPiwnicy !== null && inputs.hasBasement === true;
   // Blank reads as absent: `confirmProseSnapshot` already drops a field the
   // appraiser cleared, but a legacy or half-written snapshot (no gate when the
   // kill-switch is off) can still carry whitespace, and a paragraph of spaces
@@ -533,6 +556,16 @@ export function buildDocumentModel(
       : null,
     mpzp_brak: subject?.mpzpAbsent === true,
     przeznaczenie_studium: subject?.przeznaczenieStudium || DASH,
+    prawo_wlasnosc: input.propertyRight === "wlasnosc_lokalu",
+    prawo_spoldzielcze: input.propertyRight === "spoldzielcze_wlasnosciowe",
+    przedmiot_m: rightDoc.przedmiot.mianownik,
+    przedmiot_d: rightDoc.przedmiot.dopelniacz,
+    podstawa_prawa: rightDoc.podstawyPrawne[0],
+    ma_kw: !kwBrak,
+    kw_brak: kwBrak,
+    klauzula_brak_kw: kwBrak ? rightDoc.klauzulaBrakKw! : "",
+    ma_piwnice: maPiwnice,
+    klauzula_piwnicy: maPiwnice ? rightDoc.klauzulaPiwnicy! : "",
     wr: formatPln(kcs.wr),
     wr_slownie: input.amountInWords,
     wr_dokladna: formatPln(kcs.wrUnrounded),
