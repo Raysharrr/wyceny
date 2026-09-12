@@ -1,13 +1,18 @@
 """GEOCODER_STUB=1 — deterministic offline geocoder for CI / E2E (no network)."""
 
+import json
+from pathlib import Path
+
 import pytest
 
-from app import main
+from app import main, subject
 
 
 @pytest.fixture(autouse=True)
 def stub_env(monkeypatch):
     monkeypatch.setenv("GEOCODER_STUB", "1")
+    monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("VERCEL_ENV", raising=False)
 
 
 def test_stub_is_deterministic_and_close_to_one_centre():
@@ -27,9 +32,35 @@ def test_stub_never_touches_the_network(monkeypatch):
 
     monkeypatch.setattr(main.subject, "geocode_address", boom)
     monkeypatch.setattr(main.rcn, "geocode", boom)
-    assert main.resolve_point("ul. Zmyślona 1, Poznań", None)[2] == "uug"
+    assert main.resolve_point("ul. Bukowa 1, Poznań", None)[2] == "uug"
+
+
+def test_sentinel_address_is_refused_like_a_real_miss():
+    with pytest.raises(subject.AddressNotFound):
+        main.resolve_point("Poznań, os. Zmyślona Nieistniejąca 99", None)
 
 
 def test_step_one_point_still_wins():
     point = main.SamplePoint(x=1.0, y=2.0, srid=2180)
     assert main.resolve_point("cokolwiek", point) == (1.0, 2.0, "subject")
+
+
+@pytest.mark.parametrize("marker", ["RAILWAY_ENVIRONMENT", "VERCEL_ENV"])
+def test_stub_refuses_to_run_next_to_a_hosting_marker(monkeypatch, marker):
+    monkeypatch.setenv(marker, "production")
+    with pytest.raises(RuntimeError, match="GEOCODER_STUB"):
+        main.geocoder_stub_enabled()
+
+
+def test_stub_off_by_default(monkeypatch):
+    monkeypatch.delenv("GEOCODER_STUB")
+    assert main.geocoder_stub_enabled() is False
+
+
+def test_ownership_phrases_match_the_e2e_copy():
+    """The E2E spec asserts the operat PDF against a COPY of `OWNERSHIP_PHRASES`
+    (it cannot import Python) — this pins the two lists together."""
+    copy = (
+        Path(__file__).resolve().parents[2] / "web" / "e2e" / "fixtures" / "ownership-phrases.json"
+    )
+    assert json.loads(copy.read_text(encoding="utf-8")) == list(main.prose_core.OWNERSHIP_PHRASES)
