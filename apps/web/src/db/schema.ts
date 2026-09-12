@@ -56,6 +56,13 @@ export const valuation = pgTable("valuation", {
   docxUrl: text("docx_url"),
   // Slice 4 document fields — nullable for legacy rows; approval blocks when missing.
   purpose: text("purpose", { enum: ["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"] }),
+  // Rodzaj prawa (T-12, migration 0013): a column like `purpose`, NOT NULL with
+  // the pre-block default so every existing valuation stays "własność lokalu".
+  propertyRight: text("property_right", {
+    enum: ["wlasnosc_lokalu", "spoldzielcze_wlasnosciowe"],
+  })
+    .notNull()
+    .default("wlasnosc_lokalu"),
   kwNumber: text("kw_number"),
   client: text("client"),
   inspectionDate: date("inspection_date"),

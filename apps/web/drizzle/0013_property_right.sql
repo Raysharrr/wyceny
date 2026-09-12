@@ -1,0 +1,1 @@
+ALTER TABLE "valuation" ADD COLUMN "property_right" text DEFAULT 'wlasnosc_lokalu' NOT NULL;
