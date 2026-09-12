@@ -53,8 +53,9 @@ export type CoopRegistryQuery = {
   /**
    * Radius search in EPSG:2180 metres; rows with `pos = null` never match.
    * A radius query returns the WHOLE pool (no implicit page) up to the
-   * adapter's ceiling of 5 000 rows — check `truncated` before building a
-   * sample on the result. Without `near`, the default page is 50.
+   * adapter's ceiling of 5 000 rows — `truncated: true` means the ceiling
+   * cut it and no sample may be built on the result. Without `near`, the
+   * default page is 50 and `hasMore` drives paging.
    */
   near?: { x: number; y: number; radiusM: number };
   /** ISO date — rows on/after it. */
@@ -84,7 +85,17 @@ export type CoopRegistryStats = {
 
 export interface PortCoopRegistry {
   /** `as` switches the read to `app_role` under the office-level RLS policy (0014); omitted = superuser read. */
-  list(q: CoopRegistryQuery, as?: SessionUser): Promise<{ rows: CoopTransaction[]; total: number }>;
+  list(
+    q: CoopRegistryQuery,
+    as?: SessionUser,
+  ): Promise<{
+    rows: CoopTransaction[];
+    total: number;
+    /** More rows beyond this page (`limit`/`offset`) — paging, screens. */
+    hasMore: boolean;
+    /** The adapter's 5 000-row ceiling cut the result: the pool is INCOMPLETE. Never true for a mere page. */
+    truncated: boolean;
+  }>;
   /**
    * Inserts what is new by `dedupeKey`. The key is content-based (never the
    * row's position), so re-importing the same file — or an updated one with

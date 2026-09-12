@@ -118,7 +118,15 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
           .limit(limit)
           .offset(offset);
         const [{ n }] = await x.select({ n: count() }).from(t).where(where);
-        return { rows: rows.map(toTransaction), total: n, truncated: offset + rows.length < n };
+        const hasMore = offset + rows.length < n;
+        // One meaning each: hasMore = there is a next page; truncated = the
+        // ceiling itself bit, so the pool is incomplete (review 2 §10).
+        return {
+          rows: rows.map(toTransaction),
+          total: n,
+          hasMore,
+          truncated: limit === LIST_CAP && hasMore,
+        };
       };
       if (!as) return run(db);
       return db.transaction(async (tx) => {
