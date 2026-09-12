@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/save-coop-transaction";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { parseCoopNumber } from "@/domain/coop-import";
 import { fmtNum } from "@/lib/coop-format";
 import { PRICE_KINDS, type PriceKind } from "@/ports/coop-registry";
 
@@ -23,8 +24,7 @@ const PRICE_KIND_LABEL: Record<PriceKind, string> = {
   nieustalona: "nieustalona",
 };
 
-/** "48,10" / "521 885,00" → number; NaN when unreadable (the server re-validates). */
-const num = (s: string) => Number(s.replace(/\s/g, "").replace(",", "."));
+const UNREADABLE = "Nie udało się odczytać liczby — wpisz np. 48,10 albo 521 885,00.";
 
 type Fields = Record<keyof Omit<SaveCoopTransactionInput, "priceKind" | "rightType">, string>;
 const EMPTY: Fields = {
@@ -57,19 +57,23 @@ export function TransactionForm({ cooperatives }: { cooperatives: string[] }) {
   const set = (k: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF((p) => ({ ...p, [k]: e.target.value }));
   const cooperative = coopChoice === NEW_COOP ? f.cooperative : coopChoice;
-  const area = num(f.area);
-  const price = num(f.priceTotal);
-  const unit = area > 0 && price > 0 ? fmtNum(price / area) : null;
+  // m-6: the domain parser — knows Polish register formats and refuses ambiguous "1.234".
+  const area = f.area.trim() ? parseCoopNumber(f.area) : null;
+  const price = f.priceTotal.trim() ? parseCoopNumber(f.priceTotal) : null;
+  const unit = area && price && area > 0 && price > 0 ? fmtNum(price / area) : null;
 
   const submit = (andNext: boolean) =>
     start(async () => {
       setError(null);
       setSaved(null);
+      if (f.area.trim() && area === null) return setError({ message: UNREADABLE, field: "area" });
+      if (f.priceTotal.trim() && price === null)
+        return setError({ message: UNREADABLE, field: "priceTotal" });
       const r = await saveCoopTransaction({
         ...f,
         cooperative,
-        area: f.area ? num(f.area) : "",
-        priceTotal: f.priceTotal ? num(f.priceTotal) : "",
+        area: area ?? "",
+        priceTotal: price ?? "",
         floor: f.floor || null,
         rooms: f.rooms || null,
         buildYear: f.buildYear || null,
@@ -79,8 +83,10 @@ export function TransactionForm({ cooperatives }: { cooperatives: string[] }) {
       });
       if (!r.ok) return setError({ message: r.error, field: r.field });
       if (andNext) {
-        // Keeps cooperative, city and price kind — the next row is usually from the same source.
+        // Keeps cooperative, city and price kind — the next row is usually from the
+        // same source. Right type is reset: a legal attribute chosen per row (m-5).
         setF((p) => ({ ...EMPTY, cooperative: p.cooperative, city: p.city }));
+        setRightType("");
         setSaved({ needsFix: r.needsFix });
       } else {
         router.push(r.needsFix ? "/rejestr?lokalizacja=do-poprawki&okres=all" : "/rejestr");
@@ -110,7 +116,7 @@ export function TransactionForm({ cooperatives }: { cooperatives: string[] }) {
       className="flex flex-col gap-5"
       onSubmit={(e) => {
         e.preventDefault();
-        submit(false);
+        if (!pending) submit(false); // NIT-6: Enter while saving must not double-submit
       }}
     >
       <section className="rounded-xl border border-border bg-card p-5">
