@@ -51,9 +51,12 @@ export const HELP_PAGES: HelpPage[] = [
       "działka",
       "cel wyceny",
       "zamawiający",
+      "rodzaj prawa",
+      "spółdzielcze własnościowe prawo",
+      "piwnica",
     ],
     summary:
-      "Adres uruchamia pobranie danych działki, budynku i planu; KW z dokumentu albo z ręki.",
+      "Adres uruchamia pobranie danych działki, budynku i planu; rodzaj prawa (własność albo spółdzielcze); KW z dokumentu albo z ręki.",
     load: () => import("./jak-korzystac/krok-1-przedmiot.mdx"),
   },
   {

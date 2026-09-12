@@ -48,6 +48,27 @@ Gdy dla działki nie ma żadnego planu miejscowego, pobranie samo zaznacza **„
 
 Po udanym pobraniu w panelu obok formularza pojawia się mapa ewidencyjna działki i ortofotomapa okolicy. To wyłącznie podgląd: mapy do operatu pobierane są osobno przy zatwierdzeniu.
 
+### Rodzaj prawa
+
+Na górze karty „Księga wieczysta” wybierasz, jakie prawo do lokalu wyceniasz: **Własność lokalu** (domyślnie — tak działały wszystkie dotychczasowe wyceny) albo **Spółdzielcze własnościowe prawo do lokalu**. Wybór zmienia trzy rzeczy:
+
+- **Księga wieczysta nie jest wymagana.** Spółdzielcze prawo zwykle nie ma własnej księgi, więc numer KW przy „Wpisz ręcznie” możesz zostawić pusty, a przy dokumencie — pusty numer KW gruntu (księgi macierzystej). Jeśli księga jest założona, wpisz ją jak dotąd; aplikacja niczego nie wpisze za Ciebie. Krok 7 nie zablokuje zatwierdzenia z powodu brakującej KW gruntu.
+- **Piwnica.** Zaznaczenie „Lokal ma przynależną piwnicę” dodaje do operatu klauzulę o pomieszczeniu przynależnym (właściciele spółdzielczego prawa mogą korzystać z piwnicy, ale nie jest ona objęta tym prawem).
+- **Próba porównawcza z rejestru biura.** Transakcje spółdzielcze nie występują w RCN, więc w kroku 3 próbę dla tego prawa pobierzemy z rejestru prowadzonego przez biuro (zakładka „Rejestr spółdzielczy”). Ten rejestr i dobór z niego pojawią się w następnym wydaniu — do tego czasu w kroku 3 transakcje spółdzielcze wpisujesz ręcznie.
+
+<img
+  src="/api/pomoc/krok-1-rodzaj-prawa.png"
+  alt="Karta „Księga wieczysta” w kroku 1 z wybranym spółdzielczym własnościowym prawem do lokalu: dwa przyciski rodzaju prawa, ramka o próbie z rejestru biura, checkbox „Lokal ma przynależną piwnicę” z podpisem o klauzuli oraz trzy źródła stanu prawnego z polem numeru księgi wieczystej."
+  style={{
+    width: "100%",
+    height: "auto",
+    borderRadius: "8px",
+    border: "1px solid rgba(0,0,0,0.08)",
+  }}
+/>
+
+Rodzaj prawa jest zapisywany z wyceną i można go zmienić przy każdej edycji kroku 1. Sam wybór nie kasuje ani kwoty, ani opisów.
+
 ### Księga wieczysta
 
 Wybierasz jedno z trzech źródeł: „Wgraj akt notarialny”, „Wgraj odpis KW” albo „Wpisz ręcznie”.
@@ -68,7 +89,7 @@ Pole „Lokal bez własnej KW (zakup deweloperski)” pojawia się wyłącznie w
 - **Powierzchnia (m²)** — z dokumentu albo własna.
 - **Cel wyceny** — Sprzedaż, Zabezpieczenie kredytu albo Informacyjny.
 - **Zamawiający wycenę.**
-- **Numer księgi wieczystej** — gdy wybrałeś „Wpisz ręcznie”.
+- **Numer księgi wieczystej** — gdy wybrałeś „Wpisz ręcznie” i wyceniasz własność lokalu; przy spółdzielczym prawie pole może zostać puste.
 - Pola, których źródła nie zwróciły — najczęściej rok budowy.
 - **Brak obowiązującego MPZP** — do zaznaczenia, gdy planu nie ma, a pobranie samo go nie zaznaczyło; pola planu ustąpią wtedy miejsca polu „Przeznaczenie wg studium/decyzji WZ”.
 
@@ -78,7 +99,7 @@ Przycisk „Dane się zgadzają — dalej” zapisuje krok. Zapis nie przejdzie 
 
 Zapis kroku kasuje zatwierdzoną wartość rynkową **tylko wtedy, gdy zmieniłeś powierzchnię**. Powierzchnia to jedyne pole tego kroku, które wchodzi do wzoru (`WR = Cśr × ΣUi × P`), więc tylko jej zmiana każe wrócić do kroku 5 — a do tego czasu kroki 6 i 7 są z powrotem niedostępne. Poprawka adresu, zamawiającego, celu wyceny, numeru księgi albo danych przedmiotu zostawia kwotę nietkniętą.
 
-Numer księgi wieczystej jest wymagany tylko wtedy, gdy nie wgrałeś dokumentu. W trybie wgrywania pusty formularz kończy się komunikatem „Wgraj dokument albo przełącz na wpis ręczny”.
+Numer księgi wieczystej jest wymagany tylko wtedy, gdy nie wgrałeś dokumentu i wyceniasz własność lokalu — przy spółdzielczym własnościowym prawie pole może zostać puste. W trybie wgrywania pusty formularz kończy się komunikatem „Wgraj dokument albo przełącz na wpis ręczny”.
 
 Plik inny niż PDF albo większy niż 32 MB jest odrzucany od razu, bez wysyłania.
 
