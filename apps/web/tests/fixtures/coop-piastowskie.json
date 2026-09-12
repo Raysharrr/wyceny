@@ -1,0 +1,30 @@
+{
+  "name": "Piastowskie — spółdzielcze własnościowe prawo, operat wzorcowy 2026-08-24 (T-12, S4)",
+  "note": "15 rows EXACTLY as pasted by the appraiser into her sheet — BEFORE deduplication (rows 3 and 4 are the registry duplicate Lp. 194/197). pricePerM2 is derived in the test as priceTotal / area in full precision, like column M = L/H in the sheet. Numbers only: no addresses, no names.",
+  "subjectArea": 43.34,
+  "rows": [
+    { "date": "2025-08", "area": 43.9, "priceTotal": 420000 },
+    { "date": "2025-08", "area": 43.34, "priceTotal": 439000 },
+    { "date": "2025-08", "area": 43.34, "priceTotal": 450000 },
+    { "date": "2025-08", "area": 43.34, "priceTotal": 450000 },
+    { "date": "2025-09", "area": 48.4, "priceTotal": 512000 },
+    { "date": "2025-09", "area": 43.34, "priceTotal": 413000 },
+    { "date": "2025-09", "area": 43.7, "priceTotal": 430000 },
+    { "date": "2025-09", "area": 43.34, "priceTotal": 459000 },
+    { "date": "2025-09", "area": 43.7, "priceTotal": 425000 },
+    { "date": "2025-10", "area": 43.7, "priceTotal": 410000 },
+    { "date": "2025-10", "area": 43.7, "priceTotal": 420000 },
+    { "date": "2025-12", "area": 48.4, "priceTotal": 450000 },
+    { "date": "2025-12", "area": 43.7, "priceTotal": 440000 },
+    { "date": "2025-12", "area": 43.7, "priceTotal": 440000 },
+    { "date": "2026-01", "area": 43.7, "priceTotal": 412000 }
+  ],
+  "features": [
+    { "name": "standard wykończenia", "weight": 0.4, "rating": "przecietna" },
+    { "name": "powierzchnia użytkowa", "weight": 0.2, "rating": "lepsza" },
+    { "name": "położenie na piętrze", "weight": 0.3, "rating": "lepsza" },
+    { "name": "lokalizacja szczegółowa", "weight": 0.1, "rating": "lepsza" }
+  ],
+  "expected": { "csr": 9905.47, "sumUi": 1.041, "unitValue": 10311.59, "wr": 446900 },
+  "operatWr": 447300
+}
