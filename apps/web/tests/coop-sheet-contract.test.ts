@@ -44,7 +44,7 @@ describe("httpCoopSheet", () => {
 });
 
 describe("httpGeocoder", () => {
-  it("chunks by 50, keeps order, passes null through", async () => {
+  it("chunks by 20, keeps order, passes null through", async () => {
     const fn = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
       const { addresses } = JSON.parse(init.body as string) as { addresses: string[] };
       return new Response(
@@ -61,9 +61,29 @@ describe("httpGeocoder", () => {
     );
     const out = await httpGeocoder("http://w").geocodeMany(addresses, "tok");
     expect(out).toHaveLength(120);
-    expect(fn).toHaveBeenCalledTimes(3);
+    expect(fn).toHaveBeenCalledTimes(6);
     expect(out[7]).toBeNull();
-    expect(out[50]).toEqual({ x: 0, y: 0, source: "uug" });
+    expect(out[20]).toEqual({ x: 0, y: 0, source: "uug" });
     expect(JSON.parse(fn.mock.calls[0]![1].body).token).toBe("tok");
+  });
+
+  it("a failed chunk degrades to null for its addresses; the rest still resolve", async () => {
+    let call = 0;
+    const fn = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const { addresses } = JSON.parse(init.body as string) as { addresses: string[] };
+      if (call++ === 0) return new Response("upstream timeout", { status: 502 });
+      return new Response(
+        JSON.stringify({ results: addresses.map(() => ({ x: 1, y: 1, source: "uug" })) }),
+      );
+    });
+    global.fetch = fn as unknown as typeof fetch;
+    const errors: string[] = [];
+    const out = await httpGeocoder("http://w", (e) => errors.push(e)).geocodeMany(
+      Array.from({ length: 25 }, (_, i) => `Poznań, Zmyślona ${i}`),
+      "tok",
+    );
+    expect(out.slice(0, 20).every((h) => h === null)).toBe(true);
+    expect(out.slice(20).every((h) => h !== null)).toBe(true);
+    expect(errors).toEqual(["Error"]);
   });
 });

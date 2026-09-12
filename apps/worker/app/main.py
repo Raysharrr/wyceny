@@ -669,7 +669,11 @@ def coop_sheet(file: UploadFile = File(...), token: str = Form(...)) -> CoopShee
     return CoopSheetResponse(sheets=[CoopSheet(**s) for s in sheets])
 
 
-GEOCODE_BATCH_MAX = 50
+# 20, not 50: a chunk that goes entirely through the Nominatim fallback costs
+# ~(UUG miss + Nominatim + 1 s pause) ≈ 2.5 s per address — 20 × 2.5 s = 50 s,
+# inside the web adapter's 55 s timeout (adapters/geocoder-http.ts).
+GEOCODE_BATCH_MAX = 20
+NOMINATIM_PAUSE_S = 1.0
 
 
 class GeocodeBatchRequest(BaseModel):
@@ -701,13 +705,17 @@ def geocode_batch(request: GeocodeBatchRequest) -> GeocodeBatchResponse:
     _require_token(request.token)
     results: list[GeocodeHit | None] = []
     for address in request.addresses:
+        touched_nominatim = True  # resolve_point reaches Nominatim whenever UUG misses
         try:
             x, y, source = resolve_point(address, None)
             results.append(GeocodeHit(x=x, y=y, source=source))  # type: ignore[arg-type]
-            if source == "nominatim":
-                time.sleep(1.0)
+            touched_nominatim = source == "nominatim"
         except Exception:
             results.append(None)
+        # Politeness pause after EVERY Nominatim contact, hit or miss (1 req/s
+        # policy on a service the RCN path shares) — review 1 §4.
+        if touched_nominatim:
+            time.sleep(NOMINATIM_PAUSE_S)
     resolved = sum(1 for r in results if r is not None)
     # F-13: numbers only — no address ever reaches the log.
     logger.info("coop_geocode_batch", attempted=len(results), resolved=resolved)

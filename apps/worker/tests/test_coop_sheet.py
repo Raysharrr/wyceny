@@ -113,6 +113,25 @@ def test_geocode_batch_returns_hit_or_none_per_address_sequentially(monkeypatch)
     assert calls == ["Poznań, Zmyślona 4", "Poznań, brak 1"]
 
 
+def test_geocode_batch_pauses_after_a_nominatim_miss_too(monkeypatch):
+    sleeps: list[float] = []
+    monkeypatch.setattr(main.time, "sleep", lambda s: sleeps.append(s))
+
+    def fake_resolve(address, point):
+        if address == "uug":
+            return 1.0, 2.0, "uug"
+        if address == "nominatim":
+            return 1.0, 2.0, "nominatim"
+        raise main.subject.AddressNotFound(address)  # both geocoders consulted, none knew
+
+    monkeypatch.setattr(main, "resolve_point", fake_resolve)
+    r = client.post(
+        "/geocode-batch", json={"token": mint(), "addresses": ["uug", "nominatim", "miss"]}
+    )
+    assert r.status_code == 200
+    assert sleeps == [main.NOMINATIM_PAUSE_S, main.NOMINATIM_PAUSE_S]  # not after the UUG hit
+
+
 def test_geocode_batch_requires_token_and_caps_size():
     assert client.post("/geocode-batch", json={"token": "x", "addresses": []}).status_code == 401
     too_many = ["a"] * (main.GEOCODE_BATCH_MAX + 1)
