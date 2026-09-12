@@ -71,7 +71,10 @@ function toInsert(
 
 const t = schema.coopTransaction;
 const INSERT_CHUNK = 200;
-const DEFAULT_LIMIT = 50;
+/** Paged listing (screens) — a radius query is a POOL, not a page: see `LIST_CAP`. */
+const DEFAULT_PAGE = 50;
+/** Absolute ceiling per call; `truncated` says when it bit (port doc on `CoopRegistryQuery.near`). */
+const LIST_CAP = 5000;
 
 /**
  * Drizzle adapter for {@link PortCoopRegistry} (tables from migration 0014).
@@ -91,16 +94,21 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
           ? sql`${t.posX} is not null and ((${t.posX} - ${q.near.x})^2 + (${t.posY} - ${q.near.y})^2) <= ${q.near.radiusM * q.near.radiusM}`
           : undefined,
       );
+      // No implicit page for a radius query: S3 builds the candidate pool
+      // from it, and 50 newest rows would silently stand in for every row
+      // within the radius (review 1 §3).
+      const limit = Math.min(q.limit ?? (q.near ? LIST_CAP : DEFAULT_PAGE), LIST_CAP);
+      const offset = q.offset ?? 0;
       const run = async (x: Db | Parameters<Parameters<Db["transaction"]>[0]>[0]) => {
         const rows = await x
           .select()
           .from(t)
           .where(where)
           .orderBy(desc(t.date), t.id)
-          .limit(Math.min(q.limit ?? DEFAULT_LIMIT, 500))
-          .offset(q.offset ?? 0);
+          .limit(limit)
+          .offset(offset);
         const [{ n }] = await x.select({ n: count() }).from(t).where(where);
-        return { rows: rows.map(toTransaction), total: n };
+        return { rows: rows.map(toTransaction), total: n, truncated: offset + rows.length < n };
       };
       if (!as) return run(db);
       return db.transaction(async (tx) => {

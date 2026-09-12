@@ -46,7 +46,12 @@ export type NewCoopTransaction = Omit<CoopTransaction, "id" | "pricePerM2">;
 
 export type CoopRegistryQuery = {
   cooperative?: string;
-  /** Radius search in EPSG:2180 metres; rows with `pos = null` never match. */
+  /**
+   * Radius search in EPSG:2180 metres; rows with `pos = null` never match.
+   * A radius query returns the WHOLE pool (no implicit page) up to the
+   * adapter's ceiling of 5 000 rows — check `truncated` before building a
+   * sample on the result. Without `near`, the default page is 50.
+   */
   near?: { x: number; y: number; radiusM: number };
   /** ISO date — rows on/after it. */
   from?: string;

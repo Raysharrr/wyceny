@@ -41,7 +41,7 @@ function fakeRegistry() {
     async saveMapping() {
       calls.push("saveMapping");
     },
-    list: async () => ({ rows: [], total: 0 }),
+    list: async () => ({ rows: [], total: 0, truncated: false }),
     save: async () => {
       throw new Error("unused");
     },
