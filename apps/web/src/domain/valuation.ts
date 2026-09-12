@@ -1,6 +1,7 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
-import { computeKcs, type Comparable, type KcsInput } from "./kcs";
+import { computeKcs, isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
+import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
 import {
@@ -41,6 +42,7 @@ export function newValuation(input: NewValuationInput): Omit<Valuation, "id" | "
     docUrl: input.docUrl,
     docxUrl: input.docxUrl ?? null,
     purpose: input.purpose ?? null,
+    propertyRight: input.propertyRight ?? "wlasnosc_lokalu",
     kwNumber: input.kwNumber ?? null,
     client: input.client ?? null,
     inspectionDate: input.inspectionDate ?? null,
@@ -107,7 +109,7 @@ export function confirmSampleProvenance(v: Valuation): Valuation {
     throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to confirm`);
   }
   const comparables = v.inputs.comparables.map((c) =>
-    c.source === "rcn" && c.status === "to_verify" ? { ...c, status: "confirmed" as const } : c,
+    isRegistrySourced(c) && c.status === "to_verify" ? { ...c, status: "confirmed" as const } : c,
   );
   return { ...v, inputs: { ...v.inputs, comparables } };
 }
@@ -369,13 +371,14 @@ function sameComparable(a: Comparable, b: Comparable): boolean {
  * transaction, whereas under-promotion would mislabel the operat.
  */
 function promoteStoredRcnRows(snapshot: Comparable[], incoming: Comparable[]): Comparable[] {
-  const fetched = new Set(snapshot.filter((c) => c.source === "rcn").map(comparableContentKey));
-  if (fetched.size === 0) return incoming;
-  return incoming.map((c) =>
-    c.source !== "rcn" && fetched.has(comparableContentKey(c))
-      ? { ...c, source: "rcn" as const, status: "to_verify" as const }
-      : c,
+  const fetched = new Map(
+    snapshot.filter(isRegistrySourced).map((c) => [comparableContentKey(c), c.source] as const),
   );
+  if (fetched.size === 0) return incoming;
+  return incoming.map((c) => {
+    const source = isRegistrySourced(c) ? undefined : fetched.get(comparableContentKey(c));
+    return source ? { ...c, source, status: "to_verify" as const } : c;
+  });
 }
 
 /**
@@ -412,7 +415,7 @@ function carryComparableConfirmations(
       const [matched] = bucket.splice(at, 1);
       return matched.status ? { ...c, status: matched.status } : c;
     }
-    return c.source === "rcn" ? { ...c, status: "to_verify" as const } : c;
+    return isRegistrySourced(c) ? { ...c, status: "to_verify" as const } : c;
   });
 }
 
@@ -499,6 +502,10 @@ export type SubjectUpdate = {
   address: string;
   area: number;
   purpose: NonNullable<Valuation["purpose"]>;
+  /** T-12. Optional = "leave as is" (legacy callers/tests); the step-1 form always sends both. */
+  propertyRight?: PropertyRight;
+  /** Step-1 checkbox "Lokal ma przynależną piwnicę" — lands in `inputs`, read by the document (S4). */
+  hasBasement?: boolean;
   kwNumber: string | null;
   client: string;
   subject: KcsInput["subject"];
@@ -562,12 +569,14 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
     address: u.address,
     area: u.area,
     purpose: u.purpose,
+    propertyRight: u.propertyRight ?? v.propertyRight,
     kwNumber: u.kwNumber,
     client: u.client,
     ...(areaMoved ? { wr: null } : {}),
     inputs: {
       ...v.inputs,
       area: u.area,
+      hasBasement: u.hasBasement ?? v.inputs.hasBasement ?? false,
       subject: u.subject ?? null,
       subjectMeta: u.subjectMeta ?? null,
       kw: u.kw ?? null,
@@ -672,7 +681,7 @@ export function approveValuation(
   if (!v.inputs) {
     throw new ApprovalBlockedError([{ path: "inputs", label: "Brak danych wejściowych operatu." }]);
   }
-  const gate = approvalGate(v.inputs, gateOptions);
+  const gate = approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, gateOptions);
   const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(v)];
   if (blockers.length > 0) {
     throw new ApprovalBlockedError(blockers);
@@ -738,13 +747,13 @@ export function signValuation(v: Valuation, now: Date): Valuation {
 }
 
 /**
- * Comparables only ever carry "rcn" (RCN auto-fetch) or "manual" (typed by
- * the appraiser) — mirrors the rcn-vs-everything-else rule already used by
+ * Comparables carry a register source (`rcn`, `rejestr_sm`) or "manual"
+ * (typed by the appraiser) — the register-vs-everything-else rule shared with
  * `confirmSampleProvenance` and `provenance.ts`'s gate. Only the machine
- * ("rcn") rows get re-verified in a new version.
+ * rows get re-verified in a new version.
  */
 function resetComparable(c: Comparable): Comparable {
-  return c.source === "rcn" ? { ...c, status: "to_verify" } : c;
+  return isRegistrySourced(c) ? { ...c, status: "to_verify" } : c;
 }
 
 /**
@@ -813,6 +822,7 @@ export function newVersionOf(v: Valuation): Omit<Valuation, "id" | "createdAt"> 
     docUrl: null,
     docxUrl: null,
     purpose: v.purpose,
+    propertyRight: v.propertyRight,
     kwNumber: v.kwNumber,
     client: v.client,
     inspectionDate: v.inspectionDate,

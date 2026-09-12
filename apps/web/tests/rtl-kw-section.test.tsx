@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
@@ -90,6 +90,7 @@ function Harness(props: {
   deweloperski?: boolean;
   extract?: boolean;
   kw?: Partial<FormInput["kw"]>;
+  propertyRight?: "wlasnosc_lokalu" | "spoldzielcze_wlasnosciowe";
   onSourceChange?: (s: KwSource) => void;
   onUseDocumentArea?: () => void;
 }) {
@@ -97,9 +98,12 @@ function Harness(props: {
   // (KwSection's `hasExtract` gate) — so seed one whenever a test needs them.
   const withExtract = props.deweloperski || props.extract || props.kw || props.areaMismatch;
   const { control } = useForm<FormInput, unknown, FormOutput>({
-    defaultValues: withExtract
-      ? ({ kw: { source: "akt", deweloperski: !!props.deweloperski, ...props.kw } } as FormInput)
-      : {},
+    defaultValues: {
+      ...(withExtract
+        ? ({ kw: { source: "akt", deweloperski: !!props.deweloperski, ...props.kw } } as FormInput)
+        : {}),
+      ...(props.propertyRight ? { propertyRight: props.propertyRight } : {}),
+    },
   });
   return (
     <KwSection
@@ -184,6 +188,81 @@ describe("KwSection", () => {
     expect(screen.getByTestId("kw-fetch-status").textContent).toContain("ℹ");
     rerender(<Harness source="akt" state={{ status: "error", message: "Błąd." }} />);
     expect(screen.getByRole("button", { name: /spróbuj ponownie/i })).toBeDefined();
+  });
+
+  // T-12 (S1): rodzaj prawa sits at the top of the card and drives the coop-only copy.
+  it("renders the property-right radio with własność selected and no coop copy by default", () => {
+    render(<Harness source="akt" extract />);
+    const group = screen.getByRole("radiogroup", { name: "Rodzaj prawa" });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios.map((r) => r.textContent)).toEqual([
+      "Własność lokalu",
+      "Spółdzielcze własnościowe prawo do lokalu",
+    ]);
+    expect(radios[0].getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByTestId("property-right-coop-info")).toBeNull();
+    expect(screen.queryByLabelText("Lokal ma przynależną piwnicę")).toBeNull();
+    expect(screen.queryByTestId("kw-gruntu-coop-hint")).toBeNull();
+    expect(screen.queryByTestId("kw-lokalu-coop-hint")).toBeNull();
+  });
+
+  it("switching to spółdzielcze shows the registry note, the basement checkbox and the KW gruntu hint", async () => {
+    const user = userEvent.setup();
+    render(<Harness source="akt" extract />);
+    await user.click(
+      screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
+    );
+    expect(screen.getByTestId("property-right-coop-info").textContent).toContain("rejestru biura");
+    expect(screen.getByLabelText("Lokal ma przynależną piwnicę")).toBeTruthy();
+    expect(screen.getByTestId("kw-gruntu-coop-hint").textContent).toContain(
+      "KW gruntu nie jest wymagana",
+    );
+    expect(screen.getByLabelText("Nr KW gruntu (księga macierzysta)")).toBeTruthy();
+    expect(screen.getByTestId("kw-lokalu-coop-hint").textContent).toContain(
+      "KW lokalu nie jest wymagana",
+    );
+  });
+
+  it("switching back to własność clears a basement ticked under the coop right (M-2)", async () => {
+    const user = userEvent.setup();
+    function BasementHarness() {
+      const { control } = useForm<FormInput, unknown, FormOutput>({
+        defaultValues: {
+          propertyRight: "spoldzielcze_wlasnosciowe",
+          hasBasement: false,
+        } as FormInput,
+      });
+      const value = useWatch({ control, name: "hasBasement" });
+      return (
+        <>
+          <KwSection
+            control={control}
+            state={{ status: "idle" }}
+            source="reczny"
+            onSourceChange={() => {}}
+            onFileSelected={() => {}}
+            onRetry={() => {}}
+            onUseDocumentArea={() => {}}
+            areaMismatch={null}
+          />
+          <output data-testid="basement-json">{JSON.stringify(value)}</output>
+        </>
+      );
+    }
+    render(<BasementHarness />);
+    await user.click(screen.getByLabelText("Lokal ma przynależną piwnicę"));
+    expect(screen.getByTestId("basement-json").textContent).toBe("true");
+    await user.click(screen.getByRole("radio", { name: "Własność lokalu" }));
+    expect(screen.queryByLabelText("Lokal ma przynależną piwnicę")).toBeNull();
+    expect(screen.getByTestId("basement-json").textContent).toBe("false");
+  });
+
+  it("manual path + spółdzielcze: the KW number stays visible with the 'not required' hint", () => {
+    render(<Harness source="reczny" propertyRight="spoldzielcze_wlasnosciowe" />);
+    expect(screen.getByLabelText("Numer księgi wieczystej")).toBeTruthy();
+    expect(screen.getByTestId("kw-number-coop-hint").textContent).toBe(
+      "Dla spółdzielczego własnościowego prawa KW nie jest wymagana",
+    );
   });
 
   it("shows the developer banner when kw.deweloperski is set", () => {

@@ -40,12 +40,15 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
   // displayed, and what is left here is a report with a link per blocker.
   const requireProse = proseEnabled();
   const gate = valuation.inputs
-    ? approvalGate(valuation.inputs, {
-        requireProse,
-        currentSectionHashes: requireProse
-          ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
-          : undefined,
-      })
+    ? approvalGate(
+        { ...valuation.inputs, propertyRight: valuation.propertyRight },
+        {
+          requireProse,
+          currentSectionHashes: requireProse
+            ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
+            : undefined,
+        },
+      )
     : null;
   const fieldBlockers = documentFieldBlockers(valuation);
   // Approval requires BOTH the F-4 provenance gate and the document-field

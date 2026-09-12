@@ -238,6 +238,78 @@ describe("kw group (Slice 6)", () => {
     expect(result.ok).toBe(true);
   });
 
+  // T-12 (S1): the right decides whether KW gruntu is demanded. Absent = legacy
+  // caller = własność (the gate stays default-deny for every existing draft).
+  it("T-12: spółdzielcze + missing kwGruntu → no blocker; własność/absent → blocker as before", () => {
+    const base = passingInput();
+    const prov = {
+      ...base.provenance,
+      kw: { source: "akt" as const, status: "confirmed" as const },
+    };
+    const noGrunt = { ...kwOk, kwGruntu: null };
+    const coop = approvalGate({
+      ...base,
+      provenance: prov,
+      kw: noGrunt,
+      propertyRight: "spoldzielcze_wlasnosciowe",
+    });
+    // B-2: until S4 composes the operat per right, the coop right carries a
+    // single temporary blocker — and nothing about the KW gruntu.
+    expect(coop.ok).toBe(false);
+    if (!coop.ok) expect(coop.blockers.map((b) => b.path)).toEqual(["document.propertyRight"]);
+    const own = approvalGate({
+      ...base,
+      provenance: prov,
+      kw: noGrunt,
+      propertyRight: "wlasnosc_lokalu",
+    });
+    expect(own.ok).toBe(false);
+    if (!own.ok) expect(own.blockers.map((b) => b.path)).toEqual(["kw.kwGruntu"]);
+    const legacy = approvalGate({ ...base, provenance: prov, kw: noGrunt });
+    expect(legacy.ok).toBe(false);
+  });
+
+  it("B-3: spółdzielcze + extract without KW lokalu → no kwLokalu blocker; własność → blocker as before", () => {
+    const base = passingInput();
+    const prov = {
+      ...base.provenance,
+      kw: { source: "akt" as const, status: "confirmed" as const },
+    };
+    const noLokal = { ...kwOk, kwLokalu: null, kwGruntu: null };
+    const coop = approvalGate({
+      ...base,
+      provenance: prov,
+      kw: noLokal,
+      propertyRight: "spoldzielcze_wlasnosciowe",
+    });
+    expect(coop.ok).toBe(false);
+    if (!coop.ok) expect(coop.blockers.map((b) => b.path)).toEqual(["document.propertyRight"]);
+    const own = approvalGate({ ...base, provenance: prov, kw: { ...kwOk, kwLokalu: null } });
+    expect(own.ok).toBe(false);
+    if (!own.ok) expect(own.blockers.map((b) => b.path)).toEqual(["kw.kwLokalu"]);
+  });
+
+  it("B-2 (temporary, TODO S4): spółdzielcze → 'tekst w przygotowaniu' blocker; własność → none", () => {
+    const coop = approvalGate({ ...passingInput(), propertyRight: "spoldzielcze_wlasnosciowe" });
+    expect(coop.ok).toBe(false);
+    if (!coop.ok) {
+      expect(coop.blockers).toHaveLength(1);
+      expect(coop.blockers[0].path).toBe("document.propertyRight");
+      expect(coop.blockers[0].label).toContain("tekst w przygotowaniu");
+    }
+    expect(approvalGate({ ...passingInput(), propertyRight: "wlasnosc_lokalu" })).toEqual({
+      ok: true,
+    });
+  });
+
+  it("T-12: the sample threshold is the same for both rights", () => {
+    for (const propertyRight of ["wlasnosc_lokalu", "spoldzielcze_wlasnosciowe"] as const) {
+      const r = approvalGate({ ...passingInput(), comparables: manualRows(11), propertyRight });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.blockers[0].path).toBe("comparables");
+    }
+  });
+
   it("no kw snapshot -> no kw blockers (manual path regression)", () => {
     expect(approvalGate(passingInput()).ok).toBe(true);
   });

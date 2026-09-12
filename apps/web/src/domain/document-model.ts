@@ -1,4 +1,5 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
+import type { PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
@@ -360,6 +361,11 @@ export type DocumentModel = {
 export type DocumentFields = {
   purpose: string | null;
   kwNumber: string | null;
+  /**
+   * Rodzaj prawa (T-12). Absent = legacy caller = własność, so the KW
+   * number stays required (default-deny) — same rule as `approvalGate`.
+   */
+  propertyRight?: PropertyRight;
   client: string | null;
   inspectionDate: string | null;
   wr: number | null;
@@ -369,7 +375,11 @@ export type DocumentFields = {
 export function documentFieldBlockers(v: DocumentFields): Blocker[] {
   const blockers: Blocker[] = [];
   if (!v.purpose) blockers.push({ path: "purpose", label: "Cel wyceny — brak." });
-  if (!v.kwNumber) blockers.push({ path: "kwNumber", label: "Numer księgi wieczystej — brak." });
+  // A coop right has no KW of its own: step 1 lets the number stay empty, so
+  // demanding it here would send the appraiser back to a legally empty field.
+  const kwRequired = (v.propertyRight ?? "wlasnosc_lokalu") !== "spoldzielcze_wlasnosciowe";
+  if (!v.kwNumber && kwRequired)
+    blockers.push({ path: "kwNumber", label: "Numer księgi wieczystej — brak." });
   if (!v.client) blockers.push({ path: "client", label: "Klient — brak." });
   if (!v.inspectionDate) blockers.push({ path: "inspectionDate", label: "Data oględzin — brak." });
   if (v.wr == null)
@@ -384,7 +394,8 @@ export type BuildDocumentInput = {
   address: string;
   area: number;
   purpose: OperatPurpose;
-  kwNumber: string;
+  /** null = no KW (coop right, T-12); printed as "—" until S4 adds the "nie założono KW" wording. */
+  kwNumber: string | null;
   client: string;
   /** ISO date from the form (YYYY-MM-DD). */
   inspectionDate: string;
@@ -468,7 +479,7 @@ export function buildDocumentModel(
     adres: input.address,
     powierzchnia: formatNumber(input.area, 2),
     cel: PURPOSE_TEXT[input.purpose],
-    nr_kw: input.kwNumber,
+    nr_kw: input.kwNumber || "—",
     klient: input.client,
     data_ogledzin: formatDatePl(input.inspectionDate),
     data_sporzadzenia: formatDatePl(input.approvedAt.toISOString()),

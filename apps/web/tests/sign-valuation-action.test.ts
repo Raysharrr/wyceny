@@ -77,6 +77,7 @@ const approvedValuation: Valuation = {
   docUrl: "/api/docs/operat-v1.pdf",
   docxUrl: "/api/docs/operat-v1.docx",
   purpose: "sprzedaz",
+  propertyRight: "wlasnosc_lokalu",
   kwNumber: "PO1P/1/6",
   client: "Jan Testowy",
   inspectionDate: "2026-07-10",

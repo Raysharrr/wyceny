@@ -5,6 +5,8 @@ import {
   type ProvenanceStatus,
   type Sourced,
 } from "@wyceny/shared";
+import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
+import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 
 /**
@@ -44,7 +46,7 @@ export type GateResult = { ok: true } | { ok: false; blockers: Blocker[] };
 
 /** Structurally compatible with KcsInput — callers pass the snapshot directly. */
 export type GateInput = {
-  comparables: Array<{ source?: "rcn" | "manual"; status?: ProvenanceStatus }>;
+  comparables: Array<{ source?: ComparableSource; status?: ProvenanceStatus }>;
   sampleMeta?: unknown | null;
   subject?: unknown | null;
   kw?: {
@@ -54,6 +56,12 @@ export type GateInput = {
     deweloperski: boolean;
   } | null;
   provenance?: InputsProvenance | null;
+  /**
+   * Rodzaj prawa (T-12) — a valuation column, not part of `inputs`, so the
+   * caller spreads it in. Absent = legacy caller = własność: the KW gruntu
+   * blocker stays on (default-deny), exactly as before the block.
+   */
+  propertyRight?: PropertyRight;
   /** Prose snapshot (FR-6) — gated only when the caller asks for it, see `GateOptions`. */
   prose?: {
     sections: Partial<Record<ProseSection, Sourced<string>>>;
@@ -124,13 +132,14 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
   }
 
   input.comparables.forEach((c, i) => {
-    const source = c.source === "rcn" ? "rcn" : "rzeczoznawca";
+    const source = isRegistrySourced(c) ? c.source : "rzeczoznawca";
     const status: ProvenanceStatus = c.status ?? "none";
     const s = sourced(c, source, status);
     if (isBlocking(s)) {
+      const origin = isRegistrySourced(c) ? ` (${REGISTRY_LABEL[c.source]})` : "";
       blockers.push({
         path: `comparables[${i}]`,
-        label: `Transakcja ${i + 1}${source === "rcn" ? " (RCN)" : ""} — ${statusLabel(status)}.`,
+        label: `Transakcja ${i + 1}${origin} — ${statusLabel(status)}.`,
       });
     }
   });
@@ -203,19 +212,35 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
         label: `Stan prawny (KW) — ${statusLabel(kwProv?.status ?? "none")}.`,
       });
     }
-    if (!input.kw.kwGruntu) {
+    // Same shape as the kwLokalu/deweloperski branch below: the right says
+    // whether the księga macierzysta is even a thing for this lokal.
+    const { wymagaKwGruntu, wymagaKwLokalu } =
+      PROPERTY_RIGHT_DOC[input.propertyRight ?? "wlasnosc_lokalu"];
+    if (!input.kw.kwGruntu && wymagaKwGruntu) {
       blockers.push({
         path: "kw.kwGruntu",
         label: "Numer KW gruntu (księgi macierzystej) — brak.",
       });
     }
-    if (!input.kw.kwLokalu && !input.kw.deweloperski) {
+    if (!input.kw.kwLokalu && !input.kw.deweloperski && wymagaKwLokalu) {
       blockers.push({
         path: "kw.kwLokalu",
         label:
           "Numer KW lokalu — brak (zaznacz wariant deweloperski, jeśli lokal nie ma własnej księgi).",
       });
     }
+  }
+
+  // TODO(S4): usunąć, gdy DocumentModel składa tekst per rodzaj prawa.
+  // Until then the DOCX prints ownership wording for every right, and a
+  // signed operat is irreversible (F-7) — so a coop valuation may be
+  // previewed and walked through, but never approved.
+  if (input.propertyRight === "spoldzielcze_wlasnosciowe") {
+    blockers.push({
+      path: "document.propertyRight",
+      label:
+        "Operat dla spółdzielczego własnościowego prawa do lokalu — tekst w przygotowaniu (kolejne wydanie); zatwierdzenie niedostępne.",
+    });
   }
 
   // Prose (FR-6 / ADR-014): no operat leaves without descriptions the

@@ -37,6 +37,27 @@ export type SampleMeta = Omit<CandidatePool, "candidates">;
 
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
 
+/**
+ * Where a comparable came from (B1, S1 of the "Prawo spółdzielcze" block).
+ * `rcn` and `rejestr_sm` are registers — machine-fetched rows that arrive
+ * `to_verify`; `manual` is typed by the appraiser. Underscore on purpose:
+ * this enum keeps the `rcn`/`manual` convention (`CandidatePool.source`
+ * keeps its own hyphenated one). A new source is added here, once.
+ */
+export const COMPARABLE_SOURCES = ["rcn", "rejestr_sm", "manual"] as const;
+export type ComparableSource = (typeof COMPARABLE_SOURCES)[number];
+export type RegistrySource = Exclude<ComparableSource, "manual">;
+export const REGISTRY_LABEL: Record<RegistrySource, string> = {
+  rcn: "RCN",
+  rejestr_sm: "Rejestr SM",
+};
+/** True for rows fetched from a register — the ones provenance re-verifies. */
+export function isRegistrySourced<T extends { source?: ComparableSource }>(
+  c: T,
+): c is T & { source: RegistrySource } {
+  return c.source === "rcn" || c.source === "rejestr_sm";
+}
+
 export type Comparable = {
   /** Transaction month, e.g. "2024-07" — display metadata only. */
   date?: string;
@@ -45,7 +66,7 @@ export type Comparable = {
   /** Unit price in zł/m² — the only field the engine consumes. */
   pricePerM2: number;
   /** Provenance: RCN auto-fetch vs manual entry — display/audit metadata only (F-5). */
-  source?: "rcn" | "manual";
+  source?: ComparableSource;
   /** RCN transaction id when source === "rcn" — display/audit metadata only. */
   transactionId?: string;
   /**
@@ -103,6 +124,8 @@ export type KcsInput = {
   kw?: KwSnapshot | null;
   /** Extraction provenance for the kw snapshot (F-5) — display/audit metadata only. */
   kwMeta?: KwMetaSnapshot | null;
+  /** Step 1 "Lokal ma przynależną piwnicę" (T-12) — render only (basement clause, S4); computeKcs never reads this. Absent on drafts saved before S1. */
+  hasBasement?: boolean | null;
   /** Inspection photos manifest + note (Slice 10, FR-2) — display/render only; computeKcs never reads this. */
   inspection?: InspectionSnapshot | null;
   /** LLM prose proposals + appraiser-confirmed text (ADR-014) — display/render only; computeKcs never reads this. */

@@ -2,7 +2,13 @@ import { Building2, Calculator, FileText, Scale, SlidersHorizontal, Table2 } fro
 import { Badge } from "@/components/ui/badge";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
-import { computeKcs, type KcsInput } from "@/domain/kcs";
+import {
+  computeKcs,
+  isRegistrySourced,
+  REGISTRY_LABEL,
+  type ComparableSource,
+  type KcsInput,
+} from "@/domain/kcs";
 import type { KwDzialSnapshot } from "@/domain/kw-snapshot";
 import { formatNumber } from "@/domain/document-model";
 
@@ -127,20 +133,22 @@ export function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
   );
 }
 
-function ProvenanceBadge({ source, status }: { source?: string; status?: string }) {
-  if (source === "rcn" && status === "to_verify") {
-    return (
-      <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-500">
-        RCN — do weryfikacji
-      </Badge>
-    );
-  }
-  if (source === "rcn" && status === "confirmed") {
-    return <Badge variant="secondary">RCN — potwierdzone</Badge>;
-  }
-  if (source === "rcn") {
-    // Legacy rows: source=rcn but no status — never claim verification that never happened.
-    return <Badge variant="outline">RCN</Badge>;
+function ProvenanceBadge({ source, status }: { source?: ComparableSource; status?: string }) {
+  const row = { source };
+  if (isRegistrySourced(row)) {
+    const name = REGISTRY_LABEL[row.source];
+    if (status === "to_verify") {
+      return (
+        <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-500">
+          {name} — do weryfikacji
+        </Badge>
+      );
+    }
+    if (status === "confirmed") {
+      return <Badge variant="secondary">{name} — potwierdzone</Badge>;
+    }
+    // Legacy rows: register source but no status — never claim verification that never happened.
+    return <Badge variant="outline">{name}</Badge>;
   }
   if (status) {
     return <Badge variant="secondary">Rzeczoznawca</Badge>;

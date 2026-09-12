@@ -44,6 +44,7 @@ function draftWith(inputs: KcsInput | null, overrides: Partial<Valuation> = {}):
     // the document-field blockers (spec §4). The legacy-draft test overrides
     // them to null to prove approval blocks on a missing purpose/kw/etc.
     purpose: "sprzedaz",
+    propertyRight: "wlasnosc_lokalu",
     kwNumber: "KW-TEST-1",
     client: "p. Jan Testowy",
     inspectionDate: "2026-07-01",

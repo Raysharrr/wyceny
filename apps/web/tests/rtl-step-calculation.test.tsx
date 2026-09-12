@@ -56,6 +56,7 @@ function baseValuation(overrides: Partial<Valuation> = {}): Valuation {
     docUrl: null,
     docxUrl: null,
     purpose: null,
+    propertyRight: "wlasnosc_lokalu",
     kwNumber: null,
     client: null,
     inspectionDate: null,

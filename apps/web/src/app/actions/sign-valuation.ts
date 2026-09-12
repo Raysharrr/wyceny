@@ -67,7 +67,7 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
         address: valuation.address,
         area: valuation.area,
         purpose: valuation.purpose as OperatPurpose,
-        kwNumber: valuation.kwNumber ?? "",
+        kwNumber: valuation.kwNumber,
         client: valuation.client ?? "",
         inspectionDate: valuation.inspectionDate ?? "",
         approvedAt: valuation.approvedAt,

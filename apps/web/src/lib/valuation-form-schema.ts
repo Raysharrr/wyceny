@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { COMPARABLE_SOURCES } from "@/domain/kcs";
+import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
 import type { CandidatePool } from "@/ports/sample";
@@ -17,7 +19,7 @@ export const comparableSchema = z.object({
   // Provenance (F-5) — set when a comparable came from the RCN auto-fetch
   // rather than manual entry. Optional so manual-only submissions keep
   // validating exactly as before.
-  source: z.enum(["rcn", "manual"]).optional(),
+  source: z.enum(COMPARABLE_SOURCES).optional(),
   transactionId: z.string().optional(),
   // One notarial act (transactionId) can carry several lokale — this
   // distinguishes them (mirrors Candidate.lokalId/candidateKey in
@@ -85,7 +87,10 @@ export const sampleMetaSchema = z.object({
   maxRadiusM: z.number(),
   counts: poolCountsSchema,
   fetchedAt: z.string(),
-  source: z.literal("rcn-wfs-gugik"),
+  // Two pool sources since S1 of the "Prawo spółdzielcze" block: RCN via the
+  // worker, or the office coop registry. Hyphenated on purpose (this enum keeps
+  // the `rcn-wfs-gugik` convention; `Comparable.source` keeps `rcn`/`rejestr_sm`).
+  source: z.enum(["rcn-wfs-gugik", "rejestr-sm"]),
   query: poolQuerySchema,
   streetIndex: streetIndexStateSchema.optional(),
 });
@@ -114,13 +119,17 @@ export const candidateSchema = z.object({
   priceTotal: z.number(),
   egib: egibSchema.nullable(),
   lokalId: z.string(),
+  // B3 — address-derived building key for rows without EGiB (coop registry).
+  // `.optional()`: RCN rows and pools frozen before S1 do not carry it.
+  buildingRef: z.string().nullable().optional(),
   distanceM: z.number(),
   floor: z.number().nullable(),
   rooms: z.number().nullable(),
   market: z.enum(["wtorny", "pierwotny"]).nullable(),
   share: z.string(),
-  transType: z.string(),
-  function: z.string(),
+  // B4 — nullable: the coop registry has neither field; RCN always fills them.
+  transType: z.string().nullable(),
+  function: z.string().nullable(),
   seller: z.string().nullable(),
   pos: z.object({ x: z.number(), y: z.number() }).nullable(),
   // Slice 3d — adres z eksportu GEOPOZ. `.optional()`, bo kandydatki zamrożone przed
@@ -238,7 +247,7 @@ export const sampleSelectionSchema = z.object({
   alternates: z.array(candidateSchema),
   flags: z.record(
     z.string(),
-    z.array(z.enum(["price_outlier", "market_unknown", "primary_suspect"])),
+    z.array(z.enum(["price_outlier", "market_unknown", "primary_suspect", "attributes_unknown"])),
   ),
   rejectedCounts: z.record(z.string(), z.number()),
   /** Rows rejected by hygiene/band inside `radiusUsedM` (decision a). Optional: pre-Slice-3 snapshots lack it. */
@@ -387,6 +396,10 @@ export const valuationFormObject = z.object({
   purpose: z.enum(["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"], {
     message: "Wybierz cel wyceny.",
   }),
+  // T-12. The radio always submits a value; the defaults exist for callers that
+  // predate the block (tests, e2e) and mean "the app as it was": własność, no basement.
+  propertyRight: z.enum(PROPERTY_RIGHTS).default("wlasnosc_lokalu"),
+  hasBasement: z.boolean().default(false),
   kwNumber: z.string().trim().optional(),
   client: z.string().trim().min(1, "Podaj zamawiającego wycenę."),
   inspectionDate: z.string().min(1, "Podaj datę oględzin."),
@@ -399,7 +412,8 @@ export const valuationFormObject = z.object({
  * extract is present (Slice 6).
  */
 export const valuationFormSchema = valuationFormObject.superRefine((values, ctx) => {
-  if (!values.kw && !values.kwNumber) {
+  // A coop right has no KW of its own (T-12) — the number is optional there.
+  if (!values.kw && !values.kwNumber && values.propertyRight !== "spoldzielcze_wlasnosciowe") {
     ctx.addIssue({
       code: "custom",
       path: ["kwNumber"],

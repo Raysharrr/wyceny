@@ -158,12 +158,15 @@ export default async function ValuationViewPage({
   // approve action refuses on, kill switch (FR-6) included.
   const gate =
     isDraft && valuation.inputs
-      ? approvalGate(valuation.inputs, {
-          requireProse: proseEnabled(),
-          currentSectionHashes: proseEnabled()
-            ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
-            : undefined,
-        })
+      ? approvalGate(
+          { ...valuation.inputs, propertyRight: valuation.propertyRight },
+          {
+            requireProse: proseEnabled(),
+            currentSectionHashes: proseEnabled()
+              ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
+              : undefined,
+          },
+        )
       : null;
   const fieldBlockers = isDraft ? documentFieldBlockers(valuation) : [];
   // Approval requires BOTH the F-4 provenance gate and the document-field

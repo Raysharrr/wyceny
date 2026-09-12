@@ -46,6 +46,13 @@ export type Candidate = {
   egib: Egib | null;
   /** Raw lok_id_lokalu (kept for audit / exact matching). */
   lokalId: string;
+  /**
+   * Building identity for rows WITHOUT an EGiB id (coop registry: normalised
+   * address + building number, B3). `buildingKey()` falls back to it, so
+   * ADR-015 rule 6 (max 3 per building) holds for every source. Absent on
+   * RCN rows and on pools frozen before S1.
+   */
+  buildingRef?: string | null;
   /** Planar distance from the subject point, EPSG:2180 metres. */
   distanceM: number;
   /** lok_nr_kond */
@@ -56,10 +63,10 @@ export type Candidate = {
   market: Market;
   /** nier_udzial, e.g. "1/1". */
   share: string;
-  /** tran_rodzaj_trans, e.g. "wolnyRynek". */
-  transType: string;
-  /** lok_funkcja, e.g. "mieszkalna". */
-  function: string;
+  /** tran_rodzaj_trans, e.g. "wolnyRynek"; null = source has no such field (coop registry, B4). */
+  transType: string | null;
+  /** lok_funkcja, e.g. "mieszkalna"; null = source has no such field (coop registry, B4). */
+  function: string | null;
   /** tran_sprzedajacy: "osobaPrawna" | "osobaFizyczna" | … — developer sales are osobaPrawna. */
   seller: string | null;
   /** gml:pos normalised to {x: easting, y: northing}. */
@@ -150,7 +157,12 @@ export type RejectReason =
   /** Outside the appraiser's own unit-price band (Slice 6). */
   | "manual_price_range";
 
-export type Flag = "price_outlier" | "market_unknown" | "primary_suspect";
+export type Flag =
+  | "price_outlier"
+  | "market_unknown"
+  | "primary_suspect"
+  /** function/transType unknown at the source (B4) — informative, never demotes. */
+  | "attributes_unknown";
 
 export type Rejected = {
   candidate: Candidate;
@@ -202,8 +214,10 @@ export function isWholeShare(share: string): boolean {
 export function hygieneReasons(c: Candidate, floor: string, todayMonth: string): RejectReason[] {
   const reasons: RejectReason[] = [];
   if (!(c.pricePerM2 > 0) || !(c.area > 0)) reasons.push("no_price");
-  if (c.function !== "mieszkalna") reasons.push("not_residential");
-  if (c.transType !== "wolnyRynek") reasons.push("not_free_market");
+  // null = the source never had the field (B4): unknown is not a failed rule
+  // (ADR-010, no silent defaults) — selectSample flags it `attributes_unknown`.
+  if (c.function !== null && c.function !== "mieszkalna") reasons.push("not_residential");
+  if (c.transType !== null && c.transType !== "wolnyRynek") reasons.push("not_free_market");
   if (!isWholeShare(c.share)) reasons.push("share_not_whole");
   const month = c.date.slice(0, 7);
   if (month.length !== 7 || month < floor || month > todayMonth) reasons.push("out_of_window");
@@ -224,11 +238,16 @@ export function sameness(
   return { sameObreb, sameParcel, sameBuilding };
 }
 
-/** Building identity from EGiB: obręb.arkusz.działka.budynek (null when the id did not parse). */
+/**
+ * Building identity: EGiB obręb.arkusz.działka.budynek, else `buildingRef`
+ * (B3), else null (id did not parse and no address key — the caller treats
+ * the row as its own building).
+ */
 export function buildingKey(c: Candidate): string | null {
-  return c.egib
-    ? `${padObreb(c.egib.obreb)}.${c.egib.arkusz}.${c.egib.dzialka}.${c.egib.budynek}`
-    : null;
+  if (c.egib) {
+    return `${padObreb(c.egib.obreb)}.${c.egib.arkusz}.${c.egib.dzialka}.${c.egib.budynek}`;
+  }
+  return c.buildingRef ?? null;
 }
 
 /** Flag/snapshot key — one notarial act (transactionId) can carry several lokale. */
@@ -367,6 +386,7 @@ export function selectSample(candidates: Candidate[], params: SelectionParams): 
   }
   for (const c of chosen.banded) {
     if (c.market === null) addFlag(candidateKey(c), "market_unknown");
+    if (c.function === null || c.transType === null) addFlag(candidateKey(c), "attributes_unknown");
     if (c.market === null && c.seller === "osobaPrawna")
       addFlag(candidateKey(c), "primary_suspect");
   }

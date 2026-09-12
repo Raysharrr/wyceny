@@ -8,6 +8,7 @@
  * dependency, no I/O).
  */
 
+import type { PropertyRight } from "../domain/property-right";
 import type { KcsInput } from "../domain/kcs";
 import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
@@ -30,6 +31,8 @@ export type Valuation = {
   docUrl: string | null;
   docxUrl: string | null;
   purpose: "sprzedaz" | "zabezpieczenie_kredytu" | "informacyjny" | null;
+  /** Rodzaj prawa (T-12, column since 0013) — never null: existing rows default to własność. */
+  propertyRight: PropertyRight;
   kwNumber: string | null;
   client: string | null;
   /** ISO date string (YYYY-MM-DD). */
@@ -58,6 +61,8 @@ export type NewValuationInput = {
   docUrl: string | null;
   docxUrl?: string | null;
   purpose?: Valuation["purpose"];
+  /** Omitted only by legacy callers (tests, seeds) — the pre-block behaviour, własność. */
+  propertyRight?: PropertyRight;
   kwNumber?: string | null;
   client?: string | null;
   inspectionDate?: string | null;

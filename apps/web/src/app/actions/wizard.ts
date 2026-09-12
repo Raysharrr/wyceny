@@ -134,6 +134,7 @@ export async function createDraft(input: Step1Input): Promise<{ error: string } 
     subjectMeta: effSubjectMeta ?? null,
     kw: normalizedKw ?? null,
     kwMeta: parsed.data.kwMeta ?? null,
+    hasBasement: parsed.data.hasBasement,
     // Runtime-partial, type-full (advisor BLOCKER-1): weights/ratings arrive
     // at step 4; approvalGate default-denies missing entries, and every
     // unguarded provenance.weights read is reachable only once wr is set
@@ -150,6 +151,7 @@ export async function createDraft(input: Step1Input): Promise<{ error: string } 
       amountInWords: null,
       docUrl: null,
       purpose: parsed.data.purpose,
+      propertyRight: parsed.data.propertyRight,
       kwNumber:
         parsed.data.kwNumber?.trim() || normalizedKw?.kwLokalu || normalizedKw?.kwGruntu || null,
       client: parsed.data.client,
@@ -204,6 +206,8 @@ export async function saveSubjectAction(
         address: parsed.data.address,
         area: parsed.data.area,
         purpose: parsed.data.purpose,
+        propertyRight: parsed.data.propertyRight,
+        hasBasement: parsed.data.hasBasement,
         kwNumber:
           parsed.data.kwNumber?.trim() || normalizedKw?.kwLokalu || normalizedKw?.kwGruntu || null,
         client: parsed.data.client,

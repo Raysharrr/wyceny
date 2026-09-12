@@ -72,6 +72,7 @@ const draftValuation: Valuation = {
   docUrl: null,
   docxUrl: null,
   purpose: "sprzedaz",
+  propertyRight: "wlasnosc_lokalu",
   kwNumber: null,
   client: null,
   inspectionDate: null,
