@@ -1,0 +1,94 @@
+Rejestr spółdzielczy to własny zbiór transakcji biura dotyczących spółdzielczego własnościowego prawa do lokalu. Takie transakcje nie trafiają do Rejestru Cen i Wartości Nieruchomości, bo nie mają księgi wieczystej — dlatego przy wycenie spółdzielczego prawa krok 3 czerpie próbę porównawczą z tego rejestru, a nie z RCN. Wejście do rejestru jest w pasku górnym („Rejestr spółdzielczy”, obok logo) i w menu konta.
+
+<img
+  src="/api/pomoc/rejestr-lista.png"
+  alt="Ekran „Rejestr spółdzielczy”: cztery kafle (łącznie transakcji, spółdzielnie z licznikami, ostatni import, do poprawki), filtry spółdzielni, okresu i wyszukiwania oraz tabela transakcji z kolumnami spółdzielnia, adres, numer budynku i mieszkania, powierzchnia, cena, cena za metr, data, prawo, źródło i lokalizacja."
+  style={{
+    width: "100%",
+    height: "auto",
+    borderRadius: "8px",
+    border: "1px solid rgba(0,0,0,0.08)",
+  }}
+/>
+
+## Jeden rejestr dla całego biura
+
+Rejestr jest wspólny — każdy rzeczoznawca w biurze widzi te same transakcje i każdy może je dopisywać. Spółdzielnia jest atrybutem pojedynczej transakcji, nie osobnym zbiorem: kafel „Spółdzielnie” i filtr o tej samej nazwie pokazują, ile wierszy pochodzi z którego wykazu, ale dobór w kroku 3 idzie po adresie i promieniu, nie po nazwie spółdzielni.
+
+## Skąd biorą się transakcje
+
+Są dwie drogi:
+
+- **Import pliku XLS/XLSX** — wykaz sprzedaży, który biuro dostaje ze spółdzielni. Przycisk „Importuj XLS” prowadzi do kreatora w trzech krokach (poniżej).
+- **Ręczne dopisanie** — pojedyncza transakcja spoza wykazu, na przykład z aktu notarialnego klienta. Przycisk „Dodaj transakcję” otwiera formularz z tymi samymi polami, jakie ma import.
+
+Aplikacja nie czyta plików PDF ani skanów. Wykaz przysłany jako PDF trzeba najpierw przepisać do arkusza (albo poprosić spółdzielnię o wersję XLS) — odczyt ze skanu byłby zgadywaniem, a ceny z próby trafiają do operatu.
+
+## Import z pliku — trzy kroki
+
+**1. Plik.** Wskazujesz plik, arkusz i wiersz, w którym stoją nagłówki kolumn (są wykazy bez nagłówka — wtedy wybierasz „arkusz nie ma nagłówka”). Do tego trzy ustawienia dla całego pliku: **spółdzielnia** (plik ze spółdzielni nie zawiera jej nazwy w żadnej kolumnie, więc wpisuje się ją raz), **miasto** (wykazy podają tylko ulicę lub osiedle, a bez miasta nie da się ustalić położenia lokalu — Przylesie leży w Lesznie, nie w Poznaniu) i **rodzaj ceny**. Wykazy nie zawsze rozróżniają cenę ofertową od transakcyjnej; jeśli nie wiesz, zostaw „nieustalona” — aplikacja nigdy nie zakłada, że cena jest transakcyjna.
+
+**2. Mapowanie kolumn.** Każda spółdzielnia układa arkusz inaczej, więc to Ty wskazujesz, która kolumna pliku odpowiada któremu polu aplikacji. Sześć pól jest wymaganych: adres, numer budynku, numer mieszkania, powierzchnia, cena i data. Podgląd trzech pierwszych wierszy pokazuje od razu, czy wybór jest trafny. Mapowanie zapamiętujemy dla tej spółdzielni — przy następnym wykazie z tego samego źródła będzie podpowiedziane.
+
+Dwie sytuacje szczególne:
+
+- **Adres i numer budynku w jednej komórce** („os. Wymyślone 12”, „Bukowa 12/5”) — wskaż tę samą kolumnę przy „Adres” i „Nr budynku”; aplikacja rozdzieli je sama.
+- **Wykaz bez numeru mieszkania** — wybierz przy „Nr mieszkania” opcję „rejestr nie ma tej kolumny”. To co innego niż brak mapowania: wiersze zaimportują się, a dwa lokale z tego samego budynku sprzedane tego samego dnia za tę samą cenę rozróżnimy po powierzchni. W podsumowaniu zobaczysz ich listę.
+
+Kolumny opcjonalne (rodzaj prawa, piętro, pokoje, rok budowy, numer repertorium) możesz pominąć. Skutek jest widoczny, nie ukryty: bez kolumny rodzaju prawa każdy wiersz dostanie w kroku 3 odznakę „prawo nieznane”, bez piętra, pokoi i roku budowy — „atrybuty nieznane”.
+
+<img
+  src="/api/pomoc/rejestr-import-mapowanie.png"
+  alt="Krok 2 kreatora importu: tabela mapowania z polami aplikacji, wybranymi kolumnami pliku i podglądem trzech wierszy; przy „Nr mieszkania” wybrano „rejestr nie ma tej kolumny” z ostrzeżeniem, a niezmapowane piętro, pokoje i rok budowy mają dopisek o odznace „atrybuty nieznane”."
+  style={{
+    width: "100%",
+    height: "auto",
+    borderRadius: "8px",
+    border: "1px solid rgba(0,0,0,0.08)",
+  }}
+/>
+
+**3. Podsumowanie.** Zanim cokolwiek trafi do rejestru, widzisz, ile wierszy wejdzie i ile pominiemy — z powodem. Import idzie partiami z paskiem postępu; po zakończeniu pojawiają się liczby końcowe.
+
+<img
+  src="/api/pomoc/rejestr-import-podsumowanie.png"
+  alt="Krok 3 kreatora po imporcie: ramka z podsumowaniem liczby wierszy, duplikatów, wierszy sum i adresów bez lokalizacji, odnośniki do listy pominiętych wierszy i wierszy bez numeru mieszkania oraz zielona ramka „Import zakończony” z liczbą dodanych wierszy."
+  style={{
+    width: "100%",
+    height: "auto",
+    borderRadius: "8px",
+    border: "1px solid rgba(0,0,0,0.08)",
+  }}
+/>
+
+## Co pomijamy i dlaczego
+
+- **Duplikaty.** Transakcję rozpoznajemy po treści: adres, budynek, mieszkanie, data i cena (albo numer repertorium aktu, gdy wykaz go ma). Ten sam wiersz w pliku dwa razy, albo wiersz już obecny w rejestrze, nie wejdzie drugi raz. Dzięki temu możesz spokojnie wgrać zaktualizowany wykaz z tej samej spółdzielni — dopiszą się tylko nowe transakcje, nawet jeśli spółdzielnia dopisała je na górze pliku.
+- **Wiersze sum i średnich.** Komórka z „suma”, „razem”, „średnia” itp. oznacza podsumowanie arkusza, nie transakcję.
+- **Wiersze z nieczytelną liczbą lub datą.** Powierzchnia lub cena, której nie da się jednoznacznie odczytać (na przykład „1.234” — 1,234 czy 1234?), oraz data w nierozpoznanym formacie. Wolimy pominąć wiersz i pokazać jego numer, niż zgadnąć.
+- **Puste wiersze.**
+
+Lista pominiętych wierszy z numerami z arkusza jest w podsumowaniu („Pokaż … pominiętych wierszy”) — możesz poprawić plik i wgrać go ponownie.
+
+## „Do poprawki” — adresy bez lokalizacji
+
+Po imporcie aplikacja ustala położenie każdego lokalu na podstawie miasta, ulicy lub osiedla i numeru budynku. Gdy się to nie uda (literówka w wykazie, nazwa osiedla, której nie zna geokoder, adres spoza miasta), transakcja **zostaje w rejestrze**, ale ma w kolumnie „Lokalizacja” odznakę „do poprawki” i **nie wchodzi do doboru po promieniu** w kroku 3. Kafel „Do poprawki” na liście pokazuje, ile takich wierszy jest, a „Pokaż” filtruje do nich listę. To samo dotyczy transakcji dopisanej ręcznie — po zapisie widzisz od razu, czy lokalizacja została ustalona.
+
+## Ręczne dodanie transakcji
+
+Formularz ma te same pola co import. Cena jednostkowa liczy się sama z ceny i powierzchni. „Rodzaj prawa” zostawiony jako „Nieznany” daje w kroku 3 odznakę „prawo nieznane”. Numer repertorium służy tylko do odszukania aktu — nie trafia do operatu. Przycisk „Zapisz i dodaj kolejną” czyści pola, ale zostawia spółdzielnię, miasto i rodzaj ceny, bo kolejna transakcja zwykle pochodzi z tego samego źródła. Próba zapisania transakcji, która już jest w rejestrze, kończy się komunikatem o duplikacie; powierzchnia lub cena równa zero nie zapisze się wcale.
+
+<img
+  src="/api/pomoc/rejestr-formularz.png"
+  alt="Formularz „Dodaj transakcję”: pola spółdzielni, daty, adresu, numeru budynku i mieszkania, powierzchni, ceny z automatycznie liczoną ceną jednostkową, rodzaju prawa, rodzaju ceny, miasta, piętra, pokoi, roku budowy i numeru repertorium oraz przyciski Anuluj, „Zapisz i dodaj kolejną” i „Zapisz transakcję”."
+  style={{
+    width: "100%",
+    height: "auto",
+    borderRadius: "8px",
+    border: "1px solid rgba(0,0,0,0.08)",
+  }}
+/>
+
+## Co zapisujemy o imporcie
+
+Każdy wgrany plik zostaje odnotowany jako partia: nazwa pliku, spółdzielnia, użyte mapowanie, liczba dodanych wierszy oraz numery wierszy pominiętych i wierszy bez numeru mieszkania. Dziennik zdarzeń aplikacji dostaje wyłącznie liczby — nigdy adresów ani numerów mieszkań. Jak rejestr zasila krok 3, opisuje [Krok 3 — Próba porównawcza](/pomoc/krok-3-proba).
