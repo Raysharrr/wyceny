@@ -119,6 +119,9 @@ test.describe("import rejestru @coop @staging-safe", () => {
       ),
     );
     await wizard.runImport();
+    // Exact counts are an invariant under the CI stub. On staging they lean on the
+    // live geocoder (UUG, then Nominatim's estate centroid for a made-up building
+    // number) — a change in OSM/UUG, not in the product, could move „24 / 1”.
     await expect(wizard.result).toHaveText(
       `Dodano ${run.sheetA.rows} nowych wierszy, 1 duplikat (w pliku i już w rejestrze), lokalizacja ustalona dla ${run.sheetA.geocoded}, do poprawki 1.`,
     );
@@ -255,7 +258,10 @@ test.describe("formularz ręczny @coop @staging-safe", () => {
 
 // ---------------------------------------------------------------- wycena spółdzielcza
 
-test.describe("wycena spółdzielcza @coop @staging-safe", () => {
+// CI only: with prose ON (staging — a generation costs money and step 6 has no
+// „Dalej” link) this path would neither pass nor be cheap. Staging keeps the
+// import, the manual form and the ownership smoke.
+test.describe("wycena spółdzielcza @coop", () => {
   // Heavy path: an import in beforeAll, a sample fetch over the WHOLE office
   // register (thousands of rows after many runs → tens of seconds) and a PDF
   // render — one explicit budget instead of a global stretch.
@@ -297,7 +303,6 @@ test.describe("wycena spółdzielcza @coop @staging-safe", () => {
     ).toHaveCount(0);
     const rowsBefore = await sample.expectShortfallConsistentWithTable();
     const alternatesBefore = await sample.alternateRows.count();
-    const badgesBefore = await sample.registryBadges.count();
     const rejectedBefore = await sample.rejectedCount();
 
     // CL-9: reject → the sample refills from the alternates → restore brings the row back as a register row
@@ -305,7 +310,10 @@ test.describe("wycena spółdzielcza @coop @staging-safe", () => {
     await sample.expectRefilledAfterReject(rowsBefore, alternatesBefore, rejectedBefore);
     await sample.restoreFirstRejected();
     await expect(sample.proposedRows).toHaveCount(rowsBefore);
-    await expect(sample.registryBadges).toHaveCount(badgesBefore);
+    // still every row a register row (the restored one included)
+    await expect(
+      sample.proposedRows.filter({ hasNotText: "Rejestr SM — do weryfikacji" }),
+    ).toHaveCount(0);
     await sample.confirmAndContinue();
 
     const operat = new OperatPath(page);
@@ -317,6 +325,8 @@ test.describe("wycena spółdzielcza @coop @staging-safe", () => {
     expect(text).toContain("pozyskane ze spółdzielni mieszkaniowej");
     expect(text).toMatch(/nie założono księgi/);
     expect(text).toMatch(/korzystania z piwnicy/);
+    // Prose is OFF here, so this pins the TEMPLATE layer only — the generated
+    // prose is guarded in the worker (`validate_property_right`) and its tests.
     // All 13 forms the worker's prose guard refuses — after cutting out the two
     // sentences where the TEMPLATE itself still says „nieruchomości lokalowych”
     // (§12.2 and the caption of Tabela 1; known follow-up from review 2 of PR #39,

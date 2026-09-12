@@ -100,7 +100,7 @@ export class SampleStep {
     // banner). Click until the fetch visibly starts, then wait for the result.
     const started = this.banner.or(this.page.getByRole("button", { name: "Pobieranie…" }));
     await expect(async () => {
-      await this.fetchButton.click();
+      await this.fetchButton.click({ timeout: 5_000 });
       await expect(started).toBeVisible({ timeout: 5_000 });
     }).toPass({ intervals: [1_000, 2_000, 4_000], timeout: 30_000 });
     // a large office register (thousands of rows) plus Street View enrichment can take a while
@@ -130,6 +130,7 @@ export class SampleStep {
    */
   async expectShortfallConsistentWithTable() {
     await expect(this.banner).toBeVisible();
+    // the banner and the table come from ONE state update, so the count is settled
     const rows = await this.proposedRows.count();
     if (rows < 12) {
       await expect(this.shortfall).toContainText(new RegExp(`\\b${rows} transakcj`));
@@ -211,8 +212,13 @@ export class OperatPath {
 
   /** Issues the operat — CI only (`@staging-safe` tests never call this). */
   async approve() {
-    // A blocker list here names exactly what is missing — better than "disabled".
-    await expect(this.page.getByTestId("gate-blockers")).toHaveCount(0, { timeout: 60_000 });
+    // On failure, say WHAT blocks — "disabled" tells the reader nothing.
+    const blockers = this.page.getByTestId("gate-blockers");
+    await expect(blockers)
+      .toHaveCount(0, { timeout: 60_000 })
+      .catch(async () => {
+        throw new Error(`Zatwierdzenie zablokowane: ${await blockers.innerText()}`);
+      });
     const button = this.page.getByTestId("approve-button");
     await expect(button).toBeEnabled({ timeout: 60_000 });
     await button.click();
