@@ -26,6 +26,9 @@ export const comparableSchema = z.object({
   // domain/sample-selection.ts). Optional: older drafts saved before this
   // field existed keep validating exactly as before.
   lokalId: z.string().optional(),
+  // coop_transaction.id for rows from the cooperative register (S2a) —
+  // without it the first step-3 save of a coop valuation would fail here.
+  coopTxId: z.string().optional(),
 });
 
 export const featureDefinitionsSchema = z.object({

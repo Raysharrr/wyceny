@@ -4,7 +4,13 @@
  * A new source is added HERE, not hunted across eight files.
  */
 import { describe, expect, it } from "vitest";
-import { COMPARABLE_SOURCES, isRegistrySourced, REGISTRY_LABEL } from "../src/domain/kcs";
+import {
+  COMPARABLE_SOURCES,
+  isRegistrySourced,
+  REGISTRY_LABEL,
+  type Comparable,
+} from "../src/domain/kcs";
+import { comparableSchema } from "../src/lib/valuation-form-schema";
 
 describe("B1: comparable sources", () => {
   it("lists exactly the three sources a comparable can carry", () => {
@@ -21,5 +27,11 @@ describe("B1: comparable sources", () => {
   it("every register source has a display label", () => {
     expect(REGISTRY_LABEL.rcn).toBe("RCN");
     expect(REGISTRY_LABEL.rejestr_sm).toBe("Rejestr SM");
+  });
+
+  it("S2a: coopTxId is the register row's unforgeable id — typed on Comparable and accepted by the form schema", () => {
+    const c: Comparable = { pricePerM2: 9000, source: "rejestr_sm", coopTxId: "coop-tx-1" };
+    expect(comparableSchema.parse(c)).toMatchObject({ coopTxId: "coop-tx-1" });
+    expect(comparableSchema.parse({ pricePerM2: 9000 }).coopTxId).toBeUndefined();
   });
 });

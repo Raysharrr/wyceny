@@ -9,6 +9,9 @@ import { httpMapImages } from "@/adapters/maps-http";
 import { pgStorage } from "@/adapters/storage-pg";
 import { profileRepo } from "@/adapters/profile-drizzle";
 import { eventLogRepo } from "@/adapters/event-log-drizzle";
+import { coopRegistryRepo } from "@/adapters/coop-registry-drizzle";
+import { httpCoopSheet } from "@/adapters/coop-sheet-http";
+import { httpGeocoder } from "@/adapters/geocoder-http";
 import { googleStreetView } from "@/adapters/street-view-google";
 import type { PortMapImages } from "@/ports/maps";
 import type { PortStreetView } from "@/ports/street-view";
@@ -37,6 +40,10 @@ export const mapImages: PortMapImages | null =
 export const storage = pgStorage(db);
 export const profileRepository = profileRepo(db);
 export const eventLog = eventLogRepo(db);
+/** T-13 (S2a): the office's cooperative register, the XLSX reader and the batch geocoder behind it. */
+export const coopRegistry = coopRegistryRepo(db);
+export const coopSheet = httpCoopSheet(process.env.WORKER_URL ?? "http://localhost:8000");
+export const geocoder = httpGeocoder(process.env.WORKER_URL ?? "http://localhost:8000");
 /** Slice 3: null without GOOGLE_STREET_VIEW_KEY or with NEXT_PUBLIC_STREET_VIEW=off (CI e2e) — step 3 then renders placeholders. */
 export const streetView: PortStreetView | null =
   process.env.NEXT_PUBLIC_STREET_VIEW === "off" || !process.env.GOOGLE_STREET_VIEW_KEY

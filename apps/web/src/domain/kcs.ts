@@ -78,6 +78,13 @@ export type Comparable = {
    */
   lokalId?: string;
   /**
+   * `coop_transaction.id` when the row came from the office's cooperative
+   * register (`source === "rejestr_sm"`) — the unforgeable signal for that
+   * source, the way `transactionId` is for RCN (S2a; `assign-provenance.ts`
+   * starts deriving from it in S3). Optional, additive, engine ignores it.
+   */
+  coopTxId?: string;
+  /**
    * Provenance status (F-4) — assigned ONLY at the web ACL on draft save
    * (rcn rows enter as "to_verify", manual as "confirmed"); flipped to
    * "confirmed" by the confirm-sample mutation. Optional so legacy
