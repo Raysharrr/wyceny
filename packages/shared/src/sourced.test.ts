@@ -12,6 +12,7 @@ const ALL_SOURCES: Record<ProvenanceSource, true> = {
   odpis_kw: true,
   akt: true,
   rcn: true,
+  rejestr_sm: true,
   ogledziny: true,
   rzeczoznawca: true,
   preset: true,
@@ -30,6 +31,7 @@ describe("sourced", () => {
       "ogledziny",
       "preset",
       "rcn",
+      "rejestr_sm",
       "rzeczoznawca",
     ]);
   });
