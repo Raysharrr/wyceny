@@ -234,12 +234,14 @@ export function parseCoopSheet(
     let flatNumber = cell("flatNumber");
     // One-cell registers ("Bukowa 12/5", Przylesie's "os. Wymyślone 12"): the
     // building is mapped to the SAME column as the address, or to none.
-    if (!buildingNumber || mapping.buildingNumber === mapping.address) {
+    const flatFromAddress = mapping.flatNumber === mapping.address;
+    if (!buildingNumber || mapping.buildingNumber === mapping.address || flatFromAddress) {
       const split = splitAddressCell(address);
       if (split) {
         address = split.address;
         buildingNumber = split.building;
-        flatNumber = flatNumber || split.flat;
+        // Same column as the address → the flat is the "/5" part, never the whole cell (m-9).
+        flatNumber = flatFromAddress ? split.flat : flatNumber || split.flat;
       }
     }
     if (!address) {

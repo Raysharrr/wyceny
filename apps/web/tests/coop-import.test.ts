@@ -401,3 +401,14 @@ describe("one-cell address mapped to both address and building (S2b, Przylesie)"
     });
   });
 });
+
+describe("flat number mapped to the address column (review 1 m-9)", () => {
+  it("takes the '/5' part, never the whole cell", () => {
+    const { rows } = parseCoopSheet(
+      [["Bukowa 12/5", "45", "450000", "2025-01-14"]],
+      { address: 0, buildingNumber: 0, flatNumber: 0, area: 1, priceTotal: 2, date: 3 },
+      { cooperative: "SM", priceKind: "nieustalona", headerRow: null },
+    );
+    expect(rows[0]).toMatchObject({ address: "Bukowa", buildingNumber: "12", flatNumber: "5" });
+  });
+});
