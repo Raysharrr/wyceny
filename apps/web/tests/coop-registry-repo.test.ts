@@ -193,3 +193,18 @@ it("recordBatch upserts by id, and stats ignores a batch that is still open (S2b
   await repo.recordBatch({ ...base, rowsInserted: 7, finishedAt: new Date().toISOString() });
   expect((await repo.stats()).lastImport).toMatchObject({ file: "w-toku.xlsx", rows: 7 });
 });
+
+it("list text filter matches address, building number and rep (review 1 M-3)", async () => {
+  const { dedupeKey: _k, ...base } = rows[0]!;
+  const saved = await repo.save(
+    { ...base, cooperative: `${COOP} rep`, flatNumber: `r|${stamp}`, rep: `A ${stamp}/2025` },
+    { userId: USER },
+  );
+  expect(saved.ok).toBe(true);
+  const byRep = await repo.list({ cooperative: `${COOP} rep`, text: `${stamp}/2025` });
+  expect(byRep.rows.map((r) => r.rep)).toEqual([`A ${stamp}/2025`]);
+  const byBuilding = await repo.list({ cooperative: COOP, text: rows[0]!.buildingNumber });
+  expect(byBuilding.rows.length).toBeGreaterThanOrEqual(1);
+  const byAddress = await repo.list({ cooperative: COOP, text: rows[0]!.address.slice(0, 4) });
+  expect(byAddress.rows.length).toBeGreaterThanOrEqual(1);
+});

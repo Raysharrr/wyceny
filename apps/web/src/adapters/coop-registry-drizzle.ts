@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "../db/schema";
 import { coopDedupeKey, type ColumnMapping } from "../domain/coop-import";
@@ -99,7 +99,14 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
       const where = and(
         q.cooperative ? eq(t.cooperative, q.cooperative) : undefined,
         q.from ? gte(t.date, q.from) : undefined,
-        q.text ? ilike(t.address, `%${q.text}%`) : undefined,
+        // The search box promises "adres, nr budynku, rep. aktu…" (mockup) — all three (review 1 M-3).
+        q.text
+          ? or(
+              ilike(t.address, `%${q.text}%`),
+              ilike(t.buildingNumber, `%${q.text}%`),
+              ilike(t.rep, `%${q.text}%`),
+            )
+          : undefined,
         q.needsFix ? isNull(t.posX) : undefined,
         q.near
           ? sql`${t.posX} is not null and ((${t.posX} - ${q.near.x})^2 + (${t.posY} - ${q.near.y})^2) <= ${q.near.radiusM * q.near.radiusM}`
