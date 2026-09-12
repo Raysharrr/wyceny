@@ -118,6 +118,9 @@ export const candidateSchema = z.object({
   priceTotal: z.number(),
   egib: egibSchema.nullable(),
   lokalId: z.string(),
+  // B3 — address-derived building key for rows without EGiB (coop registry).
+  // `.optional()`: RCN rows and pools frozen before S1 do not carry it.
+  buildingRef: z.string().nullable().optional(),
   distanceM: z.number(),
   floor: z.number().nullable(),
   rooms: z.number().nullable(),

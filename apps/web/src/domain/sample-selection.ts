@@ -46,6 +46,13 @@ export type Candidate = {
   egib: Egib | null;
   /** Raw lok_id_lokalu (kept for audit / exact matching). */
   lokalId: string;
+  /**
+   * Building identity for rows WITHOUT an EGiB id (coop registry: normalised
+   * address + building number, B3). `buildingKey()` falls back to it, so
+   * ADR-015 rule 6 (max 3 per building) holds for every source. Absent on
+   * RCN rows and on pools frozen before S1.
+   */
+  buildingRef?: string | null;
   /** Planar distance from the subject point, EPSG:2180 metres. */
   distanceM: number;
   /** lok_nr_kond */
@@ -224,11 +231,16 @@ export function sameness(
   return { sameObreb, sameParcel, sameBuilding };
 }
 
-/** Building identity from EGiB: obręb.arkusz.działka.budynek (null when the id did not parse). */
+/**
+ * Building identity: EGiB obręb.arkusz.działka.budynek, else `buildingRef`
+ * (B3), else null (id did not parse and no address key — the caller treats
+ * the row as its own building).
+ */
 export function buildingKey(c: Candidate): string | null {
-  return c.egib
-    ? `${padObreb(c.egib.obreb)}.${c.egib.arkusz}.${c.egib.dzialka}.${c.egib.budynek}`
-    : null;
+  if (c.egib) {
+    return `${padObreb(c.egib.obreb)}.${c.egib.arkusz}.${c.egib.dzialka}.${c.egib.budynek}`;
+  }
+  return c.buildingRef ?? null;
 }
 
 /** Flag/snapshot key — one notarial act (transactionId) can carry several lokale. */

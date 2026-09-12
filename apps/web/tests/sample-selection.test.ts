@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   selectSample,
+  buildingKey,
   dedupe,
   candidateKey,
   floorMonth,
@@ -229,6 +230,24 @@ describe("selectSample — ADR-015 defaults", () => {
     const other = mk({ egib: null });
     const pool = [shared, ...siblings, other];
     expect(selectSample(pool, P).proposed).toHaveLength(5);
+  });
+  // B3 (blok "Prawo spółdzielcze", S1): a registry row has no EGiB id, only an
+  // address-derived `buildingRef`. Without the fallback every such row was its
+  // own building and ADR-015 rule 6 (max 3 per building) silently never fired.
+  it("buildingKey falls back to buildingRef when egib is null — and the 3-per-building cap fires", () => {
+    const pool = [...Array(5)].map(() => mk({ egib: null, buildingRef: "os. piastowskie|24" }));
+    expect(buildingKey(pool[0])).toBe("os. piastowskie|24");
+    expect(buildingKey(pool[0])).toBe(buildingKey(pool[1]));
+    const s = selectSample(pool, P);
+    expect(s.proposed).toHaveLength(3);
+    expect(s.alternates).toHaveLength(2);
+  });
+  it("buildingKey with egib is unchanged by buildingRef; null/absent both stay null", () => {
+    const withEgib = mk({ buildingRef: "os. piastowskie|24" });
+    expect(buildingKey(withEgib)).toBe(buildingKey(mk({ egib: withEgib.egib })));
+    expect(buildingKey(withEgib)).toMatch(/^0021\.10\.27\./);
+    expect(buildingKey(mk({ egib: null }))).toBeNull();
+    expect(buildingKey(mk({ egib: null, buildingRef: null }))).toBeNull();
   });
   it("flags are keyed by transactionId|lokalId — two lokale of one act do not bleed", () => {
     const a = mk({ transactionId: "ACT", pricePerM2: 12000 });
