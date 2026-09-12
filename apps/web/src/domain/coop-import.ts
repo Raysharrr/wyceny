@@ -13,8 +13,12 @@ import type { PropertyRight } from "./property-right";
 
 export const COOP_FIELDS = [
   { key: "address", label: "Adres (osiedle / ulica)", required: true },
-  { key: "buildingNumber", label: "Nr budynku", required: false },
-  { key: "flatNumber", label: "Nr mieszkania", required: false },
+  // Both required (spec §6): without the flat number two flats sold the same
+  // day for the same price collapse into one "duplicate" — a real case in the
+  // Osiedle Młodych register. May be mapped to the address column when the
+  // register keeps "Bukowa 12/5" in one cell (splitAddressCell takes it apart).
+  { key: "buildingNumber", label: "Nr budynku", required: true },
+  { key: "flatNumber", label: "Nr mieszkania", required: true },
   { key: "area", label: "Powierzchnia użytkowa (m²)", required: true },
   { key: "priceTotal", label: "Cena (zł)", required: true },
   { key: "date", label: "Data transakcji", required: true },
@@ -30,6 +34,8 @@ export type ColumnMapping = Partial<Record<CoopFieldKey, number | null>>;
 
 export type SkipReason = "summary" | "empty" | "bad_number" | "bad_date" | "duplicate";
 export type SkippedRow = { row: number; reason: SkipReason };
+/** Imported, but worth a look: `no_flat` = flat number blank (dedupe fell back to the row ordinal). */
+export type WarnedRow = { row: number; reason: "no_flat" };
 
 export type CoopParseContext = {
   cooperative: string;
@@ -71,11 +77,20 @@ export function splitAddressCell(
   return m ? { address: m[1]!, building: m[2]!, flat: m[3] ?? "" } : null;
 }
 
-/** "450 000", "43,34", "1.234,56", "520 000 zł" → number; anything else → null. */
+/**
+ * "450 000", "43,34", "1.234,56", "520 000 zł", "450.000", "1.234.567" → number;
+ * anything else → null. A dot is decimal by default; it is a thousands
+ * separator only when that is unambiguous — several ".ddd" groups, or one
+ * ".000" group (nobody writes 450.000 m² meaning 450). "1.234" / "45.500"
+ * could be either, so they are null → the row goes "do poprawki" (ADR-010:
+ * never guess).
+ */
 export function parseCoopNumber(s: string): number | null {
   let t = s.replace(/[^\d,.-]/g, "");
   if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
-  else if ((t.match(/\./g) ?? []).length > 1) t = t.replace(/\./g, "");
+  else if (/^-?\d{1,3}(\.\d{3}){2,}$/.test(t) || /^-?\d{1,3}\.000$/.test(t))
+    t = t.replace(/\./g, "");
+  else if (/^-?\d{1,3}\.\d{3}$/.test(t)) return null;
   if (t === "" || t === "-") return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
@@ -132,18 +147,23 @@ function parseIntOrNull(s: string): number | null {
 type KeyInput = Pick<
   NewCoopTransaction,
   "address" | "buildingNumber" | "flatNumber" | "date" | "priceTotal" | "rep"
->;
+> & {
+  /** Sheet row ordinal — last-resort key component when the flat number is blank. */
+  row?: number;
+};
 
 /**
  * Natural key. Rep. of the notarial act when the register has one; otherwise
  * (normalised address + building | flat | date | price). The flat number is
  * part of BOTH — two flats in one building sold the same day for the same
  * price are two transactions (confirmed in the Osiedle Młodych register), and
- * one act can carry two flats (Dębiecka: 135 rows, 133 reps).
+ * one act can carry two flats (Dębiecka: 135 rows, 133 reps). A blank flat
+ * number never collapses rows: the sheet row ordinal stands in for it, so
+ * such a row is a `no_flat` warning, not a silent "duplicate".
  */
 export function coopDedupeKey(r: KeyInput): string {
   const addr = `${normalizeCoopAddress(r.address)} ${r.buildingNumber.trim().toLowerCase()}`;
-  const flat = r.flatNumber.trim().toLowerCase();
+  const flat = r.flatNumber.trim().toLowerCase() || `row:${r.row ?? "?"}`;
   const rep = (r.rep ?? "").replace(/\s+/g, " ").trim().toUpperCase();
   return rep ? `rep:${rep}|${addr}|${flat}` : `${addr}|${flat}|${r.date}|${r.priceTotal}`;
 }
@@ -157,9 +177,10 @@ export function parseCoopSheet(
   rows: readonly (readonly string[])[],
   mapping: ColumnMapping,
   ctx: CoopParseContext,
-): { rows: NewCoopTransaction[]; skipped: SkippedRow[] } {
+): { rows: NewCoopTransaction[]; skipped: SkippedRow[]; warnings: WarnedRow[] } {
   const out: NewCoopTransaction[] = [];
   const skipped: SkippedRow[] = [];
+  const warnings: WarnedRow[] = [];
   const seen = new Set<string>();
   const start = ctx.headerRow === null ? 0 : ctx.headerRow + 1;
 
@@ -225,7 +246,8 @@ export function parseCoopSheet(
       source: "xls",
       dedupeKey: "",
     };
-    row.dedupeKey = coopDedupeKey(row);
+    row.dedupeKey = coopDedupeKey({ ...row, row: i });
+    if (!flatNumber) warnings.push({ row: i, reason: "no_flat" });
     if (seen.has(row.dedupeKey)) {
       skipped.push({ row: i, reason: "duplicate" });
       continue;
@@ -233,7 +255,7 @@ export function parseCoopSheet(
     seen.add(row.dedupeKey);
     out.push(row);
   }
-  return { rows: out, skipped };
+  return { rows: out, skipped, warnings };
 }
 
 /**

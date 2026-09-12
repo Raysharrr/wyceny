@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  COOP_FIELDS,
   coopBuildingRef,
   coopDedupeKey,
   coopImportEventMeta,
@@ -96,6 +97,12 @@ describe("parseCoopNumber / parseCoopDate", () => {
     ["1.234,56", 1234.56],
     ["520 000 zł", 520000],
     ["45,5 m²", 45.5],
+    ["450.000", 450000],
+    ["520.000 zł", 520000],
+    ["1.234.567", 1234567],
+    ["455000,00", 455000],
+    ["1.234", null],
+    ["45.500", null],
     ["abc", null],
     ["", null],
   ])("number %j → %j", (s, n) => expect(parseCoopNumber(s)).toBe(n));
@@ -134,6 +141,19 @@ describe("parseRightType / parseFloor", () => {
   });
 });
 
+describe("COOP_FIELDS", () => {
+  it("requires the six fields of spec §6 — nr budynku and nr mieszkania included", () => {
+    expect(COOP_FIELDS.filter((f) => f.required).map((f) => f.key)).toEqual([
+      "address",
+      "buildingNumber",
+      "flatNumber",
+      "area",
+      "priceTotal",
+      "date",
+    ]);
+  });
+});
+
 describe("coopDedupeKey", () => {
   const base = {
     address: "Piastowskie",
@@ -154,6 +174,25 @@ describe("coopDedupeKey", () => {
     expect(a).toBe(coopDedupeKey({ ...base, rep: "a  1234/2025", priceTotal: 1 }));
     expect(a).not.toBe(coopDedupeKey({ ...base, rep: "A 1234/2025", flatNumber: "44" }));
   });
+  it("blank flat number falls back to the row ordinal — two flats never collapse", () => {
+    const rows = [
+      ["Zmyślona", "4", "", "45.5", "455000", "2025-01-14"],
+      ["Zmyślona", "4", "", "45.5", "455000", "2025-01-14"],
+    ];
+    const r = parseCoopSheet(
+      rows,
+      { address: 0, buildingNumber: 1, flatNumber: 2, area: 3, priceTotal: 4, date: 5 },
+      { cooperative: "SM", priceKind: "nieustalona", headerRow: null },
+    );
+    expect(r.rows).toHaveLength(2);
+    expect(r.skipped).toEqual([]);
+    expect(r.warnings).toEqual([
+      { row: 0, reason: "no_flat" },
+      { row: 1, reason: "no_flat" },
+    ]);
+    expect(new Set(r.rows.map((x) => x.dedupeKey)).size).toBe(2);
+  });
+
   it("buildingRef = normalised address | building", () => {
     expect(coopBuildingRef({ address: "os. Piastowskie ", buildingNumber: "97" })).toBe(
       "piastowskie|97",
@@ -174,6 +213,10 @@ describe("parseCoopSheet on the synthetic fixture", () => {
       { row: 12, reason: "bad_date" },
       { row: 14, reason: "summary" },
     ]);
+  });
+
+  it("flags the row with a blank flat number instead of skipping it", () => {
+    expect(result.warnings).toEqual([{ row: 13, reason: "no_flat" }]);
   });
 
   it("treats the same-day same-price flat 13 as a separate transaction", () => {
