@@ -1,0 +1,258 @@
+import { describe, expect, it } from "vitest";
+import {
+  coopBuildingRef,
+  coopDedupeKey,
+  coopImportEventMeta,
+  isSummaryRow,
+  normalizeCoopAddress,
+  parseCoopDate,
+  parseCoopNumber,
+  parseCoopSheet,
+  parseFloor,
+  parseRightType,
+  splitAddressCell,
+  type ColumnMapping,
+} from "../src/domain/coop-import";
+import fixture from "./fixtures/coop-registry-synthetic.sheets.json";
+
+/**
+ * Pure import rules (T-13, S2a Task 4) on the SYNTHETIC register fixture —
+ * `coop-registry-synthetic.sheets.json` is the worker's `/coop-sheet` output
+ * for `coop-registry-synthetic.xlsx` (both produced by the generator
+ * `coop-registry-synthetic.mts`; the worker test pins the xlsx → json side).
+ */
+
+const SHEET_1 = fixture.sheets[0]!;
+const SHEET_2 = fixture.sheets[1]!;
+const MAPPING_1: ColumnMapping = {
+  address: 1,
+  buildingNumber: 2,
+  flatNumber: 3,
+  area: 4,
+  priceTotal: 5,
+  date: 6,
+  rightType: 7,
+  floor: 8,
+  rooms: 9,
+  buildYear: 10,
+};
+const CTX_1 = { cooperative: "SM Syntetyczna", priceKind: "nieustalona" as const, headerRow: 3 };
+
+describe("isSummaryRow", () => {
+  it.each([["suma"], ["SUMA"], [" Średnia "], ["min"], ["MAX:"], ["razem"]])(
+    "recognises %j anywhere in the row",
+    (word) => {
+      expect(isSummaryRow(["", "x", word, "12"])).toBe(true);
+    },
+  );
+  it("does not flag a transaction row", () => {
+    expect(isSummaryRow(["1", "Zmyślona", "4", "12", "45.5", "455000"])).toBe(false);
+    expect(isSummaryRow(["Minimalna 3"])).toBe(false);
+  });
+});
+
+describe("normalizeCoopAddress", () => {
+  it("glues the spelling variants of one estate", () => {
+    const variants = [
+      "Orła Białego ",
+      "Orła Białego",
+      "os. Orła Białego",
+      "OS.Orła   Białego",
+      "os Orła Białego",
+    ];
+    expect(new Set(variants.map(normalizeCoopAddress))).toEqual(new Set(["orła białego"]));
+  });
+  it("keeps diacritics and strips ul./al./pl. too", () => {
+    expect(normalizeCoopAddress("ul. Świętego Wojciecha")).toBe("świętego wojciecha");
+    expect(normalizeCoopAddress("al. Niepodległości")).toBe("niepodległości");
+  });
+  it("does not eat a name that merely starts with those letters", () => {
+    expect(normalizeCoopAddress("Osiedlowa")).toBe("osiedlowa");
+    expect(normalizeCoopAddress("Ulubiona")).toBe("ulubiona");
+  });
+});
+
+describe("splitAddressCell", () => {
+  it("splits 'Bukowa 12/5' into address, building and flat", () => {
+    expect(splitAddressCell("ul. Bukowa 12/5")).toEqual({
+      address: "ul. Bukowa",
+      building: "12",
+      flat: "5",
+    });
+    expect(splitAddressCell("Orła Białego 7a")).toEqual({
+      address: "Orła Białego",
+      building: "7a",
+      flat: "",
+    });
+    expect(splitAddressCell("Piastowskie")).toBeNull();
+  });
+});
+
+describe("parseCoopNumber / parseCoopDate", () => {
+  it.each([
+    ["450 000", 450000],
+    ["43,34", 43.34],
+    ["43.34", 43.34],
+    ["1.234,56", 1234.56],
+    ["520 000 zł", 520000],
+    ["45,5 m²", 45.5],
+    ["abc", null],
+    ["", null],
+  ])("number %j → %j", (s, n) => expect(parseCoopNumber(s)).toBe(n));
+
+  it.each([
+    ["2025-01-14", "2025-01-14"],
+    ["2025-01-14T00:00:00", "2025-01-14"],
+    ["02.01.2023r.", "2023-01-02"],
+    ["2.1.2023", "2023-01-02"],
+    ["31.02.2023", null],
+    ["wczoraj", null],
+    ["14/01/2025", "2025-01-14"],
+    ["2025/01/14", null],
+    ["14.01.25", null],
+  ])("date %j → %j — never guessed", (s, d) => expect(parseCoopDate(s)).toBe(d));
+});
+
+describe("parseRightType / parseFloor", () => {
+  it("maps register wording, unknown → null (never a default)", () => {
+    expect(parseRightType("spółdzielcze własnościowe")).toBe("spoldzielcze_wlasnosciowe");
+    expect(parseRightType("Spoldzielcze wlasnosciowe prawo")).toBe("spoldzielcze_wlasnosciowe");
+    expect(parseRightType("własność")).toBe("wlasnosc_lokalu");
+    expect(parseRightType("odrębna własność")).toBe("wlasnosc_lokalu");
+    expect(parseRightType("")).toBeNull();
+    expect(parseRightType("X")).toBeNull();
+  });
+  it("reads floors in every spelling the registers use", () => {
+    expect(parseFloor("parter")).toBe(0);
+    expect(parseFloor("P")).toBe(0);
+    expect(parseFloor("0")).toBe(0);
+    expect(parseFloor("3")).toBe(3);
+    expect(parseFloor("IV")).toBe(4);
+    expect(parseFloor("I piętro")).toBe(1);
+    expect(parseFloor("")).toBeNull();
+    expect(parseFloor("wysoki")).toBeNull();
+  });
+});
+
+describe("coopDedupeKey", () => {
+  const base = {
+    address: "Piastowskie",
+    buildingNumber: "97",
+    flatNumber: "43",
+    date: "2025-08-25",
+    priceTotal: 450000,
+    rep: null,
+  };
+  it("two identical rows (incl. flat) → same key", () => {
+    expect(coopDedupeKey(base)).toBe(coopDedupeKey({ ...base, address: "os. Piastowskie " }));
+  });
+  it("two flats, same building/day/price → different keys (NOT a duplicate)", () => {
+    expect(coopDedupeKey(base)).not.toBe(coopDedupeKey({ ...base, flatNumber: "44" }));
+  });
+  it("rep. wins when present, but still per flat (one act can carry two flats)", () => {
+    const a = coopDedupeKey({ ...base, rep: "A 1234/2025" });
+    expect(a).toBe(coopDedupeKey({ ...base, rep: "a  1234/2025", priceTotal: 1 }));
+    expect(a).not.toBe(coopDedupeKey({ ...base, rep: "A 1234/2025", flatNumber: "44" }));
+  });
+  it("buildingRef = normalised address | building", () => {
+    expect(coopBuildingRef({ address: "os. Piastowskie ", buildingNumber: "97" })).toBe(
+      "piastowskie|97",
+    );
+  });
+});
+
+describe("parseCoopSheet on the synthetic fixture", () => {
+  const result = parseCoopSheet(SHEET_1.rows, MAPPING_1, CTX_1);
+
+  it("keeps the 5 real transactions and skips the rest with a reason each", () => {
+    expect(result.rows).toHaveLength(5);
+    expect(result.skipped).toEqual([
+      { row: 5, reason: "duplicate" },
+      { row: 8, reason: "summary" },
+      { row: 10, reason: "empty" },
+      { row: 11, reason: "bad_number" },
+      { row: 12, reason: "bad_date" },
+      { row: 14, reason: "summary" },
+    ]);
+  });
+
+  it("treats the same-day same-price flat 13 as a separate transaction", () => {
+    expect(result.rows.map((r) => `${r.buildingNumber}/${r.flatNumber}`)).toEqual([
+      "4/12",
+      "4/13",
+      "7/3",
+      "7/5",
+      "9/",
+    ]);
+  });
+
+  it("parses decimal comma, spaced thousands and a text date", () => {
+    const orla = result.rows[2]!;
+    expect(orla).toMatchObject({
+      address: "Orła Białego",
+      area: 52.1,
+      priceTotal: 520000,
+      date: "2023-01-02",
+      rightType: "wlasnosc_lokalu",
+      floor: 0,
+      rooms: 3,
+      buildYear: 1980,
+      source: "xls",
+      pos: null,
+    });
+  });
+
+  it("priceKind comes from the import context, rightType from the cell — null when blank", () => {
+    expect(result.rows.every((r) => r.priceKind === "nieustalona")).toBe(true);
+    expect(result.rows[3]!.rightType).toBeNull();
+    expect(result.rows[3]!.floor).toBe(4);
+  });
+
+  it("no mapped right column → every rightType is null, never spoldzielcze", () => {
+    const r = parseCoopSheet(SHEET_1.rows, { ...MAPPING_1, rightType: null }, CTX_1);
+    expect(r.rows.map((x) => x.rightType)).toEqual([null, null, null, null, null]);
+  });
+
+  it("sheet without a header: data from row 0, flat split off the address cell, rep as key", () => {
+    const r = parseCoopSheet(
+      SHEET_2.rows,
+      { rep: 0, date: 1, area: 2, priceTotal: 3, address: 4 },
+      { cooperative: "SM Syntetyczna", priceKind: "transakcyjna", headerRow: null },
+    );
+    expect(r.skipped).toEqual([{ row: 1, reason: "duplicate" }]);
+    expect(r.rows.map((x) => [x.address, x.buildingNumber, x.flatNumber, x.rep])).toEqual([
+      ["ul. Bukowa", "12", "5", "A 1234/2025"],
+      ["Bukowa", "14", "2", null],
+    ]);
+    expect(r.rows[0]!.dedupeKey.startsWith("rep:A 1234/2025|bukowa 12|5")).toBe(true);
+    expect(coopBuildingRef(r.rows[0]!)).toBe("bukowa|12");
+  });
+});
+
+describe("coopImportEventMeta (F-13)", () => {
+  it("is numbers only — no address, flat, cooperative or file name", () => {
+    const meta = coopImportEventMeta({
+      rowsTotal: 15,
+      inserted: 4,
+      duplicates: 1,
+      skipped: [
+        { row: 5, reason: "duplicate" },
+        { row: 8, reason: "summary" },
+        { row: 11, reason: "bad_number" },
+        { row: 12, reason: "bad_date" },
+      ],
+      geocoded: 3,
+      needsFix: 1,
+    });
+    expect(meta).toEqual({
+      rows_total: 15,
+      inserted: 4,
+      duplicates: 2,
+      skipped_summary: 1,
+      skipped_bad: 2,
+      geocoded: 3,
+      needs_fix: 1,
+    });
+    expect(Object.values(meta).every((v) => typeof v === "number")).toBe(true);
+  });
+});
