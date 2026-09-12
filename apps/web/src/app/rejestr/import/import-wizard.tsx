@@ -153,7 +153,9 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
           decision.kind === "layout_differs"
             ? "Ten plik ma inny układ kolumn niż poprzedni import tej spółdzielni — zmapuj kolumny jeszcze raz. Zapamiętane mapowanie nie zostało zastosowane."
             : decision.kind === "unknown_layout"
-              ? "Nie wiemy, jak wyglądał poprzedni import tej spółdzielni — zmapuj kolumny raz jeszcze; od tego importu zapamiętamy też nagłówki."
+              ? headerRow === null
+                ? "Ten arkusz nie ma wiersza nagłówka, więc układu nie da się porównać — zmapuj kolumny raz jeszcze."
+                : "Nie wiemy, jak wyglądał poprzedni import tej spółdzielni — zmapuj kolumny raz jeszcze; od tego importu zapamiętamy też nagłówki."
               : null,
         );
       }
