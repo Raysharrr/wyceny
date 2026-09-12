@@ -3,7 +3,7 @@ import { STORAGE_STATE } from "./storage-state";
 
 /**
  * Logs in ONCE per run as the seeded appraiser and stores the session for the
- * `chromium` / `staging` projects (`storageState`). The password comes from the
+ * `spoldzielcze` / `staging` projects (`storageState`). The password comes from the
  * same variable the seed script uses, so a rotated password never drifts.
  */
 

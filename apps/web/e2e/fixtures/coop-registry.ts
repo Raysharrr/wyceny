@@ -17,7 +17,15 @@ export type RegistryRun = {
   runId: string;
   cooperative: string;
   /** Sheet A — header row 3 (two title rows above), Lp. | Adres | Nr budynku | Nr mieszkania | Powierzchnia | Cena | Data | Prawo */
-  sheetA: { name: string; headerRow: "2"; rows: number; inBand43: number };
+  sheetA: {
+    name: string;
+    headerRow: "2";
+    /** rows that enter the register (duplicate and SUMA excluded) */
+    rows: number;
+    /** rows the geocoder places — all but the sentinel */
+    geocoded: number;
+    inBand43: number;
+  };
   /** Sheet B — a different layout: Rep. aktu | Data sprzedaży | Lokal | Pow. | Cena (address+building+flat in one cell) */
   sheetB: { name: string; headerRow: "0"; rows: number };
   xlsx: Buffer;
@@ -54,7 +62,10 @@ export function buildRegistryRun(runId = newRunId()): RegistryRun {
   areas.forEach((area, i) => {
     const estate = ESTATES[(seed + i) % ESTATES.length]!;
     const building = 1 + ((seed + 7 * i) % 40);
-    const flat = 1 + ((seed + 13 * i) % 120);
+    // The run id INSIDE the flat number: every other field is a small modulus of
+    // `seed`, so two runs whose seeds agree mod 3600 would otherwise produce the
+    // same 25 rows — and the content-based dedup key would drop them all.
+    const flat = `${1 + ((seed + 13 * i) % 120)}-${runId}`;
     const unit = 9_600 + ((seed + 37 * i) % 900); // zł/m², well inside one price band
     const price = Math.round((area * unit) / 1000) * 1000;
     const month = 1 + (i % 12);
@@ -62,13 +73,25 @@ export function buildRegistryRun(runId = newRunId()): RegistryRun {
       i + 1,
       estate,
       String(building),
-      String(flat),
+      flat,
       String(area).replace(".", ","),
       String(price),
       `2025-${String(month).padStart(2, "0")}-${String(1 + (i % 27)).padStart(2, "0")}`,
       i % 3 === 0 ? "" : "spółdzielcze własnościowe",
     ]);
   });
+  // The one address the geocoder (stub in CI, live on staging) cannot place —
+  // the checklist's „adres do poprawki” row; imported, but never in the sample.
+  rowsA.push([
+    rowsA.length + 1,
+    "os. Zmyślona Nieistniejąca",
+    "99",
+    runId, // unique per run — the dedup key is content-based
+    "44,0",
+    "440000",
+    "2025-06-06",
+    "spółdzielcze własnościowe",
+  ]);
   const dup = [...rowsA[9]!];
   dup[0] = rowsA.length + 1; // same content, other Lp. → the parser must drop it as a duplicate
   const sheetA = {
@@ -98,7 +121,13 @@ export function buildRegistryRun(runId = newRunId()): RegistryRun {
   return {
     runId,
     cooperative: `SM QA E2E ${runId}`,
-    sheetA: { name: sheetA.name, headerRow: "2", rows: rowsA.length, inBand43: 18 },
+    sheetA: {
+      name: sheetA.name,
+      headerRow: "2",
+      rows: rowsA.length,
+      geocoded: rowsA.length - 1,
+      inBand43: 18,
+    },
     sheetB: { name: sheetB.name, headerRow: "0", rows: 4 },
     xlsx: buildXlsxFromSheets([sheetA, sheetB]),
   };

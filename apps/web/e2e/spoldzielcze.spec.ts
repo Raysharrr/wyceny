@@ -1,9 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildRegistryRun, MAPPING_A, MAPPING_B, type RegistryRun } from "./fixtures/coop-registry";
+import OWNERSHIP_PHRASES from "./fixtures/ownership-phrases.json";
 import { ImportWizard } from "./pages/import-wizard";
 import { InspectionStep, OperatPath, SampleStep, SubjectStep } from "./pages/wizard";
 
@@ -11,28 +12,34 @@ import { InspectionStep, OperatPath, SampleStep, SubjectStep } from "./pages/wiz
  * Blok „Prawo spółdzielcze” (T-12/13/14) — ścieżki krytyczne przez UI.
  *
  * Pokrycie checklisty `docs/superpowers/qa-spoldzielcze-2026-09-12/CHECKLISTA.md`
- * (wiki-repo) — każdy test deklaruje w nazwie, które punkty (CL-n) zamyka.
- * To, co pinują testy jednostkowe (klucz dedup, straż fraz prozy,
- * `rememberedMappingFor`, `computeKcs`), jest tu sprawdzane WYŁĄCZNIE przez
- * skutek widoczny dla użytkownika.
+ * (wiki-repo) — każdy test deklaruje w nazwie, które punkty (CL-n) zamyka; test
+ * bez CL-n jest oznaczony „poza checklistą”. To, co pinują testy jednostkowe
+ * (klucz dedup, straż fraz prozy, `rememberedMappingFor`, `computeKcs`, liczność
+ * próby doboru), jest tu sprawdzane WYŁĄCZNIE przez skutek widoczny dla użytkownika.
+ *
+ * Rejestr biura jest JEDNĄ pulą: dobór w kroku 3 czerpie ze wszystkiego, co w nim
+ * jest, nie tylko z wierszy tego przebiegu. Dlatego testy kroku 3 asercjonują
+ * niezmienniki (źródło próby, odznaki, spójność komunikatu niedoboru z tabelą),
+ * a nie magiczne liczby — liczność próby pilnują testy jednostkowe doboru.
  *
  * Determinizm: `NEXT_PUBLIC_PROSE=off` (krok 6 to link „Dalej”), `MAPS_FETCH=off`,
  * autofetch kroku 1 off w CI; geokoder workera w CI to `GEOCODER_STUB=1`
- * (punkt z hasha adresu, zero sieci). Dane per przebieg: `buildRegistryRun()`
- * (nowa spółdzielnia z unikalnym sufiksem, ceny/mieszkania zależne od runId —
- * klucz treściowy nigdy nie zderza się z poprzednim przebiegiem).
+ * (punkt z hasha adresu, zero sieci; adres z „Zmyślona” = brak trafienia).
+ * Dane per przebieg: `buildRegistryRun()` — nowa spółdzielnia z unikalnym
+ * sufiksem, ceny/mieszkania zależne od runId (klucz treściowy nie zderza się
+ * z poprzednim przebiegiem).
  *
  * Uruchomienie:
  *   lokalnie (web z `pnpm start`, worker z `GEOCODER_STUB=1`): `pnpm e2e`
- *   staging (ręcznie, jako zenon, bez zatwierdzania):
+ *   staging (ręcznie, jako zenon, bez zatwierdzania — tylko @staging-safe):
  *     E2E_BASE_URL=https://wyceny-mu.vercel.app SEED_APPRAISER_PASSWORD=… pnpm e2e:staging
  *   żywy RCN na ścieżce własnościowej: dodatkowo `E2E_LIVE_RCN=1`.
- * Wymaga `pdftotext` (poppler) na maszynie — podgląd operatu jest asercjonowany z tekstu PDF.
+ * Wymaga `pdftotext` (poppler) — podgląd operatu jest asercjonowany z tekstu PDF.
  */
 
 // ---------------------------------------------------------------- helpers
 
-async function importSheetA(page: Page, run: RegistryRun) {
+async function openSheetA(page: Page, run: RegistryRun) {
   const wizard = new ImportWizard(page);
   await wizard.open();
   await wizard.chooseFile(
@@ -42,6 +49,26 @@ async function importSheetA(page: Page, run: RegistryRun) {
     run.sheetA.headerRow,
   );
   return wizard;
+}
+
+/** Import sheet A as a new cooperative — the data builder for the wizard tests. */
+async function importNewRegister(page: Page, run: RegistryRun) {
+  const wizard = await openSheetA(page, run);
+  await wizard.newCooperative(run.cooperative);
+  await wizard.goToMapping();
+  await wizard.map(MAPPING_A);
+  await wizard.goToSummary();
+  await wizard.runImport();
+  await expect(wizard.result).toHaveText(new RegExp(`^Dodano ${run.sheetA.rows} now`));
+  return wizard;
+}
+
+/** One register per worker for the valuation tests, imported THROUGH THE UI. */
+async function importInFreshContext(browser: Browser, run: RegistryRun) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await importNewRegister(page, run);
+  await context.close();
 }
 
 async function pdfText(page: Page, iframeSrc: string): Promise<string> {
@@ -66,14 +93,21 @@ function tabela1(text: string): [string, string][] {
     .map((m) => [m[1]!, m[2]!.trim()]);
 }
 
+const coopSubject = (run: RegistryRun, client: string) => ({
+  right: "spoldzielcze" as const,
+  address: "os. Piastowskie 20, Poznań",
+  area: "43.34",
+  client: `QA E2E ${run.runId} ${client}`,
+});
+
 // ---------------------------------------------------------------- import
 
 test.describe("import rejestru @coop @staging-safe", () => {
-  test("CL-1: nowa spółdzielnia — plik z sumą i duplikatem daje dokładne podsumowanie i wynik", async ({
+  test("CL-1: nowa spółdzielnia — plik z sumą, duplikatem i adresem bez lokalizacji daje dokładne podsumowanie i wynik", async ({
     page,
   }) => {
     const run = buildRegistryRun();
-    const wizard = await importSheetA(page, run);
+    const wizard = await openSheetA(page, run);
     await wizard.newCooperative(run.cooperative);
     await wizard.goToMapping();
     await expect(wizard.layoutNotice).toHaveCount(0);
@@ -86,29 +120,36 @@ test.describe("import rejestru @coop @staging-safe", () => {
     );
     await wizard.runImport();
     await expect(wizard.result).toHaveText(
-      new RegExp(
-        `^Dodano ${run.sheetA.rows} now\\w+ wiersz\\w*, 1 duplikat \\(w pliku i już w rejestrze\\), lokalizacja ustalona dla \\d+, do poprawki \\d+\\.$`,
-      ),
+      `Dodano ${run.sheetA.rows} nowych wierszy, 1 duplikat (w pliku i już w rejestrze), lokalizacja ustalona dla ${run.sheetA.geocoded}, do poprawki 1.`,
     );
     await page.getByRole("link", { name: "Przejdź do rejestru" }).click();
     await page.getByLabel("Spółdzielnia").selectOption({ label: run.cooperative });
     await expect(page.getByRole("row").filter({ hasText: run.cooperative })).toHaveCount(
-      Math.min(run.sheetA.rows, 50),
+      run.sheetA.rows,
     );
+  });
+
+  test("CL-2: adres, którego nie da się zgeokodować, ląduje na liście „do poprawki” tej spółdzielni", async ({
+    page,
+  }) => {
+    const run = buildRegistryRun();
+    await importNewRegister(page, run);
+    await page.goto(
+      `/rejestr?sm=${encodeURIComponent(run.cooperative)}&lokalizacja=do-poprawki&okres=all`,
+    );
+    const rows = page.getByRole("row").filter({ hasText: run.cooperative });
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText("os. Zmyślona Nieistniejąca");
+    await expect(rows.first()).toContainText("do poprawki");
   });
 
   test("CL-3: powtórny import tego samego pliku podstawia mapowanie i dodaje 0 wierszy", async ({
     page,
   }) => {
     const run = buildRegistryRun();
-    let wizard = await importSheetA(page, run);
-    await wizard.newCooperative(run.cooperative);
-    await wizard.goToMapping();
-    await wizard.map(MAPPING_A);
-    await wizard.goToSummary();
-    await wizard.runImport();
+    await importNewRegister(page, run);
 
-    wizard = await importSheetA(page, run);
+    const wizard = await openSheetA(page, run);
     await wizard.existingCooperative(run.cooperative);
     await wizard.goToMapping();
     await expect(wizard.layoutNotice).toHaveCount(0);
@@ -124,15 +165,10 @@ test.describe("import rejestru @coop @staging-safe", () => {
     page,
   }) => {
     const run = buildRegistryRun();
-    let wizard = await importSheetA(page, run);
-    await wizard.newCooperative(run.cooperative);
-    await wizard.goToMapping();
-    await wizard.map(MAPPING_A);
-    await wizard.goToSummary();
-    await wizard.runImport();
+    await importNewRegister(page, run);
 
     // sheet B: other header row → remembered mapping must NOT be laid over it
-    wizard = new ImportWizard(page);
+    let wizard = new ImportWizard(page);
     await wizard.open();
     await wizard.chooseFile(
       run.xlsx,
@@ -152,7 +188,7 @@ test.describe("import rejestru @coop @staging-safe", () => {
     await expect(wizard.result).toHaveText(new RegExp(`^Dodano ${run.sheetB.rows} now\\w+ wiersz`));
 
     // back to sheet A: the mapping remembered from B must not switch dedup off (staging O-1)
-    wizard = await importSheetA(page, run);
+    wizard = await openSheetA(page, run);
     await wizard.existingCooperative(run.cooperative);
     await wizard.goToMapping();
     await expect(wizard.layoutNotice).toBeVisible();
@@ -166,7 +202,7 @@ test.describe("import rejestru @coop @staging-safe", () => {
     page,
   }) => {
     const run = buildRegistryRun();
-    const wizard = await importSheetA(page, run);
+    const wizard = await openSheetA(page, run);
     await wizard.newCooperative(run.cooperative);
     await wizard.goToMapping();
     await wizard.map({ "Adres (ulica / osiedle)": MAPPING_A["Adres (ulica / osiedle)"] });
@@ -180,7 +216,7 @@ test.describe("import rejestru @coop @staging-safe", () => {
 // ---------------------------------------------------------------- formularz ręczny
 
 test.describe("formularz ręczny @coop @staging-safe", () => {
-  test("CL-2 (negatywny): duplikat odrzucany po polsku bez adresu, zero nie przechodzi", async ({
+  test("poza checklistą (negatywne): duplikat odrzucany po polsku bez adresu, zero nie przechodzi", async ({
     page,
   }) => {
     const run = buildRegistryRun();
@@ -191,18 +227,21 @@ test.describe("formularz ręczny @coop @staging-safe", () => {
       await page.getByLabel(/^Data transakcji/).fill("2025-05-05");
       await page.getByLabel(/^Adres \(ulica \/ osiedle\)/).fill("os. Piastowskie");
       await page.getByLabel(/^Nr budynku/).fill("7");
-      await page.getByLabel(/^Nr mieszkania/).fill(run.runId.slice(-3));
+      // the full run id: the dedup key is content-based, a short suffix would
+      // collide with an earlier run on a long-lived register
+      await page.getByLabel(/^Nr mieszkania/).fill(run.runId);
       await page.getByLabel(/^Powierzchnia \(m²\)/).fill(area);
       await page.getByLabel(/^Cena \(zł\)/).fill("455000");
     };
+    // Next.js keeps an empty route announcer with role=alert — filter to the one with text.
+    const alert = page.getByRole("alert").filter({ hasText: /\S/ });
+
     await fill("45,5");
     await page.getByRole("button", { name: "Zapisz i dodaj kolejną" }).click();
     await expect(page.getByRole("status")).toHaveText(/^Zapisano/);
 
     await fill("45,5");
     await page.getByRole("button", { name: "Zapisz i dodaj kolejną" }).click();
-    // Next.js keeps an empty route announcer with role=alert — filter to the one with text.
-    const alert = page.getByRole("alert").filter({ hasText: /\S/ });
     await expect(alert).toHaveText(
       "Taka transakcja jest już w rejestrze (ten sam adres, mieszkanie i data albo ten sam numer repertorium).",
     );
@@ -210,44 +249,31 @@ test.describe("formularz ręczny @coop @staging-safe", () => {
 
     await fill("0");
     await page.getByRole("button", { name: "Zapisz i dodaj kolejną" }).click();
-    await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveText(
-      "Powierzchnia i cena muszą być większe od zera.",
-    );
+    await expect(alert).toHaveText("Powierzchnia i cena muszą być większe od zera.");
   });
 });
 
 // ---------------------------------------------------------------- wycena spółdzielcza
 
 test.describe("wycena spółdzielcza @coop @staging-safe", () => {
+  // Heavy path: an import in beforeAll, a sample fetch over the WHOLE office
+  // register (thousands of rows after many runs → tens of seconds) and a PDF
+  // render — one explicit budget instead of a global stretch.
+  test.setTimeout(180_000);
+
   let run: RegistryRun;
 
   test.beforeAll(async ({ browser }) => {
-    // One register per worker, imported THROUGH THE UI (the import tests above
-    // prove the wizard; here it is only the data builder for the wizard steps).
     run = buildRegistryRun();
-    const page = await browser.newPage();
-    const wizard = await importSheetA(page, run);
-    await wizard.newCooperative(run.cooperative);
-    await wizard.goToMapping();
-    await wizard.map(MAPPING_A);
-    await wizard.goToSummary();
-    await wizard.runImport();
-    await expect(wizard.result).toHaveText(new RegExp(`^Dodano ${run.sheetA.rows} now`));
-    await page.close();
+    await importInFreshContext(browser, run);
   });
 
-  test("CL-7, CL-9, CL-13: od rodzaju prawa w kroku 1 do podglądu operatu — próba z rejestru, brak RCN, Tabela 1 z ulicą i „—”, §7 o spółdzielni", async ({
+  test("CL-7, CL-9, CL-13 (podgląd): od rodzaju prawa w kroku 1 do podglądu operatu — próba z rejestru, brak RCN, Tabela 1 z ulicą i „—”, §7 o spółdzielni", async ({
     page,
   }) => {
     const subject = new SubjectStep(page);
     await subject.open();
-    await subject.fill({
-      right: "spoldzielcze",
-      address: "os. Piastowskie 20, Poznań",
-      area: "43.34",
-      client: `QA E2E ${run.runId}`,
-      basement: true,
-    });
+    await subject.fill({ ...coopSubject(run, "piwnica"), basement: true });
     await expect(subject.summary).toContainText("Rodzaj prawa");
     await expect(subject.summary).toContainText("Spółdzielcze własnościowe prawo do lokalu");
     await expect(subject.summary).toContainText("Krok 3 pobierze próbę z rejestru biura");
@@ -260,19 +286,26 @@ test.describe("wycena spółdzielcza @coop @staging-safe", () => {
     await expect(sample.rcnButton).toHaveCount(0);
     await expect(page.getByText("RCN")).toHaveCount(0);
     await sample.fetch();
+    // Source of the sample — the banner names the register; it lists cooperatives
+    // of the 60 best-ranked rows only, so this run's SM need not be among them on a
+    // large office register (not an invariant, hence not asserted).
     await expect(sample.banner).toContainText("z rejestru biura");
-    await expect(sample.banner).toContainText(run.cooperative.replace(/^SM /, ""));
-    const proposed = await sample.proposedRows.count();
-    expect(proposed).toBeGreaterThanOrEqual(12);
-    await expect(sample.registryBadges.first()).toBeVisible();
-    await expect(sample.shortfall).toHaveCount(0);
+    await expect(sample.proposedRows).not.toHaveCount(0);
+    // every row in the sample is stamped as a register row — none slipped in as RCN
+    await expect(
+      sample.proposedRows.filter({ hasNotText: "Rejestr SM — do weryfikacji" }),
+    ).toHaveCount(0);
+    const rowsBefore = await sample.expectShortfallConsistentWithTable();
+    const alternatesBefore = await sample.alternateRows.count();
+    const badgesBefore = await sample.registryBadges.count();
+    const rejectedBefore = await sample.rejectedCount();
 
-    // reject → restore: the row comes back stamped as a register row, not RCN
+    // CL-9: reject → the sample refills from the alternates → restore brings the row back as a register row
     await sample.rejectFirstProposed();
-    await expect(page.getByRole("button", { name: /^Odrzucone \(/ })).toBeVisible();
+    await sample.expectRefilledAfterReject(rowsBefore, alternatesBefore, rejectedBefore);
     await sample.restoreFirstRejected();
-    await expect(sample.proposedRows).toHaveCount(proposed);
-    await expect(sample.registryBadges).toHaveCount(await sample.registryBadges.count());
+    await expect(sample.proposedRows).toHaveCount(rowsBefore);
+    await expect(sample.registryBadges).toHaveCount(badgesBefore);
     await sample.confirmAndContinue();
 
     const operat = new OperatPath(page);
@@ -284,9 +317,16 @@ test.describe("wycena spółdzielcza @coop @staging-safe", () => {
     expect(text).toContain("pozyskane ze spółdzielni mieszkaniowej");
     expect(text).toMatch(/nie założono księgi/);
     expect(text).toMatch(/korzystania z piwnicy/);
-    expect(text).not.toMatch(/prawa własności|prawo własności/);
+    // All 13 forms the worker's prose guard refuses — except the two places where the
+    // TEMPLATE itself still says „nieruchomości lokalowych” (§12.2 and the caption of
+    // Tabela 1; known follow-up from review 2 of PR #39, decision for Aneta). Those two
+    // are pinned exactly, so a third occurrence (e.g. from prose) still fails.
+    const lower = text.toLowerCase();
+    for (const phrase of OWNERSHIP_PHRASES.filter((p) => p !== "nieruchomości lokalowych"))
+      expect(lower).not.toContain(phrase);
+    expect(lower.match(/nieruchomości lokalowych/g) ?? []).toHaveLength(2);
     const rows = tabela1(text);
-    expect(rows.length).toBeGreaterThanOrEqual(12);
+    expect(rows).toHaveLength(rowsBefore);
     for (const [miasto, ulica] of rows) {
       expect(miasto).toBe("—");
       expect(ulica).toMatch(/^os\. /);
@@ -294,50 +334,86 @@ test.describe("wycena spółdzielcza @coop @staging-safe", () => {
     }
   });
 
-  test("CL-10: niedobór liczy wiersze W PRÓBIE, nie pulę po paśmie, i linkuje do Rejestru", async ({
+  test("CL-10: komunikat niedoboru zgadza się z tabelą — widoczny tylko poniżej 12 wierszy, z tą samą liczbą i linkiem do Rejestru", async ({
     page,
   }) => {
     const subject = new SubjectStep(page);
     await subject.open();
-    // 200 m²: the ±30 % band (140–260 m²) admits none of the fixture rows — of
-    // THIS run or of any other run sharing the register (the office register is
-    // one pool, so a count that depended on what other runs imported would be
-    // flaky). The message must then say exactly what the table shows: zero rows,
-    // below the required twelve, with the way out (the register) linked.
-    await subject.fill({
-      right: "spoldzielcze",
-      address: "os. Piastowskie 20, Poznań",
-      area: "200",
-      client: `QA E2E ${run.runId} niedobór`,
-    });
+    // 200 m²: a band (140–260 m²) the fixture never feeds, so on a register that
+    // holds only E2E data the sample is empty — but the assertion is the
+    // invariant (message ⇔ table), not the emptiness, because the office
+    // register is one shared pool.
+    await subject.fill({ ...coopSubject(run, "niedobór"), area: "200" });
     await subject.save();
     await new InspectionStep(page).fillDateAndContinue();
     const sample = new SampleStep(page);
     await sample.fetch();
-    await expect(sample.proposedRows).toHaveCount(0);
-    await expect(sample.shortfall).toContainText(/\b0 transakcji/);
-    await expect(sample.shortfall).toContainText("wymagane 12");
-    await expect(
-      sample.shortfall.getByRole("link", { name: "Dodaj transakcje w Rejestrze →" }),
-    ).toHaveAttribute("href", "/rejestr");
+    await sample.expectShortfallConsistentWithTable();
+  });
+});
+
+// ---------------------------------------------------------------- zatwierdzenie (tylko CI — nigdy na stagingu)
+
+test.describe("zatwierdzenie operatu spółdzielczego @coop", () => {
+  // Heavy path: an import in beforeAll, a sample fetch over the WHOLE office
+  // register (thousands of rows after many runs → tens of seconds) and a PDF
+  // render — one explicit budget instead of a global stretch.
+  test.setTimeout(180_000);
+
+  let run: RegistryRun;
+
+  test.beforeAll(async ({ browser }) => {
+    run = buildRegistryRun();
+    await importInFreshContext(browser, run);
+  });
+
+  test("CL-13 (zatwierdzenie): „Zatwierdź i generuj operat” wydaje operat spółdzielczy — status Zatwierdzony, DOCX do pobrania", async ({
+    page,
+  }) => {
+    // The gate needs the step-1 geocode provenance, which only the live subject
+    // autofetch writes (GEOPOZ/UUG — off in CI, network-free). Runs locally with a
+    // build that has NEXT_PUBLIC_SUBJECT_AUTOFETCH on; never on staging (it issues an operat).
+    test.skip(
+      process.env.E2E_APPROVE !== "1",
+      "zatwierdzenie tylko lokalnie z żywym autofetch: E2E_APPROVE=1",
+    );
+    const subject = new SubjectStep(page);
+    await subject.open();
+    await subject.fill({ ...coopSubject(run, "zatwierdzenie"), basement: true });
+    await subject.waitForSubjectData();
+    await subject.save();
+    await new InspectionStep(page).fillDateAndContinue();
+    const sample = new SampleStep(page);
+    await sample.fetch();
+    await sample.confirmAndContinue();
+    const operat = new OperatPath(page);
+    await operat.throughToOperat();
+    await operat.approve();
+    await expect(page.getByTestId("valuation-status")).toHaveText("Zatwierdzony");
+    const docx = page.getByRole("link", { name: "Pobierz DOCX", exact: true });
+    await expect(docx).toBeVisible();
+    const res = await page.request.get((await docx.getAttribute("href"))!);
+    expect(res.status()).toBe(200);
+    expect((await res.body()).subarray(0, 2).toString()).toBe("PK"); // a zip = a DOCX
   });
 });
 
 // ---------------------------------------------------------------- własność — regresja
 
 test.describe("wycena własnościowa — kontrola regresji @coop @staging-safe", () => {
+  const ownSubject = {
+    right: "wlasnosc" as const,
+    address: "ul. Kościelna 33, Poznań",
+    area: "54.3",
+    kw: "KW-TEST-E2E",
+  };
+
   test("CL-16: kafel bez „Co się zmieni dalej”, krok 3 z przyciskiem RCN i bez śladu rejestru", async ({
     page,
   }) => {
     const subject = new SubjectStep(page);
     await subject.open();
-    await subject.fill({
-      right: "wlasnosc",
-      address: "ul. Kościelna 33, Poznań",
-      area: "54.3",
-      client: "QA E2E własność",
-      kw: "KW-TEST-E2E",
-    });
+    await subject.fill({ ...ownSubject, client: "QA E2E własność" });
     await expect(subject.summary).toContainText("Własność lokalu");
     await expect(subject.summary).not.toContainText("Co się zmieni dalej");
     await expect(page.getByRole("checkbox", { name: "Lokal ma przynależną piwnicę" })).toHaveCount(
@@ -358,19 +434,13 @@ test.describe("wycena własnościowa — kontrola regresji @coop @staging-safe",
     test.skip(process.env.E2E_LIVE_RCN !== "1", "żywe GUGiK tylko za flagą E2E_LIVE_RCN=1");
     const subject = new SubjectStep(page);
     await subject.open();
-    await subject.fill({
-      right: "wlasnosc",
-      address: "ul. Kościelna 33, Poznań",
-      area: "54.3",
-      client: "QA E2E własność RCN",
-      kw: "KW-TEST-E2E",
-    });
+    await subject.fill({ ...ownSubject, client: "QA E2E własność RCN" });
     await subject.save();
     await new InspectionStep(page).fillDateAndContinue();
     const sample = new SampleStep(page);
     await sample.fetch();
     await expect(sample.banner).toContainText("z RCN");
-    await expect(sample.proposedRows).toHaveCount(20);
+    await expect(sample.proposedRows).not.toHaveCount(0);
     await expect(sample.registryBadges).toHaveCount(0);
   });
 });

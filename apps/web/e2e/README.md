@@ -21,8 +21,8 @@ export NEXT_PUBLIC_SUBJECT_AUTOFETCH=off NEXT_PUBLIC_ADDRESS_SUGGEST=off NEXT_PU
        NEXT_PUBLIC_KW_UPLOAD=off NEXT_PUBLIC_PHOTO_UPLOAD=off NEXT_PUBLIC_PROSE=off MAPS_FETCH=off \
        WORKER_SHARED_SECRET=dev SEED_ADMIN_PASSWORD=… SEED_APPRAISER_PASSWORD=…
 pnpm build && pnpm e2e                    # smoke + spoldzielcze
-pnpm e2e --project=spoldzielcze           # tylko blok
-pnpm e2e --project=spoldzielcze --repeat-each=3   # stabilność
+pnpm exec playwright test --project=spoldzielcze                 # tylko blok
+pnpm exec playwright test --project=spoldzielcze --repeat-each=3 # stabilność
 ```
 
 Inny port niż 3000: `E2E_PORT=3006` (i `BETTER_AUTH_URL` na ten sam port).
