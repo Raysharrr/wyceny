@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, CircleHelp, Lock, LogOut } from "lucide-react";
+import { Building2, CircleHelp, Lock, LogOut, Table2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +65,12 @@ export function AvatarMenu({
             {userRole} · pełny dostęp
           </span>
         </div>
+        <DropdownMenuItem asChild>
+          <Link href="/rejestr" className="flex items-center gap-2.5">
+            <Table2 className="size-4" />
+            Rejestr spółdzielczy
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/pomoc" className="flex items-center gap-2.5">
             <CircleHelp className="size-4" />
