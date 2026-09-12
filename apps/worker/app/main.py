@@ -760,6 +760,9 @@ class ProseProposalRequest(BaseModel):
     sekcje: list[str]
     fakty: dict
     transakcje: list[ProseTransaction] = Field(default_factory=list)
+    # S5 (Task 4c): the valued right, OUTSIDE `fakty` on purpose — see
+    # `prose.PROPERTY_RIGHT_SENTENCE`. Optional so an older web keeps working.
+    rodzaj_prawa: Literal["wlasnosc_lokalu", "spoldzielcze_wlasnosciowe"] | None = None
 
 
 class ProseUsage(BaseModel):
@@ -854,15 +857,19 @@ PROSE_FAILED_DETAIL = (
 )
 
 
-def _prose_violations(text: str, facts: dict) -> list[str]:
+def _prose_violations(text: str, facts: dict, property_right: str | None = None) -> list[str]:
     """Everything the text asserts that the facts do not carry. Two guards, one
     list: invented NUMBERS (areas, prices, years) and invented OBRĘB names —
     the latter carry no digit, so the number guard is blind to exactly the
     error the appraiser reported ("opisał nam nie z tego obrębu")."""
-    return prose_core.validate_numbers(text, facts) + prose_core.validate_obreby(text, facts)
+    return (
+        prose_core.validate_numbers(text, facts)
+        + prose_core.validate_obreby(text, facts)
+        + prose_core.validate_property_right(text, property_right)
+    )
 
 
-def _prose_section(section: str, facts: dict) -> _SectionOutcome:
+def _prose_section(section: str, facts: dict, property_right: str | None = None) -> _SectionOutcome:
     """One section: generate, run the number guard, and on violations give the
     model exactly one more attempt. Still dirty -> the section is reported as
     rejected instead of failing the whole request; the appraiser writes that one
@@ -872,14 +879,14 @@ def _prose_section(section: str, facts: dict) -> _SectionOutcome:
     in parallel, so one rate-limited call must not discard the five that already
     succeeded and were already paid for — and retrying the whole request would
     re-send the same burst of six, the very shape that trips the limit."""
-    prompt = prose_core.build_prompt(section, facts)
+    prompt = prose_core.build_prompt(section, facts, property_right)
     input_tokens = output_tokens = 0
     try:
         completion = _generate_prose_section(section, prompt)
         input_tokens += completion.input_tokens
         output_tokens += completion.output_tokens
         text = completion.text.strip()
-        violations = _prose_violations(text, facts)
+        violations = _prose_violations(text, facts, property_right)
 
         if violations:
             logger.warning("prose_section_retry", section=section, violations=violations)
@@ -891,7 +898,7 @@ def _prose_section(section: str, facts: dict) -> _SectionOutcome:
             input_tokens += retry.input_tokens
             output_tokens += retry.output_tokens
             text = retry.text.strip()
-            violations = _prose_violations(text, facts)
+            violations = _prose_violations(text, facts, property_right)
             if violations:
                 logger.warning("prose_section_rejected", section=section, violations=violations)
                 text = ""
@@ -956,7 +963,9 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
     # `_prose_section` never raises — a failing section is contained there, so
     # one bad call cannot discard the sections that already succeeded.
     with ThreadPoolExecutor(max_workers=len(sections)) as pool:
-        outcomes = list(pool.map(lambda section: _prose_section(section, facts), sections))
+        outcomes = list(
+            pool.map(lambda section: _prose_section(section, facts, request.rodzaj_prawa), sections)
+        )
 
     sekcje: dict[str, str] = {}
     odrzucone: dict[str, list[str]] = {}

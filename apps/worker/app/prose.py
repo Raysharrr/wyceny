@@ -398,17 +398,62 @@ def _dumps(data: dict) -> str:
     return json.dumps(data, indent=1, ensure_ascii=False)
 
 
-def build_prompt(section: str, facts: dict) -> str:
+# S5 (Task 4c): jedno zdanie o rodzaju prawa doklejane do ZADANIA. Klucze = wartości
+# `PropertyRight` po stronie web (domain/property-right.ts). Pole jedzie OBOK faktów,
+# nigdy w nich — odcisk sekcji (prose-hash.ts) liczy się z faktów, a wejście tam
+# unieważniłoby każdą potwierdzoną sekcję każdej istniejącej wyceny.
+PROPERTY_RIGHT_SENTENCE: dict[str, str] = {
+    "wlasnosc_lokalu": (
+        "Przedmiotem wyceny jest prawo własności lokalu (nieruchomość lokalowa) — "
+        "tak nazywaj przedmiot wyceny."
+    ),
+    "spoldzielcze_wlasnosciowe": (
+        "Przedmiotem wyceny jest spółdzielcze własnościowe prawo do lokalu — tak nazywaj "
+        "przedmiot wyceny; NIE pisz o „prawie własności”, „nieruchomości lokalowej” ani "
+        "„udziale w gruncie”, bo lokal nie jest odrębną nieruchomością."
+    ),
+}
+
+# Straż słownictwa własnościowego dla prawa spółdzielczego — ta sama lista co straż
+# tekstowa F-12 po stronie web (f12-document-sections.test.ts), sprawdzana na
+# wygenerowanym tekście, którego F-12 nie widzi (mierzy render z pustą prozą).
+OWNERSHIP_PHRASES: tuple[str, ...] = (
+    "prawa własności",
+    "prawo własności",
+    "nieruchomości lokalowej",
+    "udział w gruncie",
+)
+
+
+def validate_property_right(text: str, property_right: str | None) -> list[str]:
+    """Phrases the text must not carry for the given right. Only the cooperative
+    right has a forbidden vocabulary; ownership and an unknown right pass.
+    Each finding is self-describing — it lands in front of the appraiser next
+    to the number guard's findings, and „prawa własności” alone reads like a typo."""
+    if property_right != "spoldzielcze_wlasnosciowe":
+        return []
+    lowered = text.lower()
+    return [
+        f"„{phrase}” (przedmiotem wyceny jest spółdzielcze własnościowe prawo do lokalu)"
+        for phrase in OWNERSHIP_PHRASES
+        if phrase in lowered
+    ]
+
+
+def build_prompt(section: str, facts: dict, property_right: str | None = None) -> str:
     """Assemble the section prompt: style + task + few-shot examples + facts.
 
     The layout (separators included) is the one validated in the spike — do not
-    reshape it. Unknown section -> ValueError.
+    reshape it. Unknown section -> ValueError. `property_right` (S5) adds ONE
+    sentence to the task; `None` yields the exact pre-S5 prompt.
     """
     if section not in SECTIONS:
         raise ValueError(f"nieznana sekcja: {section!r}")
 
     style = (PROMPTS_DIR / "_style.md").read_text(encoding="utf-8").strip()
     task, examples = parse_section_file(PROMPTS_DIR / f"{section}.md")
+    if property_right is not None:
+        task = f"{task}\n{PROPERTY_RIGHT_SENTENCE[property_right]}"
 
     blocks = [
         f"PRZYKŁAD — DANE:\n{_dumps(data)}\nPRZYKŁAD — TEKST SEKCJI:\n{text}"

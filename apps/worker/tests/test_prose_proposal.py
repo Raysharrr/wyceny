@@ -295,7 +295,13 @@ def test_anthropic_touchpoint_is_confined_to_the_llm_helper():
 def test_f11_no_market_value_on_either_side():
     """F-11: the worker neither accepts nor returns a market value or the unit
     value of the result. `pozycja_wyniku` is a categorical string computed in web."""
-    assert set(main.ProseProposalRequest.model_fields) == {"token", "sekcje", "fakty", "transakcje"}
+    assert set(main.ProseProposalRequest.model_fields) == {
+        "token",
+        "sekcje",
+        "fakty",
+        "transakcje",
+        "rodzaj_prawa",  # S5: enum rodzaju prawa, nie wartość
+    }
     assert set(main.ProseProposalResponse.model_fields) == {
         "sekcje",
         "odrzucone",
@@ -469,3 +475,80 @@ def test_obreb_spoza_faktow_naprawiony_w_drugiej_probie_przechodzi(monkeypatch):
     # Poprawka niesie nazwę, nie tylko liczby — inaczej model nie wie, co zmienić.
     _, _, correction = fake.calls[1]
     assert "Naramowice" in correction
+
+
+# --- S5 (Task 4c): rodzaj prawa — zdanie w prompcie + straż fraz własnościowych -------
+
+# Bez liczb spoza FAKTY: jedyny błąd to słownictwo własnościowe przy prawie spółdzielczym
+# (zmierzone na stagingu, szkic 43567a41…, sekcja „analiza rynku").
+WLASNOSCIOWA = (
+    "Dla określenia wartości rynkowej prawa własności wycenianej nieruchomości lokalowej "
+    "o funkcji mieszkalnej przeprowadzono analizę rynku lokalnego m. Nowogród, obręb Zarzecze."
+)
+SPOLDZIELCZA = (
+    "Dla określenia wartości rynkowej spółdzielczego własnościowego prawa do lokalu "
+    "mieszkalnego przeprowadzono analizę rynku lokalnego m. Nowogród, obręb Zarzecze."
+)
+
+
+def post_right(token, sekcje, rodzaj_prawa):
+    return client.post(
+        "/prose-proposal",
+        json={
+            "token": token,
+            "sekcje": list(sekcje),
+            "fakty": FAKTY,
+            "transakcje": [],
+            "rodzaj_prawa": rodzaj_prawa,
+        },
+    )
+
+
+def test_prawo_spoldzielcze_odrzuca_slownictwo_wlasnosciowe_w_analizie_rynku(monkeypatch):
+    monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({"analiza_rynku": [WLASNOSCIOWA]}))
+    resp = post_right(mint(), ["analiza_rynku"], "spoldzielcze_wlasnosciowe")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sekcje"] == {}
+    # Powód jest czytelny dla rzeczoznawcy — nie jest to liczba, więc mówimy, co to jest.
+    reasons = body["odrzucone"]["analiza_rynku"]
+    assert any("prawa własności" in r for r in reasons)
+    assert any("nieruchomości lokalowej" in r for r in reasons)
+
+
+def test_prawo_spoldzielcze_druga_proba_bez_slownictwa_przechodzi(monkeypatch):
+    fake = FakeLlm({"analiza_rynku": [WLASNOSCIOWA, SPOLDZIELCZA]})
+    monkeypatch.setattr(main, "_generate_prose_section", fake)
+    resp = post_right(mint(), ["analiza_rynku"], "spoldzielcze_wlasnosciowe")
+
+    assert resp.status_code == 200
+    assert resp.json()["sekcje"] == {"analiza_rynku": SPOLDZIELCZA}
+    _, _, correction = fake.calls[1]
+    assert "prawa własności" in correction
+
+
+def test_prawo_wlasnosci_nie_odrzuca_slownictwa_wlasnosciowego(monkeypatch):
+    monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({"analiza_rynku": [WLASNOSCIOWA]}))
+    for right in ("wlasnosc_lokalu", None):
+        resp = post_right(mint(), ["analiza_rynku"], right)
+        assert resp.status_code == 200
+        assert resp.json()["sekcje"] == {"analiza_rynku": WLASNOSCIOWA}
+
+
+def test_rodzaj_prawa_wchodzi_do_promptu_poza_faktami(monkeypatch):
+    """Jedno zdanie o rodzaju prawa w prompcie; FAKTY na drucie bez zmian (odcisk
+    sekcji po stronie web liczy się z faktów, więc pole NIE może do nich wejść)."""
+    fake = FakeLlm({})
+    monkeypatch.setattr(main, "_generate_prose_section", fake)
+    assert post_right(mint(), ["analiza_rynku"], "spoldzielcze_wlasnosciowe").status_code == 200
+    _, prompt, _ = fake.calls[0]
+    assert "spółdzielcze własnościowe prawo do lokalu" in prompt
+    assert prompt == prose_core.build_prompt("analiza_rynku", FAKTY, "spoldzielcze_wlasnosciowe")
+    assert prose_core.build_prompt("analiza_rynku", FAKTY, None) == prose_core.build_prompt(
+        "analiza_rynku", FAKTY
+    )
+
+
+def test_nieznany_rodzaj_prawa_422():
+    assert post_right(mint(), ["analiza_rynku"], "uzytkowanie_wieczyste").status_code == 422
