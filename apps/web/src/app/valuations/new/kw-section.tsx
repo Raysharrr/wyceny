@@ -221,9 +221,9 @@ export function KwSection(props: KwSectionProps) {
               data-testid="property-right-coop-info"
               className="rounded-md border border-border bg-muted/40 p-2 text-sm"
             >
-              Transakcje do próby porównawczej pobierzemy z <strong>rejestru biura</strong> zamiast
-              z RCN. Zakładka <strong>Rejestr spółdzielczy</strong> pojawi się w kolejnym wydaniu —
-              do tego czasu próbę wpisz ręcznie w kroku 3.
+              Próbę porównawczą wpisz ręcznie w kroku 3 (pobieranie z{" "}
+              <strong>rejestru biura</strong> w kolejnym wydaniu, razem z zakładką{" "}
+              <strong>Rejestr spółdzielczy</strong>).
             </p>
             <Controller
               control={control}
