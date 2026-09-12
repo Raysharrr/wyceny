@@ -12,6 +12,13 @@ import { RegistryTable } from "./registry-table";
 export const dynamic = "force-dynamic";
 
 const PAGE = 50;
+/**
+ * "Pokaż więcej" is a GROWING WINDOW, not appended pages: every click re-reads
+ * `PAGE * pages` rows from offset 0 (filters live in the URL, so there is no
+ * client state to append into). Capped at the adapter's LIST_CAP (5 000) —
+ * `?strona=100` is the most one URL can ask for (review 1 m-8).
+ */
+const MAX_PAGES = 5000 / PAGE;
 
 /**
  * `/rejestr` (T-13, S2b Task 2; makieta RejestrLista): one register for the
@@ -31,7 +38,7 @@ export default async function RejestrPage({
   const sm = one("sm");
   const q = one("q");
   const needsFix = one("lokalizacja") === "do-poprawki";
-  const pages = Math.max(1, Number.parseInt(one("strona") || "1", 10) || 1);
+  const pages = Math.min(MAX_PAGES, Math.max(1, Number.parseInt(one("strona") || "1", 10) || 1));
 
   const [stats, list] = await Promise.all([
     coopRegistry.stats(),
