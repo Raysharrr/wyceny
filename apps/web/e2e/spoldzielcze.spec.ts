@@ -336,7 +336,7 @@ test.describe("wycena własnościowa — kontrola regresji @coop @staging-safe",
       address: "ul. Kościelna 33, Poznań",
       area: "54.3",
       client: "QA E2E własność",
-      kw: "PO1P/00113158/1",
+      kw: "KW-TEST-E2E",
     });
     await expect(subject.summary).toContainText("Własność lokalu");
     await expect(subject.summary).not.toContainText("Co się zmieni dalej");
@@ -363,7 +363,7 @@ test.describe("wycena własnościowa — kontrola regresji @coop @staging-safe",
       address: "ul. Kościelna 33, Poznań",
       area: "54.3",
       client: "QA E2E własność RCN",
-      kw: "PO1P/00113158/1",
+      kw: "KW-TEST-E2E",
     });
     await subject.save();
     await new InspectionStep(page).fillDateAndContinue();
