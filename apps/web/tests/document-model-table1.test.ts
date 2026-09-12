@@ -3,8 +3,6 @@ import { buildDocumentModel } from "../src/domain/document-model";
 import { syntheticDocumentInput } from "./fixtures/document-model-fixture";
 import type { Candidate } from "../src/domain/sample-selection";
 
-const NBSP = " "; // non-breaking space (escape — a pasted literal is invisible to review)
-
 const cand = (
   id: string,
   teryt: string,
