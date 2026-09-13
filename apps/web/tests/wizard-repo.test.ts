@@ -799,3 +799,27 @@ describe("S2 method and pairwise locked writes", () => {
     expect(saved.pairwise!.confirmedBasis).toBe(pairwiseBasis(saved));
   });
 });
+
+it("invalidates the persisted PP stamp and WR when subject area changes", async () => {
+  const created = await repo.create({ ...partialDraft("S2 subject basis"), inputs: ppInputs() });
+  const inputs = created.inputs!;
+  const provenance = {
+    weights: { source: "rzeczoznawca", status: "confirmed" },
+    ratings: { source: "rzeczoznawca", status: "confirmed" },
+  } as const;
+  await repo.saveFeatures(created.id, appraiserA, {
+    features: inputs.features,
+    comparisons: inputs.pairwise!.comparisons,
+    provenance,
+    expectedPairwiseBasis: pairwiseBasis(inputs),
+    confirmPairwise: true,
+  });
+  expect((await repo.confirmCalculation(created.id, appraiserA))!.wr).not.toBeNull();
+  await repo.saveSubject(created.id, appraiserA, { ...subjectUpdate, area: inputs.area + 1 });
+  const loaded = await repo.get(created.id, appraiserA);
+  expect(loaded!.wr).toBeNull();
+  expect(loaded!.inputs!.pairwise!.confirmedBasis).toBeUndefined();
+  await expect(repo.confirmCalculation(created.id, appraiserA)).rejects.toThrow(
+    CalculationNotReadyError,
+  );
+});

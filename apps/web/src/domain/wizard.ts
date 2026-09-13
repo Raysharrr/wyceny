@@ -54,6 +54,7 @@ const BLOCKER_STEP: Record<string, number> = {
   // operat's header fields, which live on the same form.
   "provenance.address": 1,
   "provenance.area": 1,
+  area: 1,
   "provenance.geocode": 1,
   "provenance.ewidencja": 1,
   "provenance.mpzp": 1,

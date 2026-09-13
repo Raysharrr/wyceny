@@ -8,7 +8,7 @@ import {
   type ProvenanceStatus,
   type Sourced,
 } from "@wyceny/shared";
-import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
+import { isRegistrySourced, REGISTRY_LABEL } from "./kcs";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 
@@ -51,7 +51,7 @@ export type GateResult = { ok: true } | { ok: false; blockers: Blocker[] };
 export type GateInput = Partial<
   Pick<ValuationInput, "method" | "methodConfirmed" | "pairwise" | "area" | "features">
 > & {
-  comparables: Array<{ source?: ComparableSource; status?: ProvenanceStatus }>;
+  comparables: ValuationInput["comparables"];
   sampleMeta?: unknown | null;
   subject?: unknown | null;
   kw?: {
@@ -129,34 +129,34 @@ function statusLabel(status: ProvenanceStatus): string {
 export function approvalGate(input: GateInput, options?: GateOptions): GateResult {
   const blockers: Blocker[] = [];
 
-  let comparables = input.comparables;
-  if (input.area !== undefined && input.features !== undefined) {
-    const snapshot = input as ValuationInput;
-    blockers.push(...calculationIssues(snapshot));
-    try {
-      comparables = valuationComparables(snapshot);
-    } catch {
-      comparables = [];
-    }
-  } else {
-    if (!input.method || input.methodConfirmed !== true)
-      blockers.push({ path: "method", label: "Wybierz i potwierdź metodę wyceny." });
-    if (input.comparables.length < REQUIRED_SAMPLE_SIZE)
-      blockers.push({
-        path: "comparables",
-        label: `Wymagane co najmniej ${REQUIRED_SAMPLE_SIZE} transakcji.`,
-      });
+  // Missing historical/corrupt fields must fail the SAME readiness policy.
+  // Invalid defaults below cannot make a calculation ready; signing an already
+  // approved legacy snapshot is a separate operation and does not call this gate.
+  const snapshot = {
+    ...input,
+    area: input.area ?? Number.NaN,
+    features: Array.isArray(input.features) ? input.features : [],
+    comparables: Array.isArray(input.comparables) ? input.comparables : [],
+  } as ValuationInput;
+  blockers.push(...calculationIssues(snapshot));
+  let comparables: ValuationInput["comparables"] = [];
+  try {
+    comparables = valuationComparables(snapshot);
+  } catch {
+    // The shared readiness issues already identify invalid methods/selections.
   }
 
   comparables.forEach((c, i) => {
+    const poolIndex = snapshot.method === "pp" ? snapshot.comparables.indexOf(c) : i;
+    const poolLabel = snapshot.method === "pp" ? " w zapisanej puli" : "";
     const source = isRegistrySourced(c) ? c.source : "rzeczoznawca";
     const status: ProvenanceStatus = c.status ?? "none";
     const s = sourced(c, source, status);
     if (isBlocking(s)) {
       const origin = isRegistrySourced(c) ? ` (${REGISTRY_LABEL[c.source]})` : "";
       blockers.push({
-        path: `comparables[${i}]`,
-        label: `Transakcja ${i + 1}${origin} — ${statusLabel(status)}.`,
+        path: `comparables[${poolIndex}]`,
+        label: `Transakcja ${poolIndex + 1}${poolLabel}${origin} — ${statusLabel(status)}.`,
       });
     }
   });

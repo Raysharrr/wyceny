@@ -569,7 +569,9 @@ describe("stepForBlockerPath", () => {
   /** A draft that trips every group the F-4 gate knows how to block on. */
   function maximallyBlockedInput(): GateInput {
     return {
-      comparables: [{ source: "rcn", status: "to_verify" }],
+      area: 50,
+      features: [{ name: "standard", weight: 1, rating: "przecietna" }],
+      comparables: [{ pricePerM2: 10000, source: "rcn", status: "to_verify" }],
       sampleMeta: { lat: 1, lon: 2 },
       subject: { obreb: "Nowogród" },
       kw: { source: "odpis_kw", kwLokalu: null, kwGruntu: null, deweloperski: false },

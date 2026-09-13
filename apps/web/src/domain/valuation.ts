@@ -392,6 +392,9 @@ function promoteStoredRcnRows(snapshot: Comparable[], incoming: Comparable[]): C
   );
   return incoming.map((c) => {
     const source =
+      // A concrete incoming SM identity outranks an older RCN classification.
+      // Without it, the stable-id guard still prevents stripped rows becoming manual.
+      (c.coopTxId ? "rejestr_sm" : undefined) ??
       (c.id ? byId.get(c.id) : undefined) ??
       (isRegistrySourced(c) ? undefined : fetched.get(comparableContentKey(c)));
     return source ? { ...c, source, status: "to_verify" as const } : c;

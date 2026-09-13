@@ -173,31 +173,35 @@ describe("S2 identity and confirmation", () => {
   });
 });
 
-it("does not demote a registry row when its stable id survives a price edit and source-id stripping", () => {
-  const inputs = ppInputs();
-  const original = {
-    ...inputs.comparables[0],
-    source: "rcn" as const,
-    transactionId: "tx",
-    lokalId: "a",
-  };
-  inputs.comparables[0] = original;
-  const incoming = {
-    id: original.id,
-    source: "manual" as const,
-    status: "confirmed" as const,
-    pricePerM2: original.pricePerM2 + 20,
-  };
-  const updated = applySampleUpdate(
-    { ...draft(), inputs },
-    { comparables: [incoming, ...inputs.comparables.slice(1)], sampleMeta: null },
-  );
-  expect(updated.inputs!.comparables[0]).toMatchObject({
-    source: "rcn",
-    status: "to_verify",
-    id: original.id,
-  });
-});
+it.each(["rcn", "rejestr_sm"] as const)(
+  "does not demote a %s row when its stable id survives a price edit and source-id stripping",
+  (source) => {
+    const inputs = ppInputs();
+    const original = {
+      ...inputs.comparables[0],
+      source,
+      coopTxId: source === "rejestr_sm" ? "coop-tx" : undefined,
+      transactionId: "tx",
+      lokalId: "a",
+    };
+    inputs.comparables[0] = original;
+    const incoming = {
+      id: original.id,
+      source: "manual" as const,
+      status: "confirmed" as const,
+      pricePerM2: original.pricePerM2 + 20,
+    };
+    const updated = applySampleUpdate(
+      { ...draft(), inputs },
+      { comparables: [incoming, ...inputs.comparables.slice(1)], sampleMeta: null },
+    );
+    expect(updated.inputs!.comparables[0]).toMatchObject({
+      source,
+      status: "to_verify",
+      id: original.id,
+    });
+  },
+);
 
 import { currentSectionFactsHashes } from "../src/domain/prose-hash";
 it("same-method legacy confirmation preserves prose fingerprints and refuses immutable records", () => {
@@ -243,5 +247,93 @@ it("approval checks provenance only for selected PP comparables and refuses a ch
     blockers: expect.arrayContaining([
       expect.objectContaining({ path: "pairwise.confirmedBasis" }),
     ]),
+  });
+});
+
+import { approveValuation } from "../src/domain/valuation";
+import type { ValuationInput } from "../src/domain/valuation-input";
+describe("review regressions: approval completeness and canonical rows", () => {
+  it.each([
+    "missing area",
+    "missing features",
+    "unknown method",
+    "unknown method and missing area",
+  ])("refuses %s at the gate and aggregate", (variant) => {
+    const v = draft();
+    expect(approvalGate(v.inputs!)).toEqual({ ok: true });
+    const incomplete: Partial<ValuationInput> = { ...v.inputs! };
+    if (variant.includes("missing area")) delete incomplete.area;
+    if (variant.includes("missing features")) delete incomplete.features;
+    if (variant.includes("unknown method")) incomplete.method = "unknown" as never;
+    expect(approvalGate(incomplete as ValuationInput).ok).toBe(false);
+    expect(() =>
+      approveValuation({ ...v, inputs: incomplete as ValuationInput }, new Date()),
+    ).toThrow();
+    expect(v.status).toBe("in_progress");
+  });
+  it("preserves an incoming SM identity when a stored row was previously classified as RCN", () => {
+    const inputs = ppInputs();
+    inputs.comparables[0] = {
+      ...inputs.comparables[0],
+      source: "rcn",
+      transactionId: "tx",
+      lokalId: "a",
+    };
+    const ids = inputs.comparables.map((c) => comparableIdentity(c)!);
+    inputs.pairwise = {
+      selectedComparableIds: ids,
+      comparisons: Object.fromEntries(
+        ids.map((id) => [id, { inne: { rating: "lepsza", multiplier: 0 } }]),
+      ),
+    };
+    const incoming = assignSampleProvenance({
+      comparables: inputs.comparables.map((c, i) => (i === 0 ? { ...c, coopTxId: "coop-tx" } : c)),
+    });
+    expect(incoming[0].source).toBe("rejestr_sm");
+    const updated = applySampleUpdate(
+      { ...draft(), inputs },
+      { comparables: incoming, sampleMeta: null },
+    );
+    expect(updated.inputs!.comparables[0].source).toBe("rejestr_sm");
+    expect(comparableIdentity(updated.inputs!.comparables[0])).toBe("sm:coop-tx");
+    expect(updated.inputs!.pairwise!.selectedComparableIds).not.toContain(ids[0]);
+    expect(updated.inputs!.pairwise!.comparisons[ids[0]]).toBeUndefined();
+  });
+  it("ties PP provenance blockers to the saved pool even when selected display order differs", () => {
+    const inputs = ppInputs();
+    inputs.provenance = {
+      address: { source: "rzeczoznawca", status: "confirmed" },
+      area: { source: "rzeczoznawca", status: "confirmed" },
+      ...provenance,
+    };
+    inputs.pairwise!.selectedComparableIds = inputs.pairwise!.selectedComparableIds.toReversed();
+    inputs.comparables[2].status = "to_verify";
+    inputs.pairwise!.confirmedBasis = pairwiseBasis(inputs);
+    expect(approvalGate(inputs)).toEqual({
+      ok: false,
+      blockers: [
+        { path: "comparables[2]", label: expect.stringContaining("Transakcja 3 w zapisanej puli") },
+      ],
+    });
+  });
+  it("refuses an explicit stale selection after source identity normalization without changing the draft", () => {
+    const inputs = ppInputs();
+    const before = structuredClone(inputs);
+    const incoming = assignSampleProvenance({
+      comparables: inputs.comparables.map((c, i) =>
+        i === 0 ? { ...c, transactionId: "tx", lokalId: "a" } : c,
+      ),
+    });
+    expect(() =>
+      applySampleUpdate(
+        { ...draft(), inputs },
+        {
+          comparables: incoming,
+          sampleMeta: null,
+          selectedComparableIds: inputs.pairwise!.selectedComparableIds,
+        },
+      ),
+    ).toThrow(/Wybierz ponownie/);
+    expect(inputs).toEqual(before);
   });
 });

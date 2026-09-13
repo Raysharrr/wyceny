@@ -71,3 +71,15 @@ Manual Chrome, spółdzielcze: new draft → explicit KCS →12 manual rows → 
 Artifacts in `/tmp/pairwise-s2-browser/`: method unconfirmed/confirmed screenshots, PP blocker screenshot, both issued DOMs, preview/issued Chrome screenshots, both `*-issued.pdf` and text extracts, `pdf-evidence.json` (byte counts/SHA256), rendered table/value pages. Both PDFs13 pages; right-specific title and correct WR verified, no unresolved template markers. Visual checks cover title pages and KCS tables/value pages (coop11, ownership11–12), not every document page. The existing ownership table4 crosses a page break. Artifacts stay outside git because the existing template contains office branding/stamp.
 
 First local E2E setup accidentally retained the coordinator's prose-on flag; the keyless worker rejected the request before an external model call. The run was stopped, this task's flag changed to off, the app rebuilt, then the complete successful E2E above ran. PP end-to-end, live RCN, optional register approval, maps, photos and signing are not claimed as manual checks here; relevant existing automated tests remain intact.
+
+## First review fix batch
+
+The first review and coordinator reproduction identified three issues on `eba365e` despite green CI (web1784 PASS/1 skip, worker319 PASS/1 skip, E2E12 PASS/2 opt-in skips). The review label itself is not treated as acceptance of those defects.
+
+- Removed the permissive missing-area/features branch in `approvalGate`. Every new approval now uses `calculationIssues`; missing fields become invalid calculation inputs, and an unknown method cannot bypass readiness by omitting a field. Provenance fixtures now contain real prices, area and valid feature data. `GateInput.comparables` is the full `Comparable[]` contract. Legacy approved signing still uses its existing separate path.
+- Incoming `coopTxId` takes precedence over an older RCN source recorded against the row id. Stable-id protection against source-id stripping/manual demotion remains for both RCN and SM. Changed canonical identities require reassessment.
+- PP provenance paths use the actual saved-pool index, independent of selection display order; the label says e.g. “Transakcja 3 w zapisanej puli”. KCS labels are unchanged. Missing area blockers link to step1.
+
+New regressions first reproduced five failures (`/tmp/pairwise-s2-review-red.log`). The fix batch also tests explicit stale selected ids without mutation and persisted stamp/WR invalidation after a subject-area edit. Targeted verification includes F4, wizard domain/repo, pairwise state, F7, signing actions and both KCS goldens. Final results are reported in the PR/coordinator message, with logs `/tmp/pairwise-s2-review-green-final.log`, `...-types.log`, `...-lint.log`, `...-depcruise.log` and `...-build.log` under the same `/tmp/pairwise-s2-review` prefix.
+
+S3 retains the documented coopTxId/ratingScale hydration work and PP preset-definition median semantics; coordinator will explicitly assign action ownership for the latter. No production database access or new approval workflow was added for this review.
