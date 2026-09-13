@@ -49,6 +49,15 @@ export function resolveOperatSection(
     .replace(/\{(\w+)\}/g, (_, key: string) => String(model[key]));
 }
 
+/** PP headings introduced by scripts/patch-template-pairwise.mts. */
+export const PP_CALCULATION_SECTIONS = [
+  "12.3. Poprawki i ceny skorygowane",
+  "12.4. Określenie wartości rynkowej {przedmiot_d}",
+] as const;
+
 export function operatSections(model: Readonly<Record<string, unknown>>): string[] {
-  return OPERAT_SECTION_TEMPLATES.map((t) => resolveOperatSection(t, model));
+  const templates = OPERAT_SECTION_TEMPLATES.flatMap((t) =>
+    model.metoda_pp === true && t.startsWith("12.3.") ? PP_CALCULATION_SECTIONS : [t],
+  );
+  return templates.map((t) => resolveOperatSection(t, model));
 }

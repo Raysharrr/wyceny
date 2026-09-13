@@ -27,6 +27,15 @@ export const TREE_LABEL: Record<HelpTree, string> = {
  */
 export const HELP_PAGES: HelpPage[] = [
   {
+    slug: "metoda-pp",
+    title: "Metoda porównywania parami (PP)",
+    tree: "metodyka",
+    order: 8,
+    tags: ["PP", "porównywanie parami", "poprawki", "skale", "cecha własna"],
+    summary: "Wybór 3–5 porównań, oceny, mnożniki, cztery tabele i aktualność opisów.",
+    load: () => import("./metodyka/metoda-pp.mdx"),
+  },
+  {
     slug: "pierwsze-kroki",
     title: "Pierwsze kroki",
     tree: "jak-korzystac",

@@ -9,6 +9,7 @@ import {
   attemptedProseSections,
   buildProseFacts,
   buildProseTransactions,
+  proseComparables,
   proseSnapshotOf,
   selectProseSections,
   staleProseSections,
@@ -155,7 +156,7 @@ export async function proposeProse(
         token,
         sections,
         facts,
-        transactions: buildProseTransactions(valuation.inputs.comparables),
+        transactions: buildProseTransactions(proseComparables(valuation.inputs)),
         // Beside the facts, never inside them — see `ProseProposalRequest.propertyRight`.
         propertyRight: valuation.propertyRight,
       });
