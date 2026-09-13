@@ -2,9 +2,9 @@
 
 S5 bada zintegrowane S3/S4 od bazy `3261551` w gałęzi `feature/pairwise-e2e`. W tabeli rozróżniono trwałe E2E, niższe warstwy i historyczny dowód koordynatora. Szczegóły środowiska, końcowe wyniki i ograniczenia: [S5-E2E](S5-E2E.md). Odbiór nie oznacza zgody na staging ani merge do main.
 
-Wynik lokalny: PASS na wskazanych warstwach. Końcowe E2E3×:22PASS w131,4s bez skipów i retry; stary zestaw12PASS/2 istniejące opt-in skipy. Pełny web1849PASS/1skip, shared4PASS, worker321PASS; CI GitHub i wymagane przeglądy pozostają osobnymi bramkami koordynatora.
+Wynik lokalny: PASS na wskazanych warstwach. Końcowe E2E3× na niezależnym Linux:22PASS w64,7s bez skipów i retry; stary zestaw12PASS/2 istniejące opt-in skipy w21,7s. Pełny web1849PASS/1skip, shared4PASS, worker321PASS; CI GitHub i wymagane przeglądy pozostają osobnymi bramkami koordynatora.
 
-**Otwarty wynik negatywny CI (AC08):** Linux KCS łamie cyfry procentów w wąskiej kolumnie. Zachowano ścisłe asercje; koordynator przekazał poprawkę właścicielowi S4. Lokalne PASS nie zamyka tego wyniku. Szczegóły i artefakty w S5-E2E.
+**Zamknięty wynik negatywny (AC08):** ścisłe E2E wykryło łamanie cyfr procentów KCS w Linux. Właściciel S4 poprawił wyłącznie szerokości nowoczesnej tabeli (`82dd24d`, PR46). S5 odtworzył błąd przed poprawką, następnie niezależny pełny Linux3× i oględziny obu praw przeszły bez zmiany asercji. Szczegóły i artefakty w S5-E2E.
 
 ## Rzeczywista macierz dowodów
 
@@ -27,7 +27,7 @@ Nazwy krótkie odnoszą się do testów w `apps/web/e2e/pairwise-valuation.spec.
 
 ## Dane, środowisko i granice
 
-S5: web3021, worker8022 z rzeczywistym LibreOffice, osobny PostgreSQL5548, syntetyczny Zenon. Brak płatnego LLM, żywego importu/map, produkcyjnej bazy, cudzych wycen i prawdziwego podpisu. `NEXT_PUBLIC_PROSE=off` nie służy jako dowód AC09/AC11; pozostaje tylko w starych zestawach smoke/cooperative. Worker bez klucza uczciwie odmawia generacji, edytory są aktywne.
+S5 końcowo: web3021, worker Linux8023 z rzeczywistym LibreOffice25.2.3.2 (wcześniejsze testy macOS na8022), osobny PostgreSQL5548, syntetyczny Zenon. Brak płatnego LLM, żywego importu/map, produkcyjnej bazy, cudzych wycen i prawdziwego podpisu. `NEXT_PUBLIC_PROSE=off` nie służy jako dowód AC09/AC11; pozostaje tylko w starych zestawach smoke/cooperative. Worker bez klucza uczciwie odmawia generacji, edytory są aktywne.
 
 IAB pokazał podpisany status,455000, PP tabele i brak ponownego podpisu; jego PDF viewer pozostał pusty. S5 ogląda rzeczywiste PDF po lokalnej rasteryzacji, nie deklaruje własnej kontroli PDF w Chrome. Koordynator prowadzi oddzielny odbiór Chrome na3015; S5 nie przełączał tam kont ani ciasteczek.
 

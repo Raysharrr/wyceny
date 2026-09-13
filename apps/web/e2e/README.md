@@ -56,6 +56,18 @@ AC07 (arkuszowe wzorce, ΔC0, precyzja), źródła RCN/SM, owner/row-lock, bramk
 
 Projekt `pairwise` zapisuje trace każdego testu; PDF/DOCX/zrzuty i metadane są w `test-results/` (albo w katalogu `--output`). Zawierają branding istniejącego szablonu i pozostają poza gitem. `staging` nadal wybiera wyłącznie `@staging-safe` ze starego pliku i nigdy tego zestawu.
 
+### Rzeczywisty worker Linux
+
+Układ PDF zależy również od dostępnych fontów. Przy zmianie szablonu sprawdź prawdziwy Linux, zgodny z Dockerfile workera; sam lokalny LibreOffice na macOS nie wystarcza. Obraz workera nie wymaga klucza LLM. Przykład z katalogu głównego repozytorium (port musi być wolny, a sekret taki sam jak w web):
+
+```bash
+docker build -t wyceny-e2e-worker apps/worker
+docker run --name wyceny-e2e-worker --rm -p 127.0.0.1:8023:8000 \
+  -e WORKER_SHARED_SECRET -e GEOCODER_STUB=1 -e STREET_INDEX=off wyceny-e2e-worker
+# W osobnym terminalu uruchom web/testy z WORKER_URL=http://127.0.0.1:8023.
+# Nie przekazuj kluczy LLM ani macOS-owej ścieżki SOFFICE do kontenera.
+```
+
 ## Staging (ręcznie)
 
 ```bash
