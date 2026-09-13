@@ -1,5 +1,7 @@
 # Lokale — cechy własne, skale i porównywanie parami
 
+> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Wcześniejsze sformułowania o oczekiwaniu opisują etap przygotowania; bramka jest zamknięta.
+
 Status: projekt kontraktu przed implementacją, 2026-09-13. Kierunek funkcjonalny zaakceptowany; D-ARCH/D-AUTO w [ARCHITECTURE](ARCHITECTURE.md) wymagają zatwierdzenia. Baza9b2903c. [Źródła](SOURCES.md), [pierwotny plan cech](ORIGINAL-FEATURE-PLAN.md) zachowany jako materiał historyczny; ten spec zastępuje jego wyłączenie PP, bazę/worktree i dawny build-slice. Oryginał poza tym worktree pozostaje nietknięty.
 
 ## Z perspektywy rzeczoznawcy

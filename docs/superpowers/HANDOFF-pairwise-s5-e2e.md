@@ -1,6 +1,6 @@
 # HANDOFF pairwise-s5-e2e — Integrated acceptance and E2E
 
-Status: HOLD until coordinator START following approval of D-ARCH/D-AUTO and dependency check. Base: `origin/integration/pairwise-valuation`. Branch: `feature/pairwise-e2e`. Dependency: S3 and S4 merged.
+Status: D-ARCH/D-AUTO APPROVED2026-09-13. Await coordinator START only for dependency readiness; approval must not be requested again. Base: `origin/integration/pairwise-valuation`. Branch: `feature/pairwise-e2e`. Dependency: S3 and S4 merged.
 
 Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Users/michalczekala/Development/wyceny-app`; coordinator worktree `/Users/michalczekala/Development/wyceny-app-worktrees/pairwise-valuation`. Scope = this HANDOFF; report adjacent findings as follow-up, do not implement them.
 

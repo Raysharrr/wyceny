@@ -12,7 +12,7 @@
 
 ## Global constraints
 
-- Status: awaiting D-ARCH and D-AUTO before production implementation. No task may invent unapproved methodology.
+- Status: D-ARCH and D-AUTO APPROVED on2026-09-13; see pairwise-valuation/ACCEPTANCE.md. Execute in dependency order. No task may invent additional methodology.
 - Base for every task/PR: `integration/pairwise-valuation`, never main. English `feature/<name>` branches and dedicated app worktrees.
 - Preserve current styles/components, seven-step wizard, Opisy, actual PDF and document numbering.
 - Both rights: `wlasnosc_lokalu` and `spoldzielcze_wlasnosciowe`. Homes/land excluded.

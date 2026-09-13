@@ -1,5 +1,7 @@
 # Przygotowanie bloku T-06–T-09
 
+> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Wcześniejsze sformułowania o oczekiwaniu opisują etap przygotowania; bramka jest zamknięta.
+
 - [Stan, źródła założeń i dowody](STATUS.md)
 - [Audyt i konkretne decyzje D-ARCH/D-AUTO](ARCHITECTURE.md)
 - [Przegląd planu i rozstrzygnięcia](PLAN-REVIEW.md)

@@ -1,5 +1,7 @@
 # Stan bloku T-06–T-09
 
+> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Wcześniejsze sformułowania o oczekiwaniu opisują etap przygotowania; bramka jest zamknięta.
+
 2026-09-13 · koordynator: zadanie `01a09928-7929-7b71-ac87-01929eedf3b0`.
 
 ## Zakres i stan
@@ -10,8 +12,8 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 - [x] 1 Kontekst — źródła, wcześniejszy przegląd aplikacji i pokaz makiety; rozbieżności opisane poniżej.
 - [x] 2 Logika i dane — dwa wzorce liczbowo odtworzone; model odpowiedzialności i źródeł.
 - [x] 3 Spike arytmetyki i kolumn DOCX — PASS, wyniki w tools/spike/2026-09-13-pairwise-reference. Osobny spike kolumn3/4/5: PASS, istniejący PizZip/Docxtemplater + selektywna zmiana oznaczonych tabel OOXML, PDF lokalnie skonwertowane i obejrzane; [raport](../../../tools/spike/2026-09-13-pairwise-columns/RAPORT.md). Reguła sugestii pozostaje decyzją, nie techniczną niewiadomą do ukrycia w kodzie.
-- [ ] 4 Architektura — audyt i kompletna propozycja refaktoru gotowe, oczekuje zatwierdzenia.
-- [ ] 5 Spec/plan/HANDOFF — przygotowane, wymagają zamrożenia po decyzji.
+- [x] 4 Architektura — audyt i refaktor zatwierdzone; D-ARCH/D-AUTO zaakceptowane.
+- [x] 5 Spec/plan/HANDOFF — zaakceptowane do realizacji; sygnatury S1 zostaną zamrożone przed S2.
 - [ ] 6 Sesje — S1→S2→[S3||S4]→S5; nie wystartowały przed zatwierdzeniem kontraktu.
 - [ ] 7 Weryfikacja — komplet lokalnie/integration i finalny PR; końcowa zgoda przed stagingiem.
 - [ ] 8 Domknięcie — filing zgodny z rzeczywistym wynikiem; brak deklaracji wdrożenia.

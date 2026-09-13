@@ -1,5 +1,7 @@
 # T-06–T-09 — audyt architektury i propozycja decyzji
 
+> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Wcześniejsze sformułowania o oczekiwaniu opisują etap przygotowania; bramka jest zamknięta.
+
 2026-09-13 · baza `origin/main` = `9b2903c` po fetch · status: propozycja do zatwierdzenia przed kodem produkcyjnym.
 
 ## Wynik audytu

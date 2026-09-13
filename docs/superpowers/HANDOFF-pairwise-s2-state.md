@@ -1,6 +1,6 @@
 # HANDOFF pairwise-s2-state — Persistence and method policy
 
-Status: HOLD until coordinator START following approval of D-ARCH/D-AUTO and dependency check. Base: `origin/integration/pairwise-valuation`. Branch: `feature/pairwise-state`. Dependency: S1 merged.
+Status: D-ARCH/D-AUTO APPROVED2026-09-13. Await coordinator START only for dependency readiness; approval must not be requested again. Base: `origin/integration/pairwise-valuation`. Branch: `feature/pairwise-state`. Dependency: S1 merged.
 
 Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Users/michalczekala/Development/wyceny-app`; coordinator worktree `/Users/michalczekala/Development/wyceny-app-worktrees/pairwise-valuation`. Scope = this HANDOFF; report adjacent findings as follow-up, do not implement them.
 
