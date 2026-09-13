@@ -188,6 +188,7 @@ function useHarness(initial: {
   sel: SampleSelectionSnapshot;
   comparables: ComparableRow[];
   poolSource?: PoolSource;
+  preservePool?: boolean;
 }) {
   const { control, setValue } = useForm<FormInput>({
     defaultValues: { sampleSelection: initial.sel },
@@ -197,6 +198,7 @@ function useHarness(initial: {
   const sel = useWatch({ control, name: "sampleSelection" });
   const review = useSampleReview({
     poolSource: initial.poolSource ?? "rcn-wfs-gugik",
+    preservePool: initial.preservePool,
     valuationId: "11111111-2222-3333-4444-555555555555",
     sel,
     comparables,
@@ -580,4 +582,58 @@ describe("useSampleReview — rejestr-sm pool keeps source rejestr_sm on rebuild
     expect(rows.map((r) => r.source)).toEqual(["rejestr_sm", "rejestr_sm"]);
     expect(rows.map((r) => r.coopTxId)).toEqual([B.transactionId, C.transactionId]);
   });
+});
+
+it("PP radius/proposal refresh extends the pool without replacing selected edited rows", async () => {
+  const { mergePairwisePool } = await import("../src/app/valuations/[id]/steps/use-sample-review");
+  const first = mk({ pricePerM2: 12345.6789 });
+  const second = mk();
+  const edited = { ...rcnRow(first, "rcn-wfs-gugik"), pricePerM2: "12345.67" };
+  const manual = { id: "00000000-0000-4000-8000-000000000001", pricePerM2: "9000.123", area: "50" };
+  const result = mergePairwisePool(
+    makeSel({ proposed: [second], alternates: [first] }),
+    [edited, manual],
+    "rcn-wfs-gugik",
+  );
+  expect(result).toHaveLength(3);
+  expect(result[0]).toEqual(edited);
+  expect(result[1]).toEqual(manual);
+  expect(result[2]).toEqual(rcnRow(second, "rcn-wfs-gugik"));
+  expect(mergePairwisePool(makeSel({ proposed: [second] }), result, "rcn-wfs-gugik")).toEqual(
+    result,
+  );
+});
+
+it("PP keeps an edit made while a radius request is in flight", async () => {
+  const candidate = mk();
+  const initial = rcnRow(candidate, "rcn-wfs-gugik");
+  let resolve!: (value: unknown) => void;
+  reselectSample.mockReturnValueOnce(
+    new Promise((r) => {
+      resolve = r;
+    }),
+  );
+  const { result } = renderHook(() =>
+    useHarness({
+      sel: makeSel({ proposed: [candidate] }),
+      comparables: [initial],
+      preservePool: true,
+    }),
+  );
+  let request: Promise<void>;
+  act(() => {
+    request = result.current.review.onRadius(1000);
+  });
+  act(() => result.current.setComparables([{ ...initial, pricePerM2: "12345.678" }]));
+  await act(async () => {
+    resolve({
+      proposal: {
+        sampleSelection: makeSel({ proposed: [candidate] }),
+        sampleMeta: undefined,
+        streetView: undefined,
+      },
+    });
+    await request;
+  });
+  expect(result.current.comparables[0].pricePerM2).toBe("12345.678");
 });

@@ -24,13 +24,21 @@ import {
   medianAreaM2,
   powierzchniaDefinitions,
   type LokalFeatureKey,
+  type FeatureInputKey,
 } from "@/domain/feature-presets";
-import { computeKcs, type Comparable, type KcsInput } from "@/domain/kcs";
+import { type Comparable, type KcsInput } from "@/domain/kcs";
+import { computeValuation } from "@/domain/valuation-calculation";
+import { pairwiseBasis, valuationComparables } from "@/domain/pairwise-state";
+import { PairwiseAssessment } from "./pairwise-assessment";
+import type { Resolver } from "react-hook-form";
 import { DEFAULT_FEATURES } from "@/lib/valuation-form-schema";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { SectionCard } from "@/components/wizard/section-card";
 
-type FormInput = z.input<typeof featuresStepSchema>;
+type SchemaInput = z.input<typeof featuresStepSchema>;
+type FormInput = Omit<SchemaInput, "features"> & {
+  features: Array<Omit<SchemaInput["features"][number], "rating"> & { rating: Rating | "" }>;
+};
 type FormOutput = z.output<typeof featuresStepSchema>;
 type Rating = FormOutput["features"][number]["rating"];
 
@@ -83,13 +91,15 @@ function buildDefaultFeatures(
 ): FormInput["features"] {
   const mapped: FormInput["features"] = features.length
     ? features.map((f) => ({
-        key: f.key as LokalFeatureKey,
+        key: (f.key ??
+          FEATURE_PRESETS.lokal.find((entry) => entry.name === f.name)?.key) as FeatureInputKey,
         name: f.name,
-        weightPct: Math.round(f.weight * 10000) / 100,
+        weightPct: f.weight * 100,
         rating: f.rating,
+        ratingScale: f.ratingScale ?? "three",
         definitions: {
           lepsza: f.definitions?.lepsza ?? "",
-          przecietna: f.definitions?.przecietna ?? "",
+          ...(f.ratingScale === "two" ? {} : { przecietna: f.definitions?.przecietna ?? "" }),
           gorsza: f.definitions?.gorsza ?? "",
         },
       }))
@@ -113,17 +123,37 @@ function buildDefaultFeatures(
 export function StepFeatures({
   valuationId,
   features: initialFeatures,
-  comparables,
-  area,
+  comparables: initialComparables,
+  area: initialArea,
+  snapshot,
 }: {
   valuationId: string;
   features: KcsInput["features"];
   comparables: Comparable[];
   area: number;
+  snapshot?: KcsInput;
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const comparableAreas = comparables.map((c) => c.area);
+  // Freeze form dependencies and CAS token together. Refreshing props cannot
+  // authorize dirty values against a snapshot the appraiser never edited.
+  const [loaded] = useState(
+    () =>
+      snapshot ?? { features: initialFeatures, comparables: initialComparables, area: initialArea },
+  );
+  const [expectedBasis] = useState(() => pairwiseBasis(loaded));
+  const [comparisons, setComparisons] = useState(() => loaded.pairwise?.comparisons ?? {});
+  const [saved, setSaved] = useState(false);
+  const isPairwise = loaded.method === "pp";
+  const area = loaded.area;
+  const selected = useMemo(() => {
+    try {
+      return valuationComparables(loaded);
+    } catch {
+      return [];
+    }
+  }, [loaded]);
+  const comparableAreas = selected.map((c) => c.area);
 
   const {
     control,
@@ -131,9 +161,9 @@ export function StepFeatures({
     setValue,
     formState: { isSubmitting, errors },
   } = useForm<FormInput, unknown, FormOutput>({
-    resolver: zodResolver(featuresStepSchema),
+    resolver: zodResolver(featuresStepSchema) as Resolver<FormInput, unknown, FormOutput>,
     defaultValues: {
-      features: buildDefaultFeatures(initialFeatures, comparableAreas),
+      features: buildDefaultFeatures(loaded.features, comparableAreas),
     },
   });
 
@@ -157,45 +187,58 @@ export function StepFeatures({
 
   const featuresError = errors.features?.root?.message ?? errors.features?.message;
 
-  // Live KCS preview (Task 9) — mirrors the confirm-path engine call
-  // (`cards.tsx`'s `KcsBreakdown` / `applyCalculationConfirm`) against the
-  // CURRENT form state; never persisted, purely a render-time preview.
-  // `computeKcs` throws on empty comparables / non-positive price or area
-  // (`kcs.ts:104-116`) — any such state collapses to `null`, rendered as
-  // "—" everywhere below instead of crashing the step.
+  // Both previews use the shared dispatcher and validated editable features.
+  // Confirmation belongs to the explicit save, never the live preview.
   const live = useMemo(() => {
     try {
-      const liveFeatures: KcsInput["features"] = (features ?? []).map((f) => ({
-        name: f?.name ?? "",
-        weight: (Number(f?.weightPct) || 0) / 100,
-        rating: (f?.rating ?? "przecietna") as Rating,
-        key: f?.key,
-      }));
-      return computeKcs({ comparables, area, features: liveFeatures });
+      const parsed = featuresStepSchema.safeParse({ features });
+      if (!parsed.success) return null;
+      const liveFeatures = parsed.data.features.map((f) => ({ ...f, weight: f.weightPct / 100 }));
+      return computeValuation({
+        ...loaded,
+        features: liveFeatures,
+        pairwise: loaded.pairwise ? { ...loaded.pairwise, comparisons } : undefined,
+      });
     } catch {
       return null;
     }
-  }, [comparables, area, features]);
+  }, [loaded, features, comparisons]);
+  const kcs = live?.method === "kcs" ? live : null;
 
   const sumUiPos =
-    live && live.vmax > live.vmin
-      ? Math.min(1, Math.max(0, (live.sumUi - live.vmin) / (live.vmax - live.vmin)))
+    kcs && kcs.vmax > kcs.vmin
+      ? Math.min(1, Math.max(0, (kcs.sumUi - kcs.vmin) / (kcs.vmax - kcs.vmin)))
       : null;
 
-  const onSubmit = handleSubmit(async (values) => {
-    setSubmitError(null);
-    const result = await saveFeaturesAction(valuationId, values);
-    if ("error" in result) {
-      setSubmitError(result.error);
-      return;
-    }
-    router.push(`/valuations/${valuationId}?step=5`);
-  });
+  const submit = (confirmPairwise: boolean) =>
+    handleSubmit(async (values) => {
+      setSubmitError(null);
+      const result = await saveFeaturesAction(valuationId, {
+        ...values,
+        ...(isPairwise
+          ? { comparisons, expectedPairwiseBasis: expectedBasis, confirmPairwise }
+          : {}),
+      });
+      if ("error" in result) {
+        setSubmitError(result.error);
+        return;
+      }
+      setSaved(true);
+      if (isPairwise && !confirmPairwise) {
+        // Deliberate reload remounts both fields and basis before another save.
+        window.location.assign(`/valuations/${valuationId}?step=4`);
+      } else router.push(`/valuations/${valuationId}?step=5`);
+    });
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+    <form onSubmit={submit(isPairwise)} noValidate className="flex flex-col gap-4">
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <SectionCard icon={SlidersHorizontal} title="Cechy, oceny i wagi" sub="worek: lokal">
+        <SectionCard
+          className="min-w-0"
+          icon={SlidersHorizontal}
+          title="Cechy, oceny i wagi"
+          sub="worek: lokal"
+        >
           <div className="flex flex-col gap-3">
             <Table>
               <TableHeader>
@@ -208,11 +251,76 @@ export function StepFeatures({
               </TableHeader>
               <TableBody>
                 {featureFields.map((field, index) => {
-                  const currentRating = features?.[index]?.rating ?? field.rating;
+                  const current = features?.[index] ?? field;
+                  const currentRating = current.rating;
+                  const ratings = RATING_OPTIONS.filter(
+                    (r) => current.ratingScale !== "two" || r.value !== "przecietna",
+                  );
                   return (
                     <Fragment key={field.id}>
                       <TableRow>
-                        <TableCell className="whitespace-normal">{field.name}</TableCell>
+                        <TableCell className="whitespace-normal">
+                          {field.key === "inne" ? (
+                            <Controller
+                              control={control}
+                              name={`features.${index}.name`}
+                              render={({ field: nameField, fieldState }) => (
+                                <>
+                                  <Input {...nameField} aria-label="Nazwa cechy" maxLength={120} />
+                                  <FieldError errors={[fieldState.error]} />
+                                </>
+                              )}
+                            />
+                          ) : (
+                            field.name
+                          )}
+                          <label className="mt-2 block text-xs">
+                            Skala
+                            <select
+                              aria-label={`Skala: ${current.name}`}
+                              className="ml-2 rounded-md border border-input bg-background p-1"
+                              value={current.ratingScale ?? "three"}
+                              onChange={(e) => {
+                                const scale = e.target.value as "two" | "three";
+                                setValue(`features.${index}.ratingScale`, scale, {
+                                  shouldDirty: true,
+                                });
+                                if (scale === "two") {
+                                  setValue(`features.${index}.definitions`, {
+                                    lepsza: current.definitions?.lepsza ?? "",
+                                    gorsza: current.definitions?.gorsza ?? "",
+                                  });
+                                  if (current.rating === "przecietna")
+                                    setValue(`features.${index}.rating`, "");
+                                  setComparisons((cells) =>
+                                    Object.fromEntries(
+                                      Object.entries(cells).map(([id, row]) => [
+                                        id,
+                                        Object.fromEntries(
+                                          Object.entries(row).map(([key, cell]) => [
+                                            key,
+                                            key === current.key && cell.rating === "przecietna"
+                                              ? { ...cell, rating: null, multiplier: null }
+                                              : cell,
+                                          ]),
+                                        ),
+                                      ]),
+                                    ),
+                                  );
+                                }
+                              }}
+                            >
+                              <option value="three">3 poziomy</option>
+                              <option value="two">2 poziomy</option>
+                            </select>
+                          </label>
+                          <FieldError
+                            errors={[
+                              errors.features?.[index]?.key,
+                              errors.features?.[index]?.rating,
+                            ]}
+                          />
+                        </TableCell>
                         <TableCell>
                           <Controller
                             control={control}
@@ -221,6 +329,7 @@ export function StepFeatures({
                               <>
                                 <Input
                                   id={`feature-weight-${index}`}
+                                  aria-label={`Waga: ${current.name}`}
                                   type="number"
                                   step="0.01"
                                   min="0"
@@ -239,13 +348,14 @@ export function StepFeatures({
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1.5">
-                            {RATING_OPTIONS.map((option) => (
+                            {ratings.map((option) => (
                               <Button
                                 key={option.value}
                                 type="button"
                                 size="sm"
                                 variant={currentRating === option.value ? "default" : "outline"}
-                                aria-label={`${field.name}: ${option.label}`}
+                                aria-label={`${current.name}: ${option.label}`}
+                                aria-pressed={currentRating === option.value}
                                 onClick={() =>
                                   setValue(`features.${index}.rating`, option.value, {
                                     shouldDirty: true,
@@ -264,9 +374,21 @@ export function StepFeatures({
                             size="sm"
                             variant="ghost"
                             data-testid={`remove-feature-${features?.[index]?.key ?? index}`}
-                            aria-label={`Usuń cechę ${field.name}`}
+                            aria-label={`Usuń cechę ${current.name}`}
                             disabled={featureFields.length === 1}
-                            onClick={() => removeFeature(index)}
+                            onClick={() => {
+                              removeFeature(index);
+                              setComparisons((cells) =>
+                                Object.fromEntries(
+                                  Object.entries(cells).map(([id, row]) => [
+                                    id,
+                                    Object.fromEntries(
+                                      Object.entries(row).filter(([key]) => key !== current.key),
+                                    ),
+                                  ]),
+                                ),
+                              );
+                            }}
                           >
                             Usuń
                           </Button>
@@ -279,21 +401,23 @@ export function StepFeatures({
                               data-testid={`feature-defs-summary-${features?.[index]?.key ?? index}`}
                               className="cursor-pointer py-1.5 text-xs text-muted-foreground"
                             >
-                              Definicje skali ocen — {field.name}
+                              Definicje skali ocen — {current.name}
                             </summary>
                             <div className="flex flex-col gap-2 pb-3">
-                              {(["lepsza", "przecietna", "gorsza"] as const).map((level) => (
+                              {ratings.map(({ value: level }) => (
                                 <Controller
                                   key={level}
                                   control={control}
                                   name={`features.${index}.definitions.${level}`}
-                                  render={({ field: defField }) => (
+                                  render={({ field: defField, fieldState }) => (
                                     <label className="flex flex-col gap-1 text-xs">
                                       <span className="text-muted-foreground">
                                         {level === "przecietna" ? "przeciętna" : level}
                                       </span>
                                       <Input
                                         data-testid={`feature-def-${features?.[index]?.key ?? index}-${level}`}
+                                        aria-label={`Definicja: ${current.name} — ${level}`}
+                                        maxLength={1000}
                                         placeholder="puste pole — poziom nie pojawi się w operacie"
                                         name={defField.name}
                                         onBlur={defField.onBlur}
@@ -301,6 +425,7 @@ export function StepFeatures({
                                         value={toInputValue(defField.value)}
                                         onChange={(e) => defField.onChange(e.target.value)}
                                       />
+                                      <FieldError errors={[fieldState.error]} />
                                     </label>
                                   )}
                                 />
@@ -315,6 +440,25 @@ export function StepFeatures({
               </TableBody>
             </Table>
 
+            {!activeFeatureKeys.has("inne") ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-fit"
+                onClick={() =>
+                  appendFeature({
+                    key: "inne",
+                    name: "",
+                    rating: "",
+                    ratingScale: "three",
+                    weightPct: 0,
+                    definitions: { lepsza: "", przecietna: "", gorsza: "" },
+                  })
+                }
+              >
+                + Inna cecha
+              </Button>
+            ) : null}
             {availableFeatures.length > 0 ? (
               <select
                 data-testid="add-feature-select"
@@ -354,44 +498,46 @@ export function StepFeatures({
           </div>
         </SectionCard>
 
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
-          <SectionCard icon={Scale} title="Wskaźnik korekty ΣUi">
-            <p
-              data-testid="sidebar-sum-ui"
-              className="num text-[28px] font-semibold text-foreground"
-            >
-              {live ? sumUiFormatter.format(live.sumUi) : "—"}
-            </p>
-            {live ? (
-              <p className="text-[12.5px] text-muted-foreground">
-                lokal {live.sumUi > 1 ? "lepszy" : live.sumUi < 1 ? "gorszy" : "równy"} od średniej
-                rynkowej
+        <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-[128px]">
+          {!isPairwise ? (
+            <SectionCard icon={Scale} title="Wskaźnik korekty ΣUi">
+              <p
+                data-testid="sidebar-sum-ui"
+                className="num text-[28px] font-semibold text-foreground"
+              >
+                {live ? sumUiFormatter.format(kcs!.sumUi) : "—"}
               </p>
-            ) : null}
-            {live ? (
-              <div className="mt-4 border-t border-border pt-4">
-                <div className="relative h-2 overflow-hidden rounded-full bg-border">
-                  <div className="absolute inset-y-0 left-0 right-0 bg-[var(--accent-100)]" />
-                  {sumUiPos !== null ? (
-                    <div
-                      className="absolute -top-[3px] h-3.5 w-0.5 bg-primary"
-                      style={{ left: `${sumUiPos * 100}%` }}
-                    />
-                  ) : null}
-                </div>
-                <p className="mt-2 flex justify-between text-[12.5px] text-muted-foreground">
-                  <span className="num">{ratioFormatter.format(live.vmin)}</span>
-                  <span className="num">1,000</span>
-                  <span className="num">{ratioFormatter.format(live.vmax)}</span>
+              {live ? (
+                <p className="text-[12.5px] text-muted-foreground">
+                  lokal {kcs!.sumUi > 1 ? "lepszy" : kcs!.sumUi < 1 ? "gorszy" : "równy"} od
+                  średniej rynkowej
                 </p>
-              </div>
-            ) : null}
-          </SectionCard>
+              ) : null}
+              {live ? (
+                <div className="mt-4 border-t border-border pt-4">
+                  <div className="relative h-2 overflow-hidden rounded-full bg-border">
+                    <div className="absolute inset-y-0 left-0 right-0 bg-[var(--accent-100)]" />
+                    {sumUiPos !== null ? (
+                      <div
+                        className="absolute -top-[3px] h-3.5 w-0.5 bg-primary"
+                        style={{ left: `${sumUiPos * 100}%` }}
+                      />
+                    ) : null}
+                  </div>
+                  <p className="mt-2 flex justify-between text-[12.5px] text-muted-foreground">
+                    <span className="num">{ratioFormatter.format(kcs!.vmin)}</span>
+                    <span className="num">1,000</span>
+                    <span className="num">{ratioFormatter.format(kcs!.vmax)}</span>
+                  </p>
+                </div>
+              ) : null}
+            </SectionCard>
+          ) : null}
 
           <SectionCard icon={Calculator} title="Podgląd wartości (WR)">
             <div className="flex flex-col gap-1.5 text-sm">
               <p className="text-muted-foreground">
-                Cśr × ΣUi = cena jedn.{" "}
+                {isPairwise ? "Średnia cen po korektach = cena jedn." : "Cśr × ΣUi = cena jedn."}{" "}
                 <span className="num font-medium text-foreground">
                   {live ? `${unitPriceFormatter.format(live.unitValue)}/m²` : "—"}
                 </span>
@@ -407,20 +553,47 @@ export function StepFeatures({
         </aside>
       </div>
 
+      {isPairwise ? (
+        <PairwiseAssessment
+          comparables={selected}
+          features={(features ?? []).map((f) => ({ ...f, weight: Number(f.weightPct) / 100 }))}
+          comparisons={comparisons}
+          onChange={setComparisons}
+        />
+      ) : null}
+      {isPairwise ? (
+        <p className="text-sm text-muted-foreground">
+          Zmiana cech, ocen lub poprawek wymaga ponownego potwierdzenia całej macierzy.
+        </p>
+      ) : null}
       {submitError ? (
         <p role="alert" className="text-sm text-destructive">
           {submitError}
         </p>
       ) : null}
 
+      {isPairwise ? (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isSubmitting || saved}
+          onClick={submit(false)}
+        >
+          Zapisz oceny robocze
+        </Button>
+      ) : null}
       <FootNav
         back={{ href: `/valuations/${valuationId}?step=3` }}
         mid={
-          <span data-testid="footnav-kcs-mid">
+          <span data-testid="footnav-kcs-mid" className="hidden sm:inline">
             {live ? (
               <>
-                ΣUi <b className="num">{sumUiFormatter.format(live.sumUi)}</b> · podgląd WR{" "}
-                <b className="num">{wrFormatter.format(live.wr)} zł</b>
+                {kcs ? (
+                  <>
+                    ΣUi <b className="num">{sumUiFormatter.format(kcs.sumUi)}</b> ·{" "}
+                  </>
+                ) : null}
+                podgląd WR <b className="num">{wrFormatter.format(live.wr)} zł</b>
               </>
             ) : (
               "—"
@@ -428,8 +601,12 @@ export function StepFeatures({
           </span>
         }
       >
-        <Button type="submit" disabled={isSubmitting} className="w-fit">
-          Zatwierdź cechy i dalej
+        <Button
+          type="submit"
+          disabled={isSubmitting || saved}
+          className="h-auto w-fit max-w-44 whitespace-normal sm:max-w-none"
+        >
+          {isPairwise ? "Potwierdź oceny i poprawki i dalej" : "Zatwierdź cechy i dalej"}
         </Button>
       </FootNav>
     </form>

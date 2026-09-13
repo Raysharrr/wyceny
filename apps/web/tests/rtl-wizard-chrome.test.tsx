@@ -15,7 +15,9 @@ describe("StepHeader", () => {
     expect(screen.getByText("KROK 3/7 — DOBÓR PRÓBY TRANSAKCJI")).toBeInTheDocument();
     expect(screen.getByText("Próba porównawcza")).toBeInTheDocument();
     expect(
-      screen.getByText("Pobierz transakcje z RCN i zbuduj próbę (min. 12)."),
+      screen.getByText(
+        "Pobierz transakcje z RCN i wybierz metodę: KCS wymaga min. 12, a PP wyboru 3–5 transakcji.",
+      ),
     ).toBeInTheDocument();
   });
 

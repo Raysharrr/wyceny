@@ -141,3 +141,14 @@ describe("StepCalculation — step 5 visual parity (Task 10)", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
+
+it("renders PP corrections from the selected rows and retains the confirm flow", async () => {
+  const { ppInputs } = await import("./fixtures/pairwise-inputs");
+  const { pairwiseBasis } = await import("@/domain/pairwise-state");
+  const inputs = ppInputs();
+  inputs.pairwise!.confirmedBasis = pairwiseBasis(inputs);
+  render(<StepCalculation valuation={baseValuation({ inputs, wr: null })} />);
+  expect(screen.getByText("Poprawki porównawcze (PP)")).toBeInTheDocument();
+  expect(screen.getByText("Cena po korekcie")).toBeInTheDocument();
+  expect(screen.getByText("Wartość rynkowa (PP)")).toBeInTheDocument();
+});

@@ -614,3 +614,34 @@ it("returns the repository's canonical identities after sample ACL normalization
   });
   expect(result).toEqual({ ok: true, comparables: [row], selectedComparableIds: ["rcn:tx|a"] });
 });
+
+it("PP preset provenance uses selected areas, not the unrelated pool median", async () => {
+  const { ppInputs } = await import("./fixtures/pairwise-inputs");
+  const { powierzchniaDefinitions } = await import("@/domain/feature-presets");
+  const { pairwiseBasis } = await import("@/domain/pairwise-state");
+  const input = ppInputs();
+  input.comparables.push(
+    ...[0, 1, 2, 3].map((i) => ({
+      id: `10000000-0000-4000-8000-abc00000000${i}`,
+      source: "manual" as const,
+      pricePerM2: 9000,
+      area: 200,
+    })),
+  );
+  getMock.mockResolvedValueOnce({ ...draftValuation, inputs: input });
+  saveFeaturesMock.mockResolvedValueOnce(draftValuation);
+  const result = await saveFeaturesAction(VALUATION_ID, {
+    expectedPairwiseBasis: pairwiseBasis(input),
+    features: [
+      {
+        key: "powierzchnia-uzytkowa",
+        name: "powierzchnia użytkowa",
+        weightPct: 100,
+        rating: "lepsza",
+        definitions: powierzchniaDefinitions(50),
+      },
+    ],
+  });
+  expect(result).toEqual({ ok: true });
+  expect(saveFeaturesMock.mock.calls[0][2].provenance.featureDefs?.source).toBe("preset");
+});
