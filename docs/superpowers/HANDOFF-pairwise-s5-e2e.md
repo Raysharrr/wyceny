@@ -46,3 +46,5 @@ Provide exact tests/results and known limits, changed contract signatures, Help 
 ## Frozen S2 and Git identity
 
 Read `docs/superpowers/pairwise-valuation/S2-STATE.md` and `S2-REVIEW.md`: S2 merged as c7bb94a. User requires project-local Git author/committer `Michał Czekała <michal@make-simple.it>` and active gh account `Raysharrr`. Origin uses HTTPS and the local gh credential helper; SSH previously authenticated the wrong account. Verify effective config and absence of author/committer environment overrides before every commit; keep SSH signing enabled. Do not change global config or rewrite published history. Confirm GitHub attribution and verification after the first push. Report a mismatch and hold further publication, continuing independent coding/tests.
+
+Coordinator prepared `docs/superpowers/pairwise-valuation/QA-CHECKLIST.md` as an unexecuted AC01–AC12 matrix. Refine against final S3/S4 labels, map durable test names to IDs, and record actual evidence; do not treat planned rows as PASS.

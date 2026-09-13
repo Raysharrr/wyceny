@@ -26,7 +26,7 @@ Hydratacja coopTxId/ratingScale i podgląd PP w cechach pozostają jawnie S3. Cz
 
 Wszystkie trzy znaleziska naprawione. Drugi Opus/high PASS (`/tmp/pairwise-s2-review2.txt`); pierwotne negatywne próby koordynatora po poprawce PASS: brak powierzchni/nieznana metoda blokują również aggregate approval, a coopTxId zachowuje źródło SM. Dodatkowe testy chronią nieaktualny wybór i unieważnienie po zmianie powierzchni.
 
-Końcowe [CI](https://github.com/Raysharrr/wyceny/actions/runs/34747912535): web156 plików/1793PASS/1 istniejący skip; shared4PASS; worker319PASS/1skip; browser12PASS/2 opt-in skip w27.8s. Lokalny końcowy smoke2PASS w17.4s. Logi `/tmp/pairwise-s2-ci-e0c3c15.log`, `/tmp/pairwise-s2-smoke-e0c3c15.log`. Pomoc i indeks zaktualizowane.
+Końcowe [CI](https://github.com/Raysharrr/wyceny/pull/42/checks): web156 plików/1793PASS/1 istniejący skip; shared4PASS; worker319PASS/1skip; browser12PASS/2 opt-in skip w27.8s. Lokalny końcowy smoke2PASS w17.4s. Logi `/tmp/pairwise-s2-ci-e0c3c15.log`, `/tmp/pairwise-s2-smoke-e0c3c15.log`. Pomoc i indeks zaktualizowane.
 
 Koordynator niezależnie przeszedł rzeczywisty Chrome na finale0c3c15: web3017, worker8017, osobny PostgreSQL5545, syntetyczny Zenon. Nowa wycena własności699de582-0982-4f37-baa4-e33fe71e673a:12 transakcji9000–10100,50m². Brak potwierdzenia blokuje kalkulację; sam wybór bez przycisku nie przetrwa reloadu. Potwierdzony KCS przetrwa reload i daje477500. KCS→PP usuwa WR i blokuje dalsze kroki do wyboru3–5/ocen; PP→KCS przywraca477500 po obliczeniu. Odczyt zapisu potwierdził3 świadome zmiany metody i niezmienione12 cen. Dowody DOM/screenshot/persistedJSON: `/tmp/pairwise-s2-coordinator-browser/`. Ten celowany test CUA nie ma trace Playwright ani nowego PDF/approval.
 
