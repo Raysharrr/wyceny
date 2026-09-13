@@ -14,7 +14,7 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 - [x] 3 Spike arytmetyki i kolumn DOCX — PASS, wyniki w tools/spike/2026-09-13-pairwise-reference. Osobny spike kolumn3/4/5: PASS, istniejący PizZip/Docxtemplater + selektywna zmiana oznaczonych tabel OOXML, PDF lokalnie skonwertowane i obejrzane; [raport](../../../tools/spike/2026-09-13-pairwise-columns/RAPORT.md). Reguła sugestii pozostaje decyzją, nie techniczną niewiadomą do ukrycia w kodzie.
 - [x] 4 Architektura — audyt i refaktor zatwierdzone; D-ARCH/D-AUTO zaakceptowane.
 - [x] 5 Spec/plan/HANDOFF — zaakceptowane do realizacji; sygnatury S1 zostaną zamrożone przed S2.
-- [ ] 6 Sesje — S1 i S2 scalone po review/CI/lokalnym UI; gotowe [S3||S4]→S5.
+- [ ] 6 Sesje — S1–S4 w integracji po przeglądach, CI i lokalnym odbiorze; gotowe S5.
 - [ ] 7 Weryfikacja — komplet lokalnie/integration i finalny PR; końcowa zgoda przed stagingiem.
 - [ ] 8 Domknięcie — filing zgodny z rzeczywistym wynikiem; brak deklaracji wdrożenia.
 
@@ -84,3 +84,11 @@ PR42 scalony jako c7bb94a po poprawkach, drugim Opus/high, pełnym CI i niezale�
 Korekta tożsamości zlecona przez użytkownika: repo-local author/committer Michał Czekała <michal@make-simple.it>; gh Raysharrr; origin HTTPS korzysta z gh credential helper zamiast SSH logującego Raysharr. Podpis SSH pozostaje włączony, skonfigurowany klucz jest publicznie zarejestrowany na Raysharrr. API adresów konta niedostępne przez brak zakresu tokenu; pierwszą publikację sprawdzamy przez GitHub author/verification. Istniejące11 commitów integracji78e31a2…c7bb94a mają błędny Gmail; squashe S1/S2 są kryptograficznie zweryfikowane, co nie poprawia autora. Historia opublikowana pozostaje bez zmian, bez force-push.
 
 S3 START: `01a099f2-4442-7842-8af5-586162cfeceb`, worktree pairwise-wizard, feature/pairwise-wizard. S4 START: `01a099f2-8017-73b2-81a4-da22abe2c17d`, worktree pairwise-report, feature/pairwise-report. Baza obu74390d0, thinkingmedium. Commit74390d0 ma w GitHub author/committer Raysharrr, emailmichal@make-simple.it i verification.valid=true. Efektywna konfiguracja obu worktree sprawdzona.
+
+## Po S3/S4 — 2026-09-13
+
+S3: PR43, końcowy head22b4d54, squash ad9f0c6. S4: PR44, końcowy head0c1c972, squash kodu c075dbb. Obie części przeszły dwa przeglądy Opus/high, wymagane poprawki, końcowe CI i E2E. Koordynator niezależnie sprawdził kod, testy i przeglądarkę; szczegóły S3-REVIEW/S4-REVIEW. GitHub zwrócił502 po zapisie S4 do integracji, pozostawiając otwarty PR; potwierdzono identyczność drzew i zamknięto PR bez ponownego scalenia. Kod i historia są zachowane.
+
+Oba squashe mają właściwego autora Raysharrr i emailmichal@make-simple.it oraz ważny podpis. Main nadal9b2903c. Stack integracji3015/8015 został uruchomiony ponownie z połączonej wersji. Tymczasowe stacki sesji i koordynatora zostały zatrzymane; bazy i czyste worktree zachowane do ewentualnych poprawek. Własne stare wyceny S1 zostały podpisane w rzeczywistym teście zgodności — teksty i oryginalne bajty zgodne.
+
+S5 ma do wykonania trwałe pełne E2E metod×praw z aktywnymi ręcznymi Opisami, rzeczywistym PDF i syntetycznym podpisem, trzy powtórzenia, CI oraz rozszerzenie fitness na app/valuations. Koordynator następnie weryfikuje całość i przygotowuje jeden finalny PR do main, bez scalenia/deploy przed decyzją użytkownika. Szacunki godzin pozostają planem, nie rozliczeniem.

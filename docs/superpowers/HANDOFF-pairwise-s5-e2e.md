@@ -25,7 +25,7 @@ Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Us
 - [ ] Repeat new E2E3×, ensure included in CI and total run<5min where practical; record actual duration and deviations. Preserve existing smoke/spoldzielcze tests and explicit safe staging project.
 - [ ] Run full `pnpm format:check`, `pnpm turbo lint typecheck test build --env-mode=loose`, `pnpm depcruise`, worker ruff/pytest, CI and independent review. Local browser inspect existing design and actual PDF. Review Opus/high per delivery-workflow, plus coordinator code/manual review; fix before merge.
 - [ ] Commit tests/docs and merge to integration after gates. Fetch/merge latest main into integration (no force/rebase shared branch), resolve and rerun affected checks.
-- [ ] Open ONE final PR integration→main with complete acceptance matrix and evidence. Stop before merge/staging for final concrete approval; do not deploy partial feature.
+- [ ] Deliver your test PR to integration. After its review/merge, the coordinator opens ONE final PR integration→main with complete acceptance evidence and stops for final concrete approval. Do not open a second final PR or deploy.
 
 ## Coordinator environment and deterministic Opisy coverage
 
@@ -48,3 +48,17 @@ Provide exact tests/results and known limits, changed contract signatures, Help 
 Read `docs/superpowers/pairwise-valuation/S2-STATE.md` and `S2-REVIEW.md`: S2 merged as c7bb94a. User requires project-local Git author/committer `Michał Czekała <michal@make-simple.it>` and active gh account `Raysharrr`. Origin uses HTTPS and the local gh credential helper; SSH previously authenticated the wrong account. Verify effective config and absence of author/committer environment overrides before every commit; keep SSH signing enabled. Do not change global config or rewrite published history. Confirm GitHub attribution and verification after the first push. Report a mismatch and hold further publication, continuing independent coding/tests.
 
 Coordinator prepared `docs/superpowers/pairwise-valuation/QA-CHECKLIST.md` as an unexecuted AC01–AC12 matrix. Refine against final S3/S4 labels, map durable test names to IDs, and record actual evidence; do not treat planned rows as PASS.
+
+After both S3/S4 merge, extend `apps/web/tests/valuation-entry-fitness.test.ts` to include production entrypoints under `src/app/valuations` as well as actions/domain. S4 could not cover these unmerged S3 consumers on its separate branch; final integration must reject direct computeKcs outside dispatcher/explicit legacy path. This is a test boundary correction, not a new production refactor.
+
+Coordinator already executed the actual S1-approved-before-update→S4-sign-after-update browser check for both rights; those retained DB5544 rows are now signed. See S4-REVIEW.md and /tmp/pairwise-s4-coordinator-browser/legacy-sign-evidence.json. Original approved artifacts remain unchanged. Do not try to sign them again; preserve evidence and cover deterministic legacy signing in your own isolated fixtures.
+
+## Final integration inputs after S3/S4
+
+Start from the refined integration containing S3 squash ad9f0c6 and S4 code c075dbb. Read S3-WIZARD/S3-REVIEW and S4-STATE/S4-REVIEW. S3 accessible pool selectors say “Transakcja N w puli”; assessment columns retain “Porównanie N”. PP Enter in ordinary inputs does not confirm; explicit confirmation supports keyboard activation. Use original-form expectedPairwiseBasis and canonical saved rows from S2.
+
+S4 adds prepareOperatModel and renderer templateVersion; public prose facts signatures remain unchanged. All new method variants use valuation-v2, while signing absent-method approvals uses frozen legacy projection/template. Only actual overrides expose their retained reasons. Do not redefine these contracts in E2E.
+
+Coordinator completed independent local changed-flow checks and both actual across-version legacy signatures. Your own durable tests must still exercise the complete modern four-way method/right matrix with active Opisy and real PDF, approval and synthetic signing. Never treat the placeholder produced by NEXT_PUBLIC_PROSE=off as coverage of manual prose. The known keyless worker/manual-edit approach is authorized; a deterministic test-only response fixture must preserve hosted guards and production defaults.
+
+S4 GitHub metadata note: squash code c075dbb is already in integration and merge-tree equality proves the entire S4 branch is incorporated. A GitHub502 left PR44 metadata OPEN; coordinator closed the integrated PR without another merge/history rewrite. Use the verified code state, not the PR badge, for dependency readiness.
