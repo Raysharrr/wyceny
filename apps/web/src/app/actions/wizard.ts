@@ -1,5 +1,7 @@
 "use server";
 
+import { valuationComparables } from "@/domain/pairwise-state";
+
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { z } from "zod";
@@ -329,10 +331,19 @@ export async function saveFeaturesAction(
       return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
     }
 
-    const provenance = assignFeaturesProvenance(
-      parsed.data.features,
-      (current.inputs?.comparables ?? []).map((c) => c.area),
-    );
+    let comparableAreas: Array<number | undefined>;
+    try {
+      comparableAreas = (current.inputs ? valuationComparables(current.inputs) : []).map(
+        (c) => c.area,
+      );
+    } catch (error) {
+      if (!(error instanceof ValuationCalculationError)) throw error;
+      // Preset provenance must not make an incomplete PP working form unsaveable.
+      // Match the UI's empty selected set; never use the unrelated whole pool.
+      if (current.inputs?.method === "pp") comparableAreas = [];
+      else return { error: error.issues[0].label };
+    }
+    const provenance = assignFeaturesProvenance(parsed.data.features, comparableAreas);
     const features = parsed.data.features.map((f) => ({
       name: f.name,
       weight: f.weightPct / 100,

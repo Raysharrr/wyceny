@@ -6,7 +6,7 @@ export function stepDescription(
   propertyRight?: PropertyRight,
 ): string {
   if (step === 3 && propertyRight === "spoldzielcze_wlasnosciowe") {
-    return "Pobierz transakcje z rejestru spółdzielczego i zbuduj próbę (min. 12).";
+    return "Pobierz transakcje z rejestru spółdzielczego i wybierz metodę: KCS wymaga min. 12, a PP wyboru 3–5 transakcji.";
   }
   return STEP_META[step].description;
 }
@@ -28,7 +28,8 @@ export const STEP_META = {
   3: {
     eyebrow: "KROK 3/7 — DOBÓR PRÓBY TRANSAKCJI",
     title: "Próba porównawcza",
-    description: "Pobierz transakcje z RCN i zbuduj próbę (min. 12).",
+    description:
+      "Pobierz transakcje z RCN i wybierz metodę: KCS wymaga min. 12, a PP wyboru 3–5 transakcji.",
     helpSlug: "krok-3-proba",
   },
   4: {

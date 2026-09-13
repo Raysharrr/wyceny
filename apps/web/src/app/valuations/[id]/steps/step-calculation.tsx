@@ -69,7 +69,7 @@ export function StepCalculation({ valuation }: { valuation: Valuation }) {
             kwotę.
           </AutoBanner>
         )}
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className={inputs?.method === "pp" ? "grid gap-4" : "grid gap-4 md:grid-cols-2"}>
           <ComparablesProvenance inputs={inputs!} />
           <KcsBreakdown inputs={inputs!} />
         </div>

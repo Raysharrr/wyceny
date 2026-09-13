@@ -127,11 +127,15 @@ export default async function ValuationViewPage({
               sampleSelection={valuation.inputs?.sampleSelection ?? null}
               streetView={valuation.inputs?.streetView ?? null}
               propertyRight={valuation.propertyRight}
+              method={valuation.inputs?.method}
+              selectedComparableIds={valuation.inputs?.pairwise?.selectedComparableIds}
             />
           </>
         ) : step === 4 ? (
           <StepFeatures
+            key={valuation.id}
             valuationId={valuation.id}
+            snapshot={valuation.inputs ?? undefined}
             features={valuation.inputs?.features ?? []}
             comparables={valuation.inputs?.comparables ?? []}
             area={valuation.area}

@@ -141,3 +141,11 @@ Wszystkie produkcyjne akcje kalkulacji/prozy/preview/approve/sign używają disp
 ## Zmiany po S2 —2026-09-13
 
 S2 zamrożony w S2-STATE.md po PR42/c7bb94a. PP zapisy wymagają expectedPairwiseBasis z tego samego otwartego snapshotu co edytowane wartości; odświeżenie tokenu nie może zachować starszych brudnych pól. Kanoniczne wiersze/wybór pochodzą z odpowiedzi saveSampleAction. UI zachowuje coopTxId i ratingScale. Minimalna korekta rozpoznawania prowenancji presetów w app/actions/wizard.ts należy do S3: dla PP mediana powierzchni odnosi się do wybranego podzbioru tak samo jak UI; KCS bez zmian. S4 korzysta ze wspólnych kontraktów i nie edytuje strony S3 równolegle. Dostępny rzeczywisty legacy approval obu praw z S1 do późniejszego testu podpisu koordynatora, obok obowiązkowego baseline ułamkowych wag.
+
+## Zmiany po S3 i S4 — 2026-09-13
+
+Interfejs S3 (`ad9f0c6`) i dokumenty S4 (`c075dbb`) są połączone w integracji. Kontrakty akcji S1/S2 pozostały bez zmian. S3 zachowuje formularz i token z tego samego snapshotu; Enter w polu PP nie potwierdza macierzy, a jawny przycisk działa z klawiatury. Pierwszy import pomija wyłącznie puste wiersze startowe. Wybór w puli ma etykiety „Transakcja N w puli”, oceny numerują wybrane kolumny. Zapis roboczy bez pełnego wyboru PP nie próbuje ustalać mediany z całej puli.
+
+S4 dodaje `prepareOperatModel` i techniczny `templateVersion`. Podpis bez method korzysta ze starej projekcji i starego szablonu; nowe KCS/PP ze wspólnego przygotowania i szablonu v2. Publiczne wejście faktów prozy i wywołanie strony pozostają zgodne. Uzasadnienie odstępstwa trafia do dokumentu/prozy tylko przy rzeczywistym odstępstwie; zapisany tekst pozostaje. Wspólny tekst metodologii i definicja wybranej metody są zachowane ze starego szablonu. Szczegóły kontraktów i dowodów: S3-WIZARD, S3-REVIEW, S4-STATE, S4-REVIEW.
+
+Koordynator wykonał rzeczywisty podpis obu wycen zatwierdzonych przed aktualizacją: tekst DOCX/PDF identyczny, oryginalne pliki nienaruszone, audyt SHA zgodny. S5 nie podpisuje tych samych wycen ponownie. Pozostaje pełny nowoczesny przepływ dwóch metod × dwóch praw z aktywnymi ręcznymi Opisami, rzeczywistym PDF, zatwierdzeniem i syntetycznym podpisem; trwałe E2E i rozszerzenie fitness na app/valuations.
