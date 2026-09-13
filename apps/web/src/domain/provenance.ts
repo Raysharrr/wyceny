@@ -1,3 +1,6 @@
+import { calculationIssues } from "./valuation-calculation";
+import { valuationComparables, VALUATION_SAMPLE_LIMITS } from "./pairwise-state";
+import type { ValuationInput } from "./valuation-input";
 import {
   isBlocking,
   sourced,
@@ -14,7 +17,7 @@ import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-
  * Default-deny: a value with missing provenance counts as `none` and blocks.
  * Pure, zero I/O (F-10). Blocker labels are Polish UI copy.
  */
-export const REQUIRED_SAMPLE_SIZE = 12;
+export const REQUIRED_SAMPLE_SIZE = VALUATION_SAMPLE_LIMITS.kcs.min;
 
 export type InputsProvenance = {
   address: Provenance;
@@ -45,7 +48,9 @@ export type Blocker = { path: string; label: string };
 export type GateResult = { ok: true } | { ok: false; blockers: Blocker[] };
 
 /** Structurally compatible with KcsInput — callers pass the snapshot directly. */
-export type GateInput = {
+export type GateInput = Partial<
+  Pick<ValuationInput, "method" | "methodConfirmed" | "pairwise" | "area" | "features">
+> & {
   comparables: Array<{ source?: ComparableSource; status?: ProvenanceStatus }>;
   sampleMeta?: unknown | null;
   subject?: unknown | null;
@@ -124,14 +129,26 @@ function statusLabel(status: ProvenanceStatus): string {
 export function approvalGate(input: GateInput, options?: GateOptions): GateResult {
   const blockers: Blocker[] = [];
 
-  if (input.comparables.length < REQUIRED_SAMPLE_SIZE) {
-    blockers.push({
-      path: "comparables",
-      label: `Próba ma ${input.comparables.length} transakcji — wymagane co najmniej ${REQUIRED_SAMPLE_SIZE}.`,
-    });
+  let comparables = input.comparables;
+  if (input.area !== undefined && input.features !== undefined) {
+    const snapshot = input as ValuationInput;
+    blockers.push(...calculationIssues(snapshot));
+    try {
+      comparables = valuationComparables(snapshot);
+    } catch {
+      comparables = [];
+    }
+  } else {
+    if (!input.method || input.methodConfirmed !== true)
+      blockers.push({ path: "method", label: "Wybierz i potwierdź metodę wyceny." });
+    if (input.comparables.length < REQUIRED_SAMPLE_SIZE)
+      blockers.push({
+        path: "comparables",
+        label: `Wymagane co najmniej ${REQUIRED_SAMPLE_SIZE} transakcji.`,
+      });
   }
 
-  input.comparables.forEach((c, i) => {
+  comparables.forEach((c, i) => {
     const source = isRegistrySourced(c) ? c.source : "rzeczoznawca";
     const status: ProvenanceStatus = c.status ?? "none";
     const s = sourced(c, source, status);

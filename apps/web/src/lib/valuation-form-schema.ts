@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { COMPARABLE_SOURCES, POOL_SOURCES } from "@/domain/kcs";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
-import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
+import { FEATURE_INPUT_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
 import type { CandidatePool } from "@/ports/sample";
 
@@ -13,6 +13,7 @@ import type { CandidatePool } from "@/ports/sample";
  */
 
 export const comparableSchema = z.object({
+  id: z.uuid().optional(),
   date: z.string().trim().optional(),
   area: z.coerce.number().positive("Powierzchnia musi być większa od zera.").optional(),
   pricePerM2: z.coerce.number().positive("Cena zł/m² musi być większa od zera."),
@@ -38,12 +39,12 @@ export const featureDefinitionsSchema = z.object({
 });
 
 export const featureSchema = z.object({
-  // Closed pool (F-6): a custom feature is added by a commit to the preset,
-  // never free-typed (brainstorm decision 2).
-  key: z.enum(LOKAL_FEATURE_KEYS, { message: "Nieznana cecha — wybierz z puli." }),
+  // T-06: the existing catalog plus one explicitly named custom feature.
+  key: z.enum(FEATURE_INPUT_KEYS, { message: "Nieznana cecha — wybierz z puli." }),
   name: z.string().trim().min(1, "Podaj nazwę cechy."),
   weightPct: z.coerce.number().min(0, "Waga nie może być ujemna."),
   rating: z.enum(["gorsza", "przecietna", "lepsza"]),
+  ratingScale: z.enum(["two", "three"]).optional(),
   definitions: featureDefinitionsSchema.optional(),
 });
 

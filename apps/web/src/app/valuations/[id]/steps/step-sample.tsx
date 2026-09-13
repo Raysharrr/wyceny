@@ -146,6 +146,7 @@ export function StepSample({
     defaultValues: {
       comparables: initialComparables.length
         ? initialComparables.map((c) => ({
+            id: c.id,
             date: c.date ?? "",
             area: c.area != null ? String(c.area) : undefined,
             pricePerM2: String(c.pricePerM2),

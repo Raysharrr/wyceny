@@ -23,6 +23,8 @@ function manualRows(n: number) {
 describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   it("passes with >=12 confirmed rows and a fully confirmed scalar map (no sample fetch)", () => {
     const result = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: manualRows(12),
       sampleMeta: null,
       provenance: confirmedScalars,
@@ -34,6 +36,8 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     const rows = manualRows(12);
     rows[2] = { source: "rcn" as never, status: "to_verify" as never };
     const result = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: rows,
       sampleMeta: null,
       provenance: confirmedScalars,
@@ -50,6 +54,8 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     const rows: Array<{ source?: "rcn" | "manual"; status?: never }> = manualRows(11) as never;
     rows.push({ source: "manual" });
     const result = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: rows as never,
       sampleMeta: null,
       provenance: confirmedScalars,
@@ -63,6 +69,8 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 
   it(`blocks below ${REQUIRED_SAMPLE_SIZE} transactions even when everything is confirmed`, () => {
     const result = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: manualRows(11),
       sampleMeta: null,
       provenance: confirmedScalars,
@@ -76,7 +84,12 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   });
 
   it("blocks when the scalar provenance map is missing entirely (default-deny: 4 blockers)", () => {
-    const result = approvalGate({ comparables: manualRows(12), sampleMeta: null });
+    const result = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
+      comparables: manualRows(12),
+      sampleMeta: null,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.blockers.map((b) => b.path)).toEqual([
@@ -91,6 +104,8 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   it("requires a confirmed geocode entry when sampleMeta is present", () => {
     const withMeta = { lat: 52.4, lon: 16.9 };
     const noGeocode = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: manualRows(12),
       sampleMeta: withMeta,
       provenance: confirmedScalars,
@@ -99,6 +114,8 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     if (!noGeocode.ok) expect(noGeocode.blockers[0].path).toBe("provenance.geocode");
 
     const toVerifyGeocode = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: manualRows(12),
       sampleMeta: withMeta,
       provenance: { ...confirmedScalars, geocode: { source: "geokoder", status: "to_verify" } },
@@ -106,6 +123,8 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     expect(toVerifyGeocode.ok).toBe(false);
 
     const confirmedGeocode = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: manualRows(12),
       sampleMeta: withMeta,
       provenance: { ...confirmedScalars, geocode: { source: "geokoder", status: "confirmed" } },
@@ -114,7 +133,14 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   });
 
   it("does NOT require geocode when there was no sample fetch (sampleMeta absent/null)", () => {
-    expect(approvalGate({ comparables: manualRows(12), provenance: confirmedScalars })).toEqual({
+    expect(
+      approvalGate({
+        method: "kcs",
+        methodConfirmed: true,
+        comparables: manualRows(12),
+        provenance: confirmedScalars,
+      }),
+    ).toEqual({
       ok: true,
     });
   });
@@ -122,7 +148,12 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   it("collects ALL blockers at once (count + rows + scalars)", () => {
     const rows = manualRows(3);
     rows[0] = { source: "rcn" as never, status: "to_verify" as never };
-    const result = approvalGate({ comparables: rows, sampleMeta: null });
+    const result = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
+      comparables: rows,
+      sampleMeta: null,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       // 1 count blocker + 1 row blocker + 4 scalar blockers
@@ -132,6 +163,8 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 
   it("blocks approval when subject fetched but not confirmed", () => {
     const result = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: manualRows(12),
       sampleMeta: null,
       subject: { obreb: "Jeżyce" },
@@ -151,6 +184,8 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 
   it("blocks when subject present but provenance entries missing (default-deny)", () => {
     const result = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: manualRows(12),
       sampleMeta: null,
       subject: { obreb: "X" },
@@ -161,6 +196,8 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 
   it("passes with subject groups confirmed", () => {
     const result = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: manualRows(12),
       sampleMeta: null,
       subject: { obreb: "Jeżyce" },
@@ -175,14 +212,26 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 
   it("does not gate subject when subject absent (legacy)", () => {
     expect(
-      approvalGate({ comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars }),
+      approvalGate({
+        method: "kcs",
+        methodConfirmed: true,
+        comparables: manualRows(12),
+        sampleMeta: null,
+        provenance: confirmedScalars,
+      }),
     ).toEqual({ ok: true });
   });
 });
 
 describe("kw group (Slice 6)", () => {
   function passingInput() {
-    return { comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars };
+    return {
+      method: "kcs" as const,
+      methodConfirmed: true,
+      comparables: manualRows(12),
+      sampleMeta: null,
+      provenance: confirmedScalars,
+    };
   }
 
   const kwOk = {
@@ -314,6 +363,8 @@ describe("kw group (Slice 6)", () => {
  */
 describe("prose group (FR-6, Task 7)", () => {
   const passing = () => ({
+    method: "kcs" as const,
+    methodConfirmed: true,
     comparables: manualRows(12),
     sampleMeta: null,
     provenance: confirmedScalars,
@@ -550,7 +601,10 @@ describe("prose group (FR-6, Task 7)", () => {
     const prose = confirmedProse();
     delete prose.sections.standard;
     delete prose.sections.otoczenie;
-    const result = approvalGate({ comparables: manualRows(3), prose }, { requireProse: true });
+    const result = approvalGate(
+      { method: "kcs", methodConfirmed: true, comparables: manualRows(3), prose },
+      { requireProse: true },
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) {
       // 1 count blocker + 4 scalar blockers + 2 prose blockers, prose LAST.
@@ -566,6 +620,8 @@ describe("prose group (FR-6, Task 7)", () => {
 describe("featureDefs group (Slice 7)", () => {
   it("featureDefs to_verify blocks with a Polish label; legacy provenance without the key does not", () => {
     const blocked = approvalGate({
+      method: "kcs",
+      methodConfirmed: true,
       comparables: manualRows(12),
       sampleMeta: null,
       provenance: { ...confirmedScalars, featureDefs: { source: "preset", status: "to_verify" } },
@@ -580,8 +636,13 @@ describe("featureDefs group (Slice 7)", () => {
 
     // legacy: no featureDefs key at all → no blocker
     expect(
-      approvalGate({ comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars })
-        .ok,
+      approvalGate({
+        method: "kcs",
+        methodConfirmed: true,
+        comparables: manualRows(12),
+        sampleMeta: null,
+        provenance: confirmedScalars,
+      }).ok,
     ).toBe(true);
   });
 });

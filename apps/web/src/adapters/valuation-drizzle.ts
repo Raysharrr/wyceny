@@ -1,8 +1,12 @@
+import { randomUUID } from "node:crypto";
+import { comparableIdentity } from "../domain/pairwise-state";
 import { and, eq, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { KcsInput } from "../domain/kcs";
 import {
   applyCalculationConfirm,
+  applyMethodSelection,
+  type MethodSelection,
   applyFeaturesUpdate,
   applyInspectionOp,
   applyProseConfirmation,
@@ -369,6 +373,35 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
       });
     },
 
+    async selectMethod(
+      id: string,
+      user: SessionUser,
+      u: MethodSelection,
+    ): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(schema.valuation)
+          .where(eq(schema.valuation.id, id))
+          .for("update");
+        if (!row || row.ownerId !== user.id) return null;
+        const updated = applyMethodSelection(toValuation(row), u);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({ inputs: updated.inputs, wr: updated.wr })
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "in_progress")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "method_selected",
+          meta: { method: u.method, confirmed: true },
+        });
+        return toValuation(saved);
+      });
+    },
+
     async saveSample(id: string, user: SessionUser, u: SampleUpdate): Promise<Valuation | null> {
       return db.transaction(async (tx) => {
         const [row] = await tx
@@ -381,7 +414,21 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         if (valuation.ownerId !== user.id) return null;
         // T7: "Zatwierdź próbę i dalej" really does confirm the sample — see
         // saveSubject above for why the two halves share one transaction.
-        const updated = confirmSampleProvenance(applySampleUpdate(valuation, u));
+        const comparables = u.comparables.map((c) => {
+          const identity = comparableIdentity(c);
+          const matches = identity
+            ? (valuation.inputs?.comparables.filter(
+                (old) => comparableIdentity(old) === identity,
+              ) ?? [])
+            : [];
+          return {
+            ...c,
+            id: c.id ?? (matches.length === 1 ? matches[0].id : undefined) ?? randomUUID(),
+          };
+        });
+        const updated = confirmSampleProvenance(
+          applySampleUpdate(valuation, { ...u, comparables }),
+        );
         const [saved] = await tx
           .update(schema.valuation)
           .set({ inputs: updated.inputs, wr: null })
@@ -394,6 +441,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           action: "sample_updated",
           meta: {
             count: u.comparables.length,
+            selectedComparableIds: updated.inputs?.pairwise?.selectedComparableIds ?? [],
             radiusUsedM: u.sampleSelection?.radiusUsedM ?? null,
           },
         });
@@ -428,7 +476,7 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           valuationId: id,
           actorId: user.id,
           action: "features_updated",
-          meta: { count: u.features.length },
+          meta: { count: u.features.length, pairwiseConfirmed: u.confirmPairwise === true },
         });
         await insertAudit(tx, { valuationId: id, actorId: user.id, action: "features_confirmed" });
         return toValuation(saved);

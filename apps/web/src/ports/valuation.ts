@@ -17,6 +17,7 @@ import type {
   FeaturesUpdate,
   InspectionOp,
   SampleUpdate,
+  MethodSelection,
   SubjectUpdate,
 } from "../domain/valuation";
 
@@ -145,6 +146,7 @@ export interface PortValuation {
    * Step-3 (Próba) wizard draft save: replaces the comparables + sample
    * metadata, NULLing `wr`. Same null/throw contract as `updateInspection`.
    */
+  selectMethod(id: string, user: SessionUser, u: MethodSelection): Promise<Valuation | null>;
   saveSample(id: string, user: SessionUser, u: SampleUpdate): Promise<Valuation | null>;
   /**
    * Step-4 (Cechy) wizard draft save: replaces the features + their

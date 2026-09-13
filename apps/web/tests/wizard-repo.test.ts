@@ -93,15 +93,18 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
   it("saveSample nulls wr, and confirmCalculation after sample+features sets a positive wr; a later saveSample invalidates it again", async () => {
     const created = await repo.create(partialDraft("Wizard Sample 1"));
 
-    const comparables: Comparable[] = [
-      { pricePerM2: 9_000, source: "manual", status: "confirmed" },
-      { pricePerM2: 9_500, source: "manual", status: "confirmed" },
-      { pricePerM2: 10_500, source: "manual", status: "confirmed" },
-    ];
+    const comparables: Comparable[] = Array.from({ length: 12 }, (_, i) => ({
+      pricePerM2: 9000 + i * 100,
+      source: "manual",
+      status: "confirmed",
+    }));
     const sampleUpdate: SampleUpdate = { comparables, sampleMeta: null };
     const afterSample = await repo.saveSample(created.id, appraiserA, sampleUpdate);
     expect(afterSample!.wr).toBeNull();
-    expect(afterSample!.inputs!.comparables).toEqual(comparables);
+    expect(afterSample!.inputs!.comparables).toEqual(
+      comparables.map((c) => ({ ...c, id: expect.any(String) })),
+    );
+    expect(afterSample!.inputs!.comparables.every((c) => Boolean(c.id))).toBe(true);
 
     const featuresUpdate: FeaturesUpdate = {
       features: [{ name: "standard", weight: 1, rating: "przecietna" }],
@@ -112,6 +115,7 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
     };
     await repo.saveFeatures(created.id, appraiserA, featuresUpdate);
 
+    await repo.selectMethod(created.id, appraiserA, { method: "kcs", confirm: true });
     const confirmed = await repo.confirmCalculation(created.id, appraiserA);
     expect(confirmed!.wr).toBeGreaterThan(0);
 
@@ -122,7 +126,14 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
   it("saveFeatures persists features + the provenance fragment, keeping the detected source", async () => {
     const created = await repo.create(partialDraft("Wizard Features 1"));
     const update: FeaturesUpdate = {
-      features: [{ name: "standard", weight: 1, rating: "przecietna", key: "preset-1" }],
+      features: [
+        {
+          name: "standard wykończenia",
+          weight: 1,
+          rating: "przecietna",
+          key: "standard-wykonczenia",
+        },
+      ],
       provenance: {
         weights: { source: "preset", status: "to_verify" },
         ratings: { source: "preset", status: "to_verify" },
@@ -350,7 +361,14 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
   it("saving step 4 confirms the preset weights and the rating-scale definitions", async () => {
     const created = await repo.create(partialDraft("Wizard Confirm Features"));
     const update: FeaturesUpdate = {
-      features: [{ name: "standard", weight: 1, rating: "przecietna", key: "preset-1" }],
+      features: [
+        {
+          name: "standard wykończenia",
+          weight: 1,
+          rating: "przecietna",
+          key: "standard-wykonczenia",
+        },
+      ],
       provenance: {
         weights: { source: "preset", status: "to_verify" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -383,11 +401,11 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
   it("saveSubject keeps a confirmed wr when the area does not move", async () => {
     const created = await repo.create(partialDraft("Wizard Keep WR 1"));
     await repo.saveSample(created.id, appraiserA, {
-      comparables: [
-        { pricePerM2: 9_000, source: "manual", status: "confirmed" },
-        { pricePerM2: 9_500, source: "manual", status: "confirmed" },
-        { pricePerM2: 10_500, source: "manual", status: "confirmed" },
-      ],
+      comparables: Array.from({ length: 12 }, (_, i) => ({
+        pricePerM2: 9000 + i * 100,
+        source: "manual",
+        status: "confirmed",
+      })),
       sampleMeta: null,
     });
     await repo.saveFeatures(created.id, appraiserA, {
@@ -397,6 +415,7 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
         ratings: { source: "rzeczoznawca", status: "confirmed" },
       },
     });
+    await repo.selectMethod(created.id, appraiserA, { method: "kcs", confirm: true });
     const confirmed = await repo.confirmCalculation(created.id, appraiserA);
     expect(confirmed!.wr).toBeGreaterThan(0);
 
@@ -664,7 +683,14 @@ describe("every to_verify a legacy draft can hold has a step that clears it (T8)
     // `ratings` — which is safe only because no ACL path ever stamps it
     // anything but `confirmed`.
     await repo.saveFeatures(created.id, appraiserA, {
-      features: [{ name: "standard", weight: 1, rating: "przecietna", key: "standard" }],
+      features: [
+        {
+          name: "standard wykończenia",
+          weight: 1,
+          rating: "przecietna",
+          key: "standard-wykonczenia",
+        },
+      ],
       provenance: {
         weights: { source: "preset", status: "to_verify" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -680,5 +706,96 @@ describe("every to_verify a legacy draft can hold has a step that clears it (T8)
     for (const path of ["provenance.weights", "provenance.ratings", "provenance.featureDefs"]) {
       expect(gateBlockerPaths(cleared!.inputs!)).not.toContain(path);
     }
+  });
+});
+
+import { ppInputs } from "./fixtures/pairwise-inputs";
+import { comparableIdentity, pairwiseBasis } from "../src/domain/pairwise-state";
+
+describe("S2 method and pairwise locked writes", () => {
+  const provenance = {
+    weights: { source: "rzeczoznawca", status: "confirmed" },
+    ratings: { source: "rzeczoznawca", status: "confirmed" },
+  } as const;
+  it("only the owner may select a method; same KCS preserves WR, changed method clears it", async () => {
+    const created = await repo.create(approvableInput(appraiserA.id));
+    expect(
+      await repo.selectMethod(created.id, appraiserB, { method: "pp", confirm: true }),
+    ).toBeNull();
+    expect(await repo.selectMethod(created.id, admin, { method: "pp", confirm: true })).toBeNull();
+    expect(
+      (await repo.selectMethod(created.id, appraiserA, { method: "kcs", confirm: true }))!.wr,
+    ).toBe(created.wr);
+    expect(
+      (await repo.selectMethod(created.id, appraiserA, { method: "pp", confirm: true }))!.wr,
+    ).toBeNull();
+  });
+  it("assigns stable fallback ids; save/reload/reorder retains each manual row's identity", async () => {
+    const created = await repo.create(partialDraft("S2 stable IDs"));
+    const saved = await repo.saveSample(created.id, appraiserA, {
+      comparables: [
+        { pricePerM2: 10000 },
+        { pricePerM2: 10000 },
+        { source: "rcn", transactionId: "incomplete", pricePerM2: 9000 },
+      ],
+      sampleMeta: null,
+    });
+    const rows = saved!.inputs!.comparables;
+    expect(new Set(rows.map((c) => c.id)).size).toBe(3);
+    rows.forEach((c) => expect(c.id).toMatch(/^[0-9a-f-]{36}$/));
+    const reloaded = await repo.get(created.id, appraiserA);
+    const reordered = await repo.saveSample(created.id, appraiserA, {
+      comparables: reloaded!.inputs!.comparables.toReversed(),
+      sampleMeta: null,
+    });
+    expect(reordered!.inputs!.comparables.map(comparableIdentity)).toEqual(
+      rows.toReversed().map(comparableIdentity),
+    );
+  });
+  it("round-trips a confirmed snapshot and rejects a stale sample basis without overwriting the sample", async () => {
+    const created = await repo.create({ ...partialDraft("S2 basis"), inputs: ppInputs() });
+    const input = created.inputs!;
+    const update = {
+      features: input.features,
+      provenance,
+      comparisons: input.pairwise!.comparisons,
+      expectedPairwiseBasis: pairwiseBasis(input),
+      confirmPairwise: true,
+    };
+    const confirmed = await repo.saveFeatures(created.id, appraiserA, update);
+    const loaded = await repo.get(created.id, appraiserA);
+    expect(loaded!.inputs!.pairwise!.confirmedBasis).toBe(pairwiseBasis(loaded!.inputs!));
+    expect((await repo.confirmCalculation(created.id, appraiserA))!.wr).toBe(505000);
+    const sample = await repo.saveSample(created.id, appraiserA, {
+      comparables: input.comparables.map((c, i) => (i === 0 ? { ...c, pricePerM2: 9900 } : c)),
+      sampleMeta: null,
+    });
+    expect(sample!.inputs!.pairwise!.confirmedBasis).toBeUndefined();
+    await expect(repo.saveFeatures(created.id, appraiserA, update)).rejects.toThrow(/zmieniły/);
+    expect((await repo.get(created.id, appraiserA))!.inputs).toEqual(sample!.inputs);
+    expect(confirmed!.inputs!.pairwise!.confirmedBasis).toBeDefined();
+  });
+  it("serializes two confirmations of the same loaded basis: exactly one wins", async () => {
+    const created = await repo.create({ ...partialDraft("S2 race"), inputs: ppInputs() });
+    const inputs = created.inputs!;
+    const updates = ["First review", "Second review"].map((reason) => ({
+      features: inputs.features,
+      provenance,
+      expectedPairwiseBasis: pairwiseBasis(inputs),
+      confirmPairwise: true,
+      comparisons: Object.fromEntries(
+        Object.entries(inputs.pairwise!.comparisons).map(([id, cells]) => [
+          id,
+          { inne: { ...cells.inne, overrideReason: reason } },
+        ]),
+      ),
+    }));
+    const results = await Promise.allSettled(
+      updates.map((u) => repo.saveFeatures(created.id, appraiserA, u)),
+    );
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    const saved = (await repo.get(created.id, appraiserA))!.inputs!;
+    expect(saved.pairwise!.confirmedBasis).toBe(pairwiseBasis(saved));
   });
 });
