@@ -11,9 +11,11 @@
  * `node:crypto` into the browser bundle.
  */
 
+import { pairwiseBasis } from "./pairwise-state";
 import { createHash } from "node:crypto";
 import {
   buildProseFacts,
+  proseComparables,
   buildProseTransactions,
   PROSE_SECTION_FACTS,
   SECTIONS_USING_TRANSACTIONS,
@@ -75,10 +77,13 @@ export function currentSectionFactsHash(section: ProseSection, input: ProseFacts
   }
   return sha256Canonical({
     facts: subset,
+    ...(section === "uzasadnienie" && input.inputs.method === "pp"
+      ? { pairwise: pairwiseProseBasis(input.inputs) }
+      : {}),
     // Sorted: the model never sees the sample at all, so the ORDER of rows is
     // not a change to the operat — only which row carries which month is.
     transactions: SECTIONS_USING_TRANSACTIONS.has(section)
-      ? [...buildProseTransactions(input.inputs.comparables)].sort((a, b) =>
+      ? [...buildProseTransactions(proseComparables(input.inputs))].sort((a, b) =>
           a.data === b.data ? a.cena_m2 - b.cena_m2 : a.data < b.data ? -1 : 1,
         )
       : [],
@@ -103,4 +108,25 @@ export function currentSectionFactsHashes(
   const hashes: Partial<Record<ProseSection, string>> = {};
   for (const section of PROSE_SECTIONS) hashes[section] = currentSectionFactsHash(section, input);
   return hashes;
+}
+
+/** Ignore retained, unused cells and zero-weight features in prose dependencies. */
+function pairwiseProseBasis(inputs: ProseFactsInput["inputs"]): string {
+  const features = inputs.features.filter((f) => f.weight > 0);
+  const ids = inputs.pairwise?.selectedComparableIds ?? [];
+  const comparisons = Object.fromEntries(
+    ids.map((id) => [
+      id,
+      Object.fromEntries(
+        features
+          .filter((f) => f.key && inputs.pairwise?.comparisons[id]?.[f.key])
+          .map((f) => [f.key!, inputs.pairwise!.comparisons[id][f.key!]]),
+      ),
+    ]),
+  );
+  return pairwiseBasis({
+    ...inputs,
+    features,
+    pairwise: { ...inputs.pairwise, selectedComparableIds: ids, comparisons },
+  });
 }

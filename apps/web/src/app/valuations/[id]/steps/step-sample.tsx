@@ -27,6 +27,9 @@ import { FootNav } from "@/components/wizard/foot-nav";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import { registrySourceOfPool, type Comparable, type KcsInput } from "@/domain/kcs";
+import { comparableIdentity } from "@/domain/pairwise-state";
+import { PairwiseSelection } from "./pairwise-selection";
+import { mergePairwisePool } from "./use-sample-review";
 import type { PropertyRight } from "@/domain/property-right";
 import { cooperativesLabel } from "./sample-badges";
 import { REQUIRED_SAMPLE_SIZE } from "@/domain/provenance";
@@ -111,6 +114,8 @@ export function StepSample({
   sampleSelection,
   streetView,
   propertyRight,
+  method,
+  selectedComparableIds,
 }: {
   valuationId: string;
   address: string;
@@ -121,7 +126,10 @@ export function StepSample({
   streetView: KcsInput["streetView"];
   /** The right being valued (S3) — names the register the step fetches from; the switch itself lives server-side. */
   propertyRight: PropertyRight;
+  method?: KcsInput["method"];
+  selectedComparableIds?: string[];
 }) {
+  const isPairwise = method === "pp";
   const coop = propertyRight === "spoldzielcze_wlasnosciowe";
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -140,12 +148,15 @@ export function StepSample({
     control,
     handleSubmit,
     setValue,
+    reset,
+    getValues,
     formState: { isSubmitting, errors },
   } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(sampleStepSchema),
     defaultValues: {
       comparables: initialComparables.length
         ? initialComparables.map((c) => ({
+            id: c.id ?? (comparableIdentity(c) ? undefined : crypto.randomUUID()),
             date: c.date ?? "",
             area: c.area != null ? String(c.area) : undefined,
             pricePerM2: String(c.pricePerM2),
@@ -158,8 +169,10 @@ export function StepSample({
             // content/position matching for every reject, not just true
             // pre-lokalId drafts.
             lokalId: c.lokalId,
+            coopTxId: c.coopTxId,
           }))
-        : [{ ...emptyComparable }, { ...emptyComparable }, { ...emptyComparable }],
+        : Array.from({ length: 3 }, () => ({ ...emptyComparable, id: crypto.randomUUID() })),
+      selectedComparableIds: selectedComparableIds ?? [],
       sampleMeta: sampleMeta ?? undefined,
       sampleSelection: sampleSelection ?? undefined,
       streetView: streetView ?? undefined,
@@ -175,7 +188,15 @@ export function StepSample({
 
   const comparables = useWatch({ control, name: "comparables" });
 
+  const chosenIds = useWatch({ control, name: "selectedComparableIds" }) ?? [];
+  const identity = (c: FormInput["comparables"][number]) =>
+    comparableIdentity({
+      ...c,
+      pricePerM2: Number(c.pricePerM2),
+      area: c.area == null ? undefined : Number(c.area),
+    });
   const validPrices = (comparables ?? [])
+    .filter((c) => !isPairwise || chosenIds.includes(identity(c) ?? ""))
     .map((c) => Number(c?.pricePerM2))
     .filter((price) => Number.isFinite(price) && price > 0);
   const cmin = validPrices.length ? Math.min(...validPrices) : null;
@@ -250,6 +271,7 @@ export function StepSample({
     replaceComparables,
     liveStreetView,
     poolSource: liveSampleMeta?.source,
+    preservePool: isPairwise,
   });
   // Register badge on every fetched row (S3): derived from the pool, never from the right.
   const rowSource = liveSampleMeta ? registrySourceOfPool(liveSampleMeta.source) : undefined;
@@ -355,8 +377,15 @@ export function StepSample({
       // result `syncComparables` would produce — going through it here would
       // just add a needless extra read of the (not-yet-updated) form state.
       replaceComparables(
-        result.proposal.comparables.map((c) => rcnRow(c, result.proposal.sampleMeta.source)),
+        isPairwise
+          ? mergePairwisePool(
+              result.proposal.sampleSelection,
+              getValues("comparables"),
+              result.proposal.sampleMeta.source,
+            )
+          : result.proposal.comparables.map((c) => rcnRow(c, result.proposal.sampleMeta.source)),
       );
+
       setValue("sampleMeta", result.proposal.sampleMeta, {
         shouldDirty: true,
         shouldValidate: true,
@@ -385,9 +414,23 @@ export function StepSample({
 
   const onSubmit = handleSubmit(async (values) => {
     setSubmitError(null);
-    const result = await saveSampleAction(valuationId, values);
+    const result = await saveSampleAction(valuationId, {
+      ...values,
+      ...(!isPairwise ? { selectedComparableIds: undefined } : {}),
+    });
     if ("error" in result) {
       setSubmitError(result.error);
+      return;
+    }
+    // Canonical ACL identities are the only source for the next edit/save.
+    if (result.comparables)
+      reset({
+        ...values,
+        comparables: result.comparables,
+        selectedComparableIds: result.selectedComparableIds,
+      });
+    if (isPairwise && (chosenIds.length < 3 || chosenIds.length > 5)) {
+      setSubmitError("Pula zapisana. Do porównywania parami wybierz od 3 do 5 transakcji.");
       return;
     }
     router.push(`/valuations/${valuationId}?step=4`);
@@ -397,8 +440,9 @@ export function StepSample({
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
         <SectionCard
+          className="min-w-0"
           icon={Table2}
-          title="Próba porównawcza"
+          title={isPairwise ? "Pula transakcji do porównań" : "Próba porównawcza"}
           sub={`${comparablesCount} ${plural(comparablesCount, "transakcja", "transakcje", "transakcji")}`}
         >
           <div className="flex flex-col gap-3">
@@ -479,7 +523,10 @@ export function StepSample({
             {sel ? (
               <>
                 {/* S3: too few register rows — a hint, never a bypass: the F-4 gate (12) is untouched. */}
-                {fromRegister && eff && eff.proposed.length < REQUIRED_SAMPLE_SIZE ? (
+                {!isPairwise &&
+                fromRegister &&
+                eff &&
+                eff.proposed.length < REQUIRED_SAMPLE_SIZE ? (
                   <div
                     role="status"
                     data-testid="registry-shortfall"
@@ -616,7 +663,8 @@ export function StepSample({
               onClick={() => setShowEditable((v) => !v)}
             >
               {showEditable ? <ChevronDown /> : <ChevronRight />}
-              Próba do kalkulacji ({comparablesCount}) — edytuj wartości lub dopisz ręcznie
+              {isPairwise ? "Pula" : "Próba do kalkulacji"} ({comparablesCount}) — edytuj wartości
+              lub dopisz ręcznie
             </Button>
 
             {/* A validation error on `comparables` must never be hidden behind
@@ -723,7 +771,7 @@ export function StepSample({
                   type="button"
                   variant="outline"
                   className="w-fit"
-                  onClick={() => appendComparable({ ...emptyComparable })}
+                  onClick={() => appendComparable({ ...emptyComparable, id: crypto.randomUUID() })}
                 >
                   Dodaj transakcję
                 </Button>
@@ -768,17 +816,17 @@ export function StepSample({
               </p>
             ) : null}
 
-            {comparablesCount < REQUIRED_SAMPLE_SIZE ? (
+            {!isPairwise && comparablesCount < REQUIRED_SAMPLE_SIZE ? (
               <p className="text-sm text-amber-600 dark:text-amber-500">
-                Operat wymaga co najmniej {REQUIRED_SAMPLE_SIZE} transakcji — masz{" "}
-                {comparablesCount}. Szkic można zapisać, ale zatwierdzenie operatu będzie
-                zablokowane.
+                Metoda KCS wymaga co najmniej {REQUIRED_SAMPLE_SIZE} transakcji — masz{" "}
+                {comparablesCount}. Szkic można zapisać, ale kalkulacji w kroku 5 nie da się
+                zatwierdzić.
               </p>
             ) : null}
           </div>
         </SectionCard>
 
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
+        <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-[128px]">
           {panelCandidate ? (
             <SamplePanel
               candidate={panelCandidate}
@@ -844,7 +892,7 @@ export function StepSample({
               </p>
             </div>
 
-            {stats ? (
+            {stats && !isPairwise ? (
               <div className="mt-4 border-t border-border pt-4">
                 <div className="relative h-2 overflow-hidden rounded-full bg-border">
                   <div className="absolute inset-y-0 left-0 right-0 bg-[var(--accent-100)]" />
@@ -865,6 +913,17 @@ export function StepSample({
         </aside>
       </div>
 
+      {isPairwise ? (
+        <PairwiseSelection
+          rows={(comparables ?? []).map((c) => ({
+            ...c,
+            pricePerM2: Number(c.pricePerM2),
+            area: c.area == null ? undefined : Number(c.area),
+          }))}
+          selectedIds={chosenIds}
+          onChange={(ids) => setValue("selectedComparableIds", ids, { shouldDirty: true })}
+        />
+      ) : null}
       {submitError ? (
         <p role="alert" className="text-sm text-destructive">
           {submitError}
@@ -889,7 +948,9 @@ export function StepSample({
         }
       >
         <Button type="submit" disabled={isSubmitting} className="w-fit">
-          Zatwierdź próbę i dalej
+          {isPairwise && (chosenIds.length < 3 || chosenIds.length > 5)
+            ? "Zapisz pulę"
+            : "Zatwierdź próbę i dalej"}
         </Button>
       </FootNav>
     </form>

@@ -61,6 +61,8 @@ function draftWith(inputs: KcsInput | null, overrides: Partial<Valuation> = {}):
 
 function rcnInputs(): KcsInput {
   return {
+    method: "kcs",
+    methodConfirmed: true,
     area: 50,
     comparables: Array.from({ length: 12 }, (_, i) => ({
       pricePerM2: 10_000 + i,
@@ -614,7 +616,12 @@ describe("applySubjectUpdate — the subject group survives an unrelated save (T
 describe("applyFeaturesUpdate — the feature group survives an unrelated save (Task 6)", () => {
   const presetFeatures = () => [
     { name: "lokalizacja", weight: 0.6, rating: "przecietna" as const, key: "lokalizacja" },
-    { name: "standard", weight: 0.4, rating: "lepsza" as const, key: "standard" },
+    {
+      name: "standard wykończenia",
+      weight: 0.4,
+      rating: "lepsza" as const,
+      key: "standard-wykonczenia",
+    },
   ];
 
   /** What `assignFeaturesProvenance` re-derives when the weights still match
@@ -924,6 +931,7 @@ describe("AUDIT_ACTIONS (FR-12)", () => {
       "created",
       "subject_updated",
       "sample_updated",
+      "method_selected",
       "features_updated",
       "calculation_confirmed",
       "sample_confirmed",

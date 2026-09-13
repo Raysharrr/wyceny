@@ -1,3 +1,4 @@
+import { calculationIssues } from "./valuation-calculation";
 import type { KcsInput } from "./kcs";
 import type { Valuation } from "../ports/valuation";
 
@@ -35,7 +36,7 @@ export function resolveStep(param: string | undefined, max: number): number {
 }
 
 export function calculationReady(inputs: KcsInput | null): boolean {
-  return inputs != null && inputs.comparables.length >= 3 && inputs.features.length > 0;
+  return inputs != null && calculationIssues(inputs).length === 0;
 }
 
 /**
@@ -53,6 +54,7 @@ const BLOCKER_STEP: Record<string, number> = {
   // operat's header fields, which live on the same form.
   "provenance.address": 1,
   "provenance.area": 1,
+  area: 1,
   "provenance.geocode": 1,
   "provenance.ewidencja": 1,
   "provenance.mpzp": 1,
@@ -65,6 +67,10 @@ const BLOCKER_STEP: Record<string, number> = {
   inspectionDate: 2,
   // Step 3 (Próba): the sample's size and every transaction in it.
   comparables: 3,
+  method: 3,
+  "pairwise.selectedComparableIds": 3,
+  pairwise: 4,
+  features: 4,
   // Step 4 (Cechy): weights, ratings and the rating-scale definitions.
   "provenance.weights": 4,
   "provenance.ratings": 4,

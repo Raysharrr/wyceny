@@ -478,7 +478,8 @@ describe("AUDIT_ACTIONS gained the four wizard actions", () => {
     expect(AUDIT_ACTIONS).toContain("features_updated");
     expect(AUDIT_ACTIONS).toContain("calculation_confirmed");
     // 15 since ADR-014 added prose_generated (T5) and prose_confirmed (T6).
-    expect(AUDIT_ACTIONS).toHaveLength(15);
+    expect(AUDIT_ACTIONS).toContain("method_selected");
+    expect(AUDIT_ACTIONS).toHaveLength(16);
   });
 });
 
@@ -551,9 +552,9 @@ describe("calculationReady", () => {
       calculationReady({ ...fullInputs(), comparables: fullInputs().comparables.slice(0, 2) }),
     ).toBe(false);
   });
-  it("3+ comparables and at least 1 feature -> true", () => {
+  it("12+ comparables, valid features and confirmed method -> true", () => {
     expect(
-      calculationReady({ ...fullInputs(), comparables: fullInputs().comparables.slice(0, 3) }),
+      calculationReady({ ...fullInputs(), comparables: fullInputs().comparables.slice(0, 12) }),
     ).toBe(true);
   });
 });
@@ -568,7 +569,9 @@ describe("stepForBlockerPath", () => {
   /** A draft that trips every group the F-4 gate knows how to block on. */
   function maximallyBlockedInput(): GateInput {
     return {
-      comparables: [{ source: "rcn", status: "to_verify" }],
+      area: 50,
+      features: [{ name: "standard", weight: 1, rating: "przecietna" }],
+      comparables: [{ pricePerM2: 10000, source: "rcn", status: "to_verify" }],
       sampleMeta: { lat: 1, lon: 2 },
       subject: { obreb: "Nowogród" },
       kw: { source: "odpis_kw", kwLokalu: null, kwGruntu: null, deweloperski: false },
@@ -615,7 +618,7 @@ describe("stepForBlockerPath", () => {
     // KW (9), the two KW numbers (2), the prose snapshot + its six sections
     // (7), the five document fields (5). A drop here means a group stopped
     // being exercised, and the loop below would then pass vacuously.
-    expect(paths.size).toBe(25);
+    expect(paths.size).toBe(26);
     for (const path of paths) {
       expect(stepForBlockerPath(path), `no step for blocker path "${path}"`).toBeDefined();
     }

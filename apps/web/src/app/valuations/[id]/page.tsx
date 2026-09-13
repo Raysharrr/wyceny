@@ -1,3 +1,4 @@
+import { MethodSelection } from "./steps/method-selection";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -110,19 +111,31 @@ export default async function ValuationViewPage({
             inspectionDate={valuation.inspectionDate}
           />
         ) : step === 3 ? (
-          <StepSample
-            valuationId={valuation.id}
-            address={valuation.address}
-            area={valuation.area}
-            comparables={valuation.inputs?.comparables ?? []}
-            sampleMeta={valuation.inputs?.sampleMeta ?? null}
-            sampleSelection={valuation.inputs?.sampleSelection ?? null}
-            streetView={valuation.inputs?.streetView ?? null}
-            propertyRight={valuation.propertyRight}
-          />
+          <div className="flex flex-col gap-4">
+            <MethodSelection
+              valuationId={valuation.id}
+              method={valuation.inputs?.method}
+              methodConfirmed={valuation.inputs?.methodConfirmed}
+              comparableCount={valuation.inputs?.comparables.length ?? 0}
+            />
+            <StepSample
+              valuationId={valuation.id}
+              address={valuation.address}
+              area={valuation.area}
+              comparables={valuation.inputs?.comparables ?? []}
+              sampleMeta={valuation.inputs?.sampleMeta ?? null}
+              sampleSelection={valuation.inputs?.sampleSelection ?? null}
+              streetView={valuation.inputs?.streetView ?? null}
+              propertyRight={valuation.propertyRight}
+              method={valuation.inputs?.method}
+              selectedComparableIds={valuation.inputs?.pairwise?.selectedComparableIds}
+            />
+          </div>
         ) : step === 4 ? (
           <StepFeatures
+            key={valuation.id}
             valuationId={valuation.id}
+            snapshot={valuation.inputs ?? undefined}
             features={valuation.inputs?.features ?? []}
             comparables={valuation.inputs?.comparables ?? []}
             area={valuation.area}

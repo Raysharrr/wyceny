@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { calculationIssues } from "@/domain/valuation-calculation";
+import { stepForBlockerPath } from "@/domain/wizard";
 import { Card, CardContent } from "@/components/ui/card";
 import { AutoBanner } from "@/components/wizard/auto-banner";
 import { FootNav } from "@/components/wizard/foot-nav";
@@ -27,9 +30,26 @@ export function StepCalculation({ valuation }: { valuation: Valuation }) {
           <CardContent className="flex flex-col gap-2 pt-6">
             <h2 className="text-sm font-medium text-foreground">Kalkulacja niedostępna</h2>
             <p className="text-sm text-muted-foreground">
-              Uzupełnij próbę porównawczą (krok 3. Próba) i cechy z wagami (krok 4. Cechy), aby
-              wyliczyć wartość rynkową.
+              Aby wyliczyć wartość rynkową, uzupełnij:
             </p>
+            <ul data-testid="calculation-blockers" className="space-y-2 text-sm">
+              {(inputs ? calculationIssues(inputs) : []).map((issue) => {
+                const step = stepForBlockerPath(issue.path);
+                return (
+                  <li key={`${issue.path}:${issue.label}`}>
+                    {issue.label}{" "}
+                    {step ? (
+                      <Link
+                        className="underline"
+                        href={`/valuations/${valuation.id}?step=${step.n}`}
+                      >
+                        Przejdź do kroku {step.n}. {step.label}
+                      </Link>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
           </CardContent>
         </Card>
         <FootNav back={{ href: backHref }} mid="—" />
@@ -48,7 +68,7 @@ export function StepCalculation({ valuation }: { valuation: Valuation }) {
             kwotę.
           </AutoBanner>
         )}
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className={inputs?.method === "pp" ? "grid gap-4" : "grid gap-4 md:grid-cols-2"}>
           <ComparablesProvenance inputs={inputs!} />
           <KcsBreakdown inputs={inputs!} />
         </div>

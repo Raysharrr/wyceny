@@ -19,17 +19,17 @@ Rozpiętość próby przeliczana jest na dwa mnożniki:
 - **Vmin** = Cmin ÷ Cśr — jak nisko schodzi rynek względem swojej średniej,
 - **Vmax** = Cmax ÷ Cśr — jak wysoko nad tę średnią wychodzi.
 
-Vmin jest zawsze mniejszy lub równy jedności, Vmax większy lub równy. To one, a nie żaden zewnętrzny cennik, wyznaczają amplitudę korekty: **przy wagach sumujących się do jedności** wynik wyceny nie wyjdzie poza przedział między najtańszą a najdroższą transakcją w próbie. Zastrzeżenie o wagach jest tu istotne, bo to ono niesie całą gwarancję — silnik wyniku do tego przedziału nie przycina i sumy wag nie sprawdza, a brama zatwierdzenia operatu też nie; pilnuje jej wyłącznie walidacja [kroku cech](/pomoc/krok-4-cechy). Próba jest więc jednocześnie źródłem poziomu cen i źródłem dopuszczalnej amplitudy korekty.
+Vmin jest zawsze mniejszy lub równy jedności, Vmax większy lub równy. To one, a nie żaden zewnętrzny cennik, wyznaczają amplitudę korekty: **przy wagach sumujących się do jedności** wynik wyceny nie wyjdzie poza przedział między najtańszą a najdroższą transakcją w próbie. Zastrzeżenie o wagach jest tu istotne, bo to ono niesie całą gwarancję — silnik wyniku do tego przedziału nie przycina; poprawność wag sprawdza wspólna walidacja kalkulacji i zatwierdzenia oraz formularz [kroku cech](/pomoc/krok-4-cechy). Próba jest więc jednocześnie źródłem poziomu cen i źródłem dopuszczalnej amplitudy korekty.
 
 ## Współczynniki cech i ich suma
 
-Każda cecha ma wagę (udział w całości korekty; wagi sumują się do jedności) oraz ocenę w trzystopniowej skali. Współczynnik cechy Ui zależy od oceny:
+Każda cecha ma wagę (udział w całości korekty; wagi sumują się do jedności) oraz ocenę w dwu- lub trzystopniowej skali. Współczynnik cechy Ui zależy od oceny:
 
 - ocena **lepsza** — Ui = waga × Vmax,
 - ocena **przeciętna** — Ui = waga,
 - ocena **gorsza** — Ui = waga × Vmin.
 
-ΣUi, czyli suma współczynników wszystkich cech, jest łącznym mnożnikiem korekty. Poniższe własności zakładają, że wagi sumują się do jedności — silnik tego nie sprawdza i policzy wynik z dowolnym zestawem wag; pilnuje tego [krok ocen](/pomoc/krok-4-cechy). Gdy wszystkie cechy są przeciętne, ΣUi wynosi dokładnie 1 i wycena zatrzymuje się na cenie średniej. Gdy wszystkie są lepsze, ΣUi równa się Vmax i wycena dobija do najdroższej transakcji z próby. Każda pojedyncza ocena przesuwa wynik dokładnie o tyle, ile wynosi jej waga pomnożona przez odległość odpowiedniego współczynnika od jedności.
+ΣUi, czyli suma współczynników wszystkich cech, jest łącznym mnożnikiem korekty. Poniższe własności zakładają, że wagi sumują się do jedności — nowa kalkulacja i zatwierdzenie sprawdzają sumę wag, podobnie jak [krok ocen](/pomoc/krok-4-cechy). Gdy wszystkie cechy są przeciętne, ΣUi wynosi dokładnie 1 i wycena zatrzymuje się na cenie średniej. Gdy wszystkie są lepsze, ΣUi równa się Vmax i wycena dobija do najdroższej transakcji z próby. Każda pojedyncza ocena przesuwa wynik dokładnie o tyle, ile wynosi jej waga pomnożona przez odległość odpowiedniego współczynnika od jedności.
 
 ## Wartość jednostkowa i wartość rynkowa
 
@@ -77,3 +77,9 @@ Osobna drobna rozbieżność dotyczy samego dokumentu referencyjnego: drukuje on
 ## Powtarzalność wyniku
 
 Silnik nie czyta zegara, nie losuje i nie sięga po żadne dane spoza przekazanego mu wejścia. Ta sama próba, te same wagi i te same oceny zawsze dają tę samą wartość rynkową — również za rok i również bez dostępu do sieci, bo dane wejściowe wyceny są zapisywane w migawce razem z wynikiem. Wycena da się więc odtworzyć co do złotówki, a nie tylko opisać.
+
+## Skale i procenty w operacie
+
+KCS wymaga co najmniej 12 transakcji i jawnego potwierdzenia metody. Dla skali dwustopniowej dostępne są tylko końce: gorsza i lepsza. Kolumna środkowa współczynnika takiej cechy zawiera kreskę; kreska zastępuje też środkową sumę, jeśli zestaw zawiera skalę dwustopniową. Wagi drukowane są z dokładnością do dwóch miejsc po przecinku, wraz z rzeczywistą sumą. Definicje ocen i nazwa własnej cechy trafiają do operatu; cechy z wagą 0 są pomijane.
+
+Dla mniejszej, świadomie wybranej próby 3–5 transakcji dostępna jest [metoda porównywania parami](/pomoc/metoda-pp), z odrębnym rachunkiem poprawek i konwencją precyzji.

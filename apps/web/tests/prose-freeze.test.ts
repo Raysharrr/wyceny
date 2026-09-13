@@ -14,7 +14,7 @@ import { approvableInput, confirmedProseFor } from "./fixtures/valuation-inputs"
  *  1. neither path ever asks the worker for prose (no regeneration, no bill);
  *  2. the document build receives the identical prose in both.
  *
- * `buildDocumentModel` is wrapped rather than replaced — the real one runs, we
+ * `prepareOperatModel` is wrapped rather than replaced — the real one runs, we
  * only look at what it was handed. Today the model drops prose (T8 puts it in
  * the template), so this is where the property is observable at all; once T8
  * lands, `docx-render-signature.test.ts`'s text equality covers the printed
@@ -38,9 +38,9 @@ vi.mock("@/domain/document-model", async (importOriginal) => {
     // ...args, not just the first one: the function took a second parameter
     // in T11 (`{ preview: true }`), and a wrapper pinned to `[0]` would drop
     // it silently — this file would then be testing a render nobody performs.
-    buildDocumentModel: (...args: Parameters<typeof actual.buildDocumentModel>) => {
+    prepareOperatModel: (...args: Parameters<typeof actual.prepareOperatModel>) => {
       documentInputs.push(args[0] as { inputs: { prose?: ProseSnapshot | null } });
-      return actual.buildDocumentModel(...args);
+      return actual.prepareOperatModel(...args);
     },
   };
 });

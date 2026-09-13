@@ -406,7 +406,9 @@ describe("what went stale, and what regenerating it costs (T5)", () => {
       ...ATTEMPTED_ANALIZA,
     });
 
-    expect(screen.getByTestId("prose-stale-analiza_rynku")).toHaveTextContent("dane się zmieniły");
+    expect(screen.getByTestId("prose-stale-analiza_rynku")).toHaveTextContent("zmieniły się");
+    // A confirmation given for other facts is not "potwierdzone" (E2E 13.09, S1).
+    expect(screen.getByTestId("prose-badge-analiza_rynku")).toHaveTextContent("do weryfikacji");
     expect(screen.queryByTestId("prose-stale-otoczenie")).toBeNull();
     expect(
       screen.getByRole("button", { name: /Wygeneruj ponownie 1 nieaktualną sekcję/ }),

@@ -1,4 +1,4 @@
-import type { FeatureRating } from "./kcs";
+import type { FeatureRating } from "./valuation-input";
 
 /**
  * Expert feature preset (F-6, ADR-006) — the domain source of truth for the
@@ -41,6 +41,10 @@ export const LOKAL_FEATURE_KEYS = [
   "liczba-izb",
   "rodzaj-zabudowy",
 ] as const;
+
+/** T-06: custom input is not a tenth catalog preset. */
+export const FEATURE_INPUT_KEYS = [...LOKAL_FEATURE_KEYS, "inne"] as const;
+export type FeatureInputKey = (typeof FEATURE_INPUT_KEYS)[number];
 
 export type LokalFeatureKey = (typeof LOKAL_FEATURE_KEYS)[number];
 

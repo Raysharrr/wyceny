@@ -1,3 +1,4 @@
+import { validateFeatures } from "@/domain/feature-rules";
 import { z } from "zod";
 import { valuationFormObject } from "@/lib/valuation-form-schema";
 
@@ -46,13 +47,45 @@ export const step1Schema = step1Object.superRefine((values, ctx) => {
   }
 });
 
-export const sampleStepSchema = valuationFormObject.pick({
-  comparables: true,
-  sampleMeta: true,
-  sampleSelection: true,
-  streetView: true,
+export const sampleStepSchema = valuationFormObject
+  .pick({
+    comparables: true,
+    sampleMeta: true,
+    sampleSelection: true,
+    streetView: true,
+  })
+  .extend({ selectedComparableIds: z.array(z.string().min(1)).optional() });
+export const methodSelectionSchema = z.object({
+  method: z.enum(["kcs", "pp"]),
+  confirm: z.literal(true),
 });
-export const featuresStepSchema = valuationFormObject.pick({ features: true });
+const pairwiseCellSchema = z.object({
+  rating: z.enum(["gorsza", "przecietna", "lepsza"]).nullable(),
+  multiplier: z.number().nullable(),
+  overrideReason: z.string().max(1000).optional(),
+});
+export const featuresStepSchema = valuationFormObject
+  .pick({ features: true })
+  .extend({
+    comparisons: z
+      .record(z.string().min(1), z.record(z.string().min(1), pairwiseCellSchema))
+      .optional(),
+    confirmPairwise: z.boolean().optional(),
+    expectedPairwiseBasis: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    for (const issue of validateFeatures(
+      data.features.map((f) => ({ ...f, weight: f.weightPct / 100 })),
+    )) {
+      ctx.addIssue({ code: "custom", path: issue.path.split("."), message: issue.label });
+    }
+    if ((data.comparisons !== undefined || data.confirmPairwise) && !data.expectedPairwiseBasis)
+      ctx.addIssue({
+        code: "custom",
+        path: ["expectedPairwiseBasis"],
+        message: "Odśwież formularz ocen.",
+      });
+  });
 
 export type Step1Input = z.input<typeof step1Schema>;
 export type SampleStepInput = z.input<typeof sampleStepSchema>;

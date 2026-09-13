@@ -314,6 +314,11 @@ test.describe("wycena spółdzielcza @coop", () => {
     await expect(
       sample.proposedRows.filter({ hasNotText: "Rejestr SM — do weryfikacji" }),
     ).toHaveCount(0);
+    await page.getByLabel("Wybierz metodę wyceny").selectOption("kcs");
+    await page.getByRole("button", { name: "Potwierdź metodę", exact: true }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Potwierdzona metoda: KCS." }),
+    ).toBeVisible();
     await sample.confirmAndContinue();
 
     const operat = new OperatPath(page);
@@ -401,6 +406,11 @@ test.describe("zatwierdzenie operatu spółdzielczego @coop", () => {
     await new InspectionStep(page).fillDateAndContinue();
     const sample = new SampleStep(page);
     await sample.fetch();
+    await page.getByLabel("Wybierz metodę wyceny").selectOption("kcs");
+    await page.getByRole("button", { name: "Potwierdź metodę", exact: true }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Potwierdzona metoda: KCS." }),
+    ).toBeVisible();
     await sample.confirmAndContinue();
     const operat = new OperatPath(page);
     await operat.throughToOperat();

@@ -46,6 +46,11 @@ async function walkToOperat(page: import("@playwright/test").Page, prices: strin
   await page.locator("#inspectionDate").blur();
   await page.getByRole("link", { name: "Dalej" }).click();
   await page.waitForURL(/step=3/);
+  await page.getByLabel("Wybierz metodę wyceny").selectOption("kcs");
+  await page.getByRole("button", { name: "Potwierdź metodę", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Potwierdzona metoda: KCS." }),
+  ).toBeVisible();
   // step 3: transakcje ręczne
   for (let i = 3; i < prices.length; i++)
     await page.getByRole("button", { name: "Dodaj transakcję" }).click();
@@ -56,6 +61,7 @@ async function walkToOperat(page: import("@playwright/test").Page, prices: strin
   // step 4: preset cech
   await page.getByRole("button", { name: "Zatwierdź cechy i dalej" }).click();
   await page.waitForURL(/step=5/);
+  if (prices.length < 12) return;
   // step 5: kalkulacja
   await expect(page.getByText("Suma współczynników (ΣUi)")).toBeVisible();
   await page.getByRole("button", { name: "Zatwierdź kalkulację i dalej" }).click();
@@ -65,17 +71,20 @@ async function walkToOperat(page: import("@playwright/test").Page, prices: strin
   await page.waitForURL(/step=7/);
 }
 
-test("wizard draft, 3 transactions: blocked on operat step, with a link back to step 3", async ({
+test("wizard draft, 3 transactions: blocked before calculation, with a link back to step 3", async ({
   page,
 }) => {
   await login(page);
   await createDraftStep1(page);
   await walkToOperat(page, ["12000", "13000", "14000"]);
-  const blockers = page.getByTestId("gate-blockers");
+  const blockers = page.getByTestId("calculation-blockers");
   await expect(blockers).toContainText("co najmniej 12");
-  await expect(page.getByTestId("approve-button")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Zatwierdź kalkulację i dalej" })).toHaveCount(0);
+  await page.goto(page.url().replace("step=5", "step=7"));
+  await expect(page).toHaveURL(/step=7/);
+  await expect(page.getByTestId("approve-button")).toHaveCount(0);
 
-  // T8: step 7 reports and links back — the sample is fixed where it is
+  // S2: the earlier calculation gate reports and links back — the sample is fixed where it is
   // visible. Following the link is the assertion that matters: a href that
   // resolves to a step the draft cannot open would leave the appraiser
   // exactly where they were.

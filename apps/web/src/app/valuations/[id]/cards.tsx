@@ -1,9 +1,18 @@
+import { computeValuation } from "@/domain/valuation-calculation";
+import { comparableIdentity, valuationComparables } from "@/domain/pairwise-state";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Building2, Calculator, FileText, Scale, SlidersHorizontal, Table2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import {
-  computeKcs,
   isRegistrySourced,
   REGISTRY_LABEL,
   type ComparableSource,
@@ -39,7 +48,8 @@ function provenanceStatusText(status?: string): string {
 }
 
 export function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
-  const r = computeKcs(inputs);
+  const r = computeValuation(inputs);
+  if (r.method === "pp") return <PairwiseBreakdown inputs={inputs} result={r} />;
   return (
     <>
       {/* T2 — ceny jednostkowe */}
@@ -92,7 +102,9 @@ export function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
             {r.ui.map((u) => (
               <tr key={u.name} className="border-t border-border">
                 <td className="py-1">{u.name}</td>
-                <td className="py-1 num">{Math.round(u.weight * 100)}%</td>
+                <td className="py-1 num">
+                  {(u.weight * 100).toLocaleString("pl-PL", { maximumFractionDigits: 2 })}%
+                </td>
                 <td className="py-1">{RATING_LABEL[u.rating]}</td>
                 <td className="py-1 text-right num">
                   {u.value.toLocaleString("pl-PL", {
@@ -405,7 +417,24 @@ export function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
     area && (area.source === "akt" || area.source === "odpis_kw")
       ? `powierzchnia: ${AREA_SOURCE_LABEL[area.source]} — ${provenanceStatusText(area.status)}`
       : null;
-  const count = inputs.comparables.length;
+  const comparables = valuationComparables(inputs);
+  const count = comparables.length;
+  // A register row keeps its source after a hand edit (the ACL derives it from
+  // coopTxId/transactionId), so compare it with the fetched candidate: changed
+  // values are the appraiser's own entry, not confirmed register data.
+  const sel = inputs.sampleSelection;
+  const fetched = [
+    ...(sel?.proposed ?? []),
+    ...(sel?.alternates ?? []),
+    ...(sel?.manualInclusions ?? []).map((m) => m.candidate),
+  ];
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const editedByHand = (c: (typeof comparables)[number]) => {
+    const f = isRegistrySourced(c)
+      ? fetched.find((x) => x.transactionId === c.transactionId && x.lokalId === c.lokalId)
+      : undefined;
+    return !!f && (round2(f.pricePerM2) !== c.pricePerM2 || round2(f.area) !== (c.area ?? 0));
+  };
   return (
     <SectionCard
       icon={Table2}
@@ -422,12 +451,15 @@ export function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
             </tr>
           </thead>
           <tbody>
-            {inputs.comparables.map((c, i) => (
-              <tr key={c.transactionId ?? i} className="border-t border-border">
+            {comparables.map((c, i) => (
+              <tr key={comparableIdentity(c) ?? i} className="border-t border-border">
                 <td className="py-1">{i + 1}</td>
                 <td className="py-1 num">{plnPerM2.format(c.pricePerM2)}</td>
                 <td className="py-1">
-                  <ProvenanceBadge source={c.source} status={c.status} />
+                  <ProvenanceBadge
+                    source={editedByHand(c) ? "manual" : c.source}
+                    status={c.status}
+                  />
                 </td>
               </tr>
             ))}
@@ -451,5 +483,88 @@ export function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
         ) : null}
       </div>
     </SectionCard>
+  );
+}
+
+function PairwiseBreakdown({
+  inputs,
+  result: r,
+}: {
+  inputs: KcsInput;
+  result: Extract<ReturnType<typeof computeValuation>, { method: "pp" }>;
+}) {
+  return (
+    <>
+      <SectionCard icon={Scale} title="Poprawki porównawcze (PP)" sub="Ceny i poprawki w zł/m²">
+        <p className="mb-3 text-sm">
+          Cmin {plnPerM2.format(r.cmin)} · Cmax {plnPerM2.format(r.cmax)} · ΔC{" "}
+          {plnPerM2.format(r.priceSpread)}
+        </p>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cecha</TableHead>
+              <TableHead>Waga</TableHead>
+              <TableHead>Zakres</TableHead>
+              {r.pairs.map((p, i) => (
+                <TableHead key={p.comparableId}>
+                  Porównanie {i + 1}
+                  <br />
+                  mnożnik → poprawka
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {r.pairs[0]?.corrections.map((correction) => (
+              <TableRow key={correction.featureKey}>
+                <TableCell>
+                  {inputs.features.find((f) => f.key === correction.featureKey)?.name}
+                </TableCell>
+                <TableCell>
+                  {(correction.weight * 100).toLocaleString("pl-PL", { maximumFractionDigits: 2 })}%
+                </TableCell>
+                <TableCell>{plnPerM2.format(correction.range)}</TableCell>
+                {r.pairs.map((p) => {
+                  const cell = p.corrections.find((c) => c.featureKey === correction.featureKey)!;
+                  return (
+                    <TableCell key={p.comparableId}>
+                      {cell.multiplier.toLocaleString("pl-PL")} → {plnPerM2.format(cell.amount)}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
+            <TableRow>
+              <TableCell colSpan={3}>Suma poprawek</TableCell>
+              {r.pairs.map((p) => (
+                <TableCell key={p.comparableId}>{plnPerM2.format(p.totalCorrection)}</TableCell>
+              ))}
+            </TableRow>
+            <TableRow>
+              <TableCell colSpan={3}>Cena przed korektą</TableCell>
+              {r.pairs.map((p) => (
+                <TableCell key={p.comparableId}>{plnPerM2.format(p.pricePerM2)}</TableCell>
+              ))}
+            </TableRow>
+            <TableRow>
+              <TableCell colSpan={3}>Cena po korekcie</TableCell>
+              {r.pairs.map((p) => (
+                <TableCell key={p.comparableId}>{plnPerM2.format(p.correctedPrice)}</TableCell>
+              ))}
+            </TableRow>
+          </TableBody>
+        </Table>
+      </SectionCard>
+      <SectionCard icon={Calculator} title="Wartość rynkowa (PP)">
+        <p className="text-sm">
+          Średnia cen po korektach {plnPerM2.format(r.unitValue)}/m² ×{" "}
+          {inputs.area.toLocaleString("pl-PL")} m²
+        </p>
+        <p className="num">
+          {plnPerM2.format(r.wrUnrounded)} → po zaokrągleniu <b>{plnPerM2.format(r.wr)}</b>
+        </p>
+      </SectionCard>
+    </>
   );
 }

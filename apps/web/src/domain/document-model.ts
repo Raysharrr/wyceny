@@ -1,9 +1,15 @@
+import { formatNumber, formatPln, formatPercent, LEVEL_LABEL } from "./document-format";
+export { formatNumber, formatPln, formatPercent, LEVEL_LABEL } from "./document-format";
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
 import { DASH, operatStreet } from "./street-name";
+import { valuationComparables } from "./pairwise-state";
+import type { ValuationResult } from "./valuation-calculation";
+import { buildLegacyDocumentModel } from "./legacy-kcs-document";
+import { buildPairwiseDocument } from "./pairwise-document";
 import { candidateKey } from "./sample-selection";
 
 /**
@@ -38,21 +44,8 @@ const RATING_TEXT: Record<FeatureRating, string> = {
   gorsza: "wartość najniższa cechy",
 };
 
-/**
- * Document label per rating level — the internal enum stays diacritic-free.
- * Exported so the prose facts (`domain/prose.ts`) name the levels exactly as
- * the §12.1 scale block does, instead of keeping a second diacritic map.
- */
-export const LEVEL_LABEL: Record<FeatureRating, string> = {
-  lepsza: "lepsza",
-  przecietna: "przeciętna",
-  gorsza: "gorsza",
-};
-
 /** Document order of rating levels in the §12.1 scale block. */
 const LEVEL_ORDER: FeatureRating[] = ["lepsza", "przecietna", "gorsza"];
-
-const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
 
 const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 
@@ -102,17 +95,6 @@ function previewMarker(section: ProseSection): string {
     "sekcja nie została uzupełniona w kroku 6. Opisy; " +
     "w wydanym operacie to miejsce pozostanie puste."
   );
-}
-
-/** `1044400` → `"1 044 400,00"` (NBSP thousands separator — matches the source operat). */
-export function formatPln(value: number): string {
-  return formatNumber(value, 2);
-}
-
-export function formatNumber(value: number, dp: number): string {
-  const [int, frac] = value.toFixed(dp).split(".");
-  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
-  return frac ? `${grouped},${frac}` : grouped;
 }
 
 /**
@@ -238,6 +220,18 @@ export type MpzpBlock = {
 };
 
 export type DocumentModel = {
+  metoda_kcs?: boolean;
+  metoda_pp?: boolean;
+  metoda_nazwa?: string;
+  suma_wag?: string;
+  suma_ui_sr?: string;
+  skala_mieszana?: boolean;
+  pp_count?: number;
+  pp_rows?: Record<string, string>[];
+  pp_corrections?: Record<string, string>[];
+  pp_prices?: Record<string, string>[];
+  pp_spread?: string;
+  pp_overrides?: string[];
   adres: string;
   powierzchnia: string;
   cel: string;
@@ -422,7 +416,8 @@ export type BuildDocumentInput = {
   /** Deterministic input — the approve mutation's timestamp, never read here. */
   approvedAt: Date;
   inputs: KcsInput;
-  kcs: KcsResult;
+  kcs?: KcsResult;
+  result?: ValuationResult;
   amountInWords: string;
 };
 
@@ -441,7 +436,10 @@ export function buildDocumentModel(
   input: BuildDocumentInput,
   opts?: { preview?: boolean },
 ): DocumentModel {
-  const { kcs, inputs } = input;
+  const result = input.result ?? (input.kcs ? { method: "kcs" as const, ...input.kcs } : null);
+  if (!result) throw new Error("Document calculation result required");
+  const inputs = { ...input.inputs, comparables: valuationComparables(input.inputs) };
+  const kcs = result.method === "kcs" ? result : null;
   const subject = inputs.subject ?? null;
   // `{#mpzp}` only when a subject was fetched, MPZP isn't flagged absent, and
   // at least one plan field resolved — keeps it mutually exclusive with
@@ -487,11 +485,14 @@ export function buildDocumentModel(
   // Weight-0 features stay out of the legal document entirely (workshop
   // decision: "pancerz obronny" — a zero-weight row invites challenge).
   const activeFeatures = inputs.features.filter((f) => f.weight > 0);
-  const activeUi = kcs.ui.filter((f) => f.weight > 0);
+  const activeUi = (kcs?.ui ?? []).filter((f) => f.weight > 0);
   const skalaOcen = activeFeatures
     .map((f) => ({
       cecha: f.name,
-      poziomy: LEVEL_ORDER.filter((level) => f.definitions?.[level]?.trim()).map((level) => ({
+      poziomy: LEVEL_ORDER.filter(
+        (level) =>
+          (f.ratingScale !== "two" || level !== "przecietna") && f.definitions?.[level]?.trim(),
+      ).map((level) => ({
         poziom: LEVEL_LABEL[level],
         def: terminateSentence(f.definitions![level]!.trim()),
       })),
@@ -499,6 +500,18 @@ export function buildDocumentModel(
     .filter((row) => row.poziomy.length > 0);
 
   return {
+    metoda_kcs: result.method === "kcs",
+    metoda_pp: result.method === "pp",
+    metoda_nazwa: result.method === "pp" ? "porównywania parami" : "korygowania ceny średniej",
+    suma_wag: formatPercent(activeFeatures.reduce((sum, f) => sum + f.weight, 0)),
+    suma_ui_sr: activeFeatures.some((f) => f.ratingScale === "two")
+      ? DASH
+      : formatNumber(
+          activeFeatures.reduce((sum, f) => sum + f.weight, 0),
+          3,
+        ),
+    skala_mieszana: activeFeatures.some((f) => f.ratingScale === "two"),
+    ...(result.method === "pp" ? buildPairwiseDocument(input.inputs, result) : {}),
     adres: input.address,
     powierzchnia: formatNumber(input.area, 2),
     cel: PURPOSE_TEXT[input.purpose],
@@ -566,21 +579,21 @@ export function buildDocumentModel(
     klauzula_brak_kw: kwBrak ? (rightDoc.klauzulaBrakKw ?? "") : "",
     ma_piwnice: maPiwnice,
     klauzula_piwnicy: maPiwnice ? (rightDoc.klauzulaPiwnicy ?? "") : "",
-    wr: formatPln(kcs.wr),
+    wr: formatPln(result.wr),
     wr_slownie: input.amountInWords,
-    wr_dokladna: formatPln(kcs.wrUnrounded),
-    cena_min: formatPln(kcs.cmin),
-    cena_max: formatPln(kcs.cmax),
-    cena_sr: formatPln(kcs.csr),
+    wr_dokladna: formatPln(result.wrUnrounded),
+    cena_min: formatPln(result.cmin),
+    cena_max: formatPln(result.cmax),
+    cena_sr: kcs ? formatPln(kcs.csr) : "",
     // Guard: identical prices (cmax === cmin) would divide by zero.
     polozenie_sr:
-      kcs.cmax === kcs.cmin
+      !kcs || result.cmax === result.cmin
         ? "0,000"
-        : formatNumber((kcs.csr - kcs.cmin) / (kcs.cmax - kcs.cmin), 3),
-    vmin: formatNumber(kcs.vmin, 3),
-    vmax: formatNumber(kcs.vmax, 3),
-    suma_ui: formatNumber(kcs.sumUi, 3),
-    cena_1m2: formatPln(kcs.unitValue),
+        : formatNumber((kcs.csr - result.cmin) / (result.cmax - result.cmin), 3),
+    vmin: kcs ? formatNumber(kcs.vmin, 3) : "",
+    vmax: kcs ? formatNumber(kcs.vmax, 3) : "",
+    suma_ui: kcs ? formatNumber(kcs.sumUi, 3) : "",
+    cena_1m2: formatPln(result.unitValue),
     kredyt: input.purpose === "zabezpieczenie_kredytu",
     transakcje: (() => {
       const sel = inputs.sampleSelection;
@@ -652,10 +665,10 @@ export function buildDocumentModel(
     })(),
     cechy: activeUi.map((f) => ({
       nazwa: f.name,
-      waga_pct: formatNumber(f.weight * 100, 0),
-      ui_min: formatNumber(f.weight * kcs.vmin, 3),
-      ui_sr: formatNumber(f.weight, 3),
-      ui_max: formatNumber(f.weight * kcs.vmax, 3),
+      waga_pct: formatPercent(f.weight),
+      ui_min: formatNumber(f.weight * kcs!.vmin, 3),
+      ui_sr: f.ratingScale === "two" ? DASH : formatNumber(f.weight, 3),
+      ui_max: formatNumber(f.weight * kcs!.vmax, 3),
       ui_przedmiot: formatNumber(f.value, 3),
     })),
     // ponytail: canonical KCS simplification — cmin lokal = all features at
@@ -683,4 +696,21 @@ export function buildDocumentModel(
     ma_proza_standard: proza.standard !== "",
     ma_proza_uzasadnienie: proza.uzasadnienie !== "",
   };
+}
+
+/** Shared action preparation; the absent-method exception is signing-only. */
+export function prepareOperatModel(
+  input: BuildDocumentInput,
+  opts?: { preview?: boolean; signing?: boolean },
+) {
+  const legacy = opts?.signing === true && input.inputs.method === undefined;
+  if (legacy) {
+    const kcs = input.result?.method === "kcs" ? input.result : input.kcs;
+    if (!kcs) throw new Error("Legacy signing requires KCS result");
+    return {
+      model: buildLegacyDocumentModel({ ...input, kcs }),
+      templateVersion: "legacy-kcs" as const,
+    };
+  }
+  return { model: buildDocumentModel(input, opts), templateVersion: "valuation-v2" as const };
 }

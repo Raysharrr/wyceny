@@ -116,6 +116,8 @@ export function valuationInput(ownerId: string, address: string): NewValuationIn
  */
 export function approvableInputs(): KcsInput {
   return {
+    method: "kcs",
+    methodConfirmed: true,
     area: 50,
     comparables: Array.from({ length: 12 }, (_, i) => ({
       pricePerM2: 10_000 + i,

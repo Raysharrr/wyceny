@@ -1,3 +1,6 @@
+import { calculationIssues } from "./valuation-calculation";
+import { valuationComparables, VALUATION_SAMPLE_LIMITS } from "./pairwise-state";
+import type { ValuationInput } from "./valuation-input";
 import {
   isBlocking,
   sourced,
@@ -5,7 +8,7 @@ import {
   type ProvenanceStatus,
   type Sourced,
 } from "@wyceny/shared";
-import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
+import { isRegistrySourced, REGISTRY_LABEL } from "./kcs";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 
@@ -14,7 +17,7 @@ import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-
  * Default-deny: a value with missing provenance counts as `none` and blocks.
  * Pure, zero I/O (F-10). Blocker labels are Polish UI copy.
  */
-export const REQUIRED_SAMPLE_SIZE = 12;
+export const REQUIRED_SAMPLE_SIZE = VALUATION_SAMPLE_LIMITS.kcs.min;
 
 export type InputsProvenance = {
   address: Provenance;
@@ -45,8 +48,10 @@ export type Blocker = { path: string; label: string };
 export type GateResult = { ok: true } | { ok: false; blockers: Blocker[] };
 
 /** Structurally compatible with KcsInput — callers pass the snapshot directly. */
-export type GateInput = {
-  comparables: Array<{ source?: ComparableSource; status?: ProvenanceStatus }>;
+export type GateInput = Partial<
+  Pick<ValuationInput, "method" | "methodConfirmed" | "pairwise" | "area" | "features">
+> & {
+  comparables: ValuationInput["comparables"];
   sampleMeta?: unknown | null;
   subject?: unknown | null;
   kw?: {
@@ -124,22 +129,34 @@ function statusLabel(status: ProvenanceStatus): string {
 export function approvalGate(input: GateInput, options?: GateOptions): GateResult {
   const blockers: Blocker[] = [];
 
-  if (input.comparables.length < REQUIRED_SAMPLE_SIZE) {
-    blockers.push({
-      path: "comparables",
-      label: `Próba ma ${input.comparables.length} transakcji — wymagane co najmniej ${REQUIRED_SAMPLE_SIZE}.`,
-    });
+  // Missing historical/corrupt fields must fail the SAME readiness policy.
+  // Invalid defaults below cannot make a calculation ready; signing an already
+  // approved legacy snapshot is a separate operation and does not call this gate.
+  const snapshot = {
+    ...input,
+    area: input.area ?? Number.NaN,
+    features: Array.isArray(input.features) ? input.features : [],
+    comparables: Array.isArray(input.comparables) ? input.comparables : [],
+  } as ValuationInput;
+  blockers.push(...calculationIssues(snapshot));
+  let comparables: ValuationInput["comparables"] = [];
+  try {
+    comparables = valuationComparables(snapshot);
+  } catch {
+    // The shared readiness issues already identify invalid methods/selections.
   }
 
-  input.comparables.forEach((c, i) => {
+  comparables.forEach((c, i) => {
+    const poolIndex = snapshot.method === "pp" ? snapshot.comparables.indexOf(c) : i;
+    const poolLabel = snapshot.method === "pp" ? " w zapisanej puli" : "";
     const source = isRegistrySourced(c) ? c.source : "rzeczoznawca";
     const status: ProvenanceStatus = c.status ?? "none";
     const s = sourced(c, source, status);
     if (isBlocking(s)) {
       const origin = isRegistrySourced(c) ? ` (${REGISTRY_LABEL[c.source]})` : "";
       blockers.push({
-        path: `comparables[${i}]`,
-        label: `Transakcja ${i + 1}${origin} — ${statusLabel(status)}.`,
+        path: `comparables[${poolIndex}]`,
+        label: `Transakcja ${poolIndex + 1}${poolLabel}${origin} — ${statusLabel(status)}.`,
       });
     }
   });

@@ -27,6 +27,15 @@ export const TREE_LABEL: Record<HelpTree, string> = {
  */
 export const HELP_PAGES: HelpPage[] = [
   {
+    slug: "metoda-pp",
+    title: "Metoda porównywania parami (PP)",
+    tree: "metodyka",
+    order: 8,
+    tags: ["PP", "porównywanie parami", "poprawki", "skale", "cecha własna"],
+    summary: "Wybór 3–5 porównań, oceny, mnożniki, cztery tabele i aktualność opisów.",
+    load: () => import("./metodyka/metoda-pp.mdx"),
+  },
+  {
     slug: "pierwsze-kroki",
     title: "Pierwsze kroki",
     tree: "jak-korzystac",
@@ -127,6 +136,11 @@ export const HELP_PAGES: HelpPage[] = [
       "zł/m²",
       "Cśr",
       "12 transakcji",
+      "metoda wyceny",
+      "KCS",
+      "PP",
+      "porównywanie parami",
+      "wybór porównań",
       "fasada",
       "Street View",
       "odrzuć",
@@ -139,7 +153,7 @@ export const HELP_PAGES: HelpPage[] = [
       "przejrzane",
     ],
     summary:
-      "Przegląd propozycji z RCN albo z rejestru biura z podglądem budynku, odrzucanie z powodem, promień i odrzucone.",
+      "Wybór metody (KCS albo PP), przegląd propozycji z RCN lub z rejestru biura z podglądem budynku, odrzucanie z powodem i wybór porównań PP.",
     load: () => import("./jak-korzystac/krok-3-proba.mdx"),
   },
   {
@@ -155,8 +169,14 @@ export const HELP_PAGES: HelpPage[] = [
       "pula cech",
       "ΣUi",
       "standard wykończenia",
+      "PP",
+      "macierz ocen",
+      "poprawki",
+      "mnożnik",
+      "cecha własna",
     ],
-    summary: "Gotowy zestaw sześciu cech z wagami, oceny lokalu i definicje skali ocen.",
+    summary:
+      "Cechy z wagami i definicjami skali oraz oceny lokalu — przy KCS wskaźnik ΣUi, przy PP macierz ocen i poprawek porównań.",
     load: () => import("./jak-korzystac/krok-4-cechy.mdx"),
   },
   {
@@ -164,8 +184,19 @@ export const HELP_PAGES: HelpPage[] = [
     title: "Krok 5 — Kalkulacja",
     tree: "jak-korzystac",
     order: 6,
-    tags: ["kalkulacja", "wartość rynkowa", "WR", "Cśr", "ΣUi", "tabele operatu", "zatwierdzenie"],
-    summary: "Wynik liczony z próby i ocen; kwota zapisuje się dopiero po zatwierdzeniu.",
+    tags: [
+      "kalkulacja",
+      "wartość rynkowa",
+      "WR",
+      "Cśr",
+      "ΣUi",
+      "PP",
+      "ceny po korektach",
+      "tabele operatu",
+      "zatwierdzenie",
+    ],
+    summary:
+      "Wynik KCS albo PP liczony z próby i ocen; kwota zapisuje się dopiero po zatwierdzeniu.",
     load: () => import("./jak-korzystac/krok-5-kalkulacja.mdx"),
   },
   {
@@ -183,6 +214,8 @@ export const HELP_PAGES: HelpPage[] = [
       "zatwierdzenie opisów",
       "uwagi z oględzin",
       "wygeneruj ponownie",
+      "wstaw zamiast mojego tekstu",
+      "zostaw mój tekst",
     ],
     summary:
       "Propozycje opisów powstają automatycznie z danych tej wyceny — przeczytaj, popraw i zatwierdź.",
@@ -206,6 +239,8 @@ export const HELP_PAGES: HelpPage[] = [
       "rodzaj prawa",
       "piwnica",
       "publikator",
+      "metoda wyceny",
+      "PP",
     ],
     summary: "Potwierdzenia danych, lista blokad i wygenerowanie operatu w PDF oraz DOCX.",
     load: () => import("./jak-korzystac/krok-7-operat.mdx"),
@@ -215,7 +250,15 @@ export const HELP_PAGES: HelpPage[] = [
     title: "Po zatwierdzeniu — podpis i nowa wersja",
     tree: "jak-korzystac",
     order: 9,
-    tags: ["podpis", "skan podpisu", "nowa wersja", "pobieranie", "status", "profil"],
+    tags: [
+      "podpis",
+      "skan podpisu",
+      "nowa wersja",
+      "pobieranie",
+      "status",
+      "profil",
+      "ponowne potwierdzenie metody",
+    ],
     summary: "Widok dokumentu, podpisanie operatu i tworzenie nowej wersji podpisanej wyceny.",
     load: () => import("./jak-korzystac/po-zatwierdzeniu.mdx"),
   },
@@ -324,7 +367,7 @@ export const HELP_PAGES: HelpPage[] = [
       "ręczne odrzucenie",
     ],
     summary:
-      "Skąd pochodzą transakcje, jakie filtry przechodzą i dlaczego próba liczy dwanaście pozycji.",
+      "Skąd pochodzą transakcje, jakie filtry przechodzą i ile pozycji proponuje dobór — oraz jakie progi liczebności mają KCS i PP.",
     load: () => import("./metodyka/dobor-proby-rcn.mdx"),
   },
   /**
