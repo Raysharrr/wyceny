@@ -274,6 +274,7 @@ it("PP unused (zero-weight) area row with no rating does not block the save", as
     },
   ];
   render(<StepFeatures valuationId="v" {...input} snapshot={input} />);
+  expect(screen.getByTestId("footnav-kcs-mid").textContent).not.toBe("—");
   await user.click(screen.getByRole("button", { name: /Potwierdź oceny i poprawki/ }));
   await waitFor(() => expect(save).toHaveBeenCalled());
 });

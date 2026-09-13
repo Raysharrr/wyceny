@@ -127,6 +127,16 @@ function buildDefaultFeatures(
     );
 }
 
+/** A zero-weight row is outside the result and the operat, so an unrated one
+ * (the PP area row starts unrated) must block neither the save nor the preview. */
+function withUnusedRatingsNeutral<F extends { rating: string; weightPct: unknown }>(
+  features: F[],
+): F[] {
+  return features.map((f) =>
+    f.rating === "" && Number(f.weightPct) === 0 ? { ...f, rating: "przecietna" } : f,
+  );
+}
+
 /**
  * Step 4 ("Cechy") — feature/weight/rating table + closed pool, copied from
  * `new-valuation-form.tsx`'s features section (Task 10, transitional
@@ -181,15 +191,11 @@ export function StepFeatures({
     setValue,
     formState: { isSubmitting, errors },
   } = useForm<FormInput, unknown, FormOutput>({
-    // A zero-weight row is outside the result and the operat, so an unrated
-    // one (the PP area row starts unrated) must not block the save.
     resolver: (values, context, options) =>
       featuresResolver(
         {
           ...values,
-          features: values.features.map((f) =>
-            f.rating === "" && Number(f.weightPct) === 0 ? { ...f, rating: "przecietna" } : f,
-          ),
+          features: withUnusedRatingsNeutral(values.features),
         },
         context,
         options,
@@ -223,7 +229,7 @@ export function StepFeatures({
   // Confirmation belongs to the explicit save, never the live preview.
   const live = useMemo(() => {
     try {
-      const parsed = featuresStepSchema.safeParse({ features });
+      const parsed = featuresStepSchema.safeParse({ features: withUnusedRatingsNeutral(features) });
       if (!parsed.success) return null;
       const liveFeatures = parsed.data.features.map((f) => ({ ...f, weight: f.weightPct / 100 }));
       return computeValuation({
