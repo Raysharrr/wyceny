@@ -1,8 +1,8 @@
 # T-06–T-09 — audyt architektury i propozycja decyzji
 
-> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Wcześniejsze sformułowania o oczekiwaniu opisują etap przygotowania; bramka jest zamknięta.
+> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Bramka fazy4 jest zamknięta.
 
-2026-09-13 · baza `origin/main` = `9b2903c` po fetch · status: propozycja do zatwierdzenia przed kodem produkcyjnym.
+2026-09-13 · baza `origin/main` = `9b2903c` po fetch · status: zatwierdzone do realizacji.
 
 ## Wynik audytu
 
@@ -78,4 +78,4 @@ Przykład: przedmiot przeciętny, porównawczy lepszy, skala3 → sugestia−0,5
 
 Ranking PP: wykorzystać obecne kryteria i dane, wyjaśnić odległość/tożsamość budynku oraz powierzchnię/datę jako jawne dane porównania, bez nowej nieuzgodnionej punktacji. Nie przypisywać ocen lokalizacji/standardu z brakujących danych. Podpowiedź oceny powierzchni dopuszczalna wyłącznie dla niezmienionych, maszynowo znanych progów presetu; brak takiej podstawy pozostawia pole puste. Nie dodawać LLM do oceny transakcji.
 
-D-ARCH i D-AUTO są propozycjami do zatwierdzenia. Pełne źródła: [SOURCES](SOURCES.md). Akceptacja makiety nie rozstrzygnęła tych punktów.
+D-ARCH i D-AUTO zostały zatwierdzone 2026-09-13 (ACCEPTANCE.md). Pełne źródła: [SOURCES](SOURCES.md). Sama akceptacja makiety nie rozstrzygała tych punktów; późniejsza jawna decyzja użytkownika je zamknęła.

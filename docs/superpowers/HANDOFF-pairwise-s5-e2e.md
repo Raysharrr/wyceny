@@ -27,6 +27,12 @@ Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Us
 - [ ] Commit tests/docs and merge to integration after gates. Fetch/merge latest main into integration (no force/rebase shared branch), resolve and rerun affected checks.
 - [ ] Open ONE final PR integration→main with complete acceptance matrix and evidence. Stop before merge/staging for final concrete approval; do not deploy partial feature.
 
+## Coordinator environment and deterministic Opisy coverage
+
+Coordinator integration web: localhost:3015, worker127.0.0.1:8015, dedicated PostgreSQL5544. Environment is local-only in apps/web/.env. The browser login as seeded Zenon was verified. Do not use the user's main3000/main worker as evidence for this block.
+
+For UI coverage of the existing Opisy step, prefer enabling it and filling/confirming manual synthetic sections after an honest unavailable-generation response from a worker without an LLM key. Assert retained text and staleness after edits. Pair that with S4 deterministic worker/prose adapter contract tests for the automatic path. Do not mark Opisy covered by NEXT_PUBLIC_PROSE=off or silently spend API tokens in E2E. If a deterministic worker response fixture is needed instead, agree the smallest test-only mechanism with coordinator; preserve production defaults and hosted stub guards.
+
 ## Review and finish
 
 Provide exact tests/results and known limits, changed contract signatures, Help status and artifact paths. Commit/push with hooks intact. Open PR ONLY to `integration/pairwise-valuation`; never merge into main, deploy, force-push or delete other worktrees. Do not merge your own PR until coordinator review gates finish. Keep worktree for fixes and report via `send_message_to_thread` to coordinator with `DONE: pairwise-s5-e2e`, PR URL, branch, worktree and test evidence. If blocked, state concrete cause and continue independent authorized work. Never assume missing user answers mean approval.

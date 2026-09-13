@@ -1,12 +1,12 @@
 # Stan bloku T-06–T-09
 
-> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Wcześniejsze sformułowania o oczekiwaniu opisują etap przygotowania; bramka jest zamknięta.
+> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Bramka fazy4 jest zamknięta.
 
 2026-09-13 · koordynator: zadanie `01a09928-7929-7b71-ac87-01929eedf3b0`.
 
 ## Zakres i stan
 
-Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedną integrację, bieżącą regresję KCS oraz brak częściowych zmian na stagingu. Kierunek funkcjonalny HTML zaakceptowany z zachowaniem istniejącej aplikacji. Przegląd Opus/high zakończony;9 uwag rozstrzygniętych w [PLAN-REVIEW](PLAN-REVIEW.md) i wprowadzonych do dokumentów. D-ARCH i D-AUTO w [ARCHITECTURE](ARCHITECTURE.md) są konkretnymi propozycjami do zatwierdzenia przed zależną implementacją.
+Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedną integrację, bieżącą regresję KCS oraz brak częściowych zmian na stagingu. Kierunek funkcjonalny HTML zaakceptowany z zachowaniem istniejącej aplikacji. Przegląd Opus/high zakończony;9 uwag rozstrzygniętych w [PLAN-REVIEW](PLAN-REVIEW.md) i wprowadzonych do dokumentów. D-ARCH i D-AUTO w [ARCHITECTURE](ARCHITECTURE.md) zostały zatwierdzone; trwa realizacja według zależności.
 
 - [x] 0 Wskazanie i narzędzia — git/GitHub, CodeGraph, Codex task API, przeglądarka, lokalny worker/DB, Claude Opus CLI dostępne.
 - [x] 1 Kontekst — źródła, wcześniejszy przegląd aplikacji i pokaz makiety; rozbieżności opisane poniżej.
@@ -60,3 +60,11 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 | pairwise-s5-e2e       | S3 i S4 merge             | feature/pairwise-e2e       |
 
 Wszystkie PR do integration/pairwise-valuation. Koordynator sam tworzy zadania i worktree oraz przeprowadza review/fixes/merge. Zarejestrowany projekt Codex „Wyceny” wskazuje wiki; każde zadanie musi jawnie pracować w app-worktree, bez mylenia tego z checkoutem wiki. Brak osobno zarejestrowanego projektu aplikacji nie wymaga ręcznego otwierania sesji przez użytkownika.
+
+## Realizacja rozpoczęta
+
+D-ARCH/D-AUTO zatwierdzone; zapis ACCEPTANCE.md. S1 uruchomiony jako zadanie Codex `pairwise-s1-contracts` (`01a0999c-1aff-7e01-9557-42fc6f8b8b00`) w `/Users/michalczekala/Development/wyceny-app-worktrees/pairwise-contracts`, branch `feature/pairwise-contracts`. Baseline S1 golden/F6:17/17PASS; nowe testy RED przed implementacją. Pozostałe zadania czekają na zależności, nie na ponowne pozwolenie.
+
+Koordynator uchwycił bazowy render obu praw z ułamkowymi wagami i testową prozą przed zmianą kodu: `tools/spike/2026-09-13-legacy-render/`, commit0cddfbd. Wejścia+hash tekstu w repo; pełny tekst i DOCX lokalnie w `/tmp/pairwise-legacy-render/`. S4 ma użyć tego odniesienia do podpisu across-version.
+
+Środowisko integracji: web localhost:3015, worker127.0.0.1:8015, własny Postgres5544. Oba procesy z worktree integracji, testowe konta bez prawdziwych wycen. Login Zenon potwierdzony w przeglądarce. Dane `.env` lokalne i poza gitem. Opisy włączone do testów ścieżki ręcznej; klucz LLM nie jest przekazany do izolowanego workera, by weryfikacja nie wykonywała płatnych generacji. To gotowość środowiska, nie test wdrożonego PP.

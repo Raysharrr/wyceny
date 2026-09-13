@@ -1,0 +1,489 @@
+{
+  "sourceCommit": "9b2903c",
+  "templateSha256": "5e43f7b885cb8ba444ad211e0349ae36f1a3875d8e28635d1b27f4f6a293572a",
+  "textExtraction": "replace XML tags with |, collapse |+ to space, trim; no other normalization",
+  "records": [
+    {
+      "propertyRight": "wlasnosc_lokalu",
+      "input": {
+        "address": "ul. Przykładowa 5, Poznań",
+        "area": 48.2,
+        "purpose": "informacyjny",
+        "kwNumber": "KW-TEST-9",
+        "propertyRight": "wlasnosc_lokalu",
+        "client": "p. Anna Przykładowa",
+        "inspectionDate": "2026-06-30",
+        "approvedAt": "2026-07-15T09:00:00.000Z",
+        "inputs": {
+          "area": 48.2,
+          "comparables": [
+            {
+              "pricePerM2": 10000,
+              "date": "2025-01-15",
+              "area": 40,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10050,
+              "date": "2025-02-15",
+              "area": 41,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10100,
+              "date": "2025-03-15",
+              "area": 42,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10150,
+              "date": "2025-04-15",
+              "area": 43,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10200,
+              "date": "2025-05-15",
+              "area": 44,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10250,
+              "date": "2025-06-15",
+              "area": 45,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10300,
+              "date": "2025-07-15",
+              "area": 46,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10350,
+              "date": "2025-08-15",
+              "area": 47,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10400,
+              "date": "2025-09-15",
+              "area": 48,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10450,
+              "date": "2025-01-15",
+              "area": 49,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10500,
+              "date": "2025-02-15",
+              "area": 50,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10550,
+              "date": "2025-03-15",
+              "area": 51,
+              "source": "manual",
+              "status": "confirmed"
+            }
+          ],
+          "features": [
+            {
+              "name": "standard wykończenia",
+              "weight": 0.4025,
+              "rating": "przecietna",
+              "key": "standard-wykonczenia",
+              "definitions": {
+                "lepsza": "wykończenie materiałami wyższej klasy",
+                "przecietna": "wykończenie w dobrym stanie"
+              }
+            },
+            {
+              "name": "położenie na piętrze",
+              "weight": 0.3,
+              "rating": "lepsza",
+              "key": "polozenie-na-pietrze",
+              "definitions": {
+                "lepsza": "czwarte piętro i powyżej",
+                "przecietna": "piętra pośrednie",
+                "gorsza": "parter"
+              }
+            },
+            {
+              "name": "lokalizacja",
+              "weight": 0.2975,
+              "rating": "gorsza",
+              "key": "lokalizacja",
+              "definitions": {
+                "lepsza": "bliskość punktów usługowych"
+              }
+            }
+          ],
+          "sampleMeta": null,
+          "provenance": null,
+          "prose": {
+            "sections": {
+              "analiza_rynku": {
+                "value": "Tekst sekcji analiza_rynku — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "opis_lokalu": {
+                "value": "Tekst sekcji opis_lokalu — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "otoczenie": {
+                "value": "Tekst sekcji otoczenie — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "zagospodarowanie": {
+                "value": "Tekst sekcji zagospodarowanie — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "standard": {
+                "value": "Tekst sekcji standard — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "uzasadnienie": {
+                "value": "Tekst sekcji uzasadnienie — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              }
+            },
+            "rejected": {},
+            "factsHashes": {
+              "analiza_rynku": "0000000000000000000000000000000000000000000000000000000000000000",
+              "opis_lokalu": "0000000000000000000000000000000000000000000000000000000000000000",
+              "otoczenie": "0000000000000000000000000000000000000000000000000000000000000000",
+              "zagospodarowanie": "0000000000000000000000000000000000000000000000000000000000000000",
+              "standard": "0000000000000000000000000000000000000000000000000000000000000000",
+              "uzasadnienie": "0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "model": "test-model",
+            "generatedAt": "2026-07-10T09:00:00.000Z"
+          }
+        },
+        "kcs": {
+          "csr": 10275,
+          "cmin": 10000,
+          "cmax": 10550,
+          "vmin": 0.973,
+          "vmax": 1.027,
+          "ui": [
+            {
+              "name": "standard wykończenia",
+              "weight": 0.4025,
+              "rating": "przecietna",
+              "key": "standard-wykonczenia",
+              "definitions": {
+                "lepsza": "wykończenie materiałami wyższej klasy",
+                "przecietna": "wykończenie w dobrym stanie"
+              },
+              "value": 0.4025
+            },
+            {
+              "name": "położenie na piętrze",
+              "weight": 0.3,
+              "rating": "lepsza",
+              "key": "polozenie-na-pietrze",
+              "definitions": {
+                "lepsza": "czwarte piętro i powyżej",
+                "przecietna": "piętra pośrednie",
+                "gorsza": "parter"
+              },
+              "value": 0.3081
+            },
+            {
+              "name": "lokalizacja",
+              "weight": 0.2975,
+              "rating": "gorsza",
+              "key": "lokalizacja",
+              "definitions": {
+                "lepsza": "bliskość punktów usługowych"
+              },
+              "value": 0.2894675
+            }
+          ],
+          "sumUi": 1,
+          "unitValue": 10275,
+          "wrUnrounded": 495255,
+          "wr": 495300
+        },
+        "amountInWords": "wynik syntetyczny 495300 złotych"
+      },
+      "textSha256": "30dcd2e63db2064c893254527f5fb867ef8c9bb33b4b4571a53ec1ce3c2ae1cd"
+    },
+    {
+      "propertyRight": "spoldzielcze_wlasnosciowe",
+      "input": {
+        "address": "ul. Przykładowa 5, Poznań",
+        "area": 48.2,
+        "purpose": "informacyjny",
+        "kwNumber": "KW-TEST-9",
+        "propertyRight": "spoldzielcze_wlasnosciowe",
+        "client": "p. Anna Przykładowa",
+        "inspectionDate": "2026-06-30",
+        "approvedAt": "2026-07-15T09:00:00.000Z",
+        "inputs": {
+          "area": 48.2,
+          "comparables": [
+            {
+              "pricePerM2": 10000,
+              "date": "2025-01-15",
+              "area": 40,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10050,
+              "date": "2025-02-15",
+              "area": 41,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10100,
+              "date": "2025-03-15",
+              "area": 42,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10150,
+              "date": "2025-04-15",
+              "area": 43,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10200,
+              "date": "2025-05-15",
+              "area": 44,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10250,
+              "date": "2025-06-15",
+              "area": 45,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10300,
+              "date": "2025-07-15",
+              "area": 46,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10350,
+              "date": "2025-08-15",
+              "area": 47,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10400,
+              "date": "2025-09-15",
+              "area": 48,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10450,
+              "date": "2025-01-15",
+              "area": 49,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10500,
+              "date": "2025-02-15",
+              "area": 50,
+              "source": "manual",
+              "status": "confirmed"
+            },
+            {
+              "pricePerM2": 10550,
+              "date": "2025-03-15",
+              "area": 51,
+              "source": "manual",
+              "status": "confirmed"
+            }
+          ],
+          "features": [
+            {
+              "name": "standard wykończenia",
+              "weight": 0.4025,
+              "rating": "przecietna",
+              "key": "standard-wykonczenia",
+              "definitions": {
+                "lepsza": "wykończenie materiałami wyższej klasy",
+                "przecietna": "wykończenie w dobrym stanie"
+              }
+            },
+            {
+              "name": "położenie na piętrze",
+              "weight": 0.3,
+              "rating": "lepsza",
+              "key": "polozenie-na-pietrze",
+              "definitions": {
+                "lepsza": "czwarte piętro i powyżej",
+                "przecietna": "piętra pośrednie",
+                "gorsza": "parter"
+              }
+            },
+            {
+              "name": "lokalizacja",
+              "weight": 0.2975,
+              "rating": "gorsza",
+              "key": "lokalizacja",
+              "definitions": {
+                "lepsza": "bliskość punktów usługowych"
+              }
+            }
+          ],
+          "sampleMeta": null,
+          "provenance": null,
+          "prose": {
+            "sections": {
+              "analiza_rynku": {
+                "value": "Tekst sekcji analiza_rynku — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "opis_lokalu": {
+                "value": "Tekst sekcji opis_lokalu — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "otoczenie": {
+                "value": "Tekst sekcji otoczenie — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "zagospodarowanie": {
+                "value": "Tekst sekcji zagospodarowanie — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "standard": {
+                "value": "Tekst sekcji standard — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              },
+              "uzasadnienie": {
+                "value": "Tekst sekcji uzasadnienie — dane testowe, nie opisują żadnej rzeczywistej nieruchomości.",
+                "provenance": {
+                  "source": "rzeczoznawca",
+                  "status": "confirmed"
+                }
+              }
+            },
+            "rejected": {},
+            "factsHashes": {
+              "analiza_rynku": "0000000000000000000000000000000000000000000000000000000000000000",
+              "opis_lokalu": "0000000000000000000000000000000000000000000000000000000000000000",
+              "otoczenie": "0000000000000000000000000000000000000000000000000000000000000000",
+              "zagospodarowanie": "0000000000000000000000000000000000000000000000000000000000000000",
+              "standard": "0000000000000000000000000000000000000000000000000000000000000000",
+              "uzasadnienie": "0000000000000000000000000000000000000000000000000000000000000000"
+            },
+            "model": "test-model",
+            "generatedAt": "2026-07-10T09:00:00.000Z"
+          }
+        },
+        "kcs": {
+          "csr": 10275,
+          "cmin": 10000,
+          "cmax": 10550,
+          "vmin": 0.973,
+          "vmax": 1.027,
+          "ui": [
+            {
+              "name": "standard wykończenia",
+              "weight": 0.4025,
+              "rating": "przecietna",
+              "key": "standard-wykonczenia",
+              "definitions": {
+                "lepsza": "wykończenie materiałami wyższej klasy",
+                "przecietna": "wykończenie w dobrym stanie"
+              },
+              "value": 0.4025
+            },
+            {
+              "name": "położenie na piętrze",
+              "weight": 0.3,
+              "rating": "lepsza",
+              "key": "polozenie-na-pietrze",
+              "definitions": {
+                "lepsza": "czwarte piętro i powyżej",
+                "przecietna": "piętra pośrednie",
+                "gorsza": "parter"
+              },
+              "value": 0.3081
+            },
+            {
+              "name": "lokalizacja",
+              "weight": 0.2975,
+              "rating": "gorsza",
+              "key": "lokalizacja",
+              "definitions": {
+                "lepsza": "bliskość punktów usługowych"
+              },
+              "value": 0.2894675
+            }
+          ],
+          "sumUi": 1,
+          "unitValue": 10275,
+          "wrUnrounded": 495255,
+          "wr": 495300
+        },
+        "amountInWords": "wynik syntetyczny 495300 złotych"
+      },
+      "textSha256": "8cccc81d37794da81a1c7c04ec0a6a4a895c45407a5c7d8c30d6d882a42270b9"
+    }
+  ]
+}
