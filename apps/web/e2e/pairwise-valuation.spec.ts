@@ -79,7 +79,11 @@ async function docx(page: Page, info: TestInfo, name: string) {
 
 for (const method of ["kcs", "pp"] as const) {
   for (const right of ["wlasnosc", "spoldzielcze"] as const) {
-    test(`AC01/03/04/08/09/11: ${method} × ${right} save → reload → manual Opisy → real PDF → approve → sign`, async ({
+    const newVersion =
+      method === "pp" && right === "spoldzielcze"
+        ? " → new version re-confirms method and reissues the same WR"
+        : "";
+    test(`AC01/03/04/08/09/11: ${method} × ${right} save → reload → manual Opisy → real PDF §10 → approve → sign${newVersion}`, async ({
       page,
     }, info) => {
       const tag = `${method}-${right}-${randomUUID().slice(0, 8)}`;
@@ -167,6 +171,35 @@ for (const method of ["kcs", "pp"] as const) {
         ).toBe(true);
         expect(/SUMA 100 [\d,]+ — [\d,]+ [\d,]+/.test(previewPdf.text)).toBe(true);
       }
+      // §10 as in the client operats: all three definitions are common, the
+      // choice sentence names the method used and only its procedure follows.
+      for (const definition of [
+        "Metoda porównywania parami –",
+        "Metoda korygowania ceny średniej –",
+        "Metoda analizy statystycznej rynku –",
+      ])
+        expect(previewPdf.text.includes(definition), `§10 defines: ${definition}`).toBe(true);
+      const usedMethod = method === "pp" ? "porównywania parami" : "korygowania ceny średniej";
+      expect(
+        previewPdf.text.includes(`zastosowano podejście porównawcze, metodę ${usedMethod}`),
+        "§10 names the method actually used",
+      ).toBe(true);
+      expect(
+        previewPdf.text.includes("Procedura metody porównywania parami"),
+        "PP procedure only in a PP operat",
+      ).toBe(method === "pp");
+      expect(
+        previewPdf.text.includes("Procedura metody korygowania ceny średniej"),
+        "KCS procedure only in a KCS operat",
+      ).toBe(method === "kcs");
+      // Nothing blocks: no approval card at all, the FootNav button is live.
+      await expect(page.getByRole("heading", { name: "Zatwierdzenie", exact: true })).toHaveCount(
+        0,
+      );
+      await expect(page.getByTestId("gate-blockers")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Zatwierdź i generuj operat", exact: true }),
+      ).toBeEnabled();
       await page.getByRole("button", { name: "Zatwierdź i generuj operat", exact: true }).click();
       await expect(page.getByTestId("valuation-status")).toHaveText("Zatwierdzony", {
         timeout: 60_000,
@@ -224,6 +257,47 @@ for (const method of ["kcs", "pp"] as const) {
         }),
         contentType: "application/json",
       });
+      if (!newVersion) return;
+      // One variant only (CI time): the new version copies the signed inputs
+      // but resets every confirmation, so it opens on step 5 without a WR.
+      await page.getByRole("button", { name: "Utwórz nową wersję", exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`/valuations/(?!${id})[0-9a-f-]{36}$`));
+      const nextId = page.url().match(/valuations\/([0-9a-f-]{36})/)![1]!;
+      await expect(
+        page.getByRole("heading", { name: "Kalkulacja niedostępna", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Aby wyliczyć wartość rynkową, uzupełnij:", { exact: true }),
+      ).toBeVisible();
+      const methodBlocker = page
+        .getByTestId("calculation-blockers")
+        .getByRole("listitem")
+        .filter({ hasText: "Wybierz i potwierdź metodę wyceny." });
+      await expect(
+        page.getByRole("button", { name: "Zatwierdź kalkulację i dalej", exact: true }),
+      ).toHaveCount(0);
+      expect((await saved(nextId)).wr).toBeNull();
+      await methodBlocker
+        .getByRole("link", { name: "Przejdź do kroku 3. Próba", exact: true })
+        .click();
+      await expect(page).toHaveURL(/step=3/);
+      await expect(page.getByText("Metoda wymaga potwierdzenia.", { exact: true })).toBeVisible();
+      await flow.method("pp");
+      for (let n = 1; n <= selectedCount; n++) await expect(flow.choice(n)).toBeChecked();
+      await flow.sample();
+      await flow.features("pp");
+      await flow.calculation();
+      // Inherited manual texts await the appraiser's acceptance again.
+      await expect(page.getByText("Rzeczoznawca — do weryfikacji", { exact: true })).toHaveCount(6);
+      await flow.prose(texts);
+      await expect(page.getByTitle("Podgląd operatu (PDF)")).toBeVisible({ timeout: 60_000 });
+      await page.getByRole("button", { name: "Zatwierdź i generuj operat", exact: true }).click();
+      await expect(page.getByTestId("valuation-status")).toHaveText("Zatwierdzony", {
+        timeout: 60_000,
+      });
+      const reissued = await saved(nextId);
+      expect(reissued.status).toBe("approved");
+      expect(reissued.wr).toBe(final.wr);
     });
   }
 }
@@ -241,6 +315,9 @@ test("AC01/02/05: explicit method, KCS 11/12, PP 2/3/5, maximum and identity-pre
   await flow.pool(11);
   await flow.sample();
   await flow.features("kcs");
+  await expect(
+    page.getByText("Aby wyliczyć wartość rynkową, uzupełnij:", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByTestId("calculation-blockers")).toContainText("co najmniej 12");
   await expect(
     page.getByRole("button", { name: "Zatwierdź kalkulację i dalej", exact: true }),
@@ -415,19 +492,42 @@ test("AC03/04/06/09: custom validation, scale cleanup, overrides, Enter, stale f
   expect((await saved(id)).wr).toBe(before.wr);
   for (const [i, label] of PROSE_LABELS.entries())
     await expect(page.getByRole("textbox", { name: label, exact: true })).toHaveValue(texts[i]);
-  await expect(page.getByTestId("prose-stale-uzasadnienie")).toContainText("nieaktualna");
+  await expect(page.getByTestId("prose-stale-uzasadnienie")).toHaveText(
+    "Dane wyceny zmieniły się po napisaniu tego opisu — przejrzyj go ponownie albo wygeneruj od nowa.",
+  );
+  // A stale confirmation is not a confirmation: same badge the gate implies.
+  await expect(page.getByTestId("prose-badge-uzasadnienie")).toHaveText(
+    "Rzeczoznawca — do weryfikacji",
+  );
   for (const section of [
     "analiza_rynku",
     "opis_lokalu",
     "otoczenie",
     "zagospodarowanie",
     "standard",
-  ])
+  ]) {
     await expect(page.getByTestId(`prose-stale-${section}`)).toHaveCount(0);
+    await expect(page.getByTestId(`prose-badge-${section}`)).toHaveText(
+      "Rzeczoznawca — potwierdzone",
+    );
+  }
   await page.screenshot({ path: info.outputPath("manual-prose-stale.png"), fullPage: true });
+  // Step 7 with a blocker: the approval card exists and lists it; issue is off.
+  await page.goto(`/valuations/${id}?step=7`);
+  await expect(page.getByRole("heading", { name: "Zatwierdzenie", exact: true })).toBeVisible();
+  await expect(page.getByTestId("gate-blockers")).toContainText(
+    "Uzasadnienie wyniku — pozycja na tle próby — dane się zmieniły, przejrzyj ponownie.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Zatwierdź i generuj operat", exact: true }),
+  ).toBeDisabled();
+  await page.goto(`/valuations/${id}?step=6`);
   await flow.prose(texts);
   await page.goto(`/valuations/${id}?step=6`);
   await expect(page.getByTestId("prose-stale-uzasadnienie")).toHaveCount(0);
+  await expect(page.getByTestId("prose-badge-uzasadnienie")).toHaveText(
+    "Rzeczoznawca — potwierdzone",
+  );
 });
 
 test("AC08/12: PP4 real preview and contextual Help match method and feature controls", async ({
@@ -450,9 +550,39 @@ test("AC08/12: PP4 real preview and contextual Help match method and feature con
   ).toBeVisible();
   await expect(page.getByText(/Enter w polu nazwy/)).toBeVisible();
   await page.goto(`/valuations/${id}?step=4`);
+  // PP area scale defines only its ends: the subject starts unrated with a
+  // suggestion (subject 50 m² vs median 50 m² of the chosen comparisons).
+  const areaRatings = page.getByRole("button", { name: /^powierzchnia użytkowa: / });
+  await expect(areaRatings.first()).toBeVisible();
+  for (const rating of await areaRatings.all())
+    await expect(rating).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page.getByText(/Sugestia: gorsza — powierzchnia przedmiotu 50 m², próg 50 m²/),
+  ).toBeVisible();
+  const acceptArea = page.getByRole("button", {
+    name: "Przyjmij sugerowaną ocenę przedmiotu",
+    exact: true,
+  });
+  await acceptArea.click();
+  await expect(
+    page.getByRole("button", { name: "powierzchnia użytkowa: gorsza", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(acceptArea).toHaveCount(0);
+  // Unsaved: a reload brings back the unrated start the rest of the test needs.
+  await page.reload();
+  await expect(acceptArea).toBeVisible();
   await flow.custom();
   await flow.assess(4);
+  // Area unrated at weight 0 (e936001/59f2889): preview and save both proceed.
+  for (const rating of await areaRatings.all())
+    await expect(rating).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("footnav-kcs-mid")).toContainText("457 500");
   await flow.features("pp");
+  expect(
+    (await saved(id)).inputs.features.find(
+      (f: { key: string }) => f.key === "powierzchnia-uzytkowa",
+    ),
+  ).toMatchObject({ weight: 0 });
   await flow.calculation();
   await flow.prose(manualTexts("pp-four"), { firstVisit: true });
   const preview = page.getByTitle("Podgląd operatu (PDF)");
