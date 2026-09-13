@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BlockerList } from "@/components/wizard/blocker-list";
 import { FootNav } from "@/components/wizard/foot-nav";
+import { SectionCard } from "@/components/wizard/section-card";
 import { approveValuation, type ApproveValuationResult } from "@/app/actions/approve-valuation";
 import { signValuationAction } from "@/app/actions/sign-valuation";
 import { createNewVersionAction } from "@/app/actions/create-new-version";
@@ -34,6 +36,7 @@ import { currencyFormatter } from "./cards";
 export function ValuationActions({
   id,
   gateOk,
+  gateBlockers = [],
   canApprove,
   canSign,
   canCreateNewVersion,
@@ -41,6 +44,8 @@ export function ValuationActions({
 }: {
   id: string;
   gateOk: boolean;
+  /** Step 7 only: the gate's blockers, listed in the approval card. */
+  gateBlockers?: React.ComponentProps<typeof BlockerList>["blockers"];
   canApprove: boolean;
   canSign: boolean;
   canCreateNewVersion: boolean;
@@ -91,6 +96,40 @@ export function ValuationActions({
     });
   };
 
+  const hasFeedback = Boolean(
+    approveResult?.blockers?.length || approveResult?.mapsUnavailable || error,
+  );
+  const feedback = hasFeedback ? (
+    <>
+      {approveResult?.blockers?.length ? (
+        <BlockerList blockers={approveResult.blockers} testId="approve-blockers" role="alert" />
+      ) : null}
+      {/* Task 12: the second button here — the one that used to issue an
+          operat without maps — is gone (spec §C). The issue
+          no longer decides about maps — it reuses what the preview froze, and
+          reaches Geoportal only when there is nothing to reuse, which is the
+          one way this message still appears. The way out is a click below, on
+          the document itself, not another way to issue one unseen. */}
+      {approveResult?.mapsUnavailable ? (
+        <div data-testid="maps-fallback" className="flex flex-wrap items-center gap-2">
+          <p className="text-sm text-amber-600">⚠ {approveResult.error}</p>
+          <Button type="button" variant="outline" disabled={isPending} onClick={handleApprove}>
+            Spróbuj ponownie
+          </Button>
+          <p className="text-sm text-muted-foreground">
+            Albo złóż podgląd bez map w karcie „Podgląd operatu” — zatwierdzenie wyda wtedy
+            dokładnie ten dokument.
+          </p>
+        </div>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </>
+  ) : null;
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
@@ -131,32 +170,18 @@ export function ValuationActions({
           jest możliwa wyłącznie przez „Utwórz nową wersję”. Podpisać może tylko właściciel wyceny.
         </p>
       ) : null}
-      {approveResult?.blockers?.length ? (
-        <BlockerList blockers={approveResult.blockers} testId="approve-blockers" role="alert" />
-      ) : null}
-      {/* Task 12: the second button here — the one that used to issue an
-          operat without maps — is gone (spec §C). The issue
-          no longer decides about maps — it reuses what the preview froze, and
-          reaches Geoportal only when there is nothing to reuse, which is the
-          one way this message still appears. The way out is a click below, on
-          the document itself, not another way to issue one unseen. */}
-      {approveResult?.mapsUnavailable ? (
-        <div data-testid="maps-fallback" className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-amber-600">⚠ {approveResult.error}</p>
-          <Button type="button" variant="outline" disabled={isPending} onClick={handleApprove}>
-            Spróbuj ponownie
-          </Button>
-          <p className="text-sm text-muted-foreground">
-            Albo złóż podgląd bez map w karcie „Podgląd operatu” — zatwierdzenie wyda wtedy
-            dokładnie ten dokument.
-          </p>
-        </div>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      {canApprove && (gateBlockers.length > 0 || hasFeedback) ? (
+        <SectionCard icon={ClipboardCheck} title="Zatwierdzenie">
+          <div className="flex flex-col gap-3">
+            {gateBlockers.length > 0 ? (
+              <BlockerList blockers={gateBlockers} testId="gate-blockers" />
+            ) : null}
+            {feedback}
+          </div>
+        </SectionCard>
+      ) : (
+        feedback
+      )}
       {/* ValuationActions also mounts on the flat view (approved/signed,
        * canApprove=false) where an unconditional fixed FootNav would overlay the PDF
        * iframe — gate it so it exists only alongside the approve action it carries. */}

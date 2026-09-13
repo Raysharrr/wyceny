@@ -122,6 +122,8 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
     render(<StepOperat valuation={draft(currentProse())} />);
 
     expect(screen.queryByTestId("gate-blockers")).toBeNull();
+    // Nothing to report → no empty "Zatwierdzenie" card; the button is in the FootNav.
+    expect(screen.queryByRole("heading", { name: "Zatwierdzenie" })).toBeNull();
     expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeEnabled();
     // No blockers means the preview renders by itself — awaited so the
     // resolving action settles inside the test rather than after it.
