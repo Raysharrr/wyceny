@@ -38,6 +38,10 @@ expect(legacySignedTextWithoutSignature).toBe(legacyApprovedTextWithoutSignature
 - [ ] Run document/prose/actions/f7 tests, goldens and relevant worker contracts; no external paid calls in automated tests. Update Help methodology and run help-index.
 - [ ] Commit `feat(operat): render pairwise method and preserve legacy signing`; PR to integration. Report actual PDF paths, test evidence, legacy compatibility limits.
 
+## Baseline supplied by coordinator
+
+`tools/spike/2026-09-13-legacy-render/baseline.json` contains synthetic legacy input and9b2903c approved-text hashes for both rights, fractional weights and prose. Full text/DOCX in `/tmp/pairwise-legacy-render`. Use it rather than regenerating expected output after edits. See RAPORT.md; revive approvedAt as Date.
+
 ## Review and finish
 
 Provide exact tests/results and known limits, changed contract signatures, Help status and artifact paths. Commit/push with hooks intact. Open PR ONLY to `integration/pairwise-valuation`; never merge into main, deploy, force-push or delete other worktrees. Do not merge your own PR until coordinator review gates finish. Keep worktree for fixes and report via `send_message_to_thread` to coordinator with `DONE: pairwise-s4-operat`, PR URL, branch, worktree and test evidence. If blocked, state concrete cause and continue independent authorized work. Never assume missing user answers mean approval.

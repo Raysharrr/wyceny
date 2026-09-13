@@ -60,3 +60,11 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 | pairwise-s5-e2e       | S3 i S4 merge             | feature/pairwise-e2e       |
 
 Wszystkie PR do integration/pairwise-valuation. Koordynator sam tworzy zadania i worktree oraz przeprowadza review/fixes/merge. Zarejestrowany projekt Codex „Wyceny” wskazuje wiki; każde zadanie musi jawnie pracować w app-worktree, bez mylenia tego z checkoutem wiki. Brak osobno zarejestrowanego projektu aplikacji nie wymaga ręcznego otwierania sesji przez użytkownika.
+
+## Realizacja rozpoczęta
+
+D-ARCH/D-AUTO zatwierdzone; zapis ACCEPTANCE.md. S1 uruchomiony jako zadanie Codex `pairwise-s1-contracts` (`01a0999c-1aff-7e01-9557-42fc6f8b8b00`) w `/Users/michalczekala/Development/wyceny-app-worktrees/pairwise-contracts`, branch `feature/pairwise-contracts`. Baseline S1 golden/F6:17/17PASS; nowe testy RED przed implementacją. Pozostałe zadania czekają na zależności, nie na ponowne pozwolenie.
+
+Koordynator uchwycił bazowy render obu praw z ułamkowymi wagami i testową prozą przed zmianą kodu: `tools/spike/2026-09-13-legacy-render/`, commit0cddfbd. Wejścia+hash tekstu w repo; pełny tekst i DOCX lokalnie w `/tmp/pairwise-legacy-render/`. S4 ma użyć tego odniesienia do podpisu across-version.
+
+Środowisko integracji: web localhost:3015, worker127.0.0.1:8015, własny Postgres5544. Oba procesy z worktree integracji, testowe konta bez prawdziwych wycen. Login Zenon potwierdzony w przeglądarce. Dane `.env` lokalne i poza gitem. Opisy włączone do testów ścieżki ręcznej; klucz LLM nie jest przekazany do izolowanego workera, by weryfikacja nie wykonywała płatnych generacji. To gotowość środowiska, nie test wdrożonego PP.
