@@ -9,7 +9,7 @@ Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Us
 1. Read this entire HANDOFF, `docs/superpowers/pairwise-valuation/SPEC.md`, `ARCHITECTURE.md`, `SOURCES.md`, and global constraints in `docs/superpowers/plans/2026-09-13-pairwise-valuation.md` from latest integration. Do not act on the historical plan's obsolete build-slice/worktree restrictions.
 2. Read app CLAUDE.md and apps/web/AGENTS.md; CodeGraph before searching/reading source. Read relevant installed Next docs before framework edits.
 3. Confirm START and dependencies, fetch origin, inspect `git log -5` and `git status --short`. Create a dedicated APP worktree from origin/integration, with the branch above. If Codex task starts in a Wyceny wiki project worktree, do not modify that checkout: all code commands use the explicitly created app worktree.
-4. Install locked dependencies, build shared package. Use an isolated local test DB; never default to production or edit existing Zenon valuation. Coordinator owns `wyceny-pairwise-test` port5544; request separate DB/container for concurrent integration tests because migrations create cluster-wide app_role and collide in a shared cluster. Never change another task's server/env/worktree.
+4. Install locked dependencies, build shared package. Use an isolated local test DB; never default to production or edit existing Zenon valuation. Coordinator owns `wyceny-pairwise-test` port5544; create your own separate PostgreSQL container on a verified free port for concurrent integration tests because migrations create cluster-wide app_role and collide in a shared cluster. This isolated local setup is authorized; no renewed user approval needed. Never change another task's server/env/worktree.
 5. Report worktree, base SHA, current test baseline and any contract mismatch before edits. No secrets/PII in output or commits.
 
 ## Allowed ownership, interfaces, test steps and done criteria
@@ -32,6 +32,12 @@ Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Us
 Coordinator integration web: localhost:3015, worker127.0.0.1:8015, dedicated PostgreSQL5544. Environment is local-only in apps/web/.env. The browser login as seeded Zenon was verified. Do not use the user's main3000/main worker as evidence for this block.
 
 For UI coverage of the existing Opisy step, prefer enabling it and filling/confirming manual synthetic sections after an honest unavailable-generation response from a worker without an LLM key. Assert retained text and staleness after edits. Pair that with S4 deterministic worker/prose adapter contract tests for the automatic path. Do not mark Opisy covered by NEXT_PUBLIC_PROSE=off or silently spend API tokens in E2E. If a deterministic worker response fixture is needed instead, agree the smallest test-only mechanism with coordinator; preserve production defaults and hosted stub guards.
+
+## Execution settings and browser evidence
+
+S5 is a test/verification session: retain the normal model and reasoning setting. The user's medium setting applies only to implementation sessions S2/S3/S4, not testers or reviewers.
+
+After a meaningful integration, test the changed flow and existing KCS at the highest available layer on your own local web/worker/DB. Report exact commit, URLs/ports, tested rights, observable assertions and screenshot/trace paths. Distinguish UI walkthrough, unit/integration tests, baseline and CI; never claim skipped scenarios or PP E2E before the needed layers exist. Do not rerun the whole suite after each tiny edit. The Codex in-app reader showed blank PDF on S1 while Chrome displayed the same generated PDF correctly; use Chrome for actual document visual checks. S1 evidence: `docs/superpowers/pairwise-valuation/S1-BROWSER.md`.
 
 ## Review and finish
 

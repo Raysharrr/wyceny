@@ -27,4 +27,4 @@ Pierwszy przegląd `c727cae..da595d1`: brak blokujących uwag. Pełny raport lok
 
 ## Bramka
 
-Poprawka i drugi przegląd oraz CI/E2E w toku. PR nie jest jeszcze dopuszczony do merge; S2 czeka na scalenie i zamrożenie kontraktów.
+Drugi przegląd Opus/high PASS (`/tmp/pairwise-s1-review2.txt`); celowany test poprawki koordynatora1PASS. Finalny head `cade835`: CI i E2E PASS; web1760PASS/1skip, worker319PASS/1skip, browser12PASS/2opt-in skip. Lokalna regresja obu praw i rzeczywiste PDF oraz approval PASS — zakres i ograniczenia w [S1-BROWSER](S1-BROWSER.md). PR41 scalony squash do integration jako `a983a0b`. Bramka S1 zamknięta; main/staging bez zmian.

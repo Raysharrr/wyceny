@@ -12,9 +12,9 @@ W kroku Cechy można dodać jedną własną cechę i wybrać skalę2/3. Dla PP d
 
 Nie zmieniamy stylu aplikacji, nie wdrażamy domów/działek, katalogów wag130%/120%, profili biura, uczenia lub nowych źródeł danych. HTML nie jest kodem do przeniesienia do produktu.
 
-## Kontrakty wspólne (do zamrożenia w S1)
+## Kontrakty wspólne (zamrożone po S1)
 
-Poniższe nazwy są uzgodnionym projektem interfejsów sesji po zatwierdzeniu D-ARCH. S1 może zgłosić konieczną korektę, ale przed uruchomieniem zależnych sesji koordynator aktualizuje wszystkie HANDOFF-y.
+Kontrakty poniżej odpowiadają S1 scalonemu jako `a983a0b` (PR41). Zmiana wspólnego kontraktu wymaga zgłoszenia koordynatorowi i aktualizacji zależnych HANDOFF-ów.
 
 ```ts
 type ValuationMethod = "kcs" | "pp";
@@ -65,6 +65,19 @@ type CalculationIssue = { path: string; label: string };
 `computeValuation` rozstrzyga metodę raz i odrzuca nieznany wariant. Gotowość operacji (`calculationIssues`) obejmuje próg i potwierdzenie, ale odtworzenie archiwalnego zatwierdzonego KCS nie otrzymuje nowych retroaktywnych blokad. Nowy szkic bez wyboru może się zapisać; nie może zatwierdzić kalkulacji/operatu. `pairwiseBasis` jest czystą funkcją S1: serializuje metodę, powierzchnię, wybrane id W KOLEJNOŚCI (kolumny dokumentu), dane użytych transakcji, cechy i wszystkie komórki ocen/mnożników/uzasadnień; pomija wyłącznie marker confirmedBasis i statusy. Klucze map sortuje deterministycznie, kolejności porównań nie sortuje. `expectedPairwiseBasis` żądania to odcisk snapshotu OTWARTEGO formularza, nie przesyłanych po edycji wartości. S2 porównuje go z bazą pod blokadą, następnie stempluje odcisk NOWEGO snapshotu po świadomym potwierdzeniu. To nie jest samoodwołanie: marker nie należy do własnego odcisku.
 
 `KcsInput` pozostaje aliasem/re-exportem dla kompatybilności, nie drugim niezależnym modelem. Domena nie importuje UI, Zod ani infrastruktury.
+
+### Konkretne moduły S1
+
+- `domain/valuation-input.ts`: wspólne typy, `resolveMethod`, `ValuationCalculationError` z polem `issues`. Historyczne importy z `domain/kcs.ts` pozostają prawidłowe.
+- `domain/feature-rules.ts`: `allowedRatings`, `validateFeatures`, `FEATURE_WEIGHT_TOLERANCE = 0.001`; `featureCalculationIssues` jest walidacją arytmetyki, bez reguł nazw katalogowych.
+- `domain/feature-presets.ts`: `FEATURE_INPUT_KEYS` i `FeatureInputKey` dodają `inne`; katalog dziewięciu cech pozostaje bez zmian.
+- `domain/pairwise-state.ts`: `comparableIdentity`, `valuationComparables`, `pairwiseBasis`, `VALUATION_SAMPLE_LIMITS = { kcs: { min: 12 }, pp: { min: 3, max: 5 } }`.
+- `domain/pairwise.ts`: `suggestPairwiseMultiplier`, `computePairwise`, typy `PairwiseResult`, `PairwisePair`, `PairwiseCorrection` zgodne z powyższym kontraktem.
+- `domain/valuation-calculation.ts`: `computeValuation`, `calculationIssues`, `ValuationResult`; re-eksportuje `resolveMethod`, `valuationComparables`, `VALUATION_SAMPLE_LIMITS` i typ `CalculationIssue`. Potwierdzenia należą do gotowości, nie do funkcji obliczającej podgląd.
+
+### Refinement zależności po kontroli S1 — 2026-09-13
+
+Włączenie rzeczywistego CI dla PR do integracji ujawniło konieczność utrzymania działającej ścieżki KCS pomiędzy sesjami. Minimalny istniejący w projekcie wybór/potwierdzenie metody przechodzi z S3 do S2 razem z obowiązkową bramką serwera. S2 aktualizuje obecne testy przeglądarkowe o świadomy wybór KCS i dopisuje opis kontrolki do Pomocy. Nie wolno tymczasowo domyślnie potwierdzać KCS ani omijać bramki w testach. S3 rozwija tę samą kontrolkę i pozostały interfejs PP/cech; S4 nadal odpowiada za dokument. To korekta kolejności realizacji, bez zmiany zakresu i zatwierdzonego wyglądu.
 
 ## Cecha własna i skale
 
