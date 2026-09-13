@@ -200,3 +200,26 @@ it.each(["kcs", "pp"] as const)(
     );
   },
 );
+
+it("keeps fractional KCS weights in a roomy column with consistent merged-header geometry", () => {
+  const xml = new PizZip(fs.readFileSync("templates/operat-szablon.docx"))
+    .file("word/document.xml")!
+    .asText();
+  const table = (xml.match(/<w:tbl>[\s\S]*?<\/w:tbl>/g) ?? []).find((table) =>
+    table.includes("{waga_pct}"),
+  )!;
+  const grid = Array.from(table.matchAll(/<w:gridCol w:w="(\d+)"/g), (m) => Number(m[1]));
+  expect(grid).toHaveLength(6);
+  expect(grid[1]).toBeGreaterThanOrEqual(1200);
+  expect(grid.reduce((a, b) => a + b, 0)).toBe(8961);
+  for (const row of table.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) ?? []) {
+    let column = 0;
+    for (const cell of row.match(/<w:tc>[\s\S]*?<\/w:tc>/g) ?? []) {
+      const width = Number(cell.match(/<w:tcW w:w="(\d+)"/)![1]);
+      const span = Number(cell.match(/<w:gridSpan w:val="(\d+)"/)?.[1] ?? 1);
+      expect(width).toBe(grid.slice(column, column + span).reduce((a, b) => a + b, 0));
+      column += span;
+    }
+    expect(column).toBe(grid.length);
+  }
+});
