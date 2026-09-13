@@ -16,7 +16,7 @@ Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Us
 
 ## S3 — Existing wizard extended for both methods and custom features
 
-**Files:** `app/valuations/[id]/page.tsx`, `steps/step-sample.tsx`, `use-sample-review.ts`, sample sections/panel as required, new focused `pairwise-selection.tsx`/`pairwise-assessment.tsx`, `step-features.tsx`, `step-calculation.tsx`, `cards.tsx`; tests RTL feature/sample/calculation and use-sample-review; Help step3/4/5 pages and relevant manifest/index. No renderer/actions from S4.
+**Files:** `app/valuations/[id]/page.tsx`, `steps/step-sample.tsx`, `use-sample-review.ts`, sample sections/panel as required, new focused `pairwise-selection.tsx`/`pairwise-assessment.tsx`, `step-features.tsx`, `step-calculation.tsx`, `cards.tsx`; tests RTL feature/sample/calculation and use-sample-review; existing Help step3/4/5 pages; do not edit manifest.ts (S4 owns new method page registration). No renderer/actions from S4.
 
 **Interfaces:** consumes S1/S2 finalized action payloads; never redefines formulas. Existing cards render discriminated result from computeValuation; existing KCS presentation stays intact. `pairwise-selection` is a manual selection over ranked proposals; no new scoring engine.
 
@@ -31,7 +31,7 @@ expect(screen.getByRole("textbox", { name: /Nazwa cechy/ })).toHaveValue("");
 
 - [ ] Build controls from existing Table/Input/Button/SectionCard/FieldError/FootNav. Preserve Opisy navigation. PP comparison defaults missing unless a known structured preset threshold supports a visible suggestion; never silently confirm.
 - [ ] Add a registry reload→save regression preserving coopTxId: step-sample initial mapping currently omits it while assignSampleProvenance uses it to distinguish registry from RCN. Verify and retain source identity rather than converting a saved registry row to RCN.
-- [ ] Preserve KCS proposal/backfill and editable row behavior. For PP choose3–5 explicitly, maintain separate pool vs choice, preserve full precision values on fetch/save/reload while formatting display. Reordering never maps data by index.
+- [ ] Preserve KCS proposal/backfill and editable row behavior. For PP choose3–5 explicitly, maintain separate pool vs choice, preserve stored values and the existing import rounding; method changes must not change pricePerM2/content-key provenance. PP arithmetic does not add intermediate rounding. Reordering never maps data by index.
 - [ ] Add numeric multiplier input with explanation for override, suggested value/basis visible; editing dependencies invalidates confirmation. Keyboard/accessibility and narrow table view checked in browser.
 - [ ] Run RTL tests, existing sample-selection/overlay/use-sample-review tests, both goldens, typecheck, lint. Local browser walkthrough KCS/PP, both rights, incomplete data. Add Help reflecting actual UI and `pnpm --filter web help-index`.
 - [ ] Commit `feat(wizard): support apartment features and pairwise comparisons`; PR to integration. Provide screenshots and manual scenario results; no claim of complete backend/document E2E before S4.

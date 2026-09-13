@@ -35,10 +35,10 @@ type PairwiseSnapshot = {
   selectedComparableIds: string[];
   // klucz transakcji → klucz cechy → ocena i przyjęty mnożnik
   comparisons: Record<string, Record<string, PairwiseCell>>;
-  confirmed: boolean;
+  confirmedBasis?: string; // brak = macierz niepotwierdzona
 };
-// confirmed wyznacza zapis po stronie web na podstawie jawnego aktu i bieżących danych,
-// nie jest dowolnym zaufanym statusem przyjmowanym od klienta.
+// confirmedBasis stempluje web po jawnym akcie. Poprawki są potwierdzone tylko gdy
+// confirmedBasis === pairwiseBasis(bieżący snapshot). Klient nie nadaje tego markera.
 type CalculationIssue = { path: string; label: string };
 // signatures:
 // resolveMethod(input: ValuationInput): ValuationMethod
@@ -60,10 +60,13 @@ type CalculationIssue = { path: string; label: string };
 
 `comparables` zachowuje dotychczasowe wiersze próby/puli, również ręczne; PP zapisuje osobno `selectedComparableIds`. `valuationComparables` rozwiązuje wybrane id do dokładnie3–5 wierszy PP albo zwraca pełną próbę KCS. Jest wspólnym wejściem progów, arytmetyki, prowenancji porównań, faktów prozy i tabel dokumentu. Brak/duplikat/obcy id jest błędem. Przełączenie PP→KCS nie kasuje niewybranych ręcznych transakcji.
 
-`computeValuation` rozstrzyga metodę raz i odrzuca nieznany wariant. Gotowość operacji (`calculationIssues`) obejmuje próg i potwierdzenie, ale odtworzenie archiwalnego zatwierdzonego KCS nie otrzymuje nowych retroaktywnych blokad. Nowy szkic bez wyboru może się zapisać; nie może zatwierdzić kalkulacji/operatu. `KcsInput` pozostaje aliasem/re-exportem dla kompatybilności, nie drugim niezależnym modelem. Domena nie importuje UI, Zod ani infrastruktury.
+`computeValuation` rozstrzyga metodę raz i odrzuca nieznany wariant. Gotowość operacji (`calculationIssues`) obejmuje próg i potwierdzenie, ale odtworzenie archiwalnego zatwierdzonego KCS nie otrzymuje nowych retroaktywnych blokad. Nowy szkic bez wyboru może się zapisać; nie może zatwierdzić kalkulacji/operatu. `pairwiseBasis` jest czystą funkcją S1: serializuje metodę, powierzchnię, wybrane id W KOLEJNOŚCI (kolumny dokumentu), dane użytych transakcji, cechy i wszystkie komórki ocen/mnożników/uzasadnień; pomija wyłącznie marker confirmedBasis i statusy. Klucze map sortuje deterministycznie, kolejności porównań nie sortuje. `expectedPairwiseBasis` żądania to odcisk snapshotu OTWARTEGO formularza, nie przesyłanych po edycji wartości. S2 porównuje go z bazą pod blokadą, następnie stempluje odcisk NOWEGO snapshotu po świadomym potwierdzeniu. To nie jest samoodwołanie: marker nie należy do własnego odcisku.
+
+`KcsInput` pozostaje aliasem/re-exportem dla kompatybilności, nie drugim niezależnym modelem. Domena nie importuje UI, Zod ani infrastruktury.
 
 ## Cecha własna i skale
 
+- `Feature.rating` w zapisanej cesze nadal jest wymagane; pusty wybór przedmiotu istnieje wyłącznie w stanie formularza i blokuje zapis. `PairwiseCell.rating=null` może oznaczać nieukończony szkic porównań, ale blokuje kalkulację. `LOKAL_FEATURE_KEYS` i katalog9 pozostają bez zmian; nowy `FEATURE_INPUT_KEYS` rozszerza dozwolone wejście o `inne`.
 - Jeden klucz `inne`; nazwa trim1–120 znaków, bez kolizji z nazwami katalogu/aktywnymi nazwami po normalizacji wielkości liter i białych znaków. Stałe nazwy katalogowe sprawdzane po stronie serwera.
 - Własna cecha startuje bez oceny, waga0, skala3, puste definicje. Wszystkie dozwolone definicje własnej cechy wymagane (do1000 znaków każda).
 - Brak ratingScale w historii=3. 3→2 usuwa ocenę przeciętną przedmiotu i porównań, wymaga ponownego wyboru; końce zachowane. Skala2 zapisuje tylko definicje końców; wymagane oba. Stare katalogowe skale3 nie dostają wymogu pełnych definicji.
@@ -73,12 +76,16 @@ type CalculationIssue = { path: string; label: string };
 
 ## Próba, precyzja, sugestie i poprawki
 
-- Zachować pobranie/przegląd RCN i rejestru SM, maskowanie, ręczne poprawki i źródła. KCS ranking/F-14 nie zmienia się. PP wybór to jawna lista, nie usuwanie z dopełnianego proposedN20. Zmiana promienia nie zmienia wybranych lokali bez komunikatu/aktu użytkownika.
-- Źródłowe ceny PP utrzymać w pełnej dostępnej precyzji; UI formatuje2 miejsca, nie zaokrągla wejścia przy samym przejściu przez formularz. Ręczna edycja ceny zastępuje wartość świadomie. Zachować dotychczasowy kontrakt rcnRow dla KCS. Test przejścia fetch→zapis→reload powinien wykryć utratę precyzji PP.
+- Zachować pobranie/przegląd RCN i rejestru SM, maskowanie, ręczne poprawki i źródła. KCS ranking/F-14 nie zmienia się. `id` musi jawnie przejść przez comparableSchema i mapowania. Tożsamości mają osobne przestrzenie `rcn:tx|lok`, `sm:coopTxId`, `manual:uuid`. Serwer wylicza tożsamości rejestrów i sprawdza unikalność; przy niepełnym identyfikatorze źródłowym nadaje trwałe id zapisu (bez udawania ręcznego pochodzenia). Dla istniejącego wiersza zachowuje wcześniej nadane id. Nowy ręczny wiersz może mieć tymczasowy id klienta; zapis weryfikuje format/unikalność i trwałą tożsamość, nie ufa podszyciu pod id rejestru. PP wybór to jawna lista, nie usuwanie z dopełnianego proposedN20. Zmiana promienia nie zmienia wybranych lokali bez komunikatu/aktu użytkownika.
+- Nie zmieniać znaczenia ani precyzji istniejącego `pricePerM2`: zachować obecne zaokrąglenie importu rcnRow do2 miejsc, klucze dopasowania prowenancji i zapisane ręczne wartości. PP liczy bez kolejnych zaokrągleń pośrednich z wartości ZAPISANYCH. Zmiana metody/fetch→save→reload nie może podmieniać ceny ani gubić potwierdzeń. Test arytmetyki wzorcowej używa pełnych liczbowych wejść arkusza; test aplikacyjny osobno obejmuje obecny import2 miejsc — oba dają te same finały740900/339400, lecz kwoty pośrednie nie muszą być identyczne. Nie wprowadzać nowego pola źródłowej ceny w tym bloku.
 - ΔC=max−min cen wybranych3–5. Poprawka=ΔC×waga×przyjęty mnożnik. Cena skorygowana=cena+suma poprawek. Średnia arytmetyczna bez przedwczesnego zaokrąglenia, ×powierzchnia, końcowe zaokrąglenie do100. Formatowanie dokumentu nie staje się wejściem rachunku. ΔC0 daje zerowe poprawki i równą cenę; nie dzielić przez0.
 - D-AUTO: sugestia z uporządkowanych ocen; człowiek zatwierdza. Własna korekta różna od sugestii wymaga uzasadnienia. Nie przycinać do±1 ani siatki0,5. Ujemna/zerowa skorygowana cena blokuje. Mnożnik/ocena0 to poprawne dane, null to brak.
-- Serwer ponownie wylicza sugestię i weryfikuje wyjątek/kompletność. Klient nie może nadać statusu potwierdzenia cudzej lub nieaktualnej macierzy. Ochrona starych formularzy: żądanie FeaturesUpdate zawiera `expectedPairwiseBasis: string`, obliczony przez `pairwiseBasis` ze snapshotu otwartego formularza (metoda, area, wybrane id, dane porównań i cech); atomowy zapis porównuje je z bieżącym snapshotem i przy zmianie zwraca konflikt zamiast potwierdzać niewidziane dane.
+- Serwer ponownie wylicza sugestię i weryfikuje wyjątek/kompletność. Klient nie może nadać statusu potwierdzenia cudzej lub nieaktualnej macierzy. Ochrona starych formularzy: żądanie FeaturesUpdate zawiera `expectedPairwiseBasis: string`, obliczony przez `pairwiseBasis` ze snapshotu otwartego formularza zgodnie z pełną definicją powyżej; atomowy zapis porównuje je z bieżącym snapshotem i przy zmianie zwraca konflikt zamiast potwierdzać niewidziane dane.
 - Sugestie ocen tylko ze znanych, strukturalnych progów presetu; zmienione teksty definicji wyłączają taką sugestię. Nie klasyfikować standardu/otoczenia ani roku budowy na podstawie braku danych.
+
+## Wybór metody jako jawna mutacja
+
+`selectMethodAction(id, {method, confirm:true})` → `PortValuation.selectMethod` → `applyMethodSelection` pod owner/draft/row-lock. Ustawia method i methodConfirmed z jawnego aktu. SampleUpdate nie zmienia metody; zapisuje pulę i selectedComparableIds. Sugestia metody jest stanem UI, nie zapisanym potwierdzeniem. Jeśli resolveMethod przed/po jest ten sam (w tym brak→kcs dla starego szkicu), wybór zachowuje WR i stare hashe prozy; rzeczywiste kcs↔pp zeruje WR i aktualność poprawek. Zwykły zapis próby zachowuje dotychczasowe unieważnianie WR. `newVersionOf` zachowuje wybraną metodę jako propozycję do ponownego potwierdzenia (methodConfirmed=false), usuwa confirmedBasis i zeruje WR; nie kopiuje potwierdzeń.
 
 ## Unieważnianie i historia
 
@@ -97,7 +104,9 @@ Utrzymać stary kształt hashy dla niezmienionych danych KCS. Dla PP dodać fakt
 
 Wspólna projekcja faktów i maskowania; deterministyczna część metodyczna KCS albo PP. Cztery tabele PP zgodnie z [SOURCES](SOURCES.md), dynamicznie3/4/5 porównań. Adaptacja obu praw do lokalu, bez utraty map, zdjęć i podpisu. Zachować sekcje10–13 aplikacji i wygenerowane operat-sections.ts. Pomoc opisuje nowe zachowanie.
 
-Stare zatwierdzone snapshoty bez method: zachowana arytmetyka KCS, stara projekcja i szablon9b2903c przy podpisie. Renderer przyjmuje `templateVersion?: "legacy-kcs" | "valuation-v2"`. Nowy dokument nie może zostać wydany bez jawnej metody. Podpisane pliki/SHA bez zmian. Ścieżka zgodności dotyczy tej granicy wdrożenia, nie dowolnej historii wcześniejszych szablonów.
+Stare zatwierdzone snapshoty bez method: zachowana arytmetyka KCS, OBOWIĄZKOWA stara projekcja (w tym procenty) i szablon9b2903c przy podpisie. Pierwszy krok S4 przed zmianami utrwala syntetyczny referencyjny tekst renderu9b2903c. Podpis takiego snapshotu nie uruchamia nowych calculationIssues ani walidacji cech. Renderer przyjmuje `templateVersion?: "legacy-kcs" | "valuation-v2"`. Nowy dokument nie może zostać wydany bez jawnej metody. Podpisane pliki/SHA bez zmian. Ścieżka zgodności dotyczy tej granicy wdrożenia, nie dowolnej historii wcześniejszych szablonów.
+
+Wszystkie produkcyjne akcje kalkulacji/prozy/preview/approve/sign używają dispatchera. Bramy, statystyki, fakty i dokument używają valuationComparables zamiast surowej puli. Nowy test fitness wykrywa bezpośrednie computeKcs poza dispatcherem, modułem zachowanej legacy arytmetyki i testami. Nie zmieniać istniejących narzędzi golden używających silnika bezpośrednio.
 
 ## Macierz odbioru
 
@@ -105,7 +114,7 @@ Stare zatwierdzone snapshoty bez method: zachowana arytmetyka KCS, stara projekc
 - AC02: KCS<12 i PP poza3–5 zablokowane na UI i serwerze; wybór PP nie automatyczny.
 - AC03: własna cecha, unikalność i stałe nazwy; zapis/odczyt bez utraty.
 - AC04: skala2/3 przedmiotu i porównań, brak ukrytej przeciętnej; błędne wagi bez WR.
-- AC05: tożsamość transakcji/cechy po reorder/remove/reload/radius, zachowana precyzja.
+- AC05: tożsamość transakcji/cechy po reorder/remove/reload/radius, zachowane ceny i potwierdzenia przy przełączeniu metod.
 - AC06: sugestie vs override, uzasadnienie i ponowne potwierdzenie; wyścigi/stary formularz odrzucone.
 - AC07: wzorce PP740900 i339400, ułamki/ekstrapolacja, ΔC0; KCS1044400 i446900 bez zmian.
 - AC08: cztery tabele PP, skale/procenty KCS,3/4/5 transakcji, oba prawa, PDF bez placeholderów/PII.

@@ -16,7 +16,7 @@ Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Us
 
 ## S4 — Method-aware document, prose and render lifecycle
 
-**Files:** `domain/document-model.ts`, new `domain/pairwise-document.ts` and `domain/legacy-kcs-document.ts` only if needed for exact projection preservation, `domain/prose.ts`, `prose-hash.ts`, render actions `preview-operat.ts`/`approve-valuation.ts`/`sign-valuation.ts`, `adapters/docx-render.ts`, template binary plus preserved legacy binary, idempotent app template patch script, `domain/operat-sections.ts` if generated output requires it; document/prose/action tests; Help methodology. Worker prose contract changes only if required by actual existing schema, with parity tests. No S3 wizard files.
+**Files:** `domain/document-model.ts`, new `domain/pairwise-document.ts` and mandatory `domain/legacy-kcs-document.ts` for exact projection preservation, `domain/prose.ts`, `prose-hash.ts`, `app/valuations/[id]/prose-step-props.ts` if needed, render actions `preview-operat.ts`/`approve-valuation.ts`/`sign-valuation.ts`, `adapters/docx-render.ts`, template binary plus preserved legacy binary, idempotent app template patch script, `domain/operat-sections.ts` if generated output requires it; document/prose/action tests; Help methodology and sole ownership of Help manifest.ts new page registration. Worker prose contract changes only if required by actual existing schema, with parity tests. No S3 wizard files. Preserve existing public prose facts input signatures used by page.tsx; if a call-site change there is unavoidable, report it to coordinator for sequential integration after S3, not a concurrent edit.
 
 **Interfaces:** consumes S1/S2. `buildDocumentModel` accepts a discriminated `result` for new paths while retaining legacy KCS argument compatibility as needed for existing tests. All production actions use computeValuation and common model preparation; renderer gets technical templateVersion. PP tables come from the same computed result, never recalculate corrections in template/worker.
 
@@ -29,11 +29,12 @@ expect(ppMethodTables).toHaveLength(4);
 expect(legacySignedTextWithoutSignature).toBe(legacyApprovedTextWithoutSignature);
 ```
 
-- [ ] Freeze9b2903c legacy binary/projection before patching current template. Preserve current map/photo/signature/address masking paths. Patch idempotently; update SHA test in same commit. Preserve actual numbering10–13.
+- [ ] First, before any production modification, freeze a synthetic reference DOCX text rendered by9b2903c (fractional weights included). Freeze the legacy binary AND projection before patching current template. Legacy signature uses neither new calculationIssues nor new feature validation. Add cross-version approved→signed comparison against that baseline, beyond the existing same-code signature test. Preserve current map/photo/signature/address masking paths. Patch idempotently; update SHA test in same commit. Preserve actual numbering10–13.
 - [ ] Use the proven column mechanism in `tools/spike/2026-09-13-pairwise-columns`: a small adapter helper touching only caption-marked PP tables before Docxtemplater, checking table shape and matching cells/grid/widths. Preserve all other XML. This avoids a paid plugin or parallel generator.
 - [ ] Implement four PP tables from SOURCES;3/4/5 columns, both rights. KCS mixed scale2/3 prints middle dash/note and fractional percentages. No blank extra PP/KCS methodology/table blocks in the wrong method.
 - [ ] Add facts for method and PP corrections to affected prose sections only; preserve general descriptions and old KCS hash shape. Same WR with different pair corrections must still invalidate dependent prose. Manual texts retained.
 - [ ] Render DOCX→real worker PDF for KCS legacy/current, PP3/4/5, custom long name/diacritics/fractions, both rights. Parse text and visually inspect pages, headings, wrapping and images; XML alone does not close acceptance.
+- [ ] Add a production-entry fitness check rejecting direct computeKcs calls outside the dispatcher/explicit legacy module; ensure gates/facts/doc use effective PP comparables rather than the full retained pool.
 - [ ] Run document/prose/actions/f7 tests, goldens and relevant worker contracts; no external paid calls in automated tests. Update Help methodology and run help-index.
 - [ ] Commit `feat(operat): render pairwise method and preserve legacy signing`; PR to integration. Report actual PDF paths, test evidence, legacy compatibility limits.
 

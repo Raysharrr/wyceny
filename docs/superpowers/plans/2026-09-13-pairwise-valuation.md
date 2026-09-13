@@ -30,9 +30,9 @@ S3 and S4 share only frozen contracts and do not edit each other's files. Every 
 
 ## S1 — Shared feature/input contract and pure engines
 
-**Files:** create `apps/web/src/domain/valuation-input.ts`, `feature-rules.ts`, `pairwise.ts`, `valuation-calculation.ts`; modify `domain/kcs.ts`, `feature-presets.ts`; tests `feature-rules.test.ts`, `pairwise.test.ts`, `valuation-calculation.test.ts`, `f6-feature-preset.test.ts`, existing KCS goldens.
+**Files:** create `apps/web/src/domain/valuation-input.ts`, `feature-rules.ts`, `pairwise.ts`, `pairwise-state.ts`, `valuation-calculation.ts`; modify `domain/kcs.ts`, `feature-presets.ts`; tests `feature-rules.test.ts`, `pairwise.test.ts`, `valuation-calculation.test.ts`, `f6-feature-preset.test.ts`, existing KCS goldens.
 
-**Interfaces:** produces SPEC signatures, existing KcsInput re-export, optional ratingScale/manual comparable id/method/pairwise fields. No actions/UI/template edits. `computeKcs` unchanged internally.
+**Interfaces:** produces SPEC signatures, existing KcsInput re-export, optional ratingScale/manual comparable id/method/pairwise fields. S1 owns comparableIdentity, valuationComparables, pairwiseBasis and all calculationIssues/thresholds. No actions/UI/template edits. `computeKcs` unchanged internally.
 
 - [ ] Write RED reference arithmetic test with neutral fixture IDs using `tools/spike/2026-09-13-pairwise-reference/spike.py` numbers:
 
@@ -50,9 +50,9 @@ expect(suggestPairwiseMultiplier("gorsza", "lepsza", "two")).toBe(-1);
 
 ## S2 — Atomic writes, identities, readiness and invalidation
 
-**Files:** `domain/valuation.ts`, `domain/provenance.ts`, `domain/wizard.ts`, new `domain/pairwise-state.ts`, `ports/valuation.ts`, `adapters/valuation-drizzle.ts`, `lib/valuation-form-schema.ts`, `lib/assign-provenance.ts`, `app/actions/wizard-schemas.ts`, `app/actions/wizard.ts`, `app/actions/create-valuation.ts`; tests wizard-domain/actions/repo, assign-provenance, f4-approval-gate, f7-immutability, valuation-form-schema, new pairwise-state.
+**Files:** `domain/valuation.ts`, `domain/provenance.ts`, `domain/wizard.ts`, `domain/pairwise-state.ts` only for integration with frozen S1 helpers, `ports/valuation.ts`, `adapters/valuation-drizzle.ts`, `lib/valuation-form-schema.ts`, `lib/assign-provenance.ts`, `app/actions/wizard-schemas.ts`, `app/actions/wizard.ts`, `app/actions/create-valuation.ts`, new `app/actions/select-method.ts`; tests wizard-domain/actions/repo, assign-provenance, f4-approval-gate, f7-immutability, valuation-form-schema, new pairwise-state.
 
-**Interfaces:** consumes S1. SampleUpdate accepts explicit method/confirmation, the retained comparable rows and selectedComparableIds for PP. ValuationInput.comparables retains the current pool rows; valuationComparables(input) resolves the effective PP selection or full KCS sample centrally. FeaturesUpdate carries features, comparisons, requested confirmation and expected basis. `pairwiseBasis(input): string` is a deterministic serialization of current method, area, sorted comparable identities/prices/areas and feature keys/names/weights/scales/definitions/subject ratings. Include source identities and dates when they are in the facts. Server compares requested expected basis against the locked pre-save snapshot and stamps new basis after applying changes. Never accept provenance status from browser.
+**Interfaces:** consumes S1. `selectMethodAction(id,{method,confirm:true})` delegates to PortValuation.selectMethod/applyMethodSelection under a row lock. SampleUpdate retains all comparable rows and updates only PP selectedComparableIds; it does not choose method. FeaturesUpdate sends features, comparisons, an explicit confirmation request and expectedPairwiseBasis from the originally loaded snapshot. S1 pairwiseBasis includes method, area, selected ids IN DISPLAY ORDER, source ids/date/price/area, feature data and comparison cells (excluding confirmedBasis). Compare expected basis to locked current data, apply mutation, then stamp the resulting basis on deliberate confirmation. Gate checks equality of stored/current basis, not a boolean. newVersionOf clears basis, methodConfirmed and wr; retain method merely as a proposal. Keep same-method legacy KCS selection from invalidating wr/prose. Never accept provenance status from browser.
 
 - [ ] RED aggregate/adapter assertions:
 
@@ -65,14 +65,14 @@ expect(applyFeaturesUpdate(draft, editedFeatures).wr).toBeNull();
 expect(() => applySampleUpdate(signed, editedSample)).toThrow();
 ```
 
-- [ ] Add stale-form test: open features on basisA, save changed sampleB, attempt confirmation from basisA; reject and retain B. Add reorder/remove/add tests with two locals of one transaction and manual IDs; ratings never shift by index.
+- [ ] Add stale-form test: open features on basisA, save changed sampleB, attempt confirmation from basisA; reject and retain B. Add newVersionOf reset and legacy absent→kcs preservation tests. Add reorder/remove/add tests with two locals of one transaction and manual IDs; ratings never shift by index.
 - [ ] Implement schemas/ACL/locked mutations and audit meta in existing paths, no SQL migration unless a concrete need emerges. New create permits incomplete step1 but cannot calculate/issue without method. Legacy read unchanged; undefined method defaults only in arithmetic/read.
 - [ ] Run targeted tests listed above against isolated Postgres, plus both KCS goldens and provenance/hash tests. Inspect changed validations for old fixture/seed compatibility; adapt fixtures to explicit new commands only when testing new operations.
 - [ ] Commit `feat(valuation): persist method and pairwise assessment safely`; PR to integration. Return concrete action payload examples to freeze before S3/S4. Help: unchanged until UI, invariant-only change on integration.
 
 ## S3 — Existing wizard extended for both methods and custom features
 
-**Files:** `app/valuations/[id]/page.tsx`, `steps/step-sample.tsx`, `use-sample-review.ts`, sample sections/panel as required, new focused `pairwise-selection.tsx`/`pairwise-assessment.tsx`, `step-features.tsx`, `step-calculation.tsx`, `cards.tsx`; tests RTL feature/sample/calculation and use-sample-review; Help step3/4/5 pages and relevant manifest/index. No renderer/actions from S4.
+**Files:** `app/valuations/[id]/page.tsx`, `steps/step-sample.tsx`, `use-sample-review.ts`, sample sections/panel as required, new focused `pairwise-selection.tsx`/`pairwise-assessment.tsx`, `step-features.tsx`, `step-calculation.tsx`, `cards.tsx`; tests RTL feature/sample/calculation and use-sample-review; existing Help step3/4/5 pages; do not edit manifest.ts (S4 owns new method page registration). No renderer/actions from S4.
 
 **Interfaces:** consumes S1/S2 finalized action payloads; never redefines formulas. Existing cards render discriminated result from computeValuation; existing KCS presentation stays intact. `pairwise-selection` is a manual selection over ranked proposals; no new scoring engine.
 
@@ -87,14 +87,14 @@ expect(screen.getByRole("textbox", { name: /Nazwa cechy/ })).toHaveValue("");
 
 - [ ] Build controls from existing Table/Input/Button/SectionCard/FieldError/FootNav. Preserve Opisy navigation. PP comparison defaults missing unless a known structured preset threshold supports a visible suggestion; never silently confirm.
 - [ ] Add a registry reload→save regression preserving coopTxId: step-sample initial mapping currently omits it while assignSampleProvenance uses it to distinguish registry from RCN. Verify and retain source identity rather than converting a saved registry row to RCN.
-- [ ] Preserve KCS proposal/backfill and editable row behavior. For PP choose3–5 explicitly, maintain separate pool vs choice, preserve full precision values on fetch/save/reload while formatting display. Reordering never maps data by index.
+- [ ] Preserve KCS proposal/backfill and editable row behavior. For PP choose3–5 explicitly, maintain separate pool vs choice, preserve stored values and the existing import rounding; method changes must not change pricePerM2/content-key provenance. PP arithmetic does not add intermediate rounding. Reordering never maps data by index.
 - [ ] Add numeric multiplier input with explanation for override, suggested value/basis visible; editing dependencies invalidates confirmation. Keyboard/accessibility and narrow table view checked in browser.
 - [ ] Run RTL tests, existing sample-selection/overlay/use-sample-review tests, both goldens, typecheck, lint. Local browser walkthrough KCS/PP, both rights, incomplete data. Add Help reflecting actual UI and `pnpm --filter web help-index`.
 - [ ] Commit `feat(wizard): support apartment features and pairwise comparisons`; PR to integration. Provide screenshots and manual scenario results; no claim of complete backend/document E2E before S4.
 
 ## S4 — Method-aware document, prose and render lifecycle
 
-**Files:** `domain/document-model.ts`, new `domain/pairwise-document.ts` and `domain/legacy-kcs-document.ts` only if needed for exact projection preservation, `domain/prose.ts`, `prose-hash.ts`, render actions `preview-operat.ts`/`approve-valuation.ts`/`sign-valuation.ts`, `adapters/docx-render.ts`, template binary plus preserved legacy binary, idempotent app template patch script, `domain/operat-sections.ts` if generated output requires it; document/prose/action tests; Help methodology. Worker prose contract changes only if required by actual existing schema, with parity tests. No S3 wizard files.
+**Files:** `domain/document-model.ts`, new `domain/pairwise-document.ts` and mandatory `domain/legacy-kcs-document.ts` for exact projection preservation, `domain/prose.ts`, `prose-hash.ts`, `app/valuations/[id]/prose-step-props.ts` if needed, render actions `preview-operat.ts`/`approve-valuation.ts`/`sign-valuation.ts`, `adapters/docx-render.ts`, template binary plus preserved legacy binary, idempotent app template patch script, `domain/operat-sections.ts` if generated output requires it; document/prose/action tests; Help methodology and sole ownership of Help manifest.ts new page registration. Worker prose contract changes only if required by actual existing schema, with parity tests. No S3 wizard files. Preserve existing public prose facts input signatures used by page.tsx; if a call-site change there is unavoidable, report it to coordinator for sequential integration after S3, not a concurrent edit.
 
 **Interfaces:** consumes S1/S2. `buildDocumentModel` accepts a discriminated `result` for new paths while retaining legacy KCS argument compatibility as needed for existing tests. All production actions use computeValuation and common model preparation; renderer gets technical templateVersion. PP tables come from the same computed result, never recalculate corrections in template/worker.
 
@@ -107,11 +107,12 @@ expect(ppMethodTables).toHaveLength(4);
 expect(legacySignedTextWithoutSignature).toBe(legacyApprovedTextWithoutSignature);
 ```
 
-- [ ] Freeze9b2903c legacy binary/projection before patching current template. Preserve current map/photo/signature/address masking paths. Patch idempotently; update SHA test in same commit. Preserve actual numbering10–13.
+- [ ] First, before any production modification, freeze a synthetic reference DOCX text rendered by9b2903c (fractional weights included). Freeze the legacy binary AND projection before patching current template. Legacy signature uses neither new calculationIssues nor new feature validation. Add cross-version approved→signed comparison against that baseline, beyond the existing same-code signature test. Preserve current map/photo/signature/address masking paths. Patch idempotently; update SHA test in same commit. Preserve actual numbering10–13.
 - [ ] Use the proven column mechanism in `tools/spike/2026-09-13-pairwise-columns`: a small adapter helper touching only caption-marked PP tables before Docxtemplater, checking table shape and matching cells/grid/widths. Preserve all other XML. This avoids a paid plugin or parallel generator.
 - [ ] Implement four PP tables from SOURCES;3/4/5 columns, both rights. KCS mixed scale2/3 prints middle dash/note and fractional percentages. No blank extra PP/KCS methodology/table blocks in the wrong method.
 - [ ] Add facts for method and PP corrections to affected prose sections only; preserve general descriptions and old KCS hash shape. Same WR with different pair corrections must still invalidate dependent prose. Manual texts retained.
 - [ ] Render DOCX→real worker PDF for KCS legacy/current, PP3/4/5, custom long name/diacritics/fractions, both rights. Parse text and visually inspect pages, headings, wrapping and images; XML alone does not close acceptance.
+- [ ] Add a production-entry fitness check rejecting direct computeKcs calls outside the dispatcher/explicit legacy module; ensure gates/facts/doc use effective PP comparables rather than the full retained pool.
 - [ ] Run document/prose/actions/f7 tests, goldens and relevant worker contracts; no external paid calls in automated tests. Update Help methodology and run help-index.
 - [ ] Commit `feat(operat): render pairwise method and preserve legacy signing`; PR to integration. Report actual PDF paths, test evidence, legacy compatibility limits.
 

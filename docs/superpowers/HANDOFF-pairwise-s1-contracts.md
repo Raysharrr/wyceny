@@ -16,9 +16,9 @@ Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Us
 
 ## S1 — Shared feature/input contract and pure engines
 
-**Files:** create `apps/web/src/domain/valuation-input.ts`, `feature-rules.ts`, `pairwise.ts`, `valuation-calculation.ts`; modify `domain/kcs.ts`, `feature-presets.ts`; tests `feature-rules.test.ts`, `pairwise.test.ts`, `valuation-calculation.test.ts`, `f6-feature-preset.test.ts`, existing KCS goldens.
+**Files:** create `apps/web/src/domain/valuation-input.ts`, `feature-rules.ts`, `pairwise.ts`, `pairwise-state.ts`, `valuation-calculation.ts`; modify `domain/kcs.ts`, `feature-presets.ts`; tests `feature-rules.test.ts`, `pairwise.test.ts`, `valuation-calculation.test.ts`, `f6-feature-preset.test.ts`, existing KCS goldens.
 
-**Interfaces:** produces SPEC signatures, existing KcsInput re-export, optional ratingScale/manual comparable id/method/pairwise fields. No actions/UI/template edits. `computeKcs` unchanged internally.
+**Interfaces:** produces SPEC signatures, existing KcsInput re-export, optional ratingScale/manual comparable id/method/pairwise fields. S1 owns comparableIdentity, valuationComparables, pairwiseBasis and all calculationIssues/thresholds. No actions/UI/template edits. `computeKcs` unchanged internally.
 
 - [ ] Write RED reference arithmetic test with neutral fixture IDs using `tools/spike/2026-09-13-pairwise-reference/spike.py` numbers:
 

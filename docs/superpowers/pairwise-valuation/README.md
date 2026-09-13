@@ -2,6 +2,7 @@
 
 - [Stan, źródła założeń i dowody](STATUS.md)
 - [Audyt i konkretne decyzje D-ARCH/D-AUTO](ARCHITECTURE.md)
+- [Przegląd planu i rozstrzygnięcia](PLAN-REVIEW.md)
 - [Specyfikacja funkcjonalna i kontrakty](SPEC.md)
 - [Plan wykonania i graf zależności](../plans/2026-09-13-pairwise-valuation.md)
 - [Źródła i reprodukcja rachunku](SOURCES.md)
