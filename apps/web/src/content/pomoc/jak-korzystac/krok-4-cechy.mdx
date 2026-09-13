@@ -7,7 +7,7 @@ Tabela cech w obu metodach startuje z gotowym zestawem — Twoja praca to popraw
 
 <img
   src="/api/pomoc/krok-4-cechy.png"
-  alt="Krok 4 kreatora w metodzie KCS: tabela cech rynkowych z wagami w procentach i przyciskami oceny gorsza / przeciętna / lepsza, obok karta wskaźnika korekty ΣUi oraz podgląd wartości rynkowej."
+  alt="Krok 4 kreatora w metodzie KCS: tabela cech rynkowych z wyborem skali, wagami w procentach i przyciskami oceny gorsza / przeciętna / lepsza, przyciski „+ Inna cecha” i „+ Dodaj cechę z puli…”, obok karta wskaźnika korekty ΣUi oraz podgląd wartości rynkowej."
   style={{
     width: "100%",
     height: "auto",
@@ -68,6 +68,17 @@ Zapis cech odblokowuje krok 5 w pasku kroków.
 Każdy wiersz ma wybór skali. Zmiana z trzech na dwa poziomy usuwa środkową definicję oraz ocenę „przeciętna” przedmiotu i porównań. Wybierz ponownie brakujące oceny; definicje obu końców są wymagane. Przy trzech poziomach cechy katalogowej pusta definicja oznacza, że dany poziom nie pojawi się w operacie; cecha własna wymaga definicji wszystkich poziomów swojej skali. Powrót do trzech poziomów nie odtwarza usuniętych danych. Błędne wagi lub niepełne cechy ukrywają obie kwoty podglądu.
 
 ## Oceny i poprawki PP
+
+<img
+  src="/api/pomoc/krok-4-macierz-pp.png"
+  alt="Karta „Oceny i poprawki porównawcze (PP)” w kroku 4: wiersze cech z oceną przedmiotu i skalą, kolumny czterech wybranych porównań z datą, powierzchnią i ceną; w każdej komórce ocena porównania, sugestia mnożnika z różnicy rang, pole „Przyjęty mnożnik”, a przy odstępstwie od sugestii przycisk „Przyjmij sugestię mnożnika” i pole „Uzasadnienie odstępstwa”."
+  style={{
+    width: "100%",
+    height: "auto",
+    borderRadius: "8px",
+    border: "1px solid rgba(0,0,0,0.08)",
+  }}
+/>
 
 Dla PP pod cechami pojawia się macierz wybranych lokali. Oceny początkowo są puste. Wyjątek stanowi widoczna sugestia oceny powierzchni, którą trzeba przyjąć przyciskiem: jest dostępna tylko przy niezmienionych definicjach znanego progu i podanej powierzchni lokalu. Próg pochodzi z mediany **wybranych** porównań. Własne definicje wyłączają tę sugestię. Brakujących danych aplikacja nie zastępuje danymi przedmiotu.
 
