@@ -645,3 +645,52 @@ it("PP preset provenance uses selected areas, not the unrelated pool median", as
   expect(result).toEqual({ ok: true });
   expect(saveFeaturesMock.mock.calls[0][2].provenance.featureDefs?.source).toBe("preset");
 });
+
+it.each([0, 2, "stale"])(
+  "PP feature working save accepts incomplete selection %s with no median fallback; confirmation rejects it",
+  async (selection) => {
+    const { ppInputs } = await import("./fixtures/pairwise-inputs");
+    const { pairwiseBasis } = await import("@/domain/pairwise-state");
+    const { applyFeaturesUpdate } = await import("@/domain/valuation");
+    const inputs = ppInputs();
+    inputs.pairwise!.selectedComparableIds =
+      selection === "stale"
+        ? [...inputs.pairwise!.selectedComparableIds.slice(0, 2), "manual:missing"]
+        : inputs.pairwise!.selectedComparableIds.slice(0, Number(selection));
+    const draft = { ...draftValuation, inputs };
+    getMock.mockResolvedValue(draft);
+    saveFeaturesMock.mockImplementation(async (_id, _user, update) =>
+      applyFeaturesUpdate(draft, update),
+    );
+    const request = {
+      expectedPairwiseBasis: pairwiseBasis(inputs),
+      features: [
+        {
+          key: "powierzchnia-uzytkowa" as const,
+          name: "powierzchnia użytkowa",
+          weightPct: 100,
+          rating: "lepsza" as const,
+          definitions: {},
+        },
+      ],
+    };
+    expect(await saveFeaturesAction(VALUATION_ID, request)).toEqual({ ok: true });
+    expect(saveFeaturesMock.mock.calls[0][2].provenance.featureDefs?.source).toBe("preset");
+    expect(await saveFeaturesAction(VALUATION_ID, { ...request, confirmPairwise: true })).toEqual({
+      error: expect.any(String),
+    });
+  },
+);
+
+it("does not treat an unknown method as an incomplete PP working selection", async () => {
+  const { ppInputs } = await import("./fixtures/pairwise-inputs");
+  const inputs = ppInputs();
+  inputs.method = "unknown" as typeof inputs.method;
+  getMock.mockResolvedValue({ ...draftValuation, inputs });
+  expect(
+    await saveFeaturesAction(VALUATION_ID, {
+      features: [{ key: "lokalizacja", name: "lokalizacja", weightPct: 100, rating: "lepsza" }],
+    }),
+  ).toEqual({ error: expect.any(String) });
+  expect(saveFeaturesMock).not.toHaveBeenCalled();
+});

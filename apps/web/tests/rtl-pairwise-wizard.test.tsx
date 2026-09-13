@@ -168,3 +168,34 @@ it("area suggestions require the selected median and unchanged preset definition
   );
   expect(screen.queryByText(/powierzchnia 40 m², próg 50 m²/)).toBeNull();
 });
+
+it.each(["Mnożnik: Widok — porównanie 1", "Waga: Widok", "Nazwa cechy"])(
+  "PP Enter in %s never confirms; keyboard activation of confirmation does",
+  async (label) => {
+    const user = userEvent.setup();
+    const input = ppInputs();
+    render(<StepFeatures valuationId="v" {...input} snapshot={input} />);
+    await user.click(screen.getByLabelText(label));
+    await user.keyboard("{Enter}");
+    expect(save).not.toHaveBeenCalled();
+    screen.getByRole("button", { name: "Potwierdź oceny i poprawki i dalej" }).focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith("v", expect.objectContaining({ confirmPairwise: true })),
+    );
+  },
+);
+
+it("displays clean percentages without discarding meaningful fractional precision", () => {
+  const input = ppInputs();
+  const features = [0.07, 0.4025, 0.123456789].map((weight, i) => ({
+    ...input.features[0],
+    key: undefined,
+    name: `Cecha ${i}`,
+    weight,
+  }));
+  render(<StepFeatures valuationId="v" features={features} comparables={[]} area={50} />);
+  expect((screen.getByLabelText("Waga: Cecha 0") as HTMLInputElement).value).toBe("7");
+  expect((screen.getByLabelText("Waga: Cecha 1") as HTMLInputElement).value).toBe("40.25");
+  expect((screen.getByLabelText("Waga: Cecha 2") as HTMLInputElement).value).toBe("12.3456789");
+});

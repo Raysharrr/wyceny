@@ -54,12 +54,13 @@ export function PairwiseSelection({
           {rows.map((row, i) => {
             const id = comparableIdentity(row);
             const position = id ? selectedIds.indexOf(id) : -1;
+            const rowLabel = `Transakcja ${i + 1} w puli: ${row.date || "brak daty"}, ${Number.isFinite(row.pricePerM2) && row.pricePerM2 > 0 ? row.pricePerM2.toLocaleString("pl-PL") + " zł/m²" : "brak ceny"}`;
             return (
               <TableRow key={id ?? `missing-${i}`}>
                 <TableCell>
                   <input
                     type="checkbox"
-                    aria-label={`Porównanie ${i + 1}`}
+                    aria-label={rowLabel}
                     checked={position >= 0}
                     disabled={!id || (position < 0 && selectedIds.length >= 5)}
                     onChange={(e) =>
@@ -85,7 +86,7 @@ export function PairwiseSelection({
                         type="button"
                         size="sm"
                         variant="ghost"
-                        aria-label={`Przesuń porównanie ${i + 1} wcześniej`}
+                        aria-label={`Przesuń wcześniej — ${rowLabel}`}
                         disabled={position === 0}
                         onClick={() => {
                           const ids = [...selectedIds];

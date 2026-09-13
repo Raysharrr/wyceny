@@ -31,3 +31,17 @@ Screenshots/DOM: `/tmp/pairwise-s3-browser/ownership-pp-calculation.{png,txt}`, 
 ## Boundaries
 
 No complete PP document/prose/approval/signature E2E is claimed before S4/S5. Manual flows verified navigation to the existing offline Opisy screen; existing browser tests cover KCS preview/approval and registry flow. Live RCN, paid prose, maps and signing are not claimed here. Preserve this worktree and isolated stack for coordinator review and fixes. PR targets integration only; no merge or deployment.
+
+## First review fixes
+
+The first Opus review and independent coordinator probes found implicit PP confirmation on Enter, pristine placeholder retention after a fresh import, and an overly strict preset-median lookup blocking incomplete working saves. The initial green suite did not cover these triggers. Nine new regressions failed before fixes (`/tmp/pairwise-s3-review-red.log`).
+
+- F1: PP form submission is prevented; only the explicit confirmation button invokes confirmation. Enter/Space activation of that button remains available. KCS retains its submit behavior. Tests cover Enter in number, weight and custom-name fields and explicit button keyboard activation.
+- F2: PP pool merge drops only pristine rows with no date, area, price or source identity; a client UUID alone is not content. Partial edits, zero prices and source-bearing rows remain. Fresh-fetch UI and in-flight edit regressions pass.
+- F3: incomplete/stale PP selection uses no areas for preset provenance, matching the UI, so working feature saves remain possible. It never substitutes the whole pool. Explicit confirmation still uses the domain readiness check. Tests cover0/2/stale selection plus unknown-method rejection.
+- F4: percentage display removes floating-point noise using15 significant digits, preserving meaningful fractional percentages such as40.25 and12.3456789.
+- F5: pool checkbox/order labels identify “Transakcja N w puli” with date and price. “Porównanie N” remains the selected column number. Help explains the distinction, unconfirmed method proposals in new versions, the retained pool after PP→KCS and the need to review retained multipliers after subject-rating changes (F6/F7 approved behavior).
+
+Merged integration documentation fix `c701398` without rewriting history. F9 passes; no scanner exemptions. Review validation: full web157 files/1816 PASS/1 existing skip, typecheck/build/format/dependency checks PASS, lint0 errors/11 existing warnings. Logs `/tmp/pairwise-s3-review-{all-tests,typecheck,build,format-pass,deps,lint,f9,e2e}.log`. Existing browser suite rerun on the updated build; its exact result is in the E2E log and PR.
+
+Manual CUA on updated3018, synthetic own draft `810d61cf-900f-41bf-93a2-8603d61ad90c`: select PP before first fetch; fetch local synthetic cooperative registry with geocoder stub →60 valid imported rows, zero empty price fields; choose3 and advance immediately without deleting placeholders. Fill all assessments and a justified−0.25 override. Enter in the reason and multiplier leaves step4; read-only DB check shows selected3/pool60, confirmed=false, comparisons={}. Enter on the explicit confirmation button advances to step5, then DB confirmed=true. Calculation displays497900. Evidence `/tmp/pairwise-s3-review-browser/enter-no-confirmation.{txt,png}`, `keyboard-explicit-confirmation.{txt,png}` and `persisted-confirmation.json`. Coordinator's test draft was not modified. No live RCN or paid model call.

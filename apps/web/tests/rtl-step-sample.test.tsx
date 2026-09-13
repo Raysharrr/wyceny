@@ -3247,7 +3247,9 @@ it("requires explicit PP selection and keeps the full pool when saving three cho
   await user.click(screen.getByRole("button", { name: "Zapisz pulę" }));
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("od 3 do 5"));
   for (const i of [3, 1, 7])
-    await user.click(screen.getByRole("checkbox", { name: `Porównanie ${i}` }));
+    await user.click(
+      screen.getByRole("checkbox", { name: new RegExp(`^Transakcja ${i} w puli:`) }),
+    );
   await user.click(screen.getByRole("button", { name: /Zatwierdź próbę i dalej/ }));
   await waitFor(() =>
     expect(saveSampleAction.mock.calls.at(-1)?.[1].selectedComparableIds).toHaveLength(3),
@@ -3255,4 +3257,53 @@ it("requires explicit PP selection and keeps the full pool when saving three cho
   const payload = saveSampleAction.mock.calls.at(-1)![1];
   expect(payload.comparables).toHaveLength(12);
   expect(payload.selectedComparableIds).toEqual([2, 0, 6].map((i) => `manual:${rows[i].id}`));
+});
+
+it("fresh PP fetch replaces pristine placeholders with selectable, saveable imported rows", async () => {
+  const user = userEvent.setup();
+  const proposed = [0, 1, 2].map((i) =>
+    makeCandidate({
+      transactionId: `PP-FRESH-${i}`,
+      lokalId: `lokal-${i}`,
+      pricePerM2: 10000 + i * 100,
+    }),
+  );
+  getSampleProposal.mockResolvedValue({
+    proposal: {
+      comparables: proposed,
+      sampleMeta: makeSampleMeta(),
+      sampleSelection: makeSampleSelection({ proposed }),
+      streetView: {},
+    },
+  });
+  saveSampleAction.mockResolvedValue({
+    ok: true,
+    comparables: proposed,
+    selectedComparableIds: [],
+  });
+  render(
+    <StepSample
+      valuationId={VID}
+      address={ADDRESS}
+      area={AREA}
+      comparables={[]}
+      sampleMeta={null}
+      sampleSelection={null}
+      streetView={null}
+      propertyRight="wlasnosc_lokalu"
+      method="pp"
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "Pobierz próbę z RCN" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /Pula \(3\)/ })).toBeInTheDocument(),
+  );
+  for (let i = 1; i <= 3; i++)
+    await user.click(
+      screen.getByRole("checkbox", { name: new RegExp(`^Transakcja ${i} w puli:`) }),
+    );
+  await user.click(screen.getByRole("button", { name: "Zatwierdź próbę i dalej" }));
+  await waitFor(() => expect(saveSampleAction).toHaveBeenCalled());
+  expect(saveSampleAction.mock.calls.at(-1)![1].comparables).toHaveLength(3);
+  expect(pushMock).toHaveBeenCalledWith(`/valuations/${VID}?step=4`);
 });

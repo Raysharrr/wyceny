@@ -337,8 +337,11 @@ export async function saveFeaturesAction(
         (c) => c.area,
       );
     } catch (error) {
-      if (error instanceof ValuationCalculationError) return { error: error.issues[0].label };
-      throw error;
+      if (!(error instanceof ValuationCalculationError)) throw error;
+      // Preset provenance must not make an incomplete PP working form unsaveable.
+      // Match the UI's empty selected set; never use the unrelated whole pool.
+      if (current.inputs?.method === "pp") comparableAreas = [];
+      else return { error: error.issues[0].label };
     }
     const provenance = assignFeaturesProvenance(parsed.data.features, comparableAreas);
     const features = parsed.data.features.map((f) => ({

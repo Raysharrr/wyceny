@@ -69,7 +69,19 @@ export function mergePairwisePool(
   poolSource: PoolSource,
 ): ComparableRow[] {
   const eff = effectiveSelection(snap);
-  const rows = [...currentRows];
+  // Client UUID alone does not turn the initial empty form row into data.
+  // Preserve even invalid/partial edits (including zero), and all source-bearing rows.
+  const rows = currentRows.filter((row) =>
+    [
+      row.date,
+      row.area,
+      row.pricePerM2,
+      row.source,
+      row.transactionId,
+      row.lokalId,
+      row.coopTxId,
+    ].some((value) => value != null && String(value).trim() !== ""),
+  );
   for (const candidate of [...eff.proposed, ...eff.alternates]) {
     const found = rows.some(
       (row) =>

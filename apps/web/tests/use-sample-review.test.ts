@@ -637,3 +637,24 @@ it("PP keeps an edit made while a radius request is in flight", async () => {
   });
   expect(result.current.comparables[0].pricePerM2).toBe("12345.678");
 });
+
+it("PP drops only pristine UUID placeholders and retains partial/source-bearing rows", async () => {
+  const { mergePairwisePool } = await import("../src/app/valuations/[id]/steps/use-sample-review");
+  const blank = { id: crypto.randomUUID(), date: "", area: undefined, pricePerM2: "" };
+  const retained = [
+    { ...blank, id: crypto.randomUUID(), date: "2026-01" },
+    { ...blank, id: crypto.randomUUID(), area: "42" },
+    { ...blank, id: crypto.randomUUID(), pricePerM2: "0" },
+    { ...blank, id: crypto.randomUUID(), coopTxId: "sm-row" },
+    { ...blank, id: crypto.randomUUID(), source: "manual" as const },
+  ];
+  const proposed = [mk(), mk(), mk()];
+  const rows = mergePairwisePool(makeSel({ proposed }), [blank, ...retained], "rcn-wfs-gugik");
+  expect(rows).toHaveLength(retained.length + 3);
+  expect(rows.slice(0, retained.length)).toEqual(retained);
+  expect(
+    sampleStepSchema.safeParse({
+      comparables: mergePairwisePool(makeSel({ proposed }), [blank], "rcn-wfs-gugik"),
+    }).success,
+  ).toBe(true);
+});

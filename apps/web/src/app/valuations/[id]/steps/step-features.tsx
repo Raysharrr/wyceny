@@ -94,7 +94,7 @@ function buildDefaultFeatures(
         key: (f.key ??
           FEATURE_PRESETS.lokal.find((entry) => entry.name === f.name)?.key) as FeatureInputKey,
         name: f.name,
-        weightPct: f.weight * 100,
+        weightPct: Number((f.weight * 100).toPrecision(15)),
         rating: f.rating,
         ratingScale: f.ratingScale ?? "three",
         definitions: {
@@ -231,7 +231,11 @@ export function StepFeatures({
     });
 
   return (
-    <form onSubmit={submit(isPairwise)} noValidate className="flex flex-col gap-4">
+    <form
+      onSubmit={isPairwise ? (event) => event.preventDefault() : submit(false)}
+      noValidate
+      className="flex flex-col gap-4"
+    >
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
         <SectionCard
           className="min-w-0"
@@ -602,7 +606,8 @@ export function StepFeatures({
         }
       >
         <Button
-          type="submit"
+          type={isPairwise ? "button" : "submit"}
+          onClick={isPairwise ? submit(true) : undefined}
           disabled={isSubmitting || saved}
           className="h-auto w-fit max-w-44 whitespace-normal sm:max-w-none"
         >
