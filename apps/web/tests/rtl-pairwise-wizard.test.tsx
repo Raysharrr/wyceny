@@ -234,3 +234,25 @@ it("PP subject area rating starts unrated with the same area suggestion as compa
       .getAttribute("aria-pressed"),
   ).toBe("true");
 });
+
+it("PP reopened draft does not keep an undefined middle rating on the area scale", () => {
+  const input = ppInputs();
+  input.features = [
+    {
+      key: "powierzchnia-uzytkowa",
+      name: "powierzchnia użytkowa",
+      weight: 1,
+      rating: "przecietna",
+      definitions: {
+        lepsza: "powierzchnia użytkowa poniżej 50 m²",
+        gorsza: "powierzchnia użytkowa 50 m² i więcej",
+      },
+    },
+  ];
+  render(<StepFeatures valuationId="v" {...input} snapshot={input} />);
+  expect(
+    screen
+      .getByRole("button", { name: "powierzchnia użytkowa: przeciętna" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+});

@@ -108,17 +108,23 @@ function buildDefaultFeatures(
     : DEFAULT_FEATURES;
 
   const median = medianAreaM2(comparableAreas);
-  return mapped.map((f) =>
-    f.key === "powierzchnia-uzytkowa" && !f.definitions?.lepsza && !f.definitions?.gorsza
-      ? {
-          ...f,
-          // PP: the seeded ends have no middle definition, so the preset
-          // "przecietna" would reach Tabela 1 undefined — leave it unrated.
-          ...(isPairwise && median !== null && f.rating === "przecietna" ? { rating: "" } : {}),
-          definitions: { ...f.definitions, ...powierzchniaDefinitions(median) },
-        }
-      : f,
-  );
+  return mapped
+    .map((f) =>
+      f.key === "powierzchnia-uzytkowa" && !f.definitions?.lepsza && !f.definitions?.gorsza
+        ? { ...f, definitions: { ...f.definitions, ...powierzchniaDefinitions(median) } }
+        : f,
+    )
+    .map((f) =>
+      // PP: the area scale defines only its ends, so "przecietna" would reach
+      // Tabela 1 undefined — leave it unrated until the appraiser picks.
+      isPairwise &&
+      f.key === "powierzchnia-uzytkowa" &&
+      f.rating === "przecietna" &&
+      f.definitions?.lepsza &&
+      !f.definitions?.przecietna?.trim()
+        ? { ...f, rating: "" }
+        : f,
+    );
 }
 
 /**
