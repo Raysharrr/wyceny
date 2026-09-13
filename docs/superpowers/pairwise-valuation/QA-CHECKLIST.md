@@ -4,6 +4,8 @@ S5 bada zintegrowane S3/S4 od bazy `3261551` w gałęzi `feature/pairwise-e2e`. 
 
 Wynik lokalny: PASS na wskazanych warstwach. Końcowe E2E3×:22PASS w131,4s bez skipów i retry; stary zestaw12PASS/2 istniejące opt-in skipy. Pełny web1849PASS/1skip, shared4PASS, worker321PASS; CI GitHub i wymagane przeglądy pozostają osobnymi bramkami koordynatora.
 
+**Otwarty wynik negatywny CI (AC08):** Linux KCS łamie cyfry procentów w wąskiej kolumnie. Zachowano ścisłe asercje; koordynator przekazał poprawkę właścicielowi S4. Lokalne PASS nie zamyka tego wyniku. Szczegóły i artefakty w S5-E2E.
+
 ## Rzeczywista macierz dowodów
 
 Nazwy krótkie odnoszą się do testów w `apps/web/e2e/pairwise-valuation.spec.ts`: **full** = cztery nazwane pary method×right; **method/sample** = AC01/02/05; **features/stale** = AC03/04/06/09; **PP4/Help** = AC08/12. Pozostałe pliki są w `apps/web/tests/`, chyba że zaznaczono inaczej.

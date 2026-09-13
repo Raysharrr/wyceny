@@ -117,7 +117,20 @@ export class PairwiseWizard {
     await expect(this.page).toHaveURL(/step=6/);
   }
 
-  async prose(texts: readonly string[]) {
+  async prose(texts: readonly string[], options: { firstVisit?: boolean } = {}) {
+    if (options.firstVisit) {
+      // This verifies the keyless setup; it cannot make a keyed worker safe.
+      await expect(
+        this.page.getByRole("alert").filter({
+          hasText:
+            "Nie udało się wygenerować opisów — spróbuj ponownie albo napisz teksty ręcznie.",
+        }),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(this.page.getByTestId("prose-usage")).toHaveCount(0);
+      await expect(
+        this.page.getByRole("textbox", { name: PROSE_LABELS[0], exact: true }),
+      ).toBeEnabled();
+    }
     for (const [i, label] of PROSE_LABELS.entries())
       await this.page.getByRole("textbox", { name: label, exact: true }).fill(texts[i]);
     await this.page.getByRole("button", { name: "Zatwierdź opisy i dalej", exact: true }).click();

@@ -123,7 +123,7 @@ for (const method of ["kcs", "pp"] as const) {
         }),
       ).toHaveCount(0);
       const texts = manualTexts(tag);
-      await flow.prose(texts);
+      await flow.prose(texts, { firstVisit: true });
       await page.goto(`/valuations/${id}?step=6`);
       for (const [i, label] of PROSE_LABELS.entries())
         await expect(page.getByRole("textbox", { name: label, exact: true })).toHaveValue(texts[i]);
@@ -137,6 +137,14 @@ for (const method of ["kcs", "pp"] as const) {
       expect(previewPdf.text).toMatch(
         right === "spoldzielcze" ? /spółdzielczego własnościowego prawa/ : /prawa własności/,
       );
+      const cover = previewPdf.text.split("Spis treści")[0];
+      expect(
+        cover.includes(
+          right === "spoldzielcze"
+            ? "prawa własności nieruchomości lokalowej"
+            : "spółdzielczego własnościowego prawa",
+        ),
+      ).toBe(false);
       if (method === "pp") {
         for (const title of [
           "Charakterystyka wybranych",
@@ -152,6 +160,12 @@ for (const method of ["kcs", "pp"] as const) {
         expect(previewPdf.text).toContain("494 200");
         expect(previewPdf.text).toContain("40,25");
         expect(previewPdf.text).toContain("59,75");
+        expect(
+          previewPdf.text.includes(
+            "Kreska w kolumnie środkowej oznacza brak oceny pośredniej w skali dwupoziomowej.",
+          ),
+        ).toBe(true);
+        expect(/SUMA 100 [\d,]+ — [\d,]+ [\d,]+/.test(previewPdf.text)).toBe(true);
       }
       await page.getByRole("button", { name: "Zatwierdź i generuj operat", exact: true }).click();
       await expect(page.getByTestId("valuation-status")).toHaveText("Zatwierdzony", {
@@ -169,6 +183,8 @@ for (const method of ["kcs", "pp"] as const) {
       });
       const signedUrl = (await issued.getAttribute("src"))!;
       const signed = await pdf(page, signedUrl, info, "signed");
+      expect(signedUrl).not.toBe(approvedUrl);
+      expect(signed.sha256).not.toBe(approved.sha256);
       const signedDocx = await docx(page, info, "signed");
       expect(signed.text).toBe(approved.text);
       for (const text of texts)
@@ -313,6 +329,7 @@ test("AC03/04/06/09: custom validation, scale cleanup, overrides, Enter, stale f
   await page.getByRole("spinbutton", { name: `Waga: ${CUSTOM}`, exact: true }).fill("70");
   await expect(page.getByTestId("footnav-kcs-mid")).toHaveText("—");
   await confirm.click();
+  await expect(page.getByText("Suma wag musi wynosić 100%.", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/step=4/);
   await page.getByRole("spinbutton", { name: `Waga: ${CUSTOM}`, exact: true }).fill("59.75");
   // A three-level middle rating must disappear from both subject and cells.
@@ -334,9 +351,18 @@ test("AC03/04/06/09: custom validation, scale cleanup, overrides, Enter, stale f
       .getByLabel(`Ocena: ${CUSTOM} — porównanie 1`, { exact: true })
       .getByRole("option", { name: "przeciętna", exact: true }),
   ).toHaveCount(0);
-  await confirm.click();
-  await expect(page).toHaveURL(/step=4/);
+  for (const rating of ["gorsza", "lepsza"])
+    await expect(
+      page.getByRole("button", { name: `${CUSTOM}: ${rating}`, exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
   await page.getByRole("button", { name: `${CUSTOM}: lepsza`, exact: true }).click();
+  await confirm.click();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Uzupełnij ocenę transakcji zgodnie ze skalą cechy." }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/step=4/);
   await flow.assess(3);
   const multiplier = page.getByLabel(`Mnożnik: ${CUSTOM} — porównanie 2`, { exact: true });
   await multiplier.fill("-1.25");
@@ -347,13 +373,13 @@ test("AC03/04/06/09: custom validation, scale cleanup, overrides, Enter, stale f
   await multiplier.press("Enter");
   await customName.press("Enter");
   await expect(page).toHaveURL(/step=4/);
-  expect((await saved(id)).inputs.pairwise.confirmedBasis).toBeUndefined();
   // Working save remounts values and token together; wait for its navigation.
   await Promise.all([
-    page.waitForEvent("framenavigated"),
+    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
     page.getByRole("button", { name: "Zapisz oceny robocze", exact: true }).click(),
   ]);
   await expect(multiplier).toHaveValue("-1.25");
+  expect((await saved(id)).inputs.pairwise.confirmedBasis).toBeUndefined();
   const stale = await context.newPage();
   await stale.goto(`/valuations/${id}?step=4`);
   await expect(
@@ -361,9 +387,10 @@ test("AC03/04/06/09: custom validation, scale cleanup, overrides, Enter, stale f
   ).toHaveValue("Syntetyczny wyjątek — sprawdzona korekta.");
   await reason.fill("Syntetyczny wyjątek po ponownej kontroli.");
   await Promise.all([
-    page.waitForEvent("framenavigated"),
+    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
     page.getByRole("button", { name: "Zapisz oceny robocze", exact: true }).click(),
   ]);
+  await expect(reason).toHaveValue("Syntetyczny wyjątek po ponownej kontroli.");
   await stale
     .getByRole("button", { name: "Potwierdź oceny i poprawki i dalej", exact: true })
     .click();
@@ -378,7 +405,7 @@ test("AC03/04/06/09: custom validation, scale cleanup, overrides, Enter, stale f
   await expect(page).toHaveURL(/step=5/);
   await flow.calculation();
   const texts = manualTexts("staleness");
-  await flow.prose(texts);
+  await flow.prose(texts, { firstVisit: true });
   const before = await saved(id);
   await page.goto(`/valuations/${id}?step=4`);
   // Same rounded WR, different correction: only dependent prose becomes stale.
@@ -427,7 +454,7 @@ test("AC08/12: PP4 real preview and contextual Help match method and feature con
   await flow.assess(4);
   await flow.features("pp");
   await flow.calculation();
-  await flow.prose(manualTexts("pp-four"));
+  await flow.prose(manualTexts("pp-four"), { firstVisit: true });
   const preview = page.getByTitle("Podgląd operatu (PDF)");
   await expect(preview).toBeVisible({ timeout: 60_000 });
   const result = await pdf(page, (await preview.getAttribute("src"))!, info, "pp-four-preview");

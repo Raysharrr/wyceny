@@ -31,7 +31,7 @@ Inny port niż 3000: `E2E_PORT=3006` (i `BETTER_AUTH_URL` na ten sam port).
 
 `pairwise-valuation.spec.ts` ma siedem niezależnych testów (osiem z logowaniem): cztery pełne ścieżki KCS/PP × własność/spółdzielcze, dwa przepływy negatywne i PP4 z Pomocą. Konto: syntetyczny `zenon@wyceny.test`; każda wycena ma własny losowy sufiks. Profil dostaje tę samą syntetyczną falę `tests/fixtures/signature-synthetic.png`. Test nie używa podpisu człowieka. Odczyty SQL dotyczą wyłącznie utworzonych identyfikatorów i potwierdzają zapis, nie zastępują czynności w UI.
 
-**Wymagany drugi build z `NEXT_PUBLIC_PROSE=on`.** `pnpm e2e` zachowuje dotychczasowe smoke/spoldzielcze z Opisami OFF. CI uruchamia je najpierw, następnie buduje aktywne edytory i wykonuje `pnpm e2e:pairwise`. Worker nie ma klucza LLM: pierwsza generacja uczciwie odmawia, a test wpisuje i potwierdza sześć ręcznych tekstów. Konwersja DOCX→PDF i kwota słownie pochodzą z prawdziwego workera; brak przechwytywania odpowiedzi lub testowego trybu produkcji.
+**Wymagany drugi build z `NEXT_PUBLIC_PROSE=on`.** `pnpm e2e` zachowuje dotychczasowe smoke/spoldzielcze z Opisami OFF. CI uruchamia je najpierw, następnie buduje aktywne edytory i wykonuje `pnpm e2e:pairwise`. Worker nie ma klucza LLM: test czeka na konkretną odmowę pierwszej generacji i brak naliczonego użycia, a następnie wpisuje i potwierdza sześć ręcznych tekstów. Samo oczekiwanie na błąd nie zapobiega płatnemu wywołaniu źle skonfigurowanego workera — brak klucza jest obowiązkowym warunkiem uruchomienia. Konwersja DOCX→PDF i kwota słownie pochodzą z prawdziwego workera; brak przechwytywania odpowiedzi lub testowego trybu produkcji.
 
 ```bash
 # Zachowaj izolowane DATABASE_URL, BETTER_AUTH_URL i WORKER_URL oraz sekrety
