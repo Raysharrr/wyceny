@@ -256,3 +256,24 @@ it("PP reopened draft does not keep an undefined middle rating on the area scale
       .getAttribute("aria-pressed"),
   ).toBe("false");
 });
+
+it("PP unused (zero-weight) area row with no rating does not block the save", async () => {
+  const user = userEvent.setup();
+  const input = ppInputs();
+  input.features = [
+    ...input.features,
+    {
+      key: "powierzchnia-uzytkowa",
+      name: "powierzchnia użytkowa",
+      weight: 0,
+      rating: "przecietna",
+      definitions: {
+        lepsza: "powierzchnia użytkowa poniżej 50 m²",
+        gorsza: "powierzchnia użytkowa 50 m² i więcej",
+      },
+    },
+  ];
+  render(<StepFeatures valuationId="v" {...input} snapshot={input} />);
+  await user.click(screen.getByRole("button", { name: /Potwierdź oceny i poprawki/ }));
+  await waitFor(() => expect(save).toHaveBeenCalled());
+});

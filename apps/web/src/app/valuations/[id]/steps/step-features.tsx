@@ -170,13 +170,30 @@ export function StepFeatures({
   const comparableAreas = selected.map((c) => c.area);
   const areaMedian = medianAreaM2(comparableAreas);
 
+  const featuresResolver = zodResolver(featuresStepSchema) as unknown as Resolver<
+    FormInput,
+    unknown,
+    FormOutput
+  >;
   const {
     control,
     handleSubmit,
     setValue,
     formState: { isSubmitting, errors },
   } = useForm<FormInput, unknown, FormOutput>({
-    resolver: zodResolver(featuresStepSchema) as Resolver<FormInput, unknown, FormOutput>,
+    // A zero-weight row is outside the result and the operat, so an unrated
+    // one (the PP area row starts unrated) must not block the save.
+    resolver: (values, context, options) =>
+      featuresResolver(
+        {
+          ...values,
+          features: values.features.map((f) =>
+            f.rating === "" && Number(f.weightPct) === 0 ? { ...f, rating: "przecietna" } : f,
+          ),
+        },
+        context,
+        options,
+      ),
     defaultValues: {
       features: buildDefaultFeatures(loaded.features, comparableAreas, isPairwise),
     },

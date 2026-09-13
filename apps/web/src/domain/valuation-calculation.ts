@@ -91,6 +91,7 @@ export function calculationIssues(input: ValuationInput): CalculationIssue[] {
       // in Tabela 1. The wizard clears it, this refuses drafts saved earlier.
       if (
         feature.key === "powierzchnia-uzytkowa" &&
+        feature.weight > 0 &&
         feature.rating === "przecietna" &&
         feature.definitions?.lepsza &&
         !feature.definitions.przecietna?.trim()

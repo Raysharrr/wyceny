@@ -143,6 +143,15 @@ describe("shared dispatcher and readiness (AC01/AC02/AC10)", () => {
     expect(calculationIssues(input)).toContainEqual(issue);
     input.features[0].rating = "lepsza";
     expect(calculationIssues(input)).not.toContainEqual(issue);
+    // Zero-weight rows are outside the result and Tabela 1.
+    const unused = draft();
+    unused.features = [
+      unused.features[0],
+      { ...input.features[0], rating: "przecietna", weight: 0 },
+    ];
+    expect(calculationIssues(unused)).not.toContainEqual(
+      expect.objectContaining({ path: "features.1.rating" }),
+    );
     expect(
       calculationIssues({
         ...draft("kcs"),
