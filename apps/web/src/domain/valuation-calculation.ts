@@ -16,6 +16,12 @@ export type ValuationResult = ({ method: "kcs" } & KcsResult) | ({ method: "pp" 
 
 function kcsNumericIssues(input: ValuationInput): CalculationIssue[] {
   const issues: CalculationIssue[] = [];
+  if (input.comparables.length === 0) {
+    issues.push({
+      path: "comparables",
+      label: "Obliczenie KCS wymaga co najmniej jednej transakcji.",
+    });
+  }
   if (!Number.isFinite(input.area) || input.area <= 0) {
     issues.push({ path: "area", label: "Powierzchnia musi być skończona i dodatnia." });
   }

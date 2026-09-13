@@ -12,7 +12,11 @@ import {
   pairwiseBasis,
   valuationComparables,
 } from "../src/domain/pairwise-state";
-import type { Comparable, ValuationInput } from "../src/domain/valuation-input";
+import {
+  ValuationCalculationError,
+  type Comparable,
+  type ValuationInput,
+} from "../src/domain/valuation-input";
 
 function draft(method: "kcs" | "pp" = "pp"): ValuationInput {
   const ids = ["a", "b", "c"];
@@ -71,6 +75,20 @@ describe("shared dispatcher and readiness (AC01/AC02/AC10)", () => {
       expect.objectContaining({ path: "comparables" }),
     );
     expect(computeValuation(input).wr).toBeGreaterThan(0);
+  });
+  it("returns a typed empty-sample error for explicit KCS, preserving the legacy error", () => {
+    const input = { ...draft("kcs"), comparables: [] };
+    expect(() => computeValuation(input)).toThrow(ValuationCalculationError);
+    try {
+      computeValuation(input);
+    } catch (error) {
+      expect(error).toMatchObject({ issues: [expect.objectContaining({ path: "comparables" })] });
+    }
+    delete input.method;
+    const legacyMessage = "KCS engine: at least one comparable transaction is required";
+    expect(() => computeKcs(input)).toThrow(legacyMessage);
+    expect(() => computeValuation(input)).toThrow(legacyMessage);
+    expect(() => computeValuation(input)).not.toThrow(ValuationCalculationError);
   });
   it.each([0, 2, 6])(
     "rejects PP selection of %s instead of choosing from the pool automatically",
