@@ -316,6 +316,19 @@ jobs:
       - name: Smoke E2E
         working-directory: apps/web
         run: pnpm e2e
+      # Keep the historical prose-off smoke intact, then build the real editors.
+      # No API key is present: the real worker honestly refuses generation and
+      # the appraiser writes/accepts six synthetic sections in the browser.
+      - name: Build web with active Opisy for pairwise acceptance
+        env:
+          NEXT_PUBLIC_PROSE: "on"
+        run: pnpm turbo build --filter=web --env-mode=loose --force
+      - name: Pairwise full lifecycle E2E (both methods and rights)
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_PROSE: "on"
+          E2E_PAIRWISE: "1"
+        run: pnpm e2e:pairwise
       - name: Upload Playwright artifacts (traces/videos/screenshots) on failure
         if: failure()
         uses: actions/upload-artifact@v4

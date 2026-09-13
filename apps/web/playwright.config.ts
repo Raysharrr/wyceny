@@ -48,6 +48,13 @@ export default defineConfig({
       dependencies: ["setup"],
       use: { storageState: STORAGE_STATE },
     },
+    // AC01–AC12: separate active-Opisy build; never selected by staging.
+    {
+      name: "pairwise",
+      testMatch: /pairwise-valuation\.spec\.ts/,
+      dependencies: ["setup"],
+      use: { storageState: STORAGE_STATE, trace: "on" },
+    },
     // Manual, never in CI: `pnpm e2e:staging` — only tests tagged @staging-safe
     // (no approval, no large uploads, synthetic data with a per-run suffix).
     {
@@ -79,7 +86,7 @@ export default defineConfig({
           NEXT_PUBLIC_SUBJECT_AUTOFETCH: "off",
           NEXT_PUBLIC_KW_UPLOAD: "off",
           NEXT_PUBLIC_PHOTO_UPLOAD: "off",
-          NEXT_PUBLIC_PROSE: "off",
+          NEXT_PUBLIC_PROSE: process.env.E2E_PAIRWISE === "1" ? "on" : "off",
           // Slice 3: keeps Street View thumbnails/iframe off so the smoke stays network-free and key-free.
           NEXT_PUBLIC_STREET_VIEW: "off",
           // Runtime (not NEXT_PUBLIC_), read by the approve action via `_deps.ts`.
