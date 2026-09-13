@@ -14,11 +14,11 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 - [x] 3 Spike arytmetyki i kolumn DOCX — PASS, wyniki w tools/spike/2026-09-13-pairwise-reference. Osobny spike kolumn3/4/5: PASS, istniejący PizZip/Docxtemplater + selektywna zmiana oznaczonych tabel OOXML, PDF lokalnie skonwertowane i obejrzane; [raport](../../../tools/spike/2026-09-13-pairwise-columns/RAPORT.md). Reguła sugestii pozostaje decyzją, nie techniczną niewiadomą do ukrycia w kodzie.
 - [x] 4 Architektura — audyt i refaktor zatwierdzone; D-ARCH/D-AUTO zaakceptowane.
 - [x] 5 Spec/plan/HANDOFF — zaakceptowane do realizacji; sygnatury S1 zostaną zamrożone przed S2.
-- [ ] 6 Sesje — S1–S5 i poprawka Linux PDF w integracji; pełny retest Linux/CI i koordynatora PASS, trwa przegląd zbiorczy.
+- [ ] 6 Sesje — S1–S5 i poprawka Linux PDF w integracji; testy i przegląd zbiorczy PASS, scalenie main/staging czeka na decyzję.
 - [ ] 7 Weryfikacja — komplet lokalnie/integration i finalny PR; końcowa zgoda przed stagingiem.
 - [ ] 8 Domknięcie — filing zgodny z rzeczywistym wynikiem; brak deklaracji wdrożenia.
 
-## Tabela założeń i źródeł
+## Założenia i źródła z początku prac — baseline9b2903c
 
 Źródła wiki odnoszą się do repo `/Users/michalczekala/Development/wyceny`.
 
@@ -106,3 +106,7 @@ Linuxowy finding S4 zamknięty: PR46, head28244ee, scoped Opus/high PASS; koordy
 Wszystkie części są w integracji: PR45→8b87be8 po końcowych dwóch przeglądach testów, Linux3×22PASS/64,7s i pełnym CI (kod3m54, browser4m00). Końcowy CI:1850 web/4 shared/320 worker + jawne istniejące skipy;321 worker lokalnie z realnym LibreOffice. S5-Linux i wcześniejszy rzeczywisty odbiór koordynatora opisują te same kryteria. USER-CHECKLIST jest przygotowana. Koordynator odświeża własny stack, uruchamia trwały zestaw na całości i wykonuje wymagany przegląd zbiorczy przed finalnym PR. Main9b2903c i staging nadal bez zmian; finalne scalenie wymaga decyzji użytkownika.
 
 Końcowy trwały E2E koordynatora na zrestartowanym stacku3015/8015/5544, head8b87be8:8PASS/1,2min, aktywne ręczne Opisy i rzeczywisty PDF/podpis. Origin/main9b2903c już zawarty, bez konfliktu/migracji. Całość gotowa do przeglądu zbiorczego i jednego finalnego PR; bramka main/staging nadal oczekuje decyzji użytkownika.
+
+## Gotowe do końcowej decyzji
+
+Przegląd zbiorczy Opus/high całego diffu main…ec7ff7e: PASS, bez blokerów. Trzy drobne odroczenia i granice dowodów w FINAL-REVIEW. Jeden finalny PR47 integration→main jest przygotowany; aktualne CI tego PR pozostaje bramką scalenia. Dalsza decyzja użytkownika dotyczy scalenia do main i automatycznego wdrożenia na staging. Do tej decyzji aplikacja pozostaje dostępna lokalnie na3015, main/staging bez zmian. Nie zamykamy jeszcze odbioru stagingowego ani końcowego filingu wiki.
