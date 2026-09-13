@@ -65,7 +65,6 @@ describe("S4 actual document contract", () => {
       expect(textOf(xml).replace(/\u00a0/g, " ")).toContain("740 900");
       expect(xml.match(/w:tblCaption w:val="pp-/g) ?? []).toHaveLength(4);
       expect(textOf(xml)).not.toContain("undefined");
-      expect(textOf(xml)).not.toContain("Metoda korygowania ceny średniej –");
     },
   );
 });
@@ -130,7 +129,6 @@ describe("PP columns and modern KCS scales", () => {
     expect(text).toContain("brak oceny pośredniej");
     expect(text).not.toContain("STALE MIDDLE");
     expect(text).not.toContain("Tabela 3. Obliczenie skorygowanej");
-    expect(text).not.toContain("Metoda porównywania parami –");
   });
 });
 
@@ -160,7 +158,7 @@ it("does not print a retained exception reason after returning to the current su
 });
 
 it.each(["kcs", "pp"] as const)(
-  "preserves the complete frozen common section 10 introduction/list and selected %s definition",
+  "preserves the frozen section 10 introduction/list and all three method definitions (%s), as in every client operat",
   (method) => {
     const legacyXml = new PizZip(fs.readFileSync("templates/operat-szablon-legacy-kcs.docx"))
       .file("word/document.xml")!
@@ -187,12 +185,12 @@ it.each(["kcs", "pp"] as const)(
     });
     const rendered = paragraphs(xmlOf(renderOperatDocx(model))).join("\n");
     for (const paragraph of common) expect(rendered).toContain(paragraph);
-    const selected = original.find((p) =>
-      p.startsWith(
-        method === "pp" ? "Metoda porównywania parami" : "Metoda korygowania ceny średniej",
-      ),
-    )!;
-    expect(rendered).toContain(selected);
+    for (const name of [
+      "Metoda porównywania parami",
+      "Metoda korygowania ceny średniej",
+      "Metoda analizy statystycznej rynku",
+    ])
+      expect(rendered).toContain(original.find((p) => p.startsWith(name))!);
     expect(rendered).not.toContain(
       method === "pp"
         ? "Procedura metody korygowania ceny średniej"

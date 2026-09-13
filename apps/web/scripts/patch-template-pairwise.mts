@@ -92,13 +92,13 @@ let output = "";
 for (let i = 0; i < blocks.length; i++) {
   if (i === 248) {
     output +=
-      blocks.slice(248, 253).join("") +
+      // Common list AND all three definitions, as in every client operat
+      // (16 of 16, E2E 13.09); only the choice sentence and procedure vary.
+      blocks.slice(248, 257).join("") +
       p("{#metoda_kcs}") +
-      blocks[254] +
       blocks.slice(257, 276).join("") +
       p("{/metoda_kcs}") +
       p("{#metoda_pp}") +
-      blocks[253] +
       p(
         "Dla określenia wartości rynkowej {przedmiot_d} zastosowano podejście porównawcze, metodę porównywania parami.",
       ) +
