@@ -43,6 +43,19 @@ const loop = (name: string, fixed: string[]) => [
   ...fixed.slice(1),
   ...cols.map((n, i) => `{c${n}}${i === 4 ? `{/` + name + `}` : ""}`),
 ];
+const PP_PROCEDURE = [
+  "Utworzenie zbioru nieruchomości podobnych, o znanych cenach transakcyjnych i cechach, stanowiącego podstawę wyceny,",
+  "Aktualizacja cen transakcyjnych na datę wyceny,",
+  "Ustalenie cech rynkowych wpływających w sposób zasadniczy na zróżnicowanie cen na rynku nieruchomości,",
+  "Ocena wielkości wpływu cech rynkowych na zróżnicowanie cen transakcyjnych,",
+  "Ustalenie zakresu skali dla każdej z przyjętych cech rynkowych,",
+  "Wybór do porównań z utworzonego zbioru nieruchomości, co najmniej trzech nieruchomości najbardziej podobnych pod względem cech rynkowych do nieruchomości stanowiącej przedmiot wyceny, z ich niezbędną charakterystyką,",
+  "Charakterystyka wycenianej nieruchomości z przedstawieniem jej ocen w odniesieniu do przyjętej skali cech rynkowych,",
+  "Przeprowadzenie porównań nieruchomości wycenianej kolejno z nieruchomościami wybranymi do wyceny i określenie wielkości poprawek wynikających z różnicy ocen nieruchomości wycenianej i nieruchomości wybranych do porównań,",
+  "Obliczenie skorygowanej ceny transakcyjnej każdej nieruchomości przyjętej do porównań przy użyciu określonych poprawek,",
+  "Obliczenie wartości jednostkowej wycenianej nieruchomości jako średniej arytmetycznej z cen transakcyjnych skorygowanych, uzyskanych z porównań w poszczególnych parach, lub średniej ważonej, jeśli wiarygodność otrzymanych wyników jest zróżnicowana,",
+  "Określenie wartości wycenianej nieruchomości na podstawie iloczynu wartości jednostkowej i liczby jednostek porównawczych (np. m2 powierzchni gruntu, budynku czy lokalu).",
+];
 const pp = [
   p("Tabela 1. Charakterystyka wybranych nieruchomości lokalowych o funkcji mieszkalnej", true),
   table(
@@ -95,16 +108,22 @@ for (let i = 0; i < blocks.length; i++) {
       // Common list AND all three definitions, as in every client operat
       // (16 of 16, E2E 13.09); only the choice sentence and procedure vary.
       blocks.slice(248, 257).join("") +
+      // The choice sentence is common; only the method name varies.
+      blocks[257].replace(">korygowania ceny średniej<", ">{metoda_nazwa}<") +
+      blocks[258] +
       p("{#metoda_kcs}") +
-      blocks.slice(257, 276).join("") +
+      blocks.slice(259, 276).join("") +
       p("{/metoda_kcs}") +
       p("{#metoda_pp}") +
-      p(
-        "Dla określenia wartości rynkowej {przedmiot_d} zastosowano podejście porównawcze, metodę porównywania parami.",
+      // Client PP operats: the PKZW Nota Interpretacyjna nr 1 procedure,
+      // same heading and list formatting as the KCS one.
+      blocks[259].replace(
+        ">Procedura metody korygowania ceny średniej<",
+        ">Procedura metody porównywania parami<",
       ) +
-      p(
-        "Liczba transakcji przyjętych do porównań: {pp_count}. Oceniono cechy przedmiotu i każdego porównania na przyjętych skalach. Poprawki kwotowe wynikają z rozstępu cen, wag cech i mnożników przyjętych przez rzeczoznawcę. Dodatnia poprawka oznacza przewagę przedmiotu nad porównaniem. Cenę każdego porównania skorygowano o sumę poprawek; średnią cen skorygowanych pomnożono przez powierzchnię przedmiotu.",
-      ) +
+      PP_PROCEDURE.map((item) =>
+        blocks[260].replace(/<w:t>[^<]*<\/w:t>/, `<w:t>${item}</w:t>`),
+      ).join("") +
       p("{/metoda_pp}");
     i = 275;
     continue;

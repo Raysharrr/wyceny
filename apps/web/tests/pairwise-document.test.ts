@@ -191,10 +191,19 @@ it.each(["kcs", "pp"] as const)(
       "Metoda analizy statystycznej rynku",
     ])
       expect(rendered).toContain(original.find((p) => p.startsWith(name))!);
+    // Choice sentence and procedure follow the client operats for the used method.
+    expect(rendered).toContain(
+      `zastosowano podejście porównawcze, metodę ${method === "pp" ? "porównywania parami" : "korygowania ceny średniej"}.`,
+    );
+    expect(rendered).toContain(
+      method === "pp"
+        ? "Wybór do porównań z utworzonego zbioru nieruchomości, co najmniej trzech nieruchomości"
+        : "Procedura metody korygowania ceny średniej",
+    );
     expect(rendered).not.toContain(
       method === "pp"
         ? "Procedura metody korygowania ceny średniej"
-        : "Liczba transakcji przyjętych do porównań:",
+        : "Procedura metody porównywania parami",
     );
   },
 );
