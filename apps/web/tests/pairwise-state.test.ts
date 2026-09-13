@@ -214,3 +214,34 @@ it("same-method legacy confirmation preserves prose fingerprints and refuses imm
       /not a draft/,
     );
 });
+
+import { approvalGate } from "../src/domain/provenance";
+it("approval checks provenance only for selected PP comparables and refuses a changed confirmed basis", () => {
+  const inputs = ppInputs();
+  inputs.provenance = {
+    address: { source: "rzeczoznawca", status: "confirmed" },
+    area: { source: "rzeczoznawca", status: "confirmed" },
+    ...provenance,
+  };
+  inputs.comparables.push({
+    id: "00000000-0000-4000-8000-000000000099",
+    source: "manual",
+    status: "to_verify",
+    pricePerM2: 12000,
+  });
+  inputs.pairwise!.confirmedBasis = pairwiseBasis(inputs);
+  expect(approvalGate(inputs)).toEqual({ ok: true });
+  inputs.comparables[0].status = "to_verify";
+  expect(approvalGate(inputs)).toMatchObject({
+    ok: false,
+    blockers: expect.arrayContaining([expect.objectContaining({ path: "comparables[0]" })]),
+  });
+  inputs.comparables[0].status = "confirmed";
+  inputs.comparables[0].pricePerM2 += 1;
+  expect(approvalGate(inputs)).toMatchObject({
+    ok: false,
+    blockers: expect.arrayContaining([
+      expect.objectContaining({ path: "pairwise.confirmedBasis" }),
+    ]),
+  });
+});
