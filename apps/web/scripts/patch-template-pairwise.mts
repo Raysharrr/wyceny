@@ -113,8 +113,23 @@ for (let i = 0; i < blocks.length; i++) {
   if (i === 395) output += p("{/metoda_kcs}") + p("{#metoda_pp}") + pp + p("{/metoda_pp}");
   let block = blocks[i];
   if (i === 285 || i === 298) block = block.replace(/korygowania ceny średniej/g, "{metoda_nazwa}");
-  if (i === 356)
+  if (i === 356) {
     block = block.replace(">100<", ">{suma_wag}<").replace(">1,000<", ">{suma_ui_sr}<");
+    // The original 716-twip weight column splits 40,25% in Linux LibreOffice.
+    // Keep the 8961-twip table and feature/subject columns; take space from
+    // the three short coefficient columns. Update both grid and cell widths,
+    // including the four-column merged heading (5906 -> 5422).
+    const widths: Record<string, number> = {
+      "716": 1200,
+      "1489": 1300,
+      "1347": 1200,
+      "1358": 1210,
+      "5906": 5422,
+    };
+    block = block.replace(/(<w:(?:gridCol|tcW) w:w=")(\d+)(")/g, (tag, before, width, after) =>
+      widths[width] ? `${before}${widths[width]}${after}` : tag,
+    );
+  }
   output += block;
   if (i === 357)
     output += p(
