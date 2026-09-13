@@ -14,7 +14,7 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 - [x] 3 Spike arytmetyki i kolumn DOCX — PASS, wyniki w tools/spike/2026-09-13-pairwise-reference. Osobny spike kolumn3/4/5: PASS, istniejący PizZip/Docxtemplater + selektywna zmiana oznaczonych tabel OOXML, PDF lokalnie skonwertowane i obejrzane; [raport](../../../tools/spike/2026-09-13-pairwise-columns/RAPORT.md). Reguła sugestii pozostaje decyzją, nie techniczną niewiadomą do ukrycia w kodzie.
 - [x] 4 Architektura — audyt i refaktor zatwierdzone; D-ARCH/D-AUTO zaakceptowane.
 - [x] 5 Spec/plan/HANDOFF — zaakceptowane do realizacji; sygnatury S1 zostaną zamrożone przed S2.
-- [ ] 6 Sesje — S1 scalony po review/CI/lokalnym UI; S2 uruchomiony; następnie [S3||S4]→S5.
+- [ ] 6 Sesje — S1 i S2 scalone po review/CI/lokalnym UI; gotowe [S3||S4]→S5.
 - [ ] 7 Weryfikacja — komplet lokalnie/integration i finalny PR; końcowa zgoda przed stagingiem.
 - [ ] 8 Domknięcie — filing zgodny z rzeczywistym wynikiem; brak deklaracji wdrożenia.
 
@@ -56,7 +56,7 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 | pairwise-s1-contracts | D-ARCH/D-AUTO             | feature/pairwise-contracts |
 | pairwise-s2-state     | S1 merge                  | feature/pairwise-state     |
 | pairwise-s3-wizard    | S2 merge                  | feature/pairwise-wizard    |
-| pairwise-s4-operat    | S2 merge, równolegle z S3 | feature/pairwise-operat    |
+| pairwise-s4-operat    | S2 merge, równolegle z S3 | feature/pairwise-report    |
 | pairwise-s5-e2e       | S3 i S4 merge             | feature/pairwise-e2e       |
 
 Wszystkie PR do integration/pairwise-valuation. Koordynator sam tworzy zadania i worktree oraz przeprowadza review/fixes/merge. Zarejestrowany projekt Codex „Wyceny” wskazuje wiki; każde zadanie musi jawnie pracować w app-worktree, bez mylenia tego z checkoutem wiki. Brak osobno zarejestrowanego projektu aplikacji nie wymaga ręcznego otwierania sesji przez użytkownika.
@@ -76,3 +76,9 @@ S1 scalony PR41 jako `a983a0b`, po2 przeglądach Opus/high, pełnym CI i lokalne
 Kontrakty i pozostałe HANDOFF-y uaktualnione w91a718d. Minimalny wybór/potwierdzenie metody przesunięto do S2 razem z serwerową bramką, aby istniejący KCS pozostał przechodni w CI/UI. S2 uruchomiono jako `pairwise-s2-state` (`01a099bf-df38-7d01-86d1-154df3cabcc4`), worktree `/Users/michalczekala/Development/wyceny-app-worktrees/pairwise-state`, branch `feature/pairwise-state`, base91a718d. Sesja otrzymała `thinking=medium` zgodnie z nowym uzgodnieniem użytkownika; model bez nadpisania. To samo ustawienie dla kolejnych kodujących S3/S4. Koordynator, reviewerzy Opus/high i tester S5 bez obniżenia.
 
 Wymóg użytkownika dotyczący bieżących testów w przeglądarce jest jawny w handoffach: zmieniany przepływ i KCS obu praw na najwyższej dostępnej warstwie, exact commit/środowisko/dowody, bez deklarowania pominiętych scenariuszy. Main/staging nadal bez zmian. Plan godzin pozostaje szacunkiem, nie rozliczeniem; rzeczywiste godziny klienta nie zostały zgłoszone ani wymyślone.
+
+## Po S2 —2026-09-13
+
+PR42 scalony jako c7bb94a po poprawkach, drugim Opus/high, pełnym CI i niezależnym przepływie Zenona KCS→PP→KCS. Dowody [S2-REVIEW](S2-REVIEW.md), kontrakty [S2-STATE](S2-STATE.md). S3 i S4 mogą ruszyć równolegle; wyłącznie integracja, main nadal9b2903c. Godziny pozostają szacunkiem, bez wymyślonego rozliczenia.
+
+Korekta tożsamości zlecona przez użytkownika: repo-local author/committer Michał Czekała <michal@make-simple.it>; gh Raysharrr; origin HTTPS korzysta z gh credential helper zamiast SSH logującego Raysharr. Podpis SSH pozostaje włączony, skonfigurowany klucz jest publicznie zarejestrowany na Raysharrr. API adresów konta niedostępne przez brak zakresu tokenu; pierwszą publikację sprawdzamy przez GitHub author/verification. Istniejące11 commitów integracji78e31a2…c7bb94a mają błędny Gmail; squashe S1/S2 są kryptograficznie zweryfikowane, co nie poprawia autora. Historia opublikowana pozostaje bez zmian, bez force-push.

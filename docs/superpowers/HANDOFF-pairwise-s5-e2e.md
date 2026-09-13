@@ -42,3 +42,7 @@ After a meaningful integration, test the changed flow and existing KCS at the hi
 ## Review and finish
 
 Provide exact tests/results and known limits, changed contract signatures, Help status and artifact paths. Commit/push with hooks intact. Open PR ONLY to `integration/pairwise-valuation`; never merge into main, deploy, force-push or delete other worktrees. Do not merge your own PR until coordinator review gates finish. Keep worktree for fixes and report via `send_message_to_thread` to coordinator with `DONE: pairwise-s5-e2e`, PR URL, branch, worktree and test evidence. If blocked, state concrete cause and continue independent authorized work. Never assume missing user answers mean approval.
+
+## Frozen S2 and Git identity
+
+Read `docs/superpowers/pairwise-valuation/S2-STATE.md` and `S2-REVIEW.md`: S2 merged as c7bb94a. User requires project-local Git author/committer `Michał Czekała <michal@make-simple.it>` and active gh account `Raysharrr`. Origin uses HTTPS and the local gh credential helper; SSH previously authenticated the wrong account. Verify effective config and absence of author/committer environment overrides before every commit; keep SSH signing enabled. Do not change global config or rewrite published history. Confirm GitHub attribution and verification after the first push. Report a mismatch and hold further publication, continuing independent coding/tests.

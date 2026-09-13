@@ -1,6 +1,6 @@
 # HANDOFF pairwise-s4-operat — Operat, prose and legacy signature
 
-Status: D-ARCH/D-AUTO APPROVED2026-09-13. Await coordinator START only for dependency readiness; approval must not be requested again. Base: `origin/integration/pairwise-valuation`. Branch: `feature/pairwise-operat`. Dependency: S2 merged; parallel with S3.
+Status: D-ARCH/D-AUTO APPROVED2026-09-13. Await coordinator START only for dependency readiness; approval must not be requested again. Base: `origin/integration/pairwise-valuation`. Branch: `feature/pairwise-report`. Dependency: S2 merged; parallel with S3.
 
 Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Users/michalczekala/Development/wyceny-app`; coordinator worktree `/Users/michalczekala/Development/wyceny-app-worktrees/pairwise-valuation`. Scope = this HANDOFF; report adjacent findings as follow-up, do not implement them.
 
@@ -44,6 +44,8 @@ expect(legacySignedTextWithoutSignature).toBe(legacyApprovedTextWithoutSignature
 
 ## Execution settings and browser evidence
 
+Coordinator also retained two real synthetic UI-created approvals from S1 in its isolated PostgreSQL5544, one per right, with absent method and WR488500. Baseline snapshots `/tmp/pairwise-s1-browser/approved-before-render-change.json`; issued PDFs/text/hashes in that directory. These are useful for the coordinator's actual approved-before-update→sign-after-update check. Do not mutate the coordinator DB yourself; build deterministic tests in your own DB and report when the coordinator should exercise those retained approvals. The earlier fractional-weight baseline remains mandatory: this extra browser evidence does not replace it.
+
 User accepted `thinking=medium` for subsequent implementation sessions on2026-09-13; retain the model. Coordinator/reviewer/tester settings stay unchanged. Escalate only for a concrete difficult regression or architecture issue, with the reason reported to coordinator.
 
 After a meaningful integration, test the changed flow and existing KCS at the highest available layer on your own local web/worker/DB. Report exact commit, URLs/ports, tested rights, observable assertions and screenshot/trace paths. Distinguish UI walkthrough, unit/integration tests, baseline and CI; never claim skipped scenarios or PP E2E before the needed layers exist. Do not rerun the whole suite after each tiny edit. The Codex in-app reader showed blank PDF on S1 while Chrome displayed the same generated PDF correctly; use Chrome for actual document visual checks. S1 evidence: `docs/superpowers/pairwise-valuation/S1-BROWSER.md`.
@@ -51,3 +53,7 @@ After a meaningful integration, test the changed flow and existing KCS at the hi
 ## Review and finish
 
 Provide exact tests/results and known limits, changed contract signatures, Help status and artifact paths. Commit/push with hooks intact. Open PR ONLY to `integration/pairwise-valuation`; never merge into main, deploy, force-push or delete other worktrees. Do not merge your own PR until coordinator review gates finish. Keep worktree for fixes and report via `send_message_to_thread` to coordinator with `DONE: pairwise-s4-operat`, PR URL, branch, worktree and test evidence. If blocked, state concrete cause and continue independent authorized work. Never assume missing user answers mean approval.
+
+## Frozen S2 and Git identity
+
+Read `docs/superpowers/pairwise-valuation/S2-STATE.md` and `S2-REVIEW.md`: S2 merged as c7bb94a. User requires project-local Git author/committer `Michał Czekała <michal@make-simple.it>` and active gh account `Raysharrr`. Origin uses HTTPS and the local gh credential helper; SSH previously authenticated the wrong account. Verify effective config and absence of author/committer environment overrides before every commit; keep SSH signing enabled. Do not change global config or rewrite published history. Confirm GitHub attribution and verification after the first push. Report a mismatch and hold further publication, continuing independent coding/tests.

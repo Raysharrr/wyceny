@@ -137,3 +137,7 @@ Wszystkie produkcyjne akcje kalkulacji/prozy/preview/approve/sign używają disp
 - AC10: stare snapshoty, podpisane artefakty i zatwierdzenie przed aktualizacją→podpis po niej.
 - AC11: pełne UI→zapis→reload→Opisy→PDF→approve→document→sign dla2 metod×2 praw.
 - AC12: Pomoc, trwałe E2E w CI,3× deterministyczny przebieg, czyste granice zależności.
+
+## Zmiany po S2 —2026-09-13
+
+S2 zamrożony w S2-STATE.md po PR42/c7bb94a. PP zapisy wymagają expectedPairwiseBasis z tego samego otwartego snapshotu co edytowane wartości; odświeżenie tokenu nie może zachować starszych brudnych pól. Kanoniczne wiersze/wybór pochodzą z odpowiedzi saveSampleAction. UI zachowuje coopTxId i ratingScale. Minimalna korekta rozpoznawania prowenancji presetów w app/actions/wizard.ts należy do S3: dla PP mediana powierzchni odnosi się do wybranego podzbioru tak samo jak UI; KCS bez zmian. S4 korzysta ze wspólnych kontraktów i nie edytuje strony S3 równolegle. Dostępny rzeczywisty legacy approval obu praw z S1 do późniejszego testu podpisu koordynatora, obok obowiązkowego baseline ułamkowych wag.

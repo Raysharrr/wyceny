@@ -20,6 +20,10 @@ Coordinator task: `01a09928-7929-7b71-ac87-01929eedf3b0`. Source repository `/Us
 
 **Interfaces:** consumes S1/S2 finalized action payloads and the method-selection control shipped with the S2 server gate; extend that control rather than create a second method selector. S2 updates the existing KCS E2E to confirm the method explicitly. Never redefine formulas. Existing cards render discriminated result from computeValuation; existing KCS presentation stays intact. `pairwise-selection` is a manual selection over ranked proposals; no new scoring engine.
 
+**S2 integration notes (read final S2-STATE after its review):** use the canonical rows/selected ids returned by `saveSampleAction`, not pre-ACL form identities. Feature payload weights are `weightPct`; stored/domain weights remain fractions. Keep `expectedPairwiseBasis` bound to the same originally loaded snapshot as the editable form values. A prop refresh must not silently replace the token while retaining older dirty values; reset both together when deliberately reloading. PP working saves require a basis even without confirmation. After a successful save, navigate/reload the matching persisted snapshot before further confirmation.
+
+S3 owns the minimal corresponding change in `app/actions/wizard.ts` for feature-preset provenance detection: its existing area median currently uses the whole pool, while PP UI suggestions must use the selected comparisons. Align UI and ACL with the same selection-aware inputs; retain KCS behavior and avoid silently classifying selected-sample definitions using unrelated pool rows. Do not infer missing comparable attributes from the subject. Cover a selected subset with a materially different area distribution from the remaining pool.
+
 - [ ] RED user-flow assertions: one custom field, missing name, duplicate name, immutable preset names; scale3→2 clears middle; invalid weights hide both preview amounts; PP matrix keyed by identities; insufficient sample blocks and changing method requests confirmation.
 
 ```ts
@@ -45,3 +49,7 @@ After a meaningful integration, test the changed flow and existing KCS at the hi
 ## Review and finish
 
 Provide exact tests/results and known limits, changed contract signatures, Help status and artifact paths. Commit/push with hooks intact. Open PR ONLY to `integration/pairwise-valuation`; never merge into main, deploy, force-push or delete other worktrees. Do not merge your own PR until coordinator review gates finish. Keep worktree for fixes and report via `send_message_to_thread` to coordinator with `DONE: pairwise-s3-wizard`, PR URL, branch, worktree and test evidence. If blocked, state concrete cause and continue independent authorized work. Never assume missing user answers mean approval.
+
+## Frozen S2 and Git identity
+
+Read `docs/superpowers/pairwise-valuation/S2-STATE.md` and `S2-REVIEW.md`: S2 merged as c7bb94a. User requires project-local Git author/committer `Michał Czekała <michal@make-simple.it>` and active gh account `Raysharrr`. Origin uses HTTPS and the local gh credential helper; SSH previously authenticated the wrong account. Verify effective config and absence of author/committer environment overrides before every commit; keep SSH signing enabled. Do not change global config or rewrite published history. Confirm GitHub attribution and verification after the first push. Report a mismatch and hold further publication, continuing independent coding/tests.
