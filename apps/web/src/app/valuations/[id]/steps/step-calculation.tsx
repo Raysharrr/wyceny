@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { calculationIssues } from "@/domain/valuation-calculation";
+import { stepForBlockerPath } from "@/domain/wizard";
 import { Card, CardContent } from "@/components/ui/card";
 import { AutoBanner } from "@/components/wizard/auto-banner";
 import { FootNav } from "@/components/wizard/foot-nav";
@@ -30,6 +33,24 @@ export function StepCalculation({ valuation }: { valuation: Valuation }) {
               Uzupełnij próbę porównawczą (krok 3. Próba) i cechy z wagami (krok 4. Cechy), aby
               wyliczyć wartość rynkową.
             </p>
+            <ul data-testid="calculation-blockers" className="space-y-2 text-sm">
+              {(inputs ? calculationIssues(inputs) : []).map((issue) => {
+                const step = stepForBlockerPath(issue.path);
+                return (
+                  <li key={`${issue.path}:${issue.label}`}>
+                    {issue.label}{" "}
+                    {step ? (
+                      <Link
+                        className="underline"
+                        href={`/valuations/${valuation.id}?step=${step.n}`}
+                      >
+                        Przejdź do kroku {step.n}. {step.label}
+                      </Link>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
           </CardContent>
         </Card>
         <FootNav back={{ href: backHref }} mid="—" />

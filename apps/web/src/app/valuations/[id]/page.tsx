@@ -1,3 +1,4 @@
+import { MethodSelection } from "./steps/method-selection";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -110,16 +111,24 @@ export default async function ValuationViewPage({
             inspectionDate={valuation.inspectionDate}
           />
         ) : step === 3 ? (
-          <StepSample
-            valuationId={valuation.id}
-            address={valuation.address}
-            area={valuation.area}
-            comparables={valuation.inputs?.comparables ?? []}
-            sampleMeta={valuation.inputs?.sampleMeta ?? null}
-            sampleSelection={valuation.inputs?.sampleSelection ?? null}
-            streetView={valuation.inputs?.streetView ?? null}
-            propertyRight={valuation.propertyRight}
-          />
+          <>
+            <MethodSelection
+              valuationId={valuation.id}
+              method={valuation.inputs?.method}
+              methodConfirmed={valuation.inputs?.methodConfirmed}
+              comparableCount={valuation.inputs?.comparables.length ?? 0}
+            />
+            <StepSample
+              valuationId={valuation.id}
+              address={valuation.address}
+              area={valuation.area}
+              comparables={valuation.inputs?.comparables ?? []}
+              sampleMeta={valuation.inputs?.sampleMeta ?? null}
+              sampleSelection={valuation.inputs?.sampleSelection ?? null}
+              streetView={valuation.inputs?.streetView ?? null}
+              propertyRight={valuation.propertyRight}
+            />
+          </>
         ) : step === 4 ? (
           <StepFeatures
             valuationId={valuation.id}

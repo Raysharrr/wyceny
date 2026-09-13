@@ -31,7 +31,7 @@ import { StepCalculation } from "@/app/valuations/[id]/steps/step-calculation";
 const VID = "11111111-2222-3333-4444-555555555555";
 
 function readyComparables(): Comparable[] {
-  return Array.from({ length: 3 }, (_, i) => ({
+  return Array.from({ length: 12 }, (_, i) => ({
     pricePerM2: 10_000 + i * 100,
     source: "manual" as const,
   }));
@@ -48,6 +48,8 @@ function baseValuation(overrides: Partial<Valuation> = {}): Valuation {
     area: 50,
     wr: 1_040_000,
     inputs: {
+      method: "kcs",
+      methodConfirmed: true,
       area: 50,
       comparables: readyComparables(),
       features: readyFeatures(),

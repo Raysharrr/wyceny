@@ -8,6 +8,7 @@ import { valuationRepository } from "@/app/valuations/_deps";
 import { step1Schema, sampleStepSchema, featuresStepSchema } from "./wizard-schemas";
 import type { Step1Input, SampleStepInput, FeaturesStepInput } from "./wizard-schemas";
 import type { KcsInput } from "@/domain/kcs";
+import { ValuationCalculationError } from "@/domain/valuation-input";
 import type { InputsProvenance } from "@/domain/provenance";
 import {
   assignFeaturesProvenance,
@@ -21,6 +22,7 @@ import { normalizeDefText, type FeatureDefinitions } from "@/domain/feature-pres
 import { normalizeKw } from "@/domain/kw-snapshot";
 import {
   CalculationNotReadyError,
+  PairwiseConflictError,
   confirmKwEntries,
   confirmSubjectEntries,
 } from "@/domain/valuation";
@@ -249,7 +251,10 @@ export async function saveSubjectAction(
 export async function saveSampleAction(
   valuationId: string,
   input: SampleStepInput,
-): Promise<{ error: string } | { ok: true }> {
+): Promise<
+  | { error: string }
+  | { ok: true; comparables: KcsInput["comparables"]; selectedComparableIds: string[] }
+> {
   const session = await getSession();
   if (!session) {
     redirect("/login");
@@ -263,9 +268,11 @@ export async function saveSampleAction(
 
     const comparables = assignSampleProvenance(parsed.data);
 
+    let saved: KcsInput | null = null;
     try {
       const updated = await valuationRepository.saveSample(valuationId, session.user, {
         comparables,
+        selectedComparableIds: parsed.data.selectedComparableIds,
         sampleMeta: parsed.data.sampleMeta ?? null,
         sampleSelection: parsed.data.sampleSelection ?? null,
         streetView: parsed.data.streetView ?? undefined,
@@ -273,7 +280,9 @@ export async function saveSampleAction(
       if (!updated) {
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
+      saved = updated.inputs;
     } catch (error) {
+      if (error instanceof ValuationCalculationError) return { error: error.issues[0].label };
       await recordFailure({
         event: "saveSampleAction.failed",
         valuationId,
@@ -283,7 +292,11 @@ export async function saveSampleAction(
       return { error: errorWithCode("Nie udało się zapisać próby — spróbuj ponownie.") };
     }
     revalidatePath(`/valuations/${valuationId}`);
-    return { ok: true };
+    return {
+      ok: true,
+      comparables: saved?.comparables ?? [],
+      selectedComparableIds: saved?.pairwise?.selectedComparableIds ?? [],
+    };
   });
 }
 
@@ -324,6 +337,7 @@ export async function saveFeaturesAction(
       name: f.name,
       weight: f.weightPct / 100,
       rating: f.rating,
+      ratingScale: f.ratingScale,
       key: f.key,
       definitions: normalizeDefinitions(f.definitions),
     }));
@@ -332,11 +346,16 @@ export async function saveFeaturesAction(
       const updated = await valuationRepository.saveFeatures(valuationId, session.user, {
         features,
         provenance,
+        comparisons: parsed.data.comparisons,
+        confirmPairwise: parsed.data.confirmPairwise,
+        expectedPairwiseBasis: parsed.data.expectedPairwiseBasis,
       });
       if (!updated) {
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
     } catch (error) {
+      if (error instanceof ValuationCalculationError) return { error: error.issues[0].label };
+      if (error instanceof PairwiseConflictError) return { error: error.message };
       await recordFailure({
         event: "saveFeaturesAction.failed",
         valuationId,

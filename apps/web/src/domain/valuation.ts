@@ -1,6 +1,15 @@
+import { validateFeatures } from "./feature-rules";
+import { calculationIssues, computeValuation } from "./valuation-calculation";
+import { comparableIdentity, pairwiseBasis } from "./pairwise-state";
+import {
+  resolveMethod,
+  ValuationCalculationError,
+  type ValuationMethod,
+  type PairwiseSnapshot,
+} from "./valuation-input";
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
-import { computeKcs, isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
+import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
@@ -378,8 +387,16 @@ function promoteStoredRcnRows(snapshot: Comparable[], incoming: Comparable[]): C
     snapshot.filter(isRegistrySourced).map((c) => [comparableContentKey(c), c.source] as const),
   );
   if (fetched.size === 0) return incoming;
+  const byId = new Map(
+    snapshot.filter((c) => c.id && isRegistrySourced(c)).map((c) => [c.id, c.source]),
+  );
   return incoming.map((c) => {
-    const source = isRegistrySourced(c) ? undefined : fetched.get(comparableContentKey(c));
+    const source =
+      // A concrete incoming SM identity outranks an older RCN classification.
+      // Without it, the stable-id guard still prevents stripped rows becoming manual.
+      (c.coopTxId ? "rejestr_sm" : undefined) ??
+      (c.id ? byId.get(c.id) : undefined) ??
+      (isRegistrySourced(c) ? undefined : fetched.get(comparableContentKey(c)));
     return source ? { ...c, source, status: "to_verify" as const } : c;
   });
 }
@@ -579,6 +596,9 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
     inputs: {
       ...v.inputs,
       area: u.area,
+      ...(u.area !== v.inputs.area && v.inputs.pairwise
+        ? { pairwise: withoutPairwiseConfirmation(v.inputs.pairwise) }
+        : {}),
       hasBasement: u.hasBasement ?? v.inputs.hasBasement ?? false,
       subject: u.subject ?? null,
       subjectMeta: u.subjectMeta ?? null,
@@ -589,7 +609,43 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
   };
 }
 
+export type MethodSelection = { method: ValuationMethod; confirm: true };
+
+export function applyMethodSelection(v: Valuation, u: MethodSelection): Valuation {
+  assertDraft(v);
+  if (!v.inputs) throw new Error("Brak danych wyceny.");
+  if (u.confirm !== true || !["kcs", "pp"].includes(u.method))
+    throw new Error("Wybierz i potwierdź metodę.");
+  const changed = resolveMethod(v.inputs) !== u.method;
+  return {
+    ...v,
+    wr: changed ? null : v.wr,
+    inputs: {
+      ...v.inputs,
+      method: u.method,
+      methodConfirmed: true,
+      ...(changed && v.inputs.pairwise
+        ? { pairwise: withoutPairwiseConfirmation(v.inputs.pairwise) }
+        : {}),
+    },
+  };
+}
+
+function withoutPairwiseConfirmation(p: PairwiseSnapshot): PairwiseSnapshot {
+  const draft = { ...p };
+  delete draft.confirmedBasis;
+  return draft;
+}
+
+export class PairwiseConflictError extends Error {
+  constructor() {
+    super("Dane wyceny zmieniły się. Odśwież formularz i sprawdź oceny ponownie.");
+    this.name = "PairwiseConflictError";
+  }
+}
+
 export type SampleUpdate = {
+  selectedComparableIds?: string[];
   comparables: Comparable[];
   sampleMeta: KcsInput["sampleMeta"];
   /** The domain's selection over the fetched pool (ADR-015, D7) — optional so callers that predate it (or edit comparables without re-running the domain) keep compiling. */
@@ -613,11 +669,45 @@ export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
     v.inputs.comparables,
     promoteStoredRcnRows(v.inputs.comparables, u.comparables),
   );
+  const rowIds = comparables.map((c) => c.id).filter((id) => id !== undefined);
+  if (new Set(rowIds).size !== rowIds.length)
+    throw new ValuationCalculationError([
+      { path: "comparables", label: "Powtórzony identyfikator wiersza." },
+    ]);
+  const identities = comparables.map(comparableIdentity);
+  const presentIds = identities.filter((id): id is string => id !== null);
+  if (new Set(presentIds).size !== presentIds.length)
+    throw new ValuationCalculationError([
+      { path: "comparables", label: "Powtórzony identyfikator transakcji." },
+    ]);
+  const selected = u.selectedComparableIds ?? v.inputs.pairwise?.selectedComparableIds ?? [];
+  if (
+    u.selectedComparableIds &&
+    (new Set(selected).size !== selected.length || selected.some((id) => !presentIds.includes(id)))
+  )
+    throw new ValuationCalculationError([
+      {
+        path: "pairwise.selectedComparableIds",
+        label: "Wybierz ponownie transakcje po zmianie ich tożsamości.",
+      },
+    ]);
+  const pairwise =
+    v.inputs.pairwise || u.selectedComparableIds
+      ? {
+          selectedComparableIds: selected.filter((id) => presentIds.includes(id)),
+          comparisons: Object.fromEntries(
+            Object.entries(v.inputs.pairwise?.comparisons ?? {}).filter(([id]) =>
+              presentIds.includes(id),
+            ),
+          ),
+        }
+      : v.inputs.pairwise;
   return {
     ...v,
     wr: null,
     inputs: {
       ...v.inputs,
+      pairwise,
       comparables,
       sampleMeta: u.sampleMeta,
       sampleSelection: u.sampleSelection ?? null,
@@ -627,6 +717,9 @@ export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
 }
 
 export type FeaturesUpdate = {
+  comparisons?: PairwiseSnapshot["comparisons"];
+  confirmPairwise?: boolean;
+  expectedPairwiseBasis?: string;
   features: KcsInput["features"];
   provenance: Pick<InputsProvenance, "weights" | "ratings" | "featureDefs">;
 };
@@ -634,18 +727,61 @@ export type FeaturesUpdate = {
 export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to update`);
+  if (
+    (resolveMethod(v.inputs) === "pp" || u.comparisons !== undefined || u.confirmPairwise) &&
+    u.expectedPairwiseBasis !== pairwiseBasis(v.inputs)
+  )
+    throw new PairwiseConflictError();
   const reassigned = { ...v.inputs.provenance, ...u.provenance } as InputsProvenance;
   // The feature group is one screen too: weights, ratings and the rating-scale
   // definitions are confirmed together, so they lapse together.
   const provenance = sameJson(v.inputs.features, u.features)
     ? carryGroupStatuses(v.inputs.provenance, reassigned, FEATURES_GROUP_KEYS)
     : reassigned;
-  return { ...v, wr: null, inputs: { ...v.inputs, features: u.features, provenance } };
+  const featureIssues = u.features.length ? validateFeatures(u.features) : [];
+  if (featureIssues.length) throw new ValuationCalculationError(featureIssues);
+  const inputs = { ...v.inputs, features: u.features, provenance };
+  if (inputs.pairwise || u.comparisons !== undefined) {
+    const keys = new Set(u.features.map((f) => f.key));
+    const ids = new Set(inputs.comparables.map(comparableIdentity));
+    const comparisons = Object.fromEntries(
+      Object.entries(u.comparisons ?? inputs.pairwise?.comparisons ?? {})
+        .filter(([id]) => ids.has(id))
+        .map(([id, cells]) => [
+          id,
+          Object.fromEntries(
+            Object.entries(cells)
+              .filter(([key]) => keys.has(key))
+              .map(([key, cell]) => {
+                const feature = u.features.find((f) => f.key === key)!;
+                return [
+                  key,
+                  feature.ratingScale === "two" && cell.rating === "przecietna"
+                    ? { rating: null, multiplier: null }
+                    : cell,
+                ];
+              }),
+          ),
+        ]),
+    );
+    inputs.pairwise = {
+      selectedComparableIds: inputs.pairwise?.selectedComparableIds ?? [],
+      comparisons,
+    };
+  }
+  if (u.confirmPairwise) {
+    if (resolveMethod(inputs) !== "pp" || !inputs.pairwise) throw new Error("Brak macierzy PP.");
+    // Stamp exactly the JSON snapshot that will survive JSONB persistence.
+    inputs.pairwise.confirmedBasis = pairwiseBasis(inputs);
+    const issues = calculationIssues(inputs);
+    if (issues.length) throw new ValuationCalculationError(issues);
+  }
+  return { ...v, wr: null, inputs };
 }
 
 export class CalculationNotReadyError extends Error {
   constructor() {
-    super("Calculation needs at least 3 comparables and 1 feature");
+    super("Wybierz metodę i uzupełnij dane wymagane do kalkulacji.");
     this.name = "CalculationNotReadyError";
   }
 }
@@ -655,10 +791,10 @@ export class CalculationNotReadyError extends Error {
 export function applyCalculationConfirm(v: Valuation): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to confirm`);
-  if (v.inputs.comparables.length < 3 || v.inputs.features.length === 0) {
+  if (calculationIssues(v.inputs).length > 0) {
     throw new CalculationNotReadyError();
   }
-  return { ...v, wr: computeKcs(v.inputs).wr };
+  return { ...v, wr: computeValuation(v.inputs).wr };
 }
 
 /**
@@ -710,6 +846,7 @@ export const AUDIT_ACTIONS = [
   "created",
   "subject_updated",
   "sample_updated",
+  "method_selected",
   "features_updated",
   "calculation_confirmed",
   "sample_confirmed",
@@ -804,6 +941,10 @@ export function newVersionOf(v: Valuation): Omit<Valuation, "id" | "createdAt"> 
   const inputs = v.inputs
     ? {
         ...v.inputs,
+        methodConfirmed: false,
+        pairwise: v.inputs.pairwise
+          ? withoutPairwiseConfirmation(v.inputs.pairwise)
+          : v.inputs.pairwise,
         comparables: v.inputs.comparables.map(resetComparable),
         provenance: v.inputs.provenance
           ? (Object.fromEntries(
@@ -819,7 +960,7 @@ export function newVersionOf(v: Valuation): Omit<Valuation, "id" | "createdAt"> 
   return {
     address: v.address,
     area: v.area,
-    wr: v.wr,
+    wr: null,
     inputs,
     amountInWords: null,
     docUrl: null,
