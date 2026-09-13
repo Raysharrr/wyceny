@@ -199,3 +199,18 @@ it("displays clean percentages without discarding meaningful fractional precisio
   expect((screen.getByLabelText("Waga: Cecha 1") as HTMLInputElement).value).toBe("40.25");
   expect((screen.getByLabelText("Waga: Cecha 2") as HTMLInputElement).value).toBe("12.3456789");
 });
+
+it("definition placeholders say required for custom and two-level features only", async () => {
+  const user = userEvent.setup();
+  render(<StepFeatures valuationId="v" features={[]} comparables={[]} area={50} />);
+  await user.click(screen.getByRole("button", { name: /Inna cecha/ }));
+  const placeholder = (testId: string) =>
+    (screen.getByTestId(testId) as HTMLInputElement).placeholder;
+  expect(placeholder("feature-def-inne-przecietna")).toMatch(/^wymagane/);
+  expect(placeholder("feature-def-standard-wykonczenia-lepsza")).toMatch(/^puste pole/);
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "Skala: standard wykończenia" }),
+    "two",
+  );
+  expect(placeholder("feature-def-standard-wykonczenia-lepsza")).toMatch(/^wymagane/);
+});

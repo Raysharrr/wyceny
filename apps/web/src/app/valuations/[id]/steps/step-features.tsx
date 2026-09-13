@@ -422,7 +422,12 @@ export function StepFeatures({
                                         data-testid={`feature-def-${features?.[index]?.key ?? index}-${level}`}
                                         aria-label={`Definicja: ${current.name} — ${level}`}
                                         maxLength={1000}
-                                        placeholder="puste pole — poziom nie pojawi się w operacie"
+                                        // Mirrors validateFeatures: custom and two-level features require every level.
+                                        placeholder={
+                                          current.key === "inne" || current.ratingScale === "two"
+                                            ? "wymagane — opis poziomu trafia do operatu"
+                                            : "puste pole — poziom nie pojawi się w operacie"
+                                        }
                                         name={defField.name}
                                         onBlur={defField.onBlur}
                                         ref={defField.ref}
