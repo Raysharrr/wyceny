@@ -48,7 +48,9 @@ export function pairwiseReference(which: "a" | "b"): ValuationInput {
               {
                 rating: "przecietna",
                 multiplier: multipliers[row][col],
-                overrideReason: "Współczynnik przyjęty w arkuszu referencyjnym",
+                ...(multipliers[row][col] !== 0
+                  ? { overrideReason: "Współczynnik przyjęty w arkuszu referencyjnym" }
+                  : {}),
               },
             ]),
           ),

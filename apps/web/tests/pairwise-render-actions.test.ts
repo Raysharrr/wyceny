@@ -1,3 +1,5 @@
+import { goldenInputs } from "./fixtures/document-model-fixture";
+import { computeValuation } from "../src/domain/valuation-calculation";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import { createHash } from "node:crypto";
@@ -139,3 +141,70 @@ describe("PP production action dispatch", () => {
     },
   );
 });
+
+it.each(["wlasnosc_lokalu", "spoldzielcze_wlasnosciowe"] as const)(
+  "explicit KCS approval and signing keep the modern scale/percentage template for %s",
+  async (propertyRight) => {
+    const inputs = {
+      ...goldenInputs(),
+      method: "kcs" as const,
+      methodConfirmed: true,
+      provenance: current.inputs!.provenance,
+    };
+    inputs.features[0].weight = 0.4025;
+    inputs.features[2].weight = 0.2975;
+    inputs.features[1].ratingScale = "two";
+    inputs.features[1].definitions = { lepsza: "Górne kondygnacje", gorsza: "Parter" };
+    inputs.prose = confirmedProseFor(current.address, inputs);
+    current = {
+      ...current,
+      propertyRight,
+      inputs,
+      area: inputs.area,
+      wr: computeValuation(inputs).wr,
+    };
+    vi.mocked(worker.amountInWords).mockResolvedValue(
+      "czterysta dziewięćdziesiąt pięć tysięcy trzysta złotych",
+    );
+    expect(await approveValuation(current.id, { skipMaps: true })).toBeUndefined();
+    expect(await signValuationAction(current.id)).toBeUndefined();
+    const docs = vi.mocked(worker.convertToPdf).mock.calls.map(([buf]) => textOf(buf));
+    expect(docs).toHaveLength(2);
+    expect(docs[1]).toBe(docs[0]);
+    for (const text of docs) {
+      expect(text).toContain("40,25");
+      expect(text).toContain("brak oceny pośredniej");
+      expect(text).not.toContain("Tabela 3. Obliczenie skorygowanej");
+    }
+    expect(worker.amountInWords).toHaveBeenCalledWith(current.wr);
+  },
+);
+
+it.each([0, 1])(
+  "signs legacy 80-percent weights for right %i against original 9b source",
+  async (i) => {
+    const abnormal = JSON.parse(
+      fs.readFileSync("tests/fixtures/legacy-abnormal-weights.json", "utf8"),
+    );
+    const record = abnormal.records[i];
+    const input = JSON.parse(
+      fs.readFileSync("../../tools/spike/2026-09-13-legacy-render/baseline.json", "utf8"),
+    ).records[i].input;
+    for (const feature of input.inputs.features) feature.weight *= abnormal.weightFactor;
+    input.amountInWords = record.amountInWords;
+    expect(
+      input.inputs.features.reduce((sum: number, f: { weight: number }) => sum + f.weight, 0),
+    ).toBeCloseTo(0.8);
+    current = {
+      ...current,
+      ...input,
+      status: "approved",
+      approvedAt: new Date(input.approvedAt),
+      docxUrl: "/api/docs/old.docx",
+      docUrl: "/api/docs/old.pdf",
+    };
+    expect(await signValuationAction(current.id)).toBeUndefined();
+    const doc = vi.mocked(worker.convertToPdf).mock.calls[0][0];
+    expect(createHash("sha256").update(textOf(doc)).digest("hex")).toBe(record.textSha256);
+  },
+);

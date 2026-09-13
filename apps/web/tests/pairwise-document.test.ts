@@ -65,7 +65,7 @@ describe("S4 actual document contract", () => {
       expect(textOf(xml).replace(/\u00a0/g, " ")).toContain("740 900");
       expect(xml.match(/w:tblCaption w:val="pp-/g) ?? []).toHaveLength(4);
       expect(textOf(xml)).not.toContain("undefined");
-      expect(textOf(xml)).not.toContain("korygowania ceny średniej");
+      expect(textOf(xml)).not.toContain("Metoda korygowania ceny średniej –");
     },
   );
 });
@@ -130,6 +130,73 @@ describe("PP columns and modern KCS scales", () => {
     expect(text).toContain("brak oceny pośredniej");
     expect(text).not.toContain("STALE MIDDLE");
     expect(text).not.toContain("Tabela 3. Obliczenie skorygowanej");
-    expect(text).not.toContain("porównywania parami");
+    expect(text).not.toContain("Metoda porównywania parami –");
   });
 });
+
+it("does not print a retained exception reason after returning to the current suggestion", () => {
+  const inputs = pairwiseReference("a");
+  const f = inputs.features[0];
+  const cell = inputs.pairwise!.comparisons[inputs.pairwise!.selectedComparableIds[0]][f.key!];
+  cell.rating = "lepsza";
+  cell.multiplier = -0.25;
+  cell.overrideReason = "RETAINED EXCEPTION REASON";
+  const render = () =>
+    textOf(
+      xmlOf(
+        renderOperatDocx(
+          buildDocumentModel({
+            ...syntheticDocumentInput(),
+            inputs,
+            result: { method: "pp", ...computePairwise(inputs) },
+          }),
+        ),
+      ),
+    );
+  expect(render()).toContain("RETAINED EXCEPTION REASON");
+  cell.multiplier = -0.5;
+  expect(render()).not.toContain("RETAINED EXCEPTION REASON");
+  expect(cell.overrideReason).toBe("RETAINED EXCEPTION REASON");
+});
+
+it.each(["kcs", "pp"] as const)(
+  "preserves the complete frozen common section 10 introduction/list and selected %s definition",
+  (method) => {
+    const legacyXml = new PizZip(fs.readFileSync("templates/operat-szablon-legacy-kcs.docx"))
+      .file("word/document.xml")!
+      .asText();
+    const paragraphs = (xml: string) =>
+      (xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).map((p) =>
+        p
+          .replace(/<[^>]+>/g, "")
+          .replace(/\s+/g, " ")
+          .trim(),
+      );
+    const original = paragraphs(legacyXml);
+    const start = original.findIndex((p) => p === "10. Metodologia wyceny");
+    const end = original.findIndex(
+      (p, i) => i > start && p.startsWith("Metoda porównywania parami"),
+    );
+    const common = original.slice(start, end).filter(Boolean);
+    const input = syntheticDocumentInput();
+    const inputs = method === "pp" ? pairwiseReference("a") : input.inputs;
+    const model = buildDocumentModel({
+      ...input,
+      inputs,
+      ...(method === "pp" ? { result: { method: "pp" as const, ...computePairwise(inputs) } } : {}),
+    });
+    const rendered = paragraphs(xmlOf(renderOperatDocx(model))).join("\n");
+    for (const paragraph of common) expect(rendered).toContain(paragraph);
+    const selected = original.find((p) =>
+      p.startsWith(
+        method === "pp" ? "Metoda porównywania parami" : "Metoda korygowania ceny średniej",
+      ),
+    )!;
+    expect(rendered).toContain(selected);
+    expect(rendered).not.toContain(
+      method === "pp"
+        ? "Procedura metody korygowania ceny średniej"
+        : "Liczba transakcji przyjętych do porównań:",
+    );
+  },
+);

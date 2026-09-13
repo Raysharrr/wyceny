@@ -1,3 +1,4 @@
+import { pairwiseOverrideReason } from "./pairwise-presentation";
 import type { ValuationInput } from "./valuation-input";
 import type { PairwiseResult } from "./pairwise";
 import { valuationComparables } from "./pairwise-state";
@@ -79,9 +80,10 @@ export function buildPairwiseDocument(inputs: ValuationInput, result: PairwiseRe
     pp_overrides: result.pairs.flatMap((p, i) =>
       features.flatMap((f) => {
         const cell = inputs.pairwise!.comparisons[p.comparableId][f.key!];
-        return cell.overrideReason?.trim()
+        const reason = pairwiseOverrideReason(f, cell);
+        return reason
           ? [
-              `Porównanie ${i + 1}, ${f.name}: mnożnik ${String(cell.multiplier).replace(".", ",")}. ${cell.overrideReason.trim()}`,
+              `Porównanie ${i + 1}, ${f.name}: mnożnik ${String(cell.multiplier).replace(".", ",")}. ${reason}`,
             ]
           : [];
       }),

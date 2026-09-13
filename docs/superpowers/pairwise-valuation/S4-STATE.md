@@ -26,7 +26,7 @@ All final DOCX/PDF/text/PNG artifacts are under `/tmp/pairwise-s4-render/`. `res
 
 | File stem (add `.pdf` or `.docx`)       | Pages | Focused visual pages |
 | --------------------------------------- | ----: | -------------------- |
-| `pp-3-wlasnosc_lokalu`                  |    10 | 8–9                  |
+| `pp-3-wlasnosc_lokalu`                  |    11 | 7, 9–10              |
 | `pp-3-spoldzielcze_wlasnosciowe`        |    10 | 8–9                  |
 | `pp-4-wlasnosc_lokalu`                  |    11 | 8–9                  |
 | `pp-4-spoldzielcze_wlasnosciowe`        |    10 | 8–9                  |
@@ -55,3 +55,16 @@ PP5 contains all nine catalog features plus one long Polish custom name, mixed s
 ## Remaining integration checks
 
 Coordinator owns independent review and actual S1 approved-before-update → sign-after-update checks against its retained port5544 approvals. This task never mutated that DB. Full PP wizard UI→save/reload→descriptions→preview→approve→sign (AC11) requires S3 integration and is not claimed here. Live RCN/WMS, paid AI generation, production signing, arbitrary older template releases and every possible extreme text length are not covered. Compatibility is specifically the available 9b boundary. Worktree and isolated DB are retained for fixes; no merge, deployment or shared-history rewrite.
+
+## First review fixes
+
+The coordinator required two P2 corrections from `/tmp/pairwise-s4-review.txt` before merge. Five focused regression tests first failed (`/tmp/pairwise-s4-review-red.log`), then passed after these changes:
+
+- `pairwiseOverrideReason` compares the accepted multiplier with the fresh `suggestPairwiseMultiplier` for the current subject/comparable ratings and scale. Document exception paragraphs and PP prose facts include a reason only for an actual current override. Saved text is retained. Tests cover returning the multiplier to the suggestion and changing the rating so the same multiplier becomes the suggestion. Reference document fixtures now attach reasons only to actual exceptions; zero multipliers with matching neutral ratings carry no exception reason.
+- Restored the original common §10 regulatory introduction/list and the selected method's complete original definition. In the actual frozen template/tokenizer, the common list is blocks248–252, PP definition253, KCS254. Tests compare every nonempty common paragraph and the selected definition with the frozen source, for both methods. Other-method calculation blocks remain hidden. No new legal text or methodology decision was introduced.
+- PP prose percentages now use the same `formatPercent` as the document. Legacy KCS hashes remain unchanged. Help describes when an exception reason appears.
+- Explicit KCS approval→signing now has dedicated both-right tests proving modern fractional percentages and the two-level note survive, with identical approved/signed text. Legacy signing also has both-right tests for an 80% weight sum. The compact `legacy-abnormal-weights.json` expectations were captured with the original `git show 9b2903c` calculator, projection and renderer source against the frozen binary; existing baseline expectations were never regenerated. The old result is396200 and old formatting is preserved without applying modern validation.
+
+Focused verification: 16 files /215PASS (`/tmp/pairwise-s4-review-acceptance.log`), typecheck/build/dependency rules pass. Actual LibreOffice conversion was repeated for all10 variants (`/tmp/pairwise-s4-review-render-final.log`); the same artifact names now contain the review-fixed output, including the restored §10 and only actual exception reasons. Final PDF hashes/page counts remain in `/tmp/pairwise-s4-render/pdf-text-evidence.json`. Offline reinspection focuses on the restored methodology and affected table/exception pagination; the previously documented Chrome policy limitation is unchanged. Fitness expansion into S3-owned UI files remains with S5 after integration.
+
+Final review-fix checks after the template wording/pin refresh: 3 pure files /30PASS plus action file /9PASS (`/tmp/pairwise-s4-review-final-pure.log`, `...-final-actions.log`); build PASS, lint0errors/11existingwarnings, formatting PASS. Reinspected PP3 ownership §10 page7 and calculations/continuation pages9–10, PP3 cooperative §10 page6 and table page8, plus modern KCS §10 pages6–7. Original regulatory text and repeated headers remain legible; PP3 ownership now has11 pages. Legacy files remain12 pages. Current page/SHA metadata supersedes the earlier matrix where pagination changed.

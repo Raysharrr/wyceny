@@ -1,3 +1,5 @@
+import { pairwiseOverrideReason } from "./pairwise-presentation";
+import { formatPercent } from "./document-format";
 /**
  * Prose facts — the ONLY thing the language model is allowed to write from
  * (ADR-014, FR-6). Pure: zero I/O, zero adapter imports (F-10), no clock
@@ -407,7 +409,8 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
                     .filter((f) => f.weight > 0)
                     .map((f) => {
                       const cell = inputs.pairwise!.comparisons[id][f.key!];
-                      return `Porównanie ${i + 1}, ${f.name}: przedmiot ${LEVEL_LABEL[f.rating]}, porównanie ${LEVEL_LABEL[cell.rating!]}, waga ${formatNumber(f.weight * 100, 2)}%, mnożnik ${String(cell.multiplier).replace(".", ",")}${cell.overrideReason?.trim() ? "; " + cell.overrideReason.trim() : ""}.`;
+                      const reason = pairwiseOverrideReason(f, cell);
+                      return `Porównanie ${i + 1}, ${f.name}: przedmiot ${LEVEL_LABEL[f.rating]}, porównanie ${LEVEL_LABEL[cell.rating!]}, waga ${formatPercent(f.weight)}%, mnożnik ${String(cell.multiplier).replace(".", ",")}${reason ? "; " + reason : ""}.`;
                     });
                 }),
               }

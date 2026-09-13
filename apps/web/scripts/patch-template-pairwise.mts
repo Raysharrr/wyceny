@@ -92,16 +92,18 @@ let output = "";
 for (let i = 0; i < blocks.length; i++) {
   if (i === 248) {
     output +=
+      blocks.slice(248, 253).join("") +
       p("{#metoda_kcs}") +
       blocks[254] +
       blocks.slice(257, 276).join("") +
       p("{/metoda_kcs}") +
       p("{#metoda_pp}") +
+      blocks[253] +
       p(
         "Dla określenia wartości rynkowej {przedmiot_d} zastosowano podejście porównawcze, metodę porównywania parami.",
       ) +
       p(
-        "Do porównań przyjęto {pp_count} transakcji. Oceniono cechy przedmiotu i każdego porównania na przyjętych skalach. Poprawki kwotowe wynikają z rozstępu cen, wag cech i mnożników przyjętych przez rzeczoznawcę. Dodatnia poprawka oznacza przewagę przedmiotu nad porównaniem. Cenę każdego porównania skorygowano o sumę poprawek; średnią cen skorygowanych pomnożono przez powierzchnię przedmiotu.",
+        "Liczba transakcji przyjętych do porównań: {pp_count}. Oceniono cechy przedmiotu i każdego porównania na przyjętych skalach. Poprawki kwotowe wynikają z rozstępu cen, wag cech i mnożników przyjętych przez rzeczoznawcę. Dodatnia poprawka oznacza przewagę przedmiotu nad porównaniem. Cenę każdego porównania skorygowano o sumę poprawek; średnią cen skorygowanych pomnożono przez powierzchnię przedmiotu.",
       ) +
       p("{/metoda_pp}");
     i = 275;

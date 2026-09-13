@@ -22,6 +22,9 @@ describe("PP prose dependencies", () => {
     inputs.pairwise!.comparisons[inputs.pairwise!.selectedComparableIds[0]][
       inputs.features[0].key!
     ].multiplier = 0.0001;
+    inputs.pairwise!.comparisons[inputs.pairwise!.selectedComparableIds[0]][
+      inputs.features[0].key!
+    ].overrideReason = "Drobna korekta rzeczoznawcy";
     expect(computeValuation(inputs).wr).toBe(wr);
     const after = currentSectionFactsHashes({ address, inputs });
     expect(
@@ -59,3 +62,23 @@ it("preserves hashes captured from original 9b2903c prose/hash source", async ()
   };
   expect(currentSectionFactsHashes(input)).toEqual(expected.hashes);
 });
+
+it.each(["multiplier", "rating"] as const)(
+  "omits a retained reason when %s returns the cell to today's suggestion",
+  (change) => {
+    const inputs = pairwiseReference("a");
+    const f = inputs.features[0];
+    const cell = inputs.pairwise!.comparisons[inputs.pairwise!.selectedComparableIds[0]][f.key!];
+    cell.rating = "lepsza";
+    cell.multiplier = change === "rating" ? 0 : -0.25;
+    cell.overrideReason = "RETAINED EXCEPTION REASON";
+    const facts = () => buildProseFacts({ address, inputs }).poprawki_porownan!.join("\n");
+    expect(facts()).toContain("RETAINED EXCEPTION REASON");
+    if (change === "multiplier") cell.multiplier = -0.5;
+    else cell.rating = "przecietna";
+    expect(facts()).not.toContain("RETAINED EXCEPTION REASON");
+    expect(cell.overrideReason).toBe("RETAINED EXCEPTION REASON");
+    expect(facts()).toContain("waga 40%");
+    expect(facts()).not.toContain("40,00%");
+  },
+);
