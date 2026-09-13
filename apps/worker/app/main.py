@@ -7,6 +7,7 @@ Local run:
 """
 
 import base64
+import hashlib
 import json
 import os
 import time
@@ -47,6 +48,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="wyceny-worker", lifespan=lifespan)
+
 app.add_middleware(RequestIdMiddleware)
 
 # CORS: the KW upload posts directly from the browser (Vercel 4.5 MB body
@@ -216,10 +218,53 @@ SAMPLE_FAILED_DETAIL = (
 )
 
 
+GEOCODER_STUB_SENTINEL = "zmyślona"
+"""Address fragment the stub refuses to geocode — the E2E fixture's "adres do
+poprawki" row. Mirrors the checklist's „os. Zmyślona Nieistniejąca”."""
+
+
+def geocoder_stub_enabled() -> bool:
+    """`GEOCODER_STUB=1` — CI / offline E2E only. Refuses to run next to a hosting
+    marker: a stubbed hit is labelled `uug` and lands in the operat's provenance,
+    so on a real deployment it would be indistinguishable from a real geocode."""
+    if os.environ.get("GEOCODER_STUB") != "1":
+        return False
+    if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("VERCEL_ENV"):
+        raise RuntimeError(
+            "GEOCODER_STUB=1 ustawione obok markera hostingu (RAILWAY_ENVIRONMENT/VERCEL_ENV) "
+            "— stub geokodera wolno włączać wyłącznie w CI i lokalnym E2E."
+        )
+    return True
+
+
+if geocoder_stub_enabled():  # raises next to a hosting marker → the worker does not start
+    # Loud on purpose: a stubbed geocoder must never go unnoticed in a log.
+    logger.warning("geocoder_stub_enabled", note="CI/E2E only — positions are hashes, not geocodes")
+
+
+def _stub_point(address: str) -> tuple[float, float]:
+    """Deterministic EPSG:2180 point from the address text: the same address always
+    lands on the same spot, every address within ~700 m of one centre, so
+    radius-based selection behaves like on real data without a request to UUG or
+    Nominatim. The hit is returned with source `uug` — the SAME label a real UUG
+    hit carries (`GeocodeHit.source` has no third value), which is exactly why
+    `geocoder_stub_enabled()` refuses to run anywhere that looks like hosting.
+    Addresses containing GEOCODER_STUB_SENTINEL are refused like a real miss."""
+    if GEOCODER_STUB_SENTINEL in address.lower():
+        raise subject.AddressNotFound(address)
+    digest = hashlib.sha256(address.strip().lower().encode()).digest()
+    dx = int.from_bytes(digest[:2], "big") % 1401 - 700
+    dy = int.from_bytes(digest[2:4], "big") % 1401 - 700
+    return 360_000.0 + dx, 504_000.0 + dy
+
+
 def resolve_point(address: str, point: SamplePoint | None) -> tuple[float, float, str]:
     """Step-1 point first; UUG second; Nominatim last (ADR-015 — logged, never silent)."""
     if point is not None:
         return point.x, point.y, "subject"
+    if geocoder_stub_enabled():
+        x, y = _stub_point(address)
+        return x, y, "uug"
     try:
         geo = subject.geocode_address(address)
         return geo["x"], geo["y"], "uug"

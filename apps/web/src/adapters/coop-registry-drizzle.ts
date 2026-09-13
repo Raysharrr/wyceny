@@ -84,7 +84,22 @@ const INSERT_CHUNK = 200;
 /** Paged listing (screens) — a radius query is a POOL, not a page: see `LIST_CAP`. */
 const DEFAULT_PAGE = 50;
 /** Absolute ceiling per call; `truncated` says when it bit (port doc on `CoopRegistryQuery.near`). */
-const LIST_CAP = 5000;
+export const LIST_CAP = 5000;
+
+/**
+ * Whether a capped read must be reported as incomplete. Race-free on purpose:
+ * the old rule compared the page with a SEPARATE `count()`, so a row inserted
+ * between the two queries (another appraiser's import; the E2E's parallel
+ * workers) made a complete pool look truncated and step 3 refused the sample.
+ *
+ * The compromise, named: a page holding EXACTLY the cap is reported as
+ * truncated too, because without a count in the same snapshot "exactly 5 000"
+ * and "5 000 and more" cannot be told apart — the register page therefore says
+ * "co najmniej", and step 3 refuses a pool that MIGHT be incomplete.
+ */
+export function isTruncated(limit: number, rowCount: number): boolean {
+  return limit === LIST_CAP && rowCount >= LIST_CAP;
+}
 
 /**
  * Drizzle adapter for {@link PortCoopRegistry} (tables from migration 0014).
@@ -133,7 +148,7 @@ export function coopRegistryRepo(db: Db): PortCoopRegistry {
           rows: rows.map(toTransaction),
           total: n,
           hasMore,
-          truncated: limit === LIST_CAP && hasMore,
+          truncated: isTruncated(limit, rows.length),
         };
       };
       if (!as) return run(db);
