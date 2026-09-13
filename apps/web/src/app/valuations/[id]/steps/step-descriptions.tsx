@@ -48,7 +48,7 @@ const DISCLAIMER =
  * different chore from the one that unblocks approval.
  */
 const STALE_HINT =
-  "Ta sekcja jest nieaktualna — dane się zmieniły, przejrzyj ją ponownie albo wygeneruj od nowa.";
+  "Dane wyceny zmieniły się po napisaniu tego opisu — przejrzyj go ponownie albo wygeneruj od nowa.";
 
 // Plain grouped digits and two decimal places, same convention as step 5's
 // wrFormatter — " zł" is appended as literal text, never baked into the
@@ -164,11 +164,19 @@ function worthGenerating(
  * has it been accepted. Both matter — a new version inherits the appraiser's
  * own text with its confirmation reset (`newVersionOf`, T7), and a badge
  * reading "potwierdzone" there would contradict the blocker on step 7.
+ * A STALE section is the same case: its confirmation was given for other
+ * facts, and the gate refuses it, so it reads "do weryfikacji" too.
  */
-function ProseProvenanceBadge({ provenance }: { provenance: Provenance | undefined }) {
+function ProseProvenanceBadge({
+  provenance,
+  stale,
+}: {
+  provenance: Provenance | undefined;
+  stale: boolean;
+}) {
   if (!provenance) return null;
   const who = provenance.source === "ai" ? "AI" : "Rzeczoznawca";
-  if (provenance.status !== "confirmed") {
+  if (stale || provenance.status !== "confirmed") {
     return (
       <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-500">
         {who} — do weryfikacji
@@ -482,7 +490,10 @@ function ProseEditors({
                     {PROSE_SECTION_LABEL[section]}
                   </label>
                   <span data-testid={`prose-badge-${section}`}>
-                    <ProseProvenanceBadge provenance={entry?.provenance} />
+                    <ProseProvenanceBadge
+                      provenance={entry?.provenance}
+                      stale={staleSections.includes(section)}
+                    />
                   </span>
                 </div>
                 <textarea
