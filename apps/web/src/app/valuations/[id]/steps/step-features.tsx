@@ -322,7 +322,12 @@ export function StepFeatures({
                               name={`features.${index}.name`}
                               render={({ field: nameField, fieldState }) => (
                                 <>
-                                  <Input {...nameField} aria-label="Nazwa cechy" maxLength={120} />
+                                  <Input
+                                    {...nameField}
+                                    aria-label="Nazwa cechy"
+                                    placeholder="Nazwa własnej cechy, np. balkon lub loggia"
+                                    maxLength={120}
+                                  />
                                   <FieldError errors={[fieldState.error]} />
                                 </>
                               )}
