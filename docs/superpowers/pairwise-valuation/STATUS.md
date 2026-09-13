@@ -14,7 +14,7 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 - [x] 3 Spike arytmetyki i kolumn DOCX — PASS, wyniki w tools/spike/2026-09-13-pairwise-reference. Osobny spike kolumn3/4/5: PASS, istniejący PizZip/Docxtemplater + selektywna zmiana oznaczonych tabel OOXML, PDF lokalnie skonwertowane i obejrzane; [raport](../../../tools/spike/2026-09-13-pairwise-columns/RAPORT.md). Reguła sugestii pozostaje decyzją, nie techniczną niewiadomą do ukrycia w kodzie.
 - [x] 4 Architektura — audyt i refaktor zatwierdzone; D-ARCH/D-AUTO zaakceptowane.
 - [x] 5 Spec/plan/HANDOFF — zaakceptowane do realizacji; sygnatury S1 zostaną zamrożone przed S2.
-- [ ] 6 Sesje — S1→S2→[S3||S4]→S5; nie wystartowały przed zatwierdzeniem kontraktu.
+- [ ] 6 Sesje — S1 scalony po review/CI/lokalnym UI; S2 uruchomiony; następnie [S3||S4]→S5.
 - [ ] 7 Weryfikacja — komplet lokalnie/integration i finalny PR; końcowa zgoda przed stagingiem.
 - [ ] 8 Domknięcie — filing zgodny z rzeczywistym wynikiem; brak deklaracji wdrożenia.
 
@@ -68,3 +68,11 @@ D-ARCH/D-AUTO zatwierdzone; zapis ACCEPTANCE.md. S1 uruchomiony jako zadanie Cod
 Koordynator uchwycił bazowy render obu praw z ułamkowymi wagami i testową prozą przed zmianą kodu: `tools/spike/2026-09-13-legacy-render/`, commit0cddfbd. Wejścia+hash tekstu w repo; pełny tekst i DOCX lokalnie w `/tmp/pairwise-legacy-render/`. S4 ma użyć tego odniesienia do podpisu across-version.
 
 Środowisko integracji: web localhost:3015, worker127.0.0.1:8015, własny Postgres5544. Oba procesy z worktree integracji, testowe konta bez prawdziwych wycen. Login Zenon potwierdzony w przeglądarce. Dane `.env` lokalne i poza gitem. Opisy włączone do testów ścieżki ręcznej; klucz LLM nie jest przekazany do izolowanego workera, by weryfikacja nie wykonywała płatnych generacji. To gotowość środowiska, nie test wdrożonego PP.
+
+## Po S1 —2026-09-13
+
+S1 scalony PR41 jako `a983a0b`, po2 przeglądach Opus/high, pełnym CI i lokalnej regresji UI/PDF/approval obu praw; dowody [S1-REVIEW](S1-REVIEW.md) i [S1-BROWSER](S1-BROWSER.md). Tymczasowy stack S1 na3016/8016 zatrzymany po testach; stack integracji3015/8015 oraz baza5544 pozostają. Dane syntetyczne i artefakty testowe zachowane.
+
+Kontrakty i pozostałe HANDOFF-y uaktualnione w91a718d. Minimalny wybór/potwierdzenie metody przesunięto do S2 razem z serwerową bramką, aby istniejący KCS pozostał przechodni w CI/UI. S2 uruchomiono jako `pairwise-s2-state` (`01a099bf-df38-7d01-86d1-154df3cabcc4`), worktree `/Users/michalczekala/Development/wyceny-app-worktrees/pairwise-state`, branch `feature/pairwise-state`, base91a718d. Sesja otrzymała `thinking=medium` zgodnie z nowym uzgodnieniem użytkownika; model bez nadpisania. To samo ustawienie dla kolejnych kodujących S3/S4. Koordynator, reviewerzy Opus/high i tester S5 bez obniżenia.
+
+Wymóg użytkownika dotyczący bieżących testów w przeglądarce jest jawny w handoffach: zmieniany przepływ i KCS obu praw na najwyższej dostępnej warstwie, exact commit/środowisko/dowody, bez deklarowania pominiętych scenariuszy. Main/staging nadal bez zmian. Plan godzin pozostaje szacunkiem, nie rozliczeniem; rzeczywiste godziny klienta nie zostały zgłoszone ani wymyślone.
