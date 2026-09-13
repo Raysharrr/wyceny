@@ -30,8 +30,7 @@ export function StepCalculation({ valuation }: { valuation: Valuation }) {
           <CardContent className="flex flex-col gap-2 pt-6">
             <h2 className="text-sm font-medium text-foreground">Kalkulacja niedostępna</h2>
             <p className="text-sm text-muted-foreground">
-              Uzupełnij próbę porównawczą (krok 3. Próba) i cechy z wagami (krok 4. Cechy), aby
-              wyliczyć wartość rynkową.
+              Aby wyliczyć wartość rynkową, uzupełnij:
             </p>
             <ul data-testid="calculation-blockers" className="space-y-2 text-sm">
               {(inputs ? calculationIssues(inputs) : []).map((issue) => {
