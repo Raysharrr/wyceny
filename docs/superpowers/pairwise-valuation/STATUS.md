@@ -1,12 +1,12 @@
 # Stan bloku T-06–T-09
 
-> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Wcześniejsze sformułowania o oczekiwaniu opisują etap przygotowania; bramka jest zamknięta.
+> D-ARCH i D-AUTO zatwierdzone przez użytkownika 2026-09-13. [Zapis decyzji i warunki realizacji](ACCEPTANCE.md). Bramka fazy4 jest zamknięta.
 
 2026-09-13 · koordynator: zadanie `01a09928-7929-7b71-ac87-01929eedf3b0`.
 
 ## Zakres i stan
 
-Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedną integrację, bieżącą regresję KCS oraz brak częściowych zmian na stagingu. Kierunek funkcjonalny HTML zaakceptowany z zachowaniem istniejącej aplikacji. Przegląd Opus/high zakończony;9 uwag rozstrzygniętych w [PLAN-REVIEW](PLAN-REVIEW.md) i wprowadzonych do dokumentów. D-ARCH i D-AUTO w [ARCHITECTURE](ARCHITECTURE.md) są konkretnymi propozycjami do zatwierdzenia przed zależną implementacją.
+Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedną integrację, bieżącą regresję KCS oraz brak częściowych zmian na stagingu. Kierunek funkcjonalny HTML zaakceptowany z zachowaniem istniejącej aplikacji. Przegląd Opus/high zakończony;9 uwag rozstrzygniętych w [PLAN-REVIEW](PLAN-REVIEW.md) i wprowadzonych do dokumentów. D-ARCH i D-AUTO w [ARCHITECTURE](ARCHITECTURE.md) zostały zatwierdzone; trwa realizacja według zależności.
 
 - [x] 0 Wskazanie i narzędzia — git/GitHub, CodeGraph, Codex task API, przeglądarka, lokalny worker/DB, Claude Opus CLI dostępne.
 - [x] 1 Kontekst — źródła, wcześniejszy przegląd aplikacji i pokaz makiety; rozbieżności opisane poniżej.

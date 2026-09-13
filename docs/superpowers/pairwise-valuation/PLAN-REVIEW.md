@@ -16,4 +16,4 @@ Przegląd read-only przez Claude Opus/high, zakończony przed rozpoczęciem impl
 
 Nie przyjęto dosłownie trzech sugestii recenzenta: usunięcia methodConfirmed, wykluczenia komórek z odcisku oraz dopisania `inne` do katalogu9. Powody powyżej: zachowanie jawnego ponownego potwierdzenia, wykrywanie zmiany samego mnożnika, rozróżnienie katalogu i dozwolonego wejścia. Spec opisuje mechanikę bez niejasnych flag lub niejawnej zmiany wzorca.
 
-Nadal wymagane decyzje użytkownika: D-ARCH oraz D-AUTO. Przegląd nie jest ich zastępstwem. Kolejne przeglądy dotyczą rzeczywistego kodu każdej sesji zgodnie z delivery-workflow.
+W chwili przeglądu D-ARCH i D-AUTO wymagały decyzji. Później użytkownik jawnie zatwierdził obie (ACCEPTANCE.md); przegląd nie był zastępstwem tej decyzji. Kolejne przeglądy dotyczą rzeczywistego kodu każdej sesji zgodnie z delivery-workflow.
