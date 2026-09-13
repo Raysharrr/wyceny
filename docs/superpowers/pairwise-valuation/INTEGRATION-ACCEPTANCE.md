@@ -20,3 +20,9 @@ New KCS version `f32f8d57-b3e0-47e0-93cc-d5e113a817c9`: method reconfirmed, seve
 ## Other acceptance evidence and boundaries
 
 S1 approvals signed under S4 cover actual across-version legacy behavior for both rights; see S4-REVIEW and `/tmp/pairwise-s4-coordinator-browser/legacy-sign-evidence.json`. S3 manual form/Enter/stale tests and S4 all10 real PDF variants remain separately recorded. S5 owns the durable four-path KCS/PP×right suite and3× repetition; coordinator execution of that final suite is recorded below when integrated. This manual record covers two fresh PP drafts and two KCS new versions, not four fresh drafts, paid AI output, external imports, staging or deployment.
+
+## Final durable run on coordinator stack
+
+After S4 Linux correction and S5 merge, coordinator fetched origin and confirmed origin/main was already included (9b2903c). Application head `8b87be86b2ff5b5efff299ffc635f20827f7f9aa`. Restarted only the verified coordinator web3015/worker8015 processes from this worktree; isolated DB5544 unchanged. Both health/login succeeded. Keyless worker, active manual Opisy, actual local LibreOffice.
+
+The now-integrated durable `e2e:pairwise` suite passed all8 executions in1.2min, workers2, no retries: four fresh method/right lifecycles, thresholds/reorder, custom scales/overrides/stale forms/prose, PP4 and Help. This complements the earlier manual new-version checks and independent Linux triplicate. `/tmp/pairwise-integration-final-e2e.log`, all trace/PDF/DOCX/screenshots under `/tmp/pairwise-integration-final-results/`. The previous prospective sentence is closed by this executed record. No paid generation, hosted database, production import or staging was involved.

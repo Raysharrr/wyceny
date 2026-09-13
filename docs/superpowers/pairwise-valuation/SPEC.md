@@ -149,3 +149,9 @@ Interfejs S3 (`ad9f0c6`) i dokumenty S4 (`c075dbb`) są połączone w integracji
 S4 dodaje `prepareOperatModel` i techniczny `templateVersion`. Podpis bez method korzysta ze starej projekcji i starego szablonu; nowe KCS/PP ze wspólnego przygotowania i szablonu v2. Publiczne wejście faktów prozy i wywołanie strony pozostają zgodne. Uzasadnienie odstępstwa trafia do dokumentu/prozy tylko przy rzeczywistym odstępstwie; zapisany tekst pozostaje. Wspólny tekst metodologii i definicja wybranej metody są zachowane ze starego szablonu. Szczegóły kontraktów i dowodów: S3-WIZARD, S3-REVIEW, S4-STATE, S4-REVIEW.
 
 Koordynator wykonał rzeczywisty podpis obu wycen zatwierdzonych przed aktualizacją: tekst DOCX/PDF identyczny, oryginalne pliki nienaruszone, audyt SHA zgodny. S5 nie podpisuje tych samych wycen ponownie. Pozostaje pełny nowoczesny przepływ dwóch metod × dwóch praw z aktywnymi ręcznymi Opisami, rzeczywistym PDF, zatwierdzeniem i syntetycznym podpisem; trwałe E2E i rozszerzenie fitness na app/valuations.
+
+## Zmiany po S5 — 2026-09-13
+
+Trwały zestaw E2E obejmuje aktywne ręczne Opisy, prawdziwy PDF i podpis dla KCS/PP oraz obu praw do lokalu; osobny build z Opisami ON w CI zachowuje dotychczasowe smoke/spółdzielcze OFF. Fitness obejmuje także app/valuations TS/TSX. S5 przechodzi dwa przeglądy Opus/high i pełną macierz3× na Linuxie po poprawce wydruku. Szczegóły S5-REVIEW/S5-E2E oraz QA-CHECKLIST.
+
+Rzeczywisty finding z CI wymagał uzupełnienia S4: w nowoczesnym KCS kolumna ułamkowych wag została poszerzona bez zmiany szerokości tabeli, tekstów, arytmetyki, PP ani zamrożonego legacy. PR46→82dd24d, S4-LINUX-KCS/S4-LINUX-REVIEW. Strict PDF assertions zachowane, Linux RED→GREEN potwierdzony niezależnie. S5 PR45→8b87be8 po pełnym zielonym CI. Całość pozostaje na integration/pairwise-valuation do końcowej decyzji o main/staging; domy i działki nadal poza tym zakresem.

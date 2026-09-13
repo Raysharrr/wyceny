@@ -14,7 +14,7 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 - [x] 3 Spike arytmetyki i kolumn DOCX — PASS, wyniki w tools/spike/2026-09-13-pairwise-reference. Osobny spike kolumn3/4/5: PASS, istniejący PizZip/Docxtemplater + selektywna zmiana oznaczonych tabel OOXML, PDF lokalnie skonwertowane i obejrzane; [raport](../../../tools/spike/2026-09-13-pairwise-columns/RAPORT.md). Reguła sugestii pozostaje decyzją, nie techniczną niewiadomą do ukrycia w kodzie.
 - [x] 4 Architektura — audyt i refaktor zatwierdzone; D-ARCH/D-AUTO zaakceptowane.
 - [x] 5 Spec/plan/HANDOFF — zaakceptowane do realizacji; sygnatury S1 zostaną zamrożone przed S2.
-- [ ] 6 Sesje — S1–S4 w integracji; S5 w przeglądzie, poprawka Linux PDF w S4 po findingu CI.
+- [ ] 6 Sesje — S1–S5 i poprawka Linux PDF w integracji; pełny retest Linux/CI i koordynatora PASS, trwa przegląd zbiorczy.
 - [ ] 7 Weryfikacja — komplet lokalnie/integration i finalny PR; końcowa zgoda przed stagingiem.
 - [ ] 8 Domknięcie — filing zgodny z rzeczywistym wynikiem; brak deklaracji wdrożenia.
 
@@ -98,3 +98,11 @@ S5 ma do wykonania trwałe pełne E2E metod×praw z aktywnymi ręcznymi Opisami,
 S5 zadanie `01a09a25-d6b5-7c23-b370-06730e38d957`, feature/pairwise-e2e, PR45 do integracji. Lokalnie1849 web/4 shared/321 worker PASS, dotychczasowe E2E12PASS/2 opt-in skip; nowa macierz z aktywnymi ręcznymi Opisami i rzeczywistym PDF przeszła3× (22 wykonania131,4s). Pierwszy Opus/high PASS; uwagi wzmacniające testy w realizacji. Koordynator zakończył ręcznie cztery warianty metod×praw do podpisu; INTEGRATION-ACCEPTANCE i USER-CHECKLIST zawierają wyniki i kroki.
 
 Pierwsze CI PR45 ma zielone kontrole kodu, ale czerwone nowe KCS E2E: rzeczywisty Linux PDF łamie ułamkowe wagi40,25%/59,75% między wiersze w zbyt wąskiej kolumnie. Nie poluzowano asercji. S4 wznowiono na istniejącym feature/pairwise-report dla minimalnej poprawki nowoczesnego szablonu i Linuxowej reprodukcji; legacy pozostaje zamrożone. Do czasu poprawki, jej przeglądu i zielonego CI nie scalamy S5 ani finalnego tematu. Szczegóły S5-REVIEW. Main/staging pozostają bez zmian.
+
+Linuxowy finding S4 zamknięty: PR46, head28244ee, scoped Opus/high PASS; koordynator24 testy, porównanie archiwum, idempotencja i własna konwersja Linux obu praw PASS. Wszystkie kontrole PR46 zielone; squash82dd24d w integracji. S5 otrzymał poprawkę do normalnego merge i pełnego Linuxowego retestu. Drugi przegląd testów S5 (e1b1670) również PASS; nie dokładamy kolejnych rund kosmetycznych. S4-LINUX-REVIEW zawiera dowody i drobne odroczenia. Main nadal9b2903c, bez stagingu.
+
+## Po S5 — 2026-09-13
+
+Wszystkie części są w integracji: PR45→8b87be8 po końcowych dwóch przeglądach testów, Linux3×22PASS/64,7s i pełnym CI (kod3m54, browser4m00). Końcowy CI:1850 web/4 shared/320 worker + jawne istniejące skipy;321 worker lokalnie z realnym LibreOffice. S5-Linux i wcześniejszy rzeczywisty odbiór koordynatora opisują te same kryteria. USER-CHECKLIST jest przygotowana. Koordynator odświeża własny stack, uruchamia trwały zestaw na całości i wykonuje wymagany przegląd zbiorczy przed finalnym PR. Main9b2903c i staging nadal bez zmian; finalne scalenie wymaga decyzji użytkownika.
+
+Końcowy trwały E2E koordynatora na zrestartowanym stacku3015/8015/5544, head8b87be8:8PASS/1,2min, aktywne ręczne Opisy i rzeczywisty PDF/podpis. Origin/main9b2903c już zawarty, bez konfliktu/migracji. Całość gotowa do przeglądu zbiorczego i jednego finalnego PR; bramka main/staging nadal oczekuje decyzji użytkownika.
