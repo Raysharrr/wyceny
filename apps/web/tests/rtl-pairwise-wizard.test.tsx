@@ -214,3 +214,23 @@ it("definition placeholders say required for custom and two-level features only"
   );
   expect(placeholder("feature-def-standard-wykonczenia-lepsza")).toMatch(/^wymagane/);
 });
+
+it("PP subject area rating starts unrated with the same area suggestion as comparisons", async () => {
+  const user = userEvent.setup();
+  const input = ppInputs();
+  input.area = 48;
+  input.features = [];
+  input.pairwise!.comparisons = {};
+  render(<StepFeatures valuationId="v" {...input} snapshot={input} />);
+  const middle = screen.queryByRole("button", { name: "powierzchnia użytkowa: przeciętna" });
+  expect(middle?.getAttribute("aria-pressed")).not.toBe("true");
+  expect(
+    screen.getByText(/Sugestia: lepsza — powierzchnia przedmiotu 48 m², próg 50 m²/),
+  ).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Przyjmij sugerowaną ocenę przedmiotu" }));
+  expect(
+    screen
+      .getByRole("button", { name: "powierzchnia użytkowa: lepsza" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+});
