@@ -614,3 +614,83 @@ it("returns the repository's canonical identities after sample ACL normalization
   });
   expect(result).toEqual({ ok: true, comparables: [row], selectedComparableIds: ["rcn:tx|a"] });
 });
+
+it("PP preset provenance uses selected areas, not the unrelated pool median", async () => {
+  const { ppInputs } = await import("./fixtures/pairwise-inputs");
+  const { powierzchniaDefinitions } = await import("@/domain/feature-presets");
+  const { pairwiseBasis } = await import("@/domain/pairwise-state");
+  const input = ppInputs();
+  input.comparables.push(
+    ...[0, 1, 2, 3].map((i) => ({
+      id: `10000000-0000-4000-8000-abc00000000${i}`,
+      source: "manual" as const,
+      pricePerM2: 9000,
+      area: 200,
+    })),
+  );
+  getMock.mockResolvedValueOnce({ ...draftValuation, inputs: input });
+  saveFeaturesMock.mockResolvedValueOnce(draftValuation);
+  const result = await saveFeaturesAction(VALUATION_ID, {
+    expectedPairwiseBasis: pairwiseBasis(input),
+    features: [
+      {
+        key: "powierzchnia-uzytkowa",
+        name: "powierzchnia użytkowa",
+        weightPct: 100,
+        rating: "lepsza",
+        definitions: powierzchniaDefinitions(50),
+      },
+    ],
+  });
+  expect(result).toEqual({ ok: true });
+  expect(saveFeaturesMock.mock.calls[0][2].provenance.featureDefs?.source).toBe("preset");
+});
+
+it.each([0, 2, "stale"])(
+  "PP feature working save accepts incomplete selection %s with no median fallback; confirmation rejects it",
+  async (selection) => {
+    const { ppInputs } = await import("./fixtures/pairwise-inputs");
+    const { pairwiseBasis } = await import("@/domain/pairwise-state");
+    const { applyFeaturesUpdate } = await import("@/domain/valuation");
+    const inputs = ppInputs();
+    inputs.pairwise!.selectedComparableIds =
+      selection === "stale"
+        ? [...inputs.pairwise!.selectedComparableIds.slice(0, 2), "manual:missing"]
+        : inputs.pairwise!.selectedComparableIds.slice(0, Number(selection));
+    const draft = { ...draftValuation, inputs };
+    getMock.mockResolvedValue(draft);
+    saveFeaturesMock.mockImplementation(async (_id, _user, update) =>
+      applyFeaturesUpdate(draft, update),
+    );
+    const request = {
+      expectedPairwiseBasis: pairwiseBasis(inputs),
+      features: [
+        {
+          key: "powierzchnia-uzytkowa" as const,
+          name: "powierzchnia użytkowa",
+          weightPct: 100,
+          rating: "lepsza" as const,
+          definitions: {},
+        },
+      ],
+    };
+    expect(await saveFeaturesAction(VALUATION_ID, request)).toEqual({ ok: true });
+    expect(saveFeaturesMock.mock.calls[0][2].provenance.featureDefs?.source).toBe("preset");
+    expect(await saveFeaturesAction(VALUATION_ID, { ...request, confirmPairwise: true })).toEqual({
+      error: expect.any(String),
+    });
+  },
+);
+
+it("does not treat an unknown method as an incomplete PP working selection", async () => {
+  const { ppInputs } = await import("./fixtures/pairwise-inputs");
+  const inputs = ppInputs();
+  inputs.method = "unknown" as typeof inputs.method;
+  getMock.mockResolvedValue({ ...draftValuation, inputs });
+  expect(
+    await saveFeaturesAction(VALUATION_ID, {
+      features: [{ key: "lokalizacja", name: "lokalizacja", weightPct: 100, rating: "lepsza" }],
+    }),
+  ).toEqual({ error: expect.any(String) });
+  expect(saveFeaturesMock).not.toHaveBeenCalled();
+});

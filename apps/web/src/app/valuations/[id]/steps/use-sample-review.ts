@@ -61,6 +61,39 @@ export function rcnRow(
   };
 }
 
+/** PP keeps edited and selected rows when rankings/radius change; new proposals
+ * extend the pool, never silently replace the appraiser's selected comparisons. */
+export function mergePairwisePool(
+  snap: SampleSelectionSnapshot,
+  currentRows: ComparableRow[],
+  poolSource: PoolSource,
+): ComparableRow[] {
+  const eff = effectiveSelection(snap);
+  // Client UUID alone does not turn the initial empty form row into data.
+  // Preserve even invalid/partial edits (including zero), and all source-bearing rows.
+  const rows = currentRows.filter((row) =>
+    [
+      row.date,
+      row.area,
+      row.pricePerM2,
+      row.source,
+      row.transactionId,
+      row.lokalId,
+      row.coopTxId,
+    ].some((value) => value != null && String(value).trim() !== ""),
+  );
+  for (const candidate of [...eff.proposed, ...eff.alternates]) {
+    const found = rows.some(
+      (row) =>
+        row.transactionId === candidate.transactionId &&
+        row.lokalId === candidate.lokalId &&
+        row.source === registrySourceOfPool(poolSource),
+    );
+    if (!found) rows.push(rcnRow(candidate, poolSource));
+  }
+  return rows;
+}
+
 /**
  * Rebuilds `comparables` from the EFFECTIVE proposal (domain result + manual
  * overlay) — RCN rows first, any row that isn't `source: "rcn"` (hand-added
@@ -235,6 +268,7 @@ export function useSampleReview({
   replaceComparables,
   liveStreetView,
   poolSource,
+  preservePool = false,
 }: {
   valuationId: string;
   sel: SampleSelectionSnapshot | null | undefined;
@@ -248,6 +282,7 @@ export function useSampleReview({
    * meta, which predates the second source and is therefore RCN.
    */
   poolSource: PoolSource | undefined;
+  preservePool?: boolean;
 }) {
   const rowSource: PoolSource = poolSource ?? "rcn-wfs-gugik";
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -270,6 +305,10 @@ export function useSampleReview({
    * aktywny w trakcie przeliczania, więc ręczny ślad z chwili WYSŁANIA bywa już
    * nieaktualny, gdy odpowiedź wraca.
    */
+  const comparablesRef = useRef(comparables);
+  useEffect(() => {
+    comparablesRef.current = comparables;
+  }, [comparables]);
   const selRef = useRef(sel);
   useEffect(() => {
     selRef.current = sel;
@@ -309,7 +348,9 @@ export function useSampleReview({
    * extra read of not-yet-committed form state.
    */
   const syncComparables = (snap: SampleSelectionSnapshot) => {
-    replaceComparables(rebuildComparables(snap, comparables ?? [], rowSource));
+    replaceComparables(
+      (preservePool ? mergePairwisePool : rebuildComparables)(snap, comparables ?? [], rowSource),
+    );
   };
 
   /** Panel's "Zostaw" — advances to the next candidate in ranking order; past the last, closes the panel. */
@@ -543,7 +584,13 @@ export function useSampleReview({
       setValue("sampleSelection", newSel, { shouldDirty: true });
       setValue("sampleMeta", result.proposal.sampleMeta, { shouldDirty: true });
       setValue("streetView", result.proposal.streetView, { shouldDirty: true });
-      replaceComparables(rebuildComparables(newSel, comparables ?? [], rowSource));
+      replaceComparables(
+        (preservePool ? mergePairwisePool : rebuildComparables)(
+          newSel,
+          (preservePool ? comparablesRef.current : comparables) ?? [],
+          rowSource,
+        ),
+      );
       // A fresh selection may no longer contain the candidate the panel was
       // showing — mirrors `onFetchSample` closing the panel on a new pool.
       setSelectedKey(null);

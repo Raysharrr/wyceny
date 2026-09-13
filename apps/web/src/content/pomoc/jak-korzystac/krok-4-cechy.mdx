@@ -34,11 +34,11 @@ Wyjątkiem jest „powierzchnia użytkowa”: jej progi wyliczają się z median
 
 ### Podgląd wyniku
 
-Panel obok tabeli przelicza się przy każdej zmianie wagi i oceny: „Wskaźnik korekty ΣUi” z pozycją na skali oraz „Podgląd wartości (WR)”. To samo skrótowo powtarza pasek na dole ekranu. Nic z tego podglądu nie jest zapisywane — kwotę zapisuje dopiero krok 5. Gdy próby nie da się przeliczyć (np. brak cen), w panelu widnieje „—”. Jak wagi i oceny składają się na ΣUi, a ΣUi na kwotę, opisuje [Metoda KCS](/pomoc/metoda-kcs).
+Panel obok tabeli przelicza się przy każdej zmianie wagi i oceny: „Wskaźnik korekty ΣUi” z pozycją na skali oraz „Podgląd wartości (WR)”. To samo skrótowo powtarza pasek na dole ekranu. Nic z tego podglądu nie jest zapisywane — kwotę zapisuje dopiero krok 5. Gdy danych nie da się przeliczyć (np. brak cen, ocen lub błędna suma wag), w panelu widnieje „—”. Jak wagi i oceny składają się na ΣUi, a ΣUi na kwotę, opisuje [Metoda KCS](/pomoc/metoda-kcs).
 
 ## Co musisz uzupełnić ręcznie
 
-- **Ocena każdej cechy** — trzy przyciski w wierszu: „gorsza”, „przeciętna”, „lepsza”.
+- **Ocena każdej cechy** — dwa lub trzy przyciski w wierszu, zależnie od skali: „gorsza”, „przeciętna”, „lepsza”.
 - **Wagi** — pole liczbowe przy każdej cesze, w procentach.
 - **Definicje skali ocen** — do poprawienia pod każdym wierszem; wyczyszczenie pola usuwa ten poziom z operatu.
 - **Cechy z puli** — lista „+ Dodaj cechę z puli…” dokłada cechę spoza zestawu podstawowego: funkcjonalność lokalu, liczba izb, rodzaj zabudowy budynku. Dodana cecha wchodzi z wagą 0, więc trzeba jej nadać wagę i odjąć ją innym.
@@ -53,3 +53,19 @@ Cecha z wagą 0 nie trafia do operatu — dokument opisuje wyłącznie cechy o w
 - Jeśli zostawisz wagi dokładnie takie, jakie zaproponowała aplikacja, wchodzą one ze [statusem „do weryfikacji”](/pomoc/zasady-zatwierdzania); tak samo definicje skali ocen, dopóki są w wersji zaproponowanej. Potwierdza je zapis tego kroku: przycisk „Zatwierdź cechy i dalej” w pasku na dole ekranu zapisuje je i potwierdza naraz — krok 7 już o to nie poprosi, bo wag ani definicji nie wyświetla. Własna zmiana wagi albo definicji jest potwierdzona z definicji, a same oceny cech są potwierdzone zawsze — wskazujesz je sam.
 
 Zapis cech odblokowuje krok 5 w pasku kroków.
+
+## Własna cecha i skala 2/3
+
+„+ Inna cecha” dodaje jedną własną cechę: pustą nazwę i ocenę, wagę 0 oraz skalę trzech poziomów. Podaj nazwę inną niż nazwy katalogowe i pozostałe aktywne cechy, ocenę oraz definicje wszystkich poziomów. Nazwy cech katalogowych są stałe. Niekompletną własną cechę trzeba uzupełnić lub usunąć nawet przy wadze 0.
+
+Każdy wiersz ma wybór skali. Zmiana z trzech na dwa poziomy usuwa środkową definicję oraz ocenę „przeciętna” przedmiotu i porównań. Wybierz ponownie brakujące oceny; definicje obu końców są wymagane. Powrót do trzech poziomów nie odtwarza usuniętych danych. Błędne wagi lub niepełne cechy ukrywają obie kwoty podglądu.
+
+## Oceny i poprawki PP
+
+Dla PP pod cechami pojawia się macierz wybranych lokali. Oceny początkowo są puste. Wyjątek stanowi widoczna sugestia oceny powierzchni, którą trzeba przyjąć przyciskiem: jest dostępna tylko przy niezmienionych definicjach znanego progu i podanej powierzchni lokalu. Próg pochodzi z mediany **wybranych** porównań. Własne definicje wyłączają tę sugestię. Brakujących danych aplikacja nie zastępuje danymi przedmiotu.
+
+Po wybraniu oceny aplikacja proponuje mnożnik z różnicy rang podzielonej przez liczbę odstępów skali. Pole „Przyjęty mnożnik” pozostaje edytowalne; odstępstwo od sugestii wymaga uzasadnienia. Możliwe są wartości ułamkowe i wykraczające poza ±1. Podgląd nie pojawi się przy brakujących ocenach, mnożnikach, uzasadnieniach lub niedodatniej cenie po korekcie.
+
+„Zapisz oceny robocze” zachowuje pracę i ponownie otwiera zapisany formularz. „Potwierdź oceny i poprawki i dalej” świadomie potwierdza całą macierz i przechodzi do Kalkulacji. Zmiana próby, powierzchni, cech lub ocen wymaga ponownego potwierdzenia. Jeśli dane zmieniono w innej karcie, zapis poprosi o odświeżenie formularza.
+
+Enter w polu nazwy, definicji, wagi, oceny, mnożnika lub uzasadnienia nie potwierdza macierzy PP. Użyj przycisku potwierdzenia; działa także jego aktywacja klawiaturą. Zmiana oceny przedmiotu pozostawia dotychczasowe przyjęte mnożniki do ponownego sprawdzenia. Przyjmij nową sugestię albo uzasadnij zachowane odstępstwo — aplikacja nie nadpisuje Twoich poprawek automatycznie.
