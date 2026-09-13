@@ -14,7 +14,7 @@ Użytkownik zlecił pełny blok cech lokali i PP, samodzielne sesje Codex, jedn�
 - [x] 3 Spike arytmetyki i kolumn DOCX — PASS, wyniki w tools/spike/2026-09-13-pairwise-reference. Osobny spike kolumn3/4/5: PASS, istniejący PizZip/Docxtemplater + selektywna zmiana oznaczonych tabel OOXML, PDF lokalnie skonwertowane i obejrzane; [raport](../../../tools/spike/2026-09-13-pairwise-columns/RAPORT.md). Reguła sugestii pozostaje decyzją, nie techniczną niewiadomą do ukrycia w kodzie.
 - [x] 4 Architektura — audyt i refaktor zatwierdzone; D-ARCH/D-AUTO zaakceptowane.
 - [x] 5 Spec/plan/HANDOFF — zaakceptowane do realizacji; sygnatury S1 zostaną zamrożone przed S2.
-- [ ] 6 Sesje — S1–S4 w integracji po przeglądach, CI i lokalnym odbiorze; gotowe S5.
+- [ ] 6 Sesje — S1–S4 w integracji; S5 w przeglądzie, poprawka Linux PDF w S4 po findingu CI.
 - [ ] 7 Weryfikacja — komplet lokalnie/integration i finalny PR; końcowa zgoda przed stagingiem.
 - [ ] 8 Domknięcie — filing zgodny z rzeczywistym wynikiem; brak deklaracji wdrożenia.
 
@@ -92,3 +92,9 @@ S3: PR43, końcowy head22b4d54, squash ad9f0c6. S4: PR44, końcowy head0c1c972, 
 Oba squashe mają właściwego autora Raysharrr i emailmichal@make-simple.it oraz ważny podpis. Main nadal9b2903c. Stack integracji3015/8015 został uruchomiony ponownie z połączonej wersji. Tymczasowe stacki sesji i koordynatora zostały zatrzymane; bazy i czyste worktree zachowane do ewentualnych poprawek. Własne stare wyceny S1 zostały podpisane w rzeczywistym teście zgodności — teksty i oryginalne bajty zgodne.
 
 S5 ma do wykonania trwałe pełne E2E metod×praw z aktywnymi ręcznymi Opisami, rzeczywistym PDF i syntetycznym podpisem, trzy powtórzenia, CI oraz rozszerzenie fitness na app/valuations. Koordynator następnie weryfikuje całość i przygotowuje jeden finalny PR do main, bez scalenia/deploy przed decyzją użytkownika. Szacunki godzin pozostają planem, nie rozliczeniem.
+
+## S5 i odbiór integracji — w toku
+
+S5 zadanie `01a09a25-d6b5-7c23-b370-06730e38d957`, feature/pairwise-e2e, PR45 do integracji. Lokalnie1849 web/4 shared/321 worker PASS, dotychczasowe E2E12PASS/2 opt-in skip; nowa macierz z aktywnymi ręcznymi Opisami i rzeczywistym PDF przeszła3× (22 wykonania131,4s). Pierwszy Opus/high PASS; uwagi wzmacniające testy w realizacji. Koordynator zakończył ręcznie cztery warianty metod×praw do podpisu; INTEGRATION-ACCEPTANCE i USER-CHECKLIST zawierają wyniki i kroki.
+
+Pierwsze CI PR45 ma zielone kontrole kodu, ale czerwone nowe KCS E2E: rzeczywisty Linux PDF łamie ułamkowe wagi40,25%/59,75% między wiersze w zbyt wąskiej kolumnie. Nie poluzowano asercji. S4 wznowiono na istniejącym feature/pairwise-report dla minimalnej poprawki nowoczesnego szablonu i Linuxowej reprodukcji; legacy pozostaje zamrożone. Do czasu poprawki, jej przeglądu i zielonego CI nie scalamy S5 ani finalnego tematu. Szczegóły S5-REVIEW. Main/staging pozostają bez zmian.
