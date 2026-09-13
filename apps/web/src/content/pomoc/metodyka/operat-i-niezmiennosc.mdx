@@ -84,7 +84,7 @@ Dla rzeczoznawcy podpis oznacza tyle: od tej chwili wiersz wyceny i oba pliki s�
 
 Nowa wersja jest jedynym sposobem, by zmienić cokolwiek w podpisanym operacie — i powstaje **wyłącznie z wyceny podpisanej**. Operat zatwierdzony, ale niepodpisany, tej ścieżki nie ma; jego stan rozwiązuje się podpisem.
 
-Powstaje wtedy nowy szkic wskazujący na poprzednika. Przenoszą się **wartości**: adres, powierzchnia, migawka wejść, cel wyceny, numer księgi, klient, data oględzin oraz wartość rynkowa. Ich statusy to osobna sprawa, opisana niżej — przeniesiona wartość nie znaczy przeniesionego potwierdzenia. Zerowane są kwota słownie i adresy obu plików — nowa wersja startuje bez dokumentu, bo dokument powstaje dopiero przy jej własnym zatwierdzeniu.
+Powstaje wtedy nowy szkic wskazujący na poprzednika. Przenoszą się **wartości**: adres, powierzchnia, migawka wejść (z metodą, a przy PP z wyborem porównań, ocenami i mnożnikami), cel wyceny, numer księgi, klient i data oględzin. Ich statusy to osobna sprawa, opisana niżej — przeniesiona wartość nie znaczy przeniesionego potwierdzenia. Zerowane są wartość rynkowa, kwota słownie i adresy obu plików, a metoda wraca jako niepotwierdzona propozycja (przy PP znika też potwierdzenie macierzy ocen i poprawek) — nowa wersja startuje bez dokumentu i bez zatwierdzonej kalkulacji, bo jedno i drugie powstaje dopiero przy jej własnym przejściu przez kroki 3–7.
 
 Najważniejsza jest reguła, według której statusy wracają do weryfikacji, bo jest węższa, niż brzmi potoczne „wszystko, czego nie wpisałeś ręcznie":
 
