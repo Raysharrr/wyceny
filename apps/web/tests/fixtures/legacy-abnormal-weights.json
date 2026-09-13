@@ -1,0 +1,17 @@
+{
+  "sourceCommit": "9b2903c",
+  "description": "80% weight sum; captured with original 9b kcs, projection and renderer source plus frozen binary",
+  "records": [
+    {
+      "propertyRight": "wlasnosc_lokalu",
+      "amountInWords": "wynik syntetyczny 396200 złotych",
+      "textSha256": "f383675a81141143b85b27f26b327b3299cae7ad39dfdd2c895d5867489c33b3"
+    },
+    {
+      "propertyRight": "spoldzielcze_wlasnosciowe",
+      "amountInWords": "wynik syntetyczny 396200 złotych",
+      "textSha256": "0be17cce7b9b7c81ff815a5b147c1f2cb9b2f988a66a5c263b50d28eb6b5f3c6"
+    }
+  ],
+  "weightFactor": 0.8
+}

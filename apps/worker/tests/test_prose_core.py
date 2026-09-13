@@ -650,3 +650,25 @@ class TestInflectPokrywaSlownik:
     def test_nie_generuje_form_ktore_nie_sa_odmiana(self):
         assert "golęcino" not in app.prose._inflect("Golęcin")
         assert "jeżycowo" not in app.prose._inflect("Jeżyce")
+
+
+def test_pairwise_facts_are_prompt_data_without_a_market_value():
+    from app.prose import PROMPTS_DIR, build_prompt, parse_section_file, validate_numbers
+
+    task, examples = parse_section_file(PROMPTS_DIR / "uzasadnienie.md")
+    assert "poprawki_porownan" in task
+    assert any(data.get("metoda") == "porównywania parami" for data, _ in examples)
+    facts = {
+        "metoda": "porównywania parami",
+        "poprawki_porownan": [
+            "Porównanie 1, lokalizacja: przedmiot lepsza, porównanie przeciętna, "
+            "waga 40,25%, mnożnik -0,25; uzasadnienie rzeczoznawcy."
+        ],
+        "pozycja_wyniku": "w przedziale cen próby, zbliżona do średniej",
+    }
+    prompt = build_prompt("uzasadnienie", facts)
+    assert "porównywania parami" in prompt
+    assert "40,25%" in prompt
+    assert "-0,25" in prompt
+    assert validate_numbers("Przyjęto mnożnik -0,25.", facts) == []
+    assert validate_numbers("Wartość wynosi 740 900 zł.", facts)

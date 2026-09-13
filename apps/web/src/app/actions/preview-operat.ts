@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
-import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
-import { computeKcs } from "@/domain/kcs";
+import { prepareOperatModel, type OperatPurpose } from "@/domain/document-model";
+import { computeValuation } from "@/domain/valuation-calculation";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
@@ -161,9 +161,9 @@ export async function previewOperat(
         };
       }
 
-      const kcs = computeKcs(valuation.inputs);
-      const amountInWords = await worker.amountInWords(kcs.wr);
-      const model = buildDocumentModel(
+      const result = computeValuation(valuation.inputs);
+      const amountInWords = await worker.amountInWords(result.wr);
+      const { model, templateVersion } = prepareOperatModel(
         {
           address: valuation.address,
           area: valuation.area,
@@ -177,7 +177,7 @@ export async function previewOperat(
           // rather than promoting this file (spec §C).
           approvedAt: new Date(),
           inputs: valuation.inputs,
-          kcs,
+          result,
           amountInWords,
         },
         // ...and the second half of that same §C difference: a section the
@@ -186,7 +186,7 @@ export async function previewOperat(
         // may pass the flag — approve and sign must not.
         { preview: true },
       );
-      const docx = renderOperatDocx(model, { maps, photos });
+      const docx = renderOperatDocx(model, { templateVersion, maps, photos });
       const pdf = await worker.convertToPdf(docx);
       await storage.put(previewDocKey(id), pdf);
 

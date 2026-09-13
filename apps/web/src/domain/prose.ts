@@ -1,3 +1,5 @@
+import { pairwiseOverrideReason } from "./pairwise-presentation";
+import { formatPercent } from "./document-format";
 /**
  * Prose facts — the ONLY thing the language model is allowed to write from
  * (ADR-014, FR-6). Pure: zero I/O, zero adapter imports (F-10), no clock
@@ -23,7 +25,10 @@
  */
 
 import { cityFromAddress, formatNumber, formatPln, LEVEL_LABEL } from "./document-model";
-import { computeKcs, type Comparable, type KcsInput, type KcsResult } from "./kcs";
+import type { Comparable, KcsInput, KcsResult } from "./kcs";
+import { computeValuation } from "./valuation-calculation";
+import { valuationComparables } from "./pairwise-state";
+import { ValuationCalculationError } from "./valuation-input";
 import { obrebName } from "./obreb-name";
 import { effectiveSelection } from "./sample-snapshot";
 import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "./prose-snapshot";
@@ -105,6 +110,8 @@ export type ProseFacts = {
   notatka_zagospodarowanie?: string;
   oceny_cech?: Record<string, string>;
   pozycja_wyniku?: string;
+  metoda?: string;
+  poprawki_porownan?: string[];
 };
 
 /**
@@ -120,7 +127,7 @@ export type ProseFacts = {
  * `prose-section-facts.test.ts` pins this against the prompt files.
  */
 export const PROSE_SECTION_FACTS: Record<ProseSection, readonly (keyof ProseFacts)[]> = {
-  analiza_rynku: ["adres", "obreb", "pow_uzytkowa", "rynek", "proba"],
+  analiza_rynku: ["adres", "obreb", "pow_uzytkowa", "rynek", "proba", "metoda"],
   opis_lokalu: ["pow_uzytkowa", "notatka_uklad"],
   otoczenie: ["notatka_otoczenie"],
   zagospodarowanie: [
@@ -134,7 +141,7 @@ export const PROSE_SECTION_FACTS: Record<ProseSection, readonly (keyof ProseFact
     "notatka_zagospodarowanie",
   ],
   standard: ["notatka_standard", "oceny_cech"],
-  uzasadnienie: ["pozycja_wyniku", "proba"],
+  uzasadnienie: ["pozycja_wyniku", "proba", "metoda", "poprawki_porownan"],
 };
 
 /**
@@ -185,16 +192,39 @@ function minMax(values: number[]): { min: number; max: number } | null {
 }
 
 /**
- * `computeKcs`, or null when the draft cannot feed the engine yet — prose is
- * offered on an inspection-only draft too. The three conditions mirror the
- * engine's own three preconditions (kcs.ts) rather than swallowing its throw.
+ * Method-aware arithmetic, or null for an incomplete draft. General inspection
+ * descriptions remain available before calculation readiness.
  */
-function proseKcs(inputs: KcsInput): KcsResult | null {
-  const usable =
-    inputs.comparables.length > 0 &&
-    inputs.area > 0 &&
-    inputs.comparables.every((c) => c.pricePerM2 > 0);
-  return usable ? computeKcs(inputs) : null;
+function proseCalculation(
+  inputs: KcsInput,
+): Pick<KcsResult, "cmin" | "cmax" | "csr" | "unitValue"> | null {
+  const comparables = proseComparables(inputs);
+  if (!(inputs.area > 0) || !comparables.length || comparables.some((c) => !(c.pricePerM2 > 0)))
+    return null;
+  try {
+    const result = computeValuation(inputs);
+    return result.method === "kcs"
+      ? result
+      : {
+          ...result,
+          csr:
+            valuationComparables(inputs).reduce((sum, c) => sum + c.pricePerM2, 0) /
+            result.pairs.length,
+        };
+  } catch (error) {
+    if (error instanceof ValuationCalculationError) return null;
+    throw error;
+  }
+}
+
+/** Incomplete selections have no sample facts; general descriptions remain available. */
+export function proseComparables(inputs: KcsInput): Comparable[] {
+  try {
+    return valuationComparables(inputs);
+  } catch (error) {
+    if (error instanceof ValuationCalculationError) return [];
+    throw error;
+  }
 }
 
 /**
@@ -232,7 +262,9 @@ const NEAR_AVERAGE = 0.01;
  * The unit value and the market value stay on this side of the wire; this
  * string is all the `uzasadnienie` section gets to reason from.
  */
-export function resultPosition(kcs: KcsResult): string {
+export function resultPosition(
+  kcs: Pick<KcsResult, "unitValue" | "cmin" | "cmax" | "csr">,
+): string {
   if (kcs.unitValue < kcs.cmin) return "poniżej przedziału cen próby";
   if (kcs.unitValue > kcs.cmax) return "powyżej przedziału cen próby";
   if (Math.abs(kcs.unitValue - kcs.csr) / kcs.csr < NEAR_AVERAGE) {
@@ -250,7 +282,8 @@ export function resultPosition(kcs: KcsResult): string {
  * not see.
  */
 export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFacts {
-  const kcs = proseKcs(inputs);
+  const kcs = proseCalculation(inputs);
+  const comparables = proseComparables(inputs);
   const subject = inputs.subject ?? null;
   const note = inputs.inspection?.note ?? null;
 
@@ -262,15 +295,13 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
   // "11-2024 – 11-2024"), and the worker's number guard cannot catch it,
   // because every number in it IS in the facts. A missing aggregate is honest;
   // a partial one is a falsifiable untruth inside an operat.
-  const months = inputs.comparables.map((c) => monthOf(c.date)).filter((m) => m !== null);
+  const months = comparables.map((c) => monthOf(c.date)).filter((m) => m !== null);
   const ordered =
-    months.length === inputs.comparables.length
-      ? [...months].sort((a, b) => a.order - b.order)
-      : [];
-  const withArea = inputs.comparables.filter(
+    months.length === comparables.length ? [...months].sort((a, b) => a.order - b.order) : [];
+  const withArea = comparables.filter(
     (c): c is Comparable & { area: number } => c.area != null && c.area > 0,
   );
-  const everyAreaKnown = withArea.length === inputs.comparables.length;
+  const everyAreaKnown = withArea.length === comparables.length;
   const areas = everyAreaKnown ? minMax(withArea.map((c) => c.area)) : null;
   // Each comparable's OWN area — "what those flats actually sold for". The
   // subject's area × sample prices would put a number adjacent to WR in front
@@ -306,11 +337,21 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
   // appraiser's own override is exactly what puts a 1800 m transaction under
   // a "w promieniu 1 000 m" sentence.
   const sel = inputs.sampleSelection ?? null;
-  const effective = sel ? effectiveSelection(sel).proposed : [];
+  const effective = sel
+    ? effectiveSelection(sel).proposed.filter(
+        (c) =>
+          inputs.method !== "pp" ||
+          comparables.some((row) =>
+            row.coopTxId
+              ? row.coopTxId === c.transactionId
+              : row.transactionId === c.transactionId && row.lokalId === c.lokalId,
+          ),
+      )
+    : [];
   const sampleObreby = effective.map((c) => obrebName(c.egib));
   const wholeSampleCovered =
     sel !== null &&
-    sampleObreby.length === inputs.comparables.length &&
+    sampleObreby.length === comparables.length &&
     sampleObreby.every((name) => name !== null) &&
     effective.every((c) => c.distanceM <= sel.radiusUsedM);
   const obreby = wholeSampleCovered
@@ -321,7 +362,7 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
 
   const proba: ProseSampleFacts | null = kcs
     ? {
-        liczba_transakcji: inputs.comparables.length,
+        liczba_transakcji: comparables.length,
         ...(obreby.length > 0 ? { obreby } : {}),
         // Rounded: the number guard compares written forms, and a fractional
         // radius would reach the prompt as "1000.5" — a form no Polish text
@@ -357,6 +398,25 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
   const position = kcs && rated.length > 0 ? resultPosition(kcs) : null;
 
   return {
+    ...(inputs.method === "pp"
+      ? {
+          metoda: "porównywania parami",
+          ...(kcs
+            ? {
+                poprawki_porownan: comparables.flatMap((_, i) => {
+                  const id = inputs.pairwise!.selectedComparableIds[i];
+                  return inputs.features
+                    .filter((f) => f.weight > 0)
+                    .map((f) => {
+                      const cell = inputs.pairwise!.comparisons[id][f.key!];
+                      const reason = pairwiseOverrideReason(f, cell);
+                      return `Porównanie ${i + 1}, ${f.name}: przedmiot ${LEVEL_LABEL[f.rating]}, porównanie ${LEVEL_LABEL[cell.rating!]}, waga ${formatPercent(f.weight)}%, mnożnik ${String(cell.multiplier).replace(".", ",")}${reason ? "; " + reason : ""}.`;
+                    });
+                }),
+              }
+            : {}),
+        }
+      : {}),
     adres: address,
     // No `dzielnica` anywhere in the snapshot — omitted rather than guessed
     // from the address (the prompt tolerates its absence).

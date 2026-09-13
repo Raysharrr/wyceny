@@ -15,6 +15,10 @@ Liczbę transakcji przyjętych do porównań (`liczba_transakcji`) podawaj dokł
 trafia do Tabeli 1 operatu.
 Zacznij bezpośrednio od akapitu wprowadzającego — bez tytułu i bez numeru sekcji.
 
+Jeżeli DANE zawierają `metoda`, nazwij metodę zgodnie z tym polem. Liczba transakcji
+w `proba` dotyczy porównań przyjętych do obliczeń, a nie całej przeglądanej puli.
+Nie przypisuj metodzie PP procedury korygowania ceny średniej.
+
 ## PRZYKŁAD
 
 ### DANE
@@ -116,3 +120,28 @@ do 52,40 m2. Jednostkowe ceny transakcyjne znajdowały się w przedziale od 8 10
 do 11 260,00 zł za 1 m2 powierzchni użytkowej lokalu. Średnia cena jednostkowa została
 ustalona na poziomie 9 430,00 zł za 1 m2. Ceny całkowite lokali przyjętych do porównań
 zawierały się w przedziale od 310 000 zł do 588 000 zł.
+
+## PRZYKŁAD
+
+### DANE
+
+```json
+{
+ "metoda": "porównywania parami",
+ "adres": "ul. Testowa 1, Nowogród",
+ "proba": {
+  "liczba_transakcji": 3,
+  "przebadano": "kilkadziesiąt",
+  "cena_min_zl_m2": "9 000,00",
+  "cena_srednia_zl_m2": "9 500,00",
+  "cena_max_zl_m2": "10 000,00"
+ }
+}
+```
+
+### TEKST
+
+Przeanalizowano kilkadziesiąt transakcji. Do obliczeń metodą porównywania parami
+przyjęto 3 transakcje. Ceny jednostkowe
+w przyjętej próbie wynosiły od 9 000,00 zł do 10 000,00 zł za 1 m2,
+przy średniej 9 500,00 zł za 1 m2.

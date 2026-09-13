@@ -4,6 +4,7 @@ import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import expressionParser from "docxtemplater/expressions.js";
 import ImageModule from "docxtemplater-image-module-free";
+import { resizePairwiseTables } from "./pairwise-tables";
 import type { DocumentModel } from "../domain/document-model";
 import { fitBox, jpegDimensions } from "../lib/jpeg";
 import type { InspectionSection, RenderPhotos } from "../domain/inspection";
@@ -45,7 +46,12 @@ export type { RenderPhotos } from "../domain/inspection";
 
 export function renderOperatDocx(
   model: DocumentModel,
-  opts?: { signature?: Buffer | null; maps?: RenderMaps | null; photos?: RenderPhotos | null },
+  opts?: {
+    templateVersion?: "legacy-kcs" | "valuation-v2";
+    signature?: Buffer | null;
+    maps?: RenderMaps | null;
+    photos?: RenderPhotos | null;
+  },
 ): Buffer {
   const signature = opts?.signature ?? null;
   const maps = opts?.maps ?? null;
@@ -71,7 +77,17 @@ export function renderOperatDocx(
     foto_budynek: fotoLoop("budynekZewn"),
     foto_wnetrza: fotoLoop("wnetrza"),
   };
-  const zip = new PizZip(fs.readFileSync(TEMPLATE_PATH));
+  const templatePath =
+    opts?.templateVersion === "legacy-kcs"
+      ? path.join(process.cwd(), "templates", "operat-szablon-legacy-kcs.docx")
+      : TEMPLATE_PATH;
+  const zip = new PizZip(fs.readFileSync(templatePath));
+  if (model.pp_count && opts?.templateVersion !== "legacy-kcs") {
+    zip.file(
+      "word/document.xml",
+      resizePairwiseTables(zip.file("word/document.xml")!.asText(), model.pp_count),
+    );
+  }
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
     linebreaks: true,

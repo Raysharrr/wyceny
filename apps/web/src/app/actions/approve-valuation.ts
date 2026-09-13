@@ -15,11 +15,11 @@ import {
 import { approvalGate, type Blocker } from "@/domain/provenance";
 import { proseEnabled } from "@/lib/prose-enabled";
 import {
-  buildDocumentModel,
+  prepareOperatModel,
   documentFieldBlockers,
   type OperatPurpose,
 } from "@/domain/document-model";
-import { computeKcs } from "@/domain/kcs";
+import { computeValuation } from "@/domain/valuation-calculation";
 import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -120,8 +120,8 @@ export async function approveValuation(
         return { error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu." };
       }
       const now = new Date();
-      const kcs = computeKcs(valuation.inputs);
-      const amountInWords = await worker.amountInWords(kcs.wr);
+      const result = computeValuation(valuation.inputs);
+      const amountInWords = await worker.amountInWords(result.wr);
 
       // Slice 14 (Task 12): issuing REUSES the maps the appraiser just read.
       // They are fetched and frozen by the step-7 preview, and the issue reads
@@ -209,7 +209,7 @@ export async function approveValuation(
       }
       const maps = embedded?.maps ?? null;
 
-      const model = buildDocumentModel({
+      const { model, templateVersion } = prepareOperatModel({
         address: valuation.address,
         area: valuation.area,
         purpose: valuation.purpose as OperatPurpose,
@@ -219,7 +219,7 @@ export async function approveValuation(
         inspectionDate: valuation.inspectionDate ?? "",
         approvedAt: now,
         inputs: valuation.inputs,
-        kcs,
+        result,
         amountInWords,
       });
       // Keyed on "nothing embedded", never on "did not fetch". Today the two
@@ -299,7 +299,7 @@ export async function approveValuation(
           ),
         };
       }
-      const docx = renderOperatDocx(model, { maps, photos });
+      const docx = renderOperatDocx(model, { templateVersion, maps, photos });
       const pdf = await worker.convertToPdf(docx);
       const docxUrl = await storage.put(`operat-${id}.docx`, docx);
       const docUrl = await storage.put(`operat-${id}.pdf`, pdf);
@@ -308,7 +308,7 @@ export async function approveValuation(
         id,
         session.user,
         // `amountInWords` travels with the URLs because it describes the same
-        // artifact: it is the exact string `buildDocumentModel` was handed
+        // artifact: it is the exact string `prepareOperatModel` was handed
         // above, so the row and the PDF cannot end up spelling different
         // amounts.
         { docUrl, docxUrl, amountInWords },

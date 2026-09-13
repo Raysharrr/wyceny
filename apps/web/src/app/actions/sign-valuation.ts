@@ -6,8 +6,8 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, profileRepository } from "@/app/valuations/_deps";
 import { NotSignableError } from "@/domain/valuation";
-import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
-import { computeKcs } from "@/domain/kcs";
+import { prepareOperatModel, type OperatPurpose } from "@/domain/document-model";
+import { computeValuation } from "@/domain/valuation-calculation";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { StorageNotFoundError } from "@/ports/storage";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -61,21 +61,24 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
     }
 
     try {
-      const kcs = computeKcs(valuation.inputs);
-      const amountInWords = await worker.amountInWords(kcs.wr);
-      const model = buildDocumentModel({
-        address: valuation.address,
-        area: valuation.area,
-        purpose: valuation.purpose as OperatPurpose,
-        kwNumber: valuation.kwNumber,
-        propertyRight: valuation.propertyRight,
-        client: valuation.client ?? "",
-        inspectionDate: valuation.inspectionDate ?? "",
-        approvedAt: valuation.approvedAt,
-        inputs: valuation.inputs,
-        kcs,
-        amountInWords,
-      });
+      const result = computeValuation(valuation.inputs);
+      const amountInWords = valuation.amountInWords ?? (await worker.amountInWords(result.wr));
+      const { model, templateVersion } = prepareOperatModel(
+        {
+          address: valuation.address,
+          area: valuation.area,
+          purpose: valuation.purpose as OperatPurpose,
+          kwNumber: valuation.kwNumber,
+          propertyRight: valuation.propertyRight,
+          client: valuation.client ?? "",
+          inspectionDate: valuation.inspectionDate ?? "",
+          approvedAt: valuation.approvedAt,
+          inputs: valuation.inputs,
+          result,
+          amountInWords,
+        },
+        { signing: true },
+      );
       // Slice 9: sign NEVER contacts WMS — it re-renders the maps frozen at
       // approve (spec decision 1). A StorageNotFoundError means "approved
       // without maps" — the only case map absence is silent. Any OTHER error
@@ -135,7 +138,12 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
           ),
         };
       }
-      const docx = renderOperatDocx(model, { signature: signature.bytes, maps, photos });
+      const docx = renderOperatDocx(model, {
+        templateVersion,
+        signature: signature.bytes,
+        maps,
+        photos,
+      });
       const pdf = await worker.convertToPdf(docx);
       const docxUrl = await storage.put(`operat-${id}-signed.docx`, docx);
       const docUrl = await storage.put(`operat-${id}-signed.pdf`, pdf);
