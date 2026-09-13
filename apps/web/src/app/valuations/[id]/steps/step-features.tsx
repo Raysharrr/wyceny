@@ -21,6 +21,7 @@ import { saveFeaturesAction } from "@/app/actions/wizard";
 import { featuresStepSchema } from "@/app/actions/wizard-schemas";
 import {
   FEATURE_PRESETS,
+  matchesPresetDefinitions,
   medianAreaM2,
   powierzchniaDefinitions,
   type LokalFeatureKey,
@@ -88,6 +89,7 @@ function toInputValue(value: unknown): string {
 function buildDefaultFeatures(
   features: KcsInput["features"],
   comparableAreas: Array<number | undefined>,
+  isPairwise = false,
 ): FormInput["features"] {
   const mapped: FormInput["features"] = features.length
     ? features.map((f) => ({
@@ -106,10 +108,32 @@ function buildDefaultFeatures(
     : DEFAULT_FEATURES;
 
   const median = medianAreaM2(comparableAreas);
-  return mapped.map((f) =>
-    f.key === "powierzchnia-uzytkowa" && !f.definitions?.lepsza && !f.definitions?.gorsza
-      ? { ...f, definitions: { ...f.definitions, ...powierzchniaDefinitions(median) } }
-      : f,
+  return mapped
+    .map((f) =>
+      f.key === "powierzchnia-uzytkowa" && !f.definitions?.lepsza && !f.definitions?.gorsza
+        ? { ...f, definitions: { ...f.definitions, ...powierzchniaDefinitions(median) } }
+        : f,
+    )
+    .map((f) =>
+      // PP: the area scale defines only its ends, so "przecietna" would reach
+      // Tabela 1 undefined — leave it unrated until the appraiser picks.
+      isPairwise &&
+      f.key === "powierzchnia-uzytkowa" &&
+      f.rating === "przecietna" &&
+      f.definitions?.lepsza &&
+      !f.definitions?.przecietna?.trim()
+        ? { ...f, rating: "" }
+        : f,
+    );
+}
+
+/** A zero-weight row is outside the result and the operat, so an unrated one
+ * (the PP area row starts unrated) must block neither the save nor the preview. */
+function withUnusedRatingsNeutral<F extends { rating: string; weightPct: unknown }>(
+  features: F[],
+): F[] {
+  return features.map((f) =>
+    f.rating === "" && Number(f.weightPct) === 0 ? { ...f, rating: "przecietna" } : f,
   );
 }
 
@@ -154,16 +178,30 @@ export function StepFeatures({
     }
   }, [loaded]);
   const comparableAreas = selected.map((c) => c.area);
+  const areaMedian = medianAreaM2(comparableAreas);
 
+  const featuresResolver = zodResolver(featuresStepSchema) as unknown as Resolver<
+    FormInput,
+    unknown,
+    FormOutput
+  >;
   const {
     control,
     handleSubmit,
     setValue,
     formState: { isSubmitting, errors },
   } = useForm<FormInput, unknown, FormOutput>({
-    resolver: zodResolver(featuresStepSchema) as Resolver<FormInput, unknown, FormOutput>,
+    resolver: (values, context, options) =>
+      featuresResolver(
+        {
+          ...values,
+          features: withUnusedRatingsNeutral(values.features),
+        },
+        context,
+        options,
+      ),
     defaultValues: {
-      features: buildDefaultFeatures(loaded.features, comparableAreas),
+      features: buildDefaultFeatures(loaded.features, comparableAreas, isPairwise),
     },
   });
 
@@ -191,7 +229,7 @@ export function StepFeatures({
   // Confirmation belongs to the explicit save, never the live preview.
   const live = useMemo(() => {
     try {
-      const parsed = featuresStepSchema.safeParse({ features });
+      const parsed = featuresStepSchema.safeParse({ features: withUnusedRatingsNeutral(features) });
       if (!parsed.success) return null;
       const liveFeatures = parsed.data.features.map((f) => ({ ...f, weight: f.weightPct / 100 }));
       return computeValuation({
@@ -260,6 +298,20 @@ export function StepFeatures({
                   const ratings = RATING_OPTIONS.filter(
                     (r) => current.ratingScale !== "two" || r.value !== "przecietna",
                   );
+                  // Same rule and gate as the comparison cells in PairwiseAssessment.
+                  const areaSuggestion: Rating | null =
+                    isPairwise &&
+                    !currentRating &&
+                    current.key === "powierzchnia-uzytkowa" &&
+                    areaMedian !== null &&
+                    matchesPresetDefinitions(
+                      [{ key: current.key, definitions: current.definitions }],
+                      areaMedian,
+                    )
+                      ? area < areaMedian
+                        ? "lepsza"
+                        : "gorsza"
+                      : null;
                   return (
                     <Fragment key={field.id}>
                       <TableRow>
@@ -270,7 +322,12 @@ export function StepFeatures({
                               name={`features.${index}.name`}
                               render={({ field: nameField, fieldState }) => (
                                 <>
-                                  <Input {...nameField} aria-label="Nazwa cechy" maxLength={120} />
+                                  <Input
+                                    {...nameField}
+                                    aria-label="Nazwa cechy"
+                                    placeholder="Nazwa własnej cechy, np. balkon lub loggia"
+                                    maxLength={120}
+                                  />
                                   <FieldError errors={[fieldState.error]} />
                                 </>
                               )}
@@ -371,6 +428,25 @@ export function StepFeatures({
                               </Button>
                             ))}
                           </div>
+                          {areaSuggestion ? (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Sugestia: {areaSuggestion} — powierzchnia przedmiotu {area} m², próg{" "}
+                              {areaMedian} m² z wybranych porównań.
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  setValue(`features.${index}.rating`, areaSuggestion, {
+                                    shouldDirty: true,
+                                    shouldValidate: true,
+                                  })
+                                }
+                              >
+                                Przyjmij sugerowaną ocenę przedmiotu
+                              </Button>
+                            </div>
+                          ) : null}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -422,7 +498,12 @@ export function StepFeatures({
                                         data-testid={`feature-def-${features?.[index]?.key ?? index}-${level}`}
                                         aria-label={`Definicja: ${current.name} — ${level}`}
                                         maxLength={1000}
-                                        placeholder="puste pole — poziom nie pojawi się w operacie"
+                                        // Mirrors validateFeatures: custom and two-level features require every level.
+                                        placeholder={
+                                          current.key === "inne" || current.ratingScale === "two"
+                                            ? "wymagane — opis poziomu trafia do operatu"
+                                            : "puste pole — poziom nie pojawi się w operacie"
+                                        }
                                         name={defField.name}
                                         onBlur={defField.onBlur}
                                         ref={defField.ref}

@@ -199,3 +199,82 @@ it("displays clean percentages without discarding meaningful fractional precisio
   expect((screen.getByLabelText("Waga: Cecha 1") as HTMLInputElement).value).toBe("40.25");
   expect((screen.getByLabelText("Waga: Cecha 2") as HTMLInputElement).value).toBe("12.3456789");
 });
+
+it("definition placeholders say required for custom and two-level features only", async () => {
+  const user = userEvent.setup();
+  render(<StepFeatures valuationId="v" features={[]} comparables={[]} area={50} />);
+  await user.click(screen.getByRole("button", { name: /Inna cecha/ }));
+  const placeholder = (testId: string) =>
+    (screen.getByTestId(testId) as HTMLInputElement).placeholder;
+  expect(placeholder("feature-def-inne-przecietna")).toMatch(/^wymagane/);
+  expect(placeholder("feature-def-standard-wykonczenia-lepsza")).toMatch(/^puste pole/);
+  await user.selectOptions(
+    screen.getByRole("combobox", { name: "Skala: standard wykończenia" }),
+    "two",
+  );
+  expect(placeholder("feature-def-standard-wykonczenia-lepsza")).toMatch(/^wymagane/);
+});
+
+it("PP subject area rating starts unrated with the same area suggestion as comparisons", async () => {
+  const user = userEvent.setup();
+  const input = ppInputs();
+  input.area = 48;
+  input.features = [];
+  input.pairwise!.comparisons = {};
+  render(<StepFeatures valuationId="v" {...input} snapshot={input} />);
+  const middle = screen.queryByRole("button", { name: "powierzchnia użytkowa: przeciętna" });
+  expect(middle?.getAttribute("aria-pressed")).not.toBe("true");
+  expect(
+    screen.getByText(/Sugestia: lepsza — powierzchnia przedmiotu 48 m², próg 50 m²/),
+  ).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Przyjmij sugerowaną ocenę przedmiotu" }));
+  expect(
+    screen
+      .getByRole("button", { name: "powierzchnia użytkowa: lepsza" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+});
+
+it("PP reopened draft does not keep an undefined middle rating on the area scale", () => {
+  const input = ppInputs();
+  input.features = [
+    {
+      key: "powierzchnia-uzytkowa",
+      name: "powierzchnia użytkowa",
+      weight: 1,
+      rating: "przecietna",
+      definitions: {
+        lepsza: "powierzchnia użytkowa poniżej 50 m²",
+        gorsza: "powierzchnia użytkowa 50 m² i więcej",
+      },
+    },
+  ];
+  render(<StepFeatures valuationId="v" {...input} snapshot={input} />);
+  expect(
+    screen
+      .getByRole("button", { name: "powierzchnia użytkowa: przeciętna" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+});
+
+it("PP unused (zero-weight) area row with no rating does not block the save", async () => {
+  const user = userEvent.setup();
+  const input = ppInputs();
+  input.features = [
+    ...input.features,
+    {
+      key: "powierzchnia-uzytkowa",
+      name: "powierzchnia użytkowa",
+      weight: 0,
+      rating: "przecietna",
+      definitions: {
+        lepsza: "powierzchnia użytkowa poniżej 50 m²",
+        gorsza: "powierzchnia użytkowa 50 m² i więcej",
+      },
+    },
+  ];
+  render(<StepFeatures valuationId="v" {...input} snapshot={input} />);
+  expect(screen.getByTestId("footnav-kcs-mid").textContent).not.toBe("—");
+  await user.click(screen.getByRole("button", { name: /Potwierdź oceny i poprawki/ }));
+  await waitFor(() => expect(save).toHaveBeenCalled());
+});

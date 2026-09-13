@@ -128,6 +128,37 @@ describe("shared dispatcher and readiness (AC01/AC02/AC10)", () => {
     input.pairwise!.confirmedBasis = pairwiseBasis(input);
     expect(calculationIssues(input)).toEqual([]);
   });
+  it("PP refuses an undefined middle area rating saved before the wizard cleared it", () => {
+    const input = draft();
+    input.features = [
+      {
+        key: "powierzchnia-uzytkowa",
+        name: "powierzchnia użytkowa",
+        rating: "przecietna",
+        weight: 1,
+        definitions: { lepsza: "poniżej 50 m²", gorsza: "50 m² i więcej" },
+      },
+    ];
+    const issue = expect.objectContaining({ path: "features.0.rating" });
+    expect(calculationIssues(input)).toContainEqual(issue);
+    input.features[0].rating = "lepsza";
+    expect(calculationIssues(input)).not.toContainEqual(issue);
+    // Zero-weight rows are outside the result and Tabela 1.
+    const unused = draft();
+    unused.features = [
+      unused.features[0],
+      { ...input.features[0], rating: "przecietna", weight: 0 },
+    ];
+    expect(calculationIssues(unused)).not.toContainEqual(
+      expect.objectContaining({ path: "features.1.rating" }),
+    );
+    expect(
+      calculationIssues({
+        ...draft("kcs"),
+        features: [{ ...input.features[0], rating: "przecietna" }],
+      }),
+    ).not.toContainEqual(issue);
+  });
   it("enforces catalog rules and refuses invalid weights in both new methods", () => {
     for (const method of ["kcs", "pp"] as const) {
       const input = draft(method);

@@ -74,7 +74,9 @@ export function PairwiseSelection({
                   />
                 </TableCell>
                 <TableCell>{row.date || "—"}</TableCell>
-                <TableCell>{row.area ?? "—"} m²</TableCell>
+                <TableCell>
+                  {row.area == null ? "—" : `${row.area.toLocaleString("pl-PL")} m²`}
+                </TableCell>
                 <TableCell>
                   {Number.isFinite(row.pricePerM2) ? row.pricePerM2.toLocaleString("pl-PL") : "—"}
                 </TableCell>

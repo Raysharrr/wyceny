@@ -101,7 +101,7 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
  * przeniesieniu komponentu, a oba historyczne rozjazdy polegaly na tym, ze
  * przycisk PRZESTAL istniec.
  *
- * Zakres na dzis: 41 wystapien, 21 unikalnych etykiet. To siec bezpieczenstwa
+ * Zakres na dzis: 49 wystapien, 22 unikalne etykiety. To siec bezpieczenstwa
  * na jedna, najczestsza klase bledu — nie dowod zgodnosci Pomocy z aplikacja.
  *
  * T12 potwierdzil to empirycznie po raz trzeci: skasowanie przycisku
@@ -144,7 +144,7 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
   // zakres straznika, a to jest dokladnie ten rodzaj cichej utraty pokrycia,
   // przed ktorym ten plik ma bronic. Rosna, gdy Pomoc cytuje nowy przycisk —
   // wtedy zaktualizuj tez liczby w komentarzu wyzej.
-  it("zna dokladny zakres: 41 wystapien, 21 unikalnych etykiet", () => {
+  it("zna dokladny zakres: 49 wystapien, 22 unikalne etykiety", () => {
     // 36 / 20 od S3 (blok „Prawo spoldzielcze"): `krok-3-proba` cytuje trzy nowe
     // etykiety — „Pobierz probe z rejestru", „Pobierz probe ponownie" i „Dodaj
     // transakcje w Rejestrze →" — a wiekszosc cytatow „Pobierz probe z RCN"
@@ -154,8 +154,11 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
     // 40 od S5 (Task 4f): `rejestr-spoldzielczy` i `krok-1-przedmiot` mowia o doborze
     // z rejestru w czasie terazniejszym i cytuja „Pobierz probe z rejestru" (etykieta
     // cytowana juz przez `krok-3-proba`, wiec unikalnych nadal 20).
-    expect(cytaty.length).toBe(41);
-    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(21);
+    // 49 / 22 po E2E metody PP: `krok-4-cechy`, `krok-7-operat` i `po-zatwierdzeniu`
+    // cytuja „Potwierdz oceny i poprawki i dalej" oraz „Potwierdz metode" (nowa
+    // unikalna etykieta) obok przyciskow KCS.
+    expect(cytaty.length).toBe(49);
+    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(22);
   });
 
   it("kazda cytowana etykieta wystepuje w zrodlach aplikacji", () => {

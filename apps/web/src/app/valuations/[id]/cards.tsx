@@ -419,6 +419,22 @@ export function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
       : null;
   const comparables = valuationComparables(inputs);
   const count = comparables.length;
+  // A register row keeps its source after a hand edit (the ACL derives it from
+  // coopTxId/transactionId), so compare it with the fetched candidate: changed
+  // values are the appraiser's own entry, not confirmed register data.
+  const sel = inputs.sampleSelection;
+  const fetched = [
+    ...(sel?.proposed ?? []),
+    ...(sel?.alternates ?? []),
+    ...(sel?.manualInclusions ?? []).map((m) => m.candidate),
+  ];
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const editedByHand = (c: (typeof comparables)[number]) => {
+    const f = isRegistrySourced(c)
+      ? fetched.find((x) => x.transactionId === c.transactionId && x.lokalId === c.lokalId)
+      : undefined;
+    return !!f && (round2(f.pricePerM2) !== c.pricePerM2 || round2(f.area) !== (c.area ?? 0));
+  };
   return (
     <SectionCard
       icon={Table2}
@@ -440,7 +456,10 @@ export function ComparablesProvenance({ inputs }: { inputs: KcsInput }) {
                 <td className="py-1">{i + 1}</td>
                 <td className="py-1 num">{plnPerM2.format(c.pricePerM2)}</td>
                 <td className="py-1">
-                  <ProvenanceBadge source={c.source} status={c.status} />
+                  <ProvenanceBadge
+                    source={editedByHand(c) ? "manual" : c.source}
+                    status={c.status}
+                  />
                 </td>
               </tr>
             ))}

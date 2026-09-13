@@ -5,7 +5,7 @@ W kroku 6 powstają opisowe fragmenty operatu — te, których nie da się zło�
 
 <img
   src="/api/pomoc/krok-6-opisy.png"
-  alt="Krok 6 kreatora: sześć pól tekstowych z propozycjami sekcji opisowych operatu, każde z plakietką „AI — do weryfikacji”, nad nimi adnotacja o odpowiedzialności rzeczoznawcy i przycisk „Wygeneruj ponownie”."
+  alt="Krok 6 kreatora: sześć pól tekstowych z propozycjami sekcji opisowych operatu, każde z plakietką „AI — do weryfikacji”, nad nimi adnotacja o odpowiedzialności rzeczoznawcy, licznik generowań z kosztem oraz przyciski „Wygeneruj ponownie” i „Wygeneruj wszystkie od nowa”."
   style={{
     width: "100%",
     height: "auto",
@@ -32,8 +32,9 @@ Fakty, z których powstaje tekst, pochodzą wyłącznie z tej wyceny:
 - **określenie rynku** „wtórny, lokale mieszkalne” — powtórzenie filtrów doboru, nie założenie: dobór odrzuca transakcje niemieszkalne i te, które rejestr oznaczył jako rynek pierwotny. Rejestr wypełnia to pole w części rekordów, więc transakcja deweloperska z pustym polem może się przez ten filtr prześlizgnąć — jeśli dla tej wyceny określenie jest nieprawdziwe, popraw zdanie w sekcji analizy rynku. Bez próby fakt nie jest wpisywany wcale,
 - **dane ewidencyjne działki i budynku (EGiB)** z [kroku 1](/pomoc/krok-1-przedmiot) — obręb, numer i powierzchnia działki, rodzaj użytku, rodzaj budynku, liczba kondygnacji nadziemnych, rok budowy,
 - **notatka z [oględzin](/pomoc/krok-2-ogledziny)** — jeden i ten sam tekst notatki widzą wszystkie cztery sekcje opisujące nieruchomość; każda wycina z niego swój wątek,
-- **[próba porównawcza](/pomoc/krok-3-proba)** — liczba transakcji przyjętych do porównań, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna, przedział cen całkowitych, a od Slice'u „Proza z próby” także **obszar badania**: nazwy obrębów, z których pochodzi Twoja próba (po Twoich odrzuceniach, nie przed nimi), użyty promień oraz liczba przebadanych transakcji **słownie** — „kilkadziesiąt”, „kilkaset”. Dokładna liczba przebadanych zostaje w kroku 3 i w danych wyceny; operat jej co do sztuki nie podaje, bo nie podają jej operaty wzorcowe,
+- **[próba porównawcza](/pomoc/krok-3-proba)** — przy KCS cała próba, przy PP wyłącznie 3–5 wybranych porównań: liczba transakcji przyjętych do porównań, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna, przedział cen całkowitych, a od Slice'u „Proza z próby” także **obszar badania**: nazwy obrębów, z których pochodzi Twoja próba (po Twoich odrzuceniach, nie przed nimi), użyty promień oraz liczba przebadanych transakcji **słownie** — „kilkadziesiąt”, „kilkaset”. Dokładna liczba przebadanych zostaje w kroku 3 i w danych wyceny; operat jej co do sztuki nie podaje, bo nie podają jej operaty wzorcowe,
 - **oceny cech** z [kroku 4](/pomoc/krok-4-cechy) — nazwy cech o niezerowej wadze wraz z ich ocenami słownymi,
+- **metoda i poprawki PP** (tylko przy [porównywaniu parami](/pomoc/metoda-pp), w sekcji uzasadnienia wyniku) — nazwa metody oraz dla każdego porównania i każdej cechy o niezerowej wadze: ocena przedmiotu, ocena porównania, waga, przyjęty mnożnik i — gdy mnożnik odbiega od sugestii — Twoje uzasadnienie odstępstwa. Zmiana poprawek unieważnia uzasadnienie wyniku, nawet gdy zaokrąglona kwota się nie zmieni,
 - **pozycja wyniku na tle próby** — wyłącznie jako określenie słowne, np. „w przedziale cen próby, powyżej średniej”. Sama kwota wartości rynkowej ani wartość jednostkowa nigdy nie opuszczają aplikacji.
 
 Czego w tych faktach nie ma, tego w tekście nie będzie: brakująca dana jest **pomijana, nigdy zgadywana**. Sekcja analizy rynku powstaje dla każdej użytecznej próby, ale wątek, dla którego brakuje faktu — na przykład zakres dat przy próbie, w której choć jedna transakcja nie ma daty — po prostu się w niej nie pojawia. Tak samo znika lista obrębów, gdy choć jednej transakcji z próby nie da się przypisać nazwy obrębu: lista niepełna opisywałaby obszar badania węższy niż ten, na którym operat się opiera.
@@ -48,7 +49,9 @@ Etykieta przy polu mówi, czyj jest tekst i czy został przyjęty:
 
 - **„AI — do weryfikacji”** — świeża propozycja, jeszcze nieprzeczytana,
 - **„Rzeczoznawca — potwierdzone”** — tekst, który zatwierdziłeś,
-- **„Rzeczoznawca — do weryfikacji”** — tekst Twój, ale opisujący dane, które zmieniły się pod nim; trzeba go przeczytać jeszcze raz. Ten sam stan mają opisy odziedziczone przez nową wersję wyceny — [nowa wersja](/pomoc/po-zatwierdzeniu) przenosi teksty, ale nie przenosi potwierdzeń.
+- **„Rzeczoznawca — do weryfikacji”** — tekst Twój, ale jeszcze niepotwierdzony albo opisujący dane, które zmieniły się pod nim; trzeba go przeczytać jeszcze raz. Ten sam stan mają opisy odziedziczone przez nową wersję wyceny — [nowa wersja](/pomoc/po-zatwierdzeniu) przenosi teksty, ale nie przenosi potwierdzeń.
+
+Gdy dane, z których powstała sekcja, zmieniły się po napisaniu tekstu, plakietka brzmi „do weryfikacji” — także przy tekście wcześniej potwierdzonym — a pod polem pojawia się komunikat „Dane wyceny zmieniły się po napisaniu tego opisu — przejrzyj go ponownie albo wygeneruj od nowa.”.
 
 Pole bez etykiety jest puste; dlaczego — niżej.
 
@@ -62,9 +65,9 @@ Trzy rzeczy warto wiedzieć o tym zapisie:
 - **Wyczyszczenie pola jest decyzją, nie przeoczeniem.** Sekcja bez tekstu znika z wyceny, a w operacie nie zostaje po niej nagłówek nad pustym miejscem. Zatwierdzenie operatu będzie wtedy zablokowane pozycją „— brak tekstu.”.
 - **Zatwierdzenie jest przejęciem odpowiedzialności.** Zapisany tekst przestaje być propozycją automatu i staje się Twoim — dokładnie tak jak każda inna wartość, którą potwierdzasz w tej aplikacji.
 
-Przycisk **„Wygeneruj ponownie”** zamawia nowe propozycje. Nie ma limitu takich prób, ale każda **kosztuje** — to realne wywołanie modelu językowego. Ślad w dzienniku wyceny zostawia jednak wyłącznie próba zakończona odpowiedzią: nazwa modelu, wygenerowane sekcje, odrzucenia i zużycie tokenów. Sam tekst do dziennika nie trafia. Próba, która padła w całości, kosztuje tyle samo i nie zostawia w dzienniku niczego. Zatwierdzenie opisów zostawia własny wpis, z nazwami sekcji.
+Przycisk **„Wygeneruj ponownie”** zamawia nowe propozycje. Gdy są sekcje nieaktualne, nazywa się „Wygeneruj ponownie N nieaktualne sekcje” i pyta tylko o nie; cichszy przycisk **„Wygeneruj wszystkie od nowa”** zamawia wszystkie sześć. Nie ma limitu takich prób, ale każda **kosztuje** — to realne wywołanie modelu językowego. Ślad w dzienniku wyceny zostawia jednak wyłącznie próba zakończona odpowiedzią: nazwa modelu, wygenerowane sekcje, odrzucenia i zużycie tokenów. Sam tekst do dziennika nie trafia. Próba, która padła w całości, kosztuje tyle samo i nie zostawia w dzienniku niczego. Zatwierdzenie opisów zostawia własny wpis, z nazwami sekcji.
 
-Regeneracja nadpisuje wyłącznie sekcje należące do automatu; tekst, który przeszedł przez Twój zapis, zostaje nietknięty. Jeżeli jednak dane wyceny zmieniły się od czasu jego zatwierdzenia, taka zachowana sekcja wraca do stanu „do weryfikacji” — treść zostaje, potwierdzenie nie, żeby akapit nie wszedł do operatu bez ponownego przeczytania.
+Regeneracja nadpisuje wyłącznie sekcje należące do automatu; tekst, który przeszedł przez Twój zapis, zostaje nietknięty. Nowa propozycja automatu dla takiej sekcji nie przepada: pojawia się **pod Twoim tekstem** z notką „Automat napisał nową wersję tej sekcji na podstawie aktualnych danych. Twój tekst zostaje, dopóki go nie zastąpisz.” i dwoma przyciskami — **„Wstaw zamiast mojego tekstu”** przenosi propozycję do pola (do zapisu kroku możesz ją jeszcze poprawić), **„Zostaw mój tekst”** chowa propozycję na czas tej wizyty w kroku. Wybór nie zapisuje niczego sam — liczy się dopiero „Zatwierdź opisy i dalej”, który zamyka też nierozstrzygnięte propozycje. Jeżeli jednak dane wyceny zmieniły się od czasu jego zatwierdzenia, taka zachowana sekcja wraca do stanu „do weryfikacji” — treść zostaje, potwierdzenie nie, żeby akapit nie wszedł do operatu bez ponownego przeczytania.
 
 Regeneracja potrafi też **zabrać**, i warto o tym wiedzieć przed kliknięciem. Niezapisane zmiany przepadają we **wszystkich** polach, także w sekcjach potwierdzonych — ekran ostrzega o tym pod samym przyciskiem. Propozycja automatu, której jeszcze nie zapisałeś, nie ma zaś zagwarantowanego następcy: gdy nowa wersja tej sekcji zostanie odrzucona przez kontrolę liczb, pole zostaje puste, a poprzedni tekst nie wraca.
 

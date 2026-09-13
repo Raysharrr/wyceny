@@ -818,9 +818,9 @@ export function StepSample({
 
             {!isPairwise && comparablesCount < REQUIRED_SAMPLE_SIZE ? (
               <p className="text-sm text-amber-600 dark:text-amber-500">
-                Operat wymaga co najmniej {REQUIRED_SAMPLE_SIZE} transakcji — masz{" "}
-                {comparablesCount}. Szkic można zapisać, ale zatwierdzenie operatu będzie
-                zablokowane.
+                Metoda KCS wymaga co najmniej {REQUIRED_SAMPLE_SIZE} transakcji — masz{" "}
+                {comparablesCount}. Szkic można zapisać, ale kalkulacji w kroku 5 nie da się
+                zatwierdzić.
               </p>
             ) : null}
           </div>

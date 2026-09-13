@@ -26,7 +26,7 @@ export default async function Page() {
     <main className="mx-auto max-w-[1100px] px-6 py-8">
       <h1 className="mb-2 text-[25px] font-semibold tracking-[-0.015em]">Pomoc</h1>
       <p className="max-w-[70ch] text-[14.5px] text-muted-foreground">
-        Instrukcja obsługi aplikacji oraz opis metody, na której opieramy wyniki.
+        Instrukcja obsługi aplikacji oraz opis metod, na których opieramy wyniki.
       </p>
       <HelpSearch index={index as HelpIndexEntry[]} />
       <HelpNav />

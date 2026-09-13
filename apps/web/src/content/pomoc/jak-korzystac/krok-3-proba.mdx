@@ -5,7 +5,18 @@ import { REJECTED_PER_REASON } from "@/domain/sample-snapshot";
 import { STREET_VIEW_TTL_DAYS, ENRICH_BUDGET_MS } from "@/app/actions/_street-view-enrich";
 import { SPREAD_WARN_THRESHOLD } from "@/domain/price-spread";
 
-W kroku 3 budujesz próbę porównawczą — zbiór transakcji z cenami zł/m², na których oprze się kalkulacja. Przycisk pobrania pokazuje propozycje z rejestru: przeglądasz je z podglądem budynku i odrzucasz niepasujące, podając powód. Transakcje możesz też wpisać ręcznie — oba źródła się łączą, bo ostateczna tabela zostaje edytowalna.
+W kroku 3 wybierasz metodę wyceny i budujesz próbę porównawczą — zbiór transakcji z cenami zł/m², na których oprze się kalkulacja. Przycisk pobrania pokazuje propozycje z rejestru: przeglądasz je z podglądem budynku i odrzucasz niepasujące, podając powód. Transakcje możesz też wpisać ręcznie — oba źródła się łączą, bo ostateczna tabela zostaje edytowalna.
+
+## Wybór i potwierdzenie metody
+
+To pierwsza decyzja w tym kroku: od metody zależy, ile transakcji potrzebujesz i które z nich wejdą do wyniku. Karta **Metoda wyceny** stoi na samej górze ekranu. Wybierz **Korygowanie ceny średniej (KCS)** albo **Porównywanie parami (PP)** i kliknij **Potwierdź metodę**. Komunikat „Potwierdzona metoda: KCS.” albo „Potwierdzona metoda: PP.” potwierdza zapis; dopóki go nie ma, karta pokazuje „Metoda wymaga potwierdzenia.”. Zapis próby nie wybiera metody automatycznie. Obie metody działają dla własności lokalu i dla spółdzielczego własnościowego prawa do lokalu.
+
+- **KCS** liczy wynik z całej próby i wymaga co najmniej {REQUIRED_SAMPLE_SIZE} transakcji — [Metoda KCS](/pomoc/metoda-kcs).
+- **PP** liczy wynik z 3–5 transakcji, które sam zaznaczysz w puli, oraz z potwierdzonych w kroku 4 ocen i poprawek — [Metoda PP](/pomoc/metoda-pp).
+
+Oba warunki sprawdza kalkulacja: dopóki nie są spełnione, w [kroku 5](/pomoc/krok-5-kalkulacja) kwoty nie zatwierdzisz, a bez zatwierdzonej kwoty kroki 6 i 7 pozostają zamknięte. Zapis samej próby przepuszcza mniejszą liczbę transakcji — patrz „Co blokuje przejście dalej” niżej. Sama zmiana metody nie uzupełnia brakujących danych.
+
+Zmiana KCS na PP lub odwrotnie unieważnia zatwierdzoną kwotę i potwierdzenie poprawek PP — karta uprzedza o tym przed kliknięciem. W [nowej wersji](/pomoc/po-zatwierdzeniu) podpisanego operatu poprzednia metoda jest tylko propozycją: trzeba ją potwierdzić ponownie.
 
 ## Dwa źródła próby
 
@@ -14,11 +25,11 @@ Skąd pochodzą propozycje, decyduje **rodzaj prawa** wybrany w kroku 1 — nie 
 - **Własność lokalu** → przycisk „Pobierz próbę z RCN” pobiera transakcje z rejestru cen nieruchomości (Geoportal, GUGiK), jak dotąd.
 - **Spółdzielcze własnościowe prawo do lokalu** → przycisk „Pobierz próbę z rejestru” pobiera transakcje z **rejestru biura** — arkuszy ze spółdzielni, które biuro importuje w zakładce „Rejestr spółdzielczy”. Do próby wchodzą tylko wiersze z ustalonym położeniem (wiersze „do poprawki” z importu nie są brane pod uwagę).
 
-Po pierwszym pobraniu przycisk nazywa się „Pobierz próbę ponownie” — dla obu źródeł tak samo. Reszta kroku (promień, pasma, ranking, mapa, odrzucanie, próg {REQUIRED_SAMPLE_SIZE} transakcji) działa identycznie; różni się tylko to, co wiadomo o transakcji, patrz odznaki niżej. Pasek nad tabelą mówi, z którego źródła jest próba: przy rejestrze biura wymienia spółdzielnię, z której pochodzą dobrane transakcje, i datę ostatniego importu.
+Po pierwszym pobraniu przycisk nazywa się „Pobierz próbę ponownie” — dla obu źródeł tak samo. Reszta kroku (wybór metody, promień, pasma, ranking, mapa, odrzucanie, próg {REQUIRED_SAMPLE_SIZE} transakcji dla KCS) działa identycznie; różni się tylko to, co wiadomo o transakcji, patrz odznaki niżej. Pasek nad tabelą mówi, z którego źródła jest próba: przy rejestrze biura wymienia spółdzielnię, z której pochodzą dobrane transakcje, i datę ostatniego importu.
 
 <img
   src="/api/pomoc/krok-3-proba.png"
-  alt="Krok 3 kreatora: pasek z liczbą dobranych propozycji i przejrzanych, przyciski promienia, mapa OpenStreetMap z okręgiem 500 m i znacznikami budynków z liczbą lokali, pod nią sekcja „W próbie (12)” z kolumnami: w próbie, przejrzane, fasada, data, obręb, odległość, powierzchnia, cena, piętro, odznaki."
+  alt="Krok 3 kreatora: pasek z liczbą dobranych propozycji, przejrzanych i rozrzutem cen, przyciski promienia, pola pasm powierzchni i ceny, mapa OpenStreetMap z okręgiem 500 m i znacznikami budynków z liczbą lokali oraz karta „Statystyki próby” z Cmin, Cmax, Cśr i granicami korekty."
   style={{
     width: "100%",
     height: "auto",
@@ -34,7 +45,7 @@ Przycisk pobrania pobiera transakcje dobrane rankingiem podobieństwa w promieni
 - Do próby trafia najwyżej {DEFAULTS.proposedN} propozycji — nie więcej niż {DEFAULTS.maxPerBuilding} z jednego budynku — a kolejne, do {DEFAULTS.alternatesN}, wchodzą do zwijanej sekcji „Alternatywy”. To limit automatycznego doboru: ręcznie dodana alternatywa wchodzi do próby zawsze, ponad oba te limity — patrz „Jak przeglądać propozycje” niżej.
 - Każdy wiersz ma podgląd fasady, datę transakcji, obręb, odległość od przedmiotu, powierzchnię, cenę, piętro i odznaki: **ten sam budynek**, **ta sama działka**, **inny obręb**, **p. N** (piętro), **>5 kond.**, **rynek?**, **prawdopodobnie deweloperska**, **cena odstająca**. Skąd biorą się flagi i punktacja, opisuje [dobór próby](/pomoc/dobor-proby-rcn).
 - Wiersz z rejestru biura ma dodatkowo odznakę **„Rejestr SM — do weryfikacji”** (transakcje z RCN — „RCN — do weryfikacji”) oraz, zależnie od tego, co arkusz spółdzielni zawierał: **„prawo nieznane”**, gdy rejestr nie ma kolumny rodzaju prawa albo wartości nie dało się rozpoznać, i **„atrybuty nieznane”**, gdy brakuje funkcji lokalu, rodzaju transakcji lub udziału — tych kolumn rejestr spółdzielni zwykle nie ma. Odznaka to informacja, nie odrzucenie: program nie wpisuje w puste pole żadnej wartości zastępczej, a reguły higieny, których nie da się sprawdzić, po prostu pomija. W panelu bocznym takie wiersze mają pola „Rodzaj prawa: nieznany — brak kolumny w rejestrze” i „Źródło: Rejestr biura · SM „…””.
-- **Za mało transakcji w rejestrze biura.** Gdy dobór z rejestru daje mniej niż {REQUIRED_SAMPLE_SIZE} propozycji, u góry panelu, nad przyciskami promienia, pojawia się komunikat: „W rejestrze biura jest N transakcji spełniających kryteria (wszystkie ze SM „…”); wymagane {REQUIRED_SAMPLE_SIZE} — poszerz pasmo lub dodaj transakcje w Rejestrze.” z odnośnikiem **„Dodaj transakcje w Rejestrze →”**, który otwiera rejestr w nowej karcie, żeby nie stracić wyceny. To podpowiedź, nie obejście: próg {REQUIRED_SAMPLE_SIZE} transakcji przy zatwierdzaniu operatu obowiązuje tak samo.
+- **Za mało transakcji w rejestrze biura.** Gdy dobór z rejestru daje mniej niż {REQUIRED_SAMPLE_SIZE} propozycji, u góry panelu, nad przyciskami promienia, pojawia się komunikat: „W rejestrze biura jest N transakcji spełniających kryteria (wszystkie ze SM „…”); wymagane {REQUIRED_SAMPLE_SIZE} — poszerz pasmo lub dodaj transakcje w Rejestrze.” z odnośnikiem **„Dodaj transakcje w Rejestrze →”**, który otwiera rejestr w nowej karcie, żeby nie stracić wyceny. To podpowiedź, nie obejście: próg {REQUIRED_SAMPLE_SIZE} transakcji dla KCS obowiązuje przy kalkulacji tak samo. Przy PP wystarczy, że w puli znajdziesz 3–5 transakcji do porównań.
 - Podgląd fasady ma trzy stany: **miniaturka**, gdy Google ma zdjęcie i aplikacja zdążyła je pobrać; pusta ramka z podpisem **„brak zdjęcia ulicy”**, gdy Google nie ma tam panoramy — to może, ale nie musi, znaczyć budynek nowszy niż ostatni przejazd Google; pusta ramka z podpisem **„brak miniaturki”**, gdy pobranie nie zdążyło w budżecie {ENRICH_BUDGET_MS / 1000} s albo akurat zawiodło po stronie Google lub zapisu — kolejne „Pobierz próbę z RCN” dociąga brakujące. Brak zdjęcia sam w sobie nie jest dowodem wieku budynku — nie wybieraj na tej podstawie powodu „budynek nowszy”.
 - Nad tabelą jest mapa przeglądowa. Domyślnie to zwykła mapa z nazwami ulic (OpenStreetMap); przełącznikiem w prawym górnym rogu zmienisz tło na **Ortofoto** (GUGiK). Nakładka **Działki i budynki** (ewidencja gruntów) jest włączona od razu, ale rysuje się dopiero przy bliskim przybliżeniu — tym samym przełącznikiem możesz ją wyłączyć. Kółko myszy albo przyciski + / − przybliżają, przeciąganie przesuwa. Okręgi to promienie doboru, przy każdym stoi jego wartość w metrach: gruby ciągły — aktualny promień, cieńsze ciągłe — mniejsze, przerywane i bledsze — większe, które obejmą więcej transakcji po kliknięciu przycisku promienia; romb to przedmiot wyceny. Kropki: zielona — propozycja w próbie, szara — alternatywa, czerwona — odrzucona. Legenda w rogu mapy liczy „w próbie” i „alternatywy” tak jak tabela, a „odrzucone” — wszystkie odrzucenia, automatyczne i Twoje; ta liczba jest większa niż czerwonych kropek, bo mapa pokazuje tylko najbliższe {REJECTED_PER_REASON} odrzuconych z każdego powodu (te same, które widać w sekcji „Odrzucone”). Lokale z jednego budynku mają wspólny punkt, więc widzisz jeden znacznik z liczbą propozycji w kolorze najlepszego statusu: klik (albo Enter) rozkłada lokale wokół budynku, każdy na własnej odnodze; klik w tło mapy albo Escape (gdy mapa ma fokus) zwija. Klik w kropkę (poza czerwonymi) podświetla wiersz i otwiera panel tej propozycji, a wybór wiersza w tabeli rozkłada jego budynek na mapie. Gdy tło mapy chwilowo się nie wczyta, pod mapą pojawia się o tym notka — znaczniki i okręgi działają dalej, to nie jest błąd. Mapa nie używa klucza Google i nic nie kosztuje; tło OpenStreetMap jest rozwiązaniem na czas testów — przed szerszym wdrożeniem zmienimy dostawcę kafelków.
 - **Pobranie zastępuje całą dotychczasową zawartość tabeli, również wiersze wpisane ręcznie — i czyści cały Twój ręczny ślad: odrzucenia z sekcji „Odrzucone”, ręcznie dodane alternatywy i znaczniki ✓ „przejrzane”. Wszystko to trzeba zaznaczyć ponownie.** Zmiana promienia (sekcja „Promień” niżej) tego nie robi — przelicza dobór na tej samej puli i zachowuje Twój ślad w całości.
@@ -42,7 +53,7 @@ Przycisk pobrania pobiera transakcje dobrane rankingiem podobieństwa w promieni
 
 Pasek nad tabelą pokazuje „Dobrano X z Y pasujących w promieniu R m (przebadano N transakcji z RCN, data)”, a do tego liczbę alternatyw i odrzuconych: N to cała pula z rejestru w kwadracie ±3 km wokół przedmiotu, po złożeniu duplikatów i odrzuceniu rekordów bez współrzędnych; Y — ile z tej puli przeszło higienę i pasmo metrażu w promieniu R; R — promień, na którym dobór się zatrzymał. Gdy pobieranie przerwie się, zanim pula sięgnie pełnego okna czasowego — przez limit stron pobierania (8 × 5000 rekordów) albo budżet czasu (ok. 25 s) — pasek dokłada ostrzeżenie, że pula może być niepełna. Szkic sprzed tej wersji, w którym próba z RCN jest zapisana bez szczegółów doboru, dostaje zamiast liczników komunikat: „Próba z RCN z (data) zapisana bez szczegółów doboru — pobierz próbę z RCN ponownie, żeby zobaczyć promień i liczniki.”
 
-Na końcu paska stoi **rozrzut cen** — jedna liczba mówiąca, czy próba trzyma się kupy cenowo. To różnica między najwyższą a najniższą ceną jednostkową w próbie, podzielona przez średnią (w operacie: V max − V min z Tabeli 2). Im mniej, tym węższe pasmo, w którym poruszają się korekty. Powyżej {SPREAD_WARN_THRESHOLD.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} pasek dopisuje ostrzeżenie o szerokim rozrzucie i podpowiada, co z tym zrobić. To wyłącznie ostrzeżenie — niczego nie blokuje, w odróżnieniu od progu {REQUIRED_SAMPLE_SIZE} transakcji przy zatwierdzeniu. Skąd ten próg, opisuje [dobór próby](/pomoc/dobor-proby-rcn).
+Na końcu paska stoi **rozrzut cen** — jedna liczba mówiąca, czy próba trzyma się kupy cenowo. To różnica między najwyższą a najniższą ceną jednostkową w próbie, podzielona przez średnią (w operacie: V max − V min z Tabeli 2). Im mniej, tym węższe pasmo, w którym poruszają się korekty. Powyżej {SPREAD_WARN_THRESHOLD.toLocaleString("pl-PL", { minimumFractionDigits: 2 })} pasek dopisuje ostrzeżenie o szerokim rozrzucie i podpowiada, co z tym zrobić. To wyłącznie ostrzeżenie — niczego nie blokuje, w odróżnieniu od progu {REQUIRED_SAMPLE_SIZE} transakcji, którego KCS wymaga do kalkulacji. Skąd ten próg, opisuje [dobór próby](/pomoc/dobor-proby-rcn).
 
 Panel obok tabeli przelicza się na bieżąco z tego, co jest w wierszach: Cmin, Cmax, Cśr oraz granice korekty; [jak dobieramy próbę](/pomoc/dobor-proby-rcn) i [znaczenie tych wielkości](/pomoc/metoda-kcs) opisujemy osobno.
 
@@ -57,7 +68,7 @@ Pierwsza kolumna każdej tabeli to checkbox „W próbie”:
 - **Odznaczenie** propozycji z sekcji „W próbie” to prośba o odrzucenie — panel otwiera się od razu z listą powodów (patrz niżej), zamiast czekać na osobny klik „Odrzuć”. Sam klik na checkboksie jeszcze niczego nie usuwa z próby — dopóki nie potwierdzisz powodu, propozycja tam zostaje.
 - **Zaznaczenie** propozycji z sekcji „Alternatywy” dodaje ją do próby od razu, bez podawania powodu — to samo robi przycisk „Dodaj do próby” w panelu, gdy panel jest otwarty na alternatywie.
 
-Dodana w ten sposób alternatywa wchodzi do próby OBOK dotychczasowych propozycji, nie zamiast nich — próba może więc liczyć więcej niż {DEFAULTS.proposedN} transakcji. Ranking i limit {DEFAULTS.maxPerBuilding} na budynek (opisane w [doborze próby](/pomoc/dobor-proby-rcn)) obowiązują tylko automatyczny dobór; ręczna decyzja rzeczoznawcy ma zawsze pierwszeństwo. Bramka zatwierdzenia niżej mimo to liczy **wszystkie** wiersze „Próby do kalkulacji” względem progu {REQUIRED_SAMPLE_SIZE} — sam próg nie rośnie razem z próbą, próba po prostu może go przekroczyć.
+Dodana w ten sposób alternatywa wchodzi do próby OBOK dotychczasowych propozycji, nie zamiast nich — próba może więc liczyć więcej niż {DEFAULTS.proposedN} transakcji. Ranking i limit {DEFAULTS.maxPerBuilding} na budynek (opisane w [doborze próby](/pomoc/dobor-proby-rcn)) obowiązują tylko automatyczny dobór; ręczna decyzja rzeczoznawcy ma zawsze pierwszeństwo. Przy KCS kalkulacja liczy **wszystkie** wiersze „Próby do kalkulacji” względem progu {REQUIRED_SAMPLE_SIZE} — sam próg nie rośnie razem z próbą, próba po prostu może go przekroczyć.
 
 Druga kolumna, ✓, znaczy „przejrzane” — sam fakt, że rzeczoznawca spojrzał na tę propozycję i podjął którąkolwiek z decyzji panelu (niżej). To wyłącznie informacja porządkowa: nic nie blokuje ani nie waży kalkulacji. Licznik „przejrzane N/M” w pasku nad tabelą (M to propozycje, alternatywy i Twoje ręczne odrzucenia razem — automatyczne odrzucenia z sekcji „Odrzucone” do M się nie liczą) oraz sam znacznik ✓ przy wierszu przetrwają zapis szkicu i jego ponowne otwarcie.
 
@@ -112,7 +123,8 @@ Wiersze z RCN są po każdym odrzuceniu, przywróceniu, dodaniu alternatywy do p
 ## Co blokuje przejście dalej
 
 - Zapis („Zatwierdź próbę i dalej”) wymaga co najmniej **trzech transakcji** z ceną większą od zera. Przy mniejszej liczbie zobaczysz komunikat „Podaj co najmniej 3 transakcje porównawcze”.
-- Dopóki próba ma mniej niż **{REQUIRED_SAMPLE_SIZE} transakcji**, pod tabelą wisi ostrzeżenie: szkic zapiszesz i przejdziesz dalej, ale zatwierdzenie operatu będzie zablokowane.
+- **KCS:** dopóki próba ma mniej niż **{REQUIRED_SAMPLE_SIZE} transakcji**, pod tabelą wisi ostrzeżenie. Próbę zapiszesz i przejdziesz do kroku 4, ale kalkulacji KCS w kroku 5 nie zatwierdzisz — a bez zatwierdzonej kwoty nie powstanie też operat.
+- **PP:** zapis z mniej niż trzema zaznaczonymi porównaniami zapisuje pulę, ale zostawia Cię w tym kroku; więcej niż pięciu nie zaznaczysz.
 - Transakcje pobrane z RCN albo z rejestru biura wchodzą ze [statusem „do weryfikacji”](/pomoc/zasady-zatwierdzania). Potwierdzasz je zbiorczo tutaj — przycisk „Zatwierdź próbę i dalej” w pasku na dole ekranu zapisuje próbę i potwierdza ją naraz, na ekranie, na którym ją widzisz. To jedyne miejsce, w którym się to dzieje: krok 7 transakcji nie pokazuje, więc o nie nie pyta. Transakcje wpisane ręcznie są potwierdzone z definicji.
 - Miniaturka i podgląd Street View niczego nie blokują — to tylko pomoc przy przeglądzie, nie warunek zapisu.
 
@@ -121,14 +133,6 @@ Zapis kroku **kasuje zatwierdzoną wartość rynkową**. Po każdej zmianie pró
 Zdjęcia budynków pochodzą z Google Street View i zapamiętują się w wycenie: ponowne otwarcie szkicu pokazuje te same miniaturki bez nowego pytania do Google. Współdzielony cache trzyma je {STREET_VIEW_TTL_DAYS} dni.
 
 Zapis próby odblokowuje krok 4 w pasku kroków.
-
-## Wybór i potwierdzenie metody
-
-W karcie **Metoda wyceny** wybierz **Korygowanie ceny średniej (KCS)** lub **Porównywanie parami (PP)**, a następnie kliknij **Potwierdź metodę**. Komunikat „Potwierdzona metoda: KCS.” albo „Potwierdzona metoda: PP.” potwierdza zapis. Zapis próby nie wybiera metody automatycznie.
-
-KCS wymaga co najmniej 12 transakcji już przy potwierdzaniu kalkulacji. PP wymaga 3–5 jawnie wybranych transakcji oraz aktualnych, potwierdzonych ocen i poprawek. Sama zmiana metody nie uzupełnia tych danych.
-
-Zmiana KCS na PP lub odwrotnie unieważnia wynik i potwierdzenie poprawek. W nowej wersji podpisanego operatu poprzednia metoda jest propozycją do ponownego potwierdzenia.
 
 ## Jawny wybór porównań PP
 

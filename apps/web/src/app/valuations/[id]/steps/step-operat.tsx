@@ -1,5 +1,4 @@
-import { ClipboardCheck, FileStack } from "lucide-react";
-import { BlockerList } from "@/components/wizard/blocker-list";
+import { FileStack } from "lucide-react";
 import { SectionCard } from "@/components/wizard/section-card";
 import { approvalGate } from "@/domain/provenance";
 import { documentFieldBlockers } from "@/domain/document-model";
@@ -88,21 +87,19 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
            * the render was given. */}
         </SectionCard>
 
-        <SectionCard icon={ClipboardCheck} title="Zatwierdzenie">
-          <div className="flex flex-col gap-3">
-            {allBlockers.length > 0 ? (
-              <BlockerList blockers={allBlockers} testId="gate-blockers" />
-            ) : null}
-            <ValuationActions
-              id={valuation.id}
-              gateOk={gateOk}
-              canApprove={valuation.status === "in_progress"}
-              canSign={false}
-              canCreateNewVersion={false}
-              wr={valuation.wr}
-            />
-          </div>
-        </SectionCard>
+        {/* The approval card lives inside ValuationActions: besides this
+            gate list it carries what the server answers after the click, and
+            it renders only when one of them has content (an empty card with
+            the button in the FootNav read as a broken step). */}
+        <ValuationActions
+          id={valuation.id}
+          gateOk={gateOk}
+          gateBlockers={allBlockers}
+          canApprove={valuation.status === "in_progress"}
+          canSign={false}
+          canCreateNewVersion={false}
+          wr={valuation.wr}
+        />
 
         {/* Last on purpose: in the "braki" state the list above is what the
             button below it answers ("mimo braków"), and an 85vh reader belongs

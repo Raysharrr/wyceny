@@ -2,7 +2,7 @@ Po zatwierdzeniu wycena opuszcza kreator i otwiera się w widoku dokumentu: oper
 
 <img
   src="/api/pomoc/po-zatwierdzeniu.png"
-  alt="Widok zatwierdzonej wyceny: nagłówek ze statusem „Zatwierdzony”, datą zatwierdzenia i przyciskami „Pobierz PDF” oraz „Pobierz DOCX”; obok karta „Operat szacunkowy” z osadzonym czytnikiem PDF przewiniętym na dalszą stronę dokumentu, a z prawej panele „Wynik”, „Przedmiot” i „Akcje” z przyciskiem podpisania operatu."
+  alt="Widok zatwierdzonej wyceny: nagłówek ze statusem „Zatwierdzony”, datą zatwierdzenia i przyciskami „Pobierz PDF” oraz „Pobierz DOCX”; pod nim w jednym rzędzie panele „Wynik”, „Przedmiot” i „Akcje” z przyciskiem podpisania operatu, a niżej karta „Operat szacunkowy” z osadzonym czytnikiem PDF przewiniętym na dalszą stronę dokumentu."
   style={{
     width: "100%",
     height: "auto",
@@ -17,7 +17,7 @@ Status wyceny — w nagłówku i na liście — zmienia się na „Zatwierdzony�
 
 Operat wyświetla się bezpośrednio na stronie. „Pobierz DOCX” pobiera plik na dysk, natomiast „Pobierz PDF” — mimo nazwy — otwiera dokument w przeglądarce; na dysk zapisujesz go wtedy z jej podglądu. Dokumenty są dostępne wyłącznie po zalogowaniu i tylko dla osób, które widzą tę wycenę — jej właściciela i administratora biura.
 
-Pod dokumentem zostają karty z danymi wyceny: rozbicie kalkulacji, wybrane transakcje z ich pochodzeniem, cechy z wagami, dane przedmiotu i dane z księgi wieczystej. Po prawej stronie panel „Wynik” powtarza powierzchnię i wartość rynkową, a panel „Przedmiot” — adres, cel wyceny, numer KW i klienta. Kwoty słownie szukaj w samym operacie: na ekranie to pole zostaje puste, bo powstaje ona przy składaniu dokumentu.
+Pod dokumentem zostają karty z danymi wyceny: rozbicie kalkulacji wybranej metody (przy KCS tabele cen jednostkowych, współczynników i wartości; przy PP karta „Poprawki porównawcze (PP)”), wybrane transakcje z ich pochodzeniem, cechy z wagami, dane przedmiotu i dane z księgi wieczystej. Po prawej stronie panel „Wynik” powtarza powierzchnię, wartość rynkową i kwotę słownie — tę samą, która trafiła do operatu — a panel „Przedmiot” — adres, cel wyceny, numer KW i klienta.
 
 Kreator jest dla tej wyceny zamknięty: danych nie da się już edytować i nie ma w aplikacji akcji cofającej zatwierdzenie. Co dokładnie jest niezmienne już po zatwierdzeniu, a co dopiero po podpisie, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
 
@@ -33,7 +33,7 @@ Przycisk „Podpisz operat (nieodwracalne)” składa dokument jeszcze raz — z
 
 Jedyny sposób, żeby cokolwiek zmienić w podpisanym operacie, to przycisk „Utwórz nową wersję”. Powstaje wtedy nowy szkic powiązany z oryginałem: nowa wycena ma notkę „Zastępuje poprzedni operat”, stara — „Zastąpiony przez nowszą wersję”. Podpisany oryginał zostaje nietknięty.
 
-Nowa wersja przenosi dane i kwotę, więc otwiera się od razu na ostatnim kroku, z wszystkimi siedmioma krokami dostępnymi. Wraca za to do stanu „do weryfikacji” wszystko, czego nie wpisałeś ręcznie: transakcje z RCN, geokodowanie adresu, dane ewidencyjne, plan miejscowy, dane z księgi wieczystej wraz z powierzchnią wziętą z dokumentu oraz zestaw cech w wersji zaproponowanej przez aplikację. Cykl potwierdzeń, zatwierdzenia i podpisu przechodzisz od nowa.
+Nowa wersja przenosi dane — próbę, cechy, oceny, a przy PP także wybór porównań i przyjęte mnożniki — ale **nie przenosi kwoty ani potwierdzenia metody**. Poprzednia metoda jest tylko propozycją: w [kroku 3](/pomoc/krok-3-proba) trzeba ją ponownie potwierdzić przyciskiem „Potwierdź metodę”, przy PP ponownie potwierdzić macierz ocen i poprawek w [kroku 4](/pomoc/krok-4-cechy), a potem zatwierdzić kalkulację w [kroku 5](/pomoc/krok-5-kalkulacja). Dlatego nowa wersja otwiera się na kroku 5 (albo wcześniejszym, jeśli poprzednik nie miał cech), a kroki 6 i 7 odblokowuje dopiero zatwierdzona kalkulacja. Wraca też do stanu „do weryfikacji” wszystko, czego nie wpisałeś ręcznie: transakcje z RCN, geokodowanie adresu, dane ewidencyjne, plan miejscowy, dane z księgi wieczystej wraz z powierzchnią wziętą z dokumentu oraz zestaw cech w wersji zaproponowanej przez aplikację. Cykl potwierdzeń, zatwierdzenia i podpisu przechodzisz od nowa.
 
 Jeden wyjątek od reguły „wszystko, czego nie wpisałeś ręcznie” dotyczy [opisów sekcji](/pomoc/krok-6-opisy): do weryfikacji wracają **wszystkie**, także te, które napisałeś sam. Nowa wersja powstaje dlatego, że coś się zmieniło, a opisy mówią o stanie faktycznym — ich treść zostaje, potwierdzenie nie, więc trzeba je przeczytać jeszcze raz i zatwierdzić. Nowa generacja nie jest do tego potrzebna.
 

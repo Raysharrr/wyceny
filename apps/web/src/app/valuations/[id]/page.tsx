@@ -111,7 +111,7 @@ export default async function ValuationViewPage({
             inspectionDate={valuation.inspectionDate}
           />
         ) : step === 3 ? (
-          <>
+          <div className="flex flex-col gap-4">
             <MethodSelection
               valuationId={valuation.id}
               method={valuation.inputs?.method}
@@ -130,7 +130,7 @@ export default async function ValuationViewPage({
               method={valuation.inputs?.method}
               selectedComparableIds={valuation.inputs?.pairwise?.selectedComparableIds}
             />
-          </>
+          </div>
         ) : step === 4 ? (
           <StepFeatures
             key={valuation.id}
