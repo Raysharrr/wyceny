@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, "integration/**"]
 
 env:
   # CI-only dummy values — never real secrets. `apps/web`'s db client and
