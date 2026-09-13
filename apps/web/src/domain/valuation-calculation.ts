@@ -86,6 +86,21 @@ export function calculationIssues(input: ValuationInput): CalculationIssue[] {
     }
     issues.push(...kcsNumericIssues(input));
   } else {
+    input.features.forEach((feature, i) => {
+      // The area scale defines only its ends; "przecietna" would print undefined
+      // in Tabela 1. The wizard clears it, this refuses drafts saved earlier.
+      if (
+        feature.key === "powierzchnia-uzytkowa" &&
+        feature.rating === "przecietna" &&
+        feature.definitions?.lepsza &&
+        !feature.definitions.przecietna?.trim()
+      ) {
+        issues.push({
+          path: `features.${i}.rating`,
+          label: "Wybierz ocenę powierzchni przedmiotu — skala nie definiuje poziomu „przeciętna”.",
+        });
+      }
+    });
     if (!input.pairwise?.confirmedBasis || input.pairwise.confirmedBasis !== pairwiseBasis(input)) {
       issues.push({
         path: "pairwise.confirmedBasis",
