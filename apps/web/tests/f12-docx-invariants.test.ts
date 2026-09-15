@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildDocumentModel } from "../src/domain/document-model";
 import { computeKcs } from "../src/domain/kcs";
 import { renderOperatDocx } from "../src/adapters/docx-render";
-import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
+import { KW_GRUNTU_TESTOWA, KW_TESTOWA, wycena1409Anon } from "./fixtures/wycena-1409-anon";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 import { JPG_1PX } from "./fixtures/jpeg-fixtures";
 import {
@@ -146,11 +146,11 @@ describe("I-13 G: §8.2 w kolejności operatu wzorcowego (TP.2, D-21/D-24/D-25)"
     // razem z „r." bez spacji, domeną bez polskich znaków i dwukropkiem.
     expect(text).toContain(
       "W dniu 14.09.2026r. dokonano badania księgi wieczystej nieruchomości lokalowej " +
-        "nr XX1X/00000000/0 (źródło: przegladarka-ekw.ms.gov.pl):",
+        `nr ${KW_TESTOWA} (źródło: przegladarka-ekw.ms.gov.pl):`,
     );
     expect(text).toContain(
       "W dniu 14.09.2026r. dokonano badania księgi wieczystej nieruchomości gruntowej " +
-        "nr XX1X/00000001/0 (źródło: przegladarka-ekw.ms.gov.pl):",
+        `nr ${KW_GRUNTU_TESTOWA} (źródło: przegladarka-ekw.ms.gov.pl):`,
     );
     // Dwukropek protokołu musi coś wprowadzać — także przy księdze gruntu,
     // której nigdy nie transkrybujemy (§P1.8).

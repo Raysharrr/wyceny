@@ -251,7 +251,8 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
     rows.push(soleRow("dzial", dzial.tytul));
     // A dział marked BRAK WPISÓW gets a row SAYING so. Emitting nothing would
     // leave the reader unable to tell "examined and empty" from "skipped" —
-    // the same distinction `dzial3_brak` guards on the manual path.
+    // the same distinction `dzialOpis` keeps on the manual path, where an empty
+    // dział prints "brak wpisów." instead of nothing.
     if (dzial.brakWpisow) rows.push(soleRow("brak", "BRAK WPISÓW"));
     for (const tabela of dzial.tabele) {
       if (tabela.naglowek) rows.push(soleRow("tabela", tabela.naglowek));
