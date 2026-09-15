@@ -26,9 +26,26 @@ export type KwFetchState =
   | { status: "invalidDoc"; message: string }
   | { status: "error"; message: string };
 
+/**
+ * How the SECOND read of the same PDF went — the full transcription of the
+ * five dzialy (b1-kw-read). Separate from `KwFetchState` because the two reads
+ * fail independently and mean different things: the field read failing means
+ * the document was not read at all, this one failing means the operat will
+ * describe the dzialy instead of quoting them — the manual path's consequence.
+ *
+ * `invalid` is the worker's deterministic verdict refusing to vouch for the
+ * content. It carries the error CLASSES only; a class never contains a value
+ * from the book (F-13).
+ */
+export type KwTranscribeState =
+  | { status: "idle" | "loading" | "ok" }
+  | { status: "invalid"; klasy: string[] }
+  | { status: "failed"; code: string };
+
 interface KwSectionProps {
   control: Control<FormInput, unknown, FormOutput>;
   state: KwFetchState;
+  transcribe: KwTranscribeState;
   source: KwSource;
   onSourceChange: (source: KwSource) => void;
   onFileSelected: (file: File) => void;
@@ -367,6 +384,65 @@ function KwFetchStatusBar({ state, onRetry }: { state: KwFetchState; onRetry: ()
   }
 }
 
+/**
+ * Why the transcription is missing, in the appraiser's terms — the worker's
+ * error classes, which are the only thing that crosses the boundary (the
+ * detail text does not: it could quote the model, and the model was reading a
+ * book full of names and PESELs — F-13).
+ *
+ * NEW COPY, not in the mockup (§3 of the handoff): the mockup has no
+ * transcription state at all. Proposed for the user's acceptance in the PR.
+ */
+const TRANSCRIBE_FAILED_TEXT: Record<string, string> = {
+  kw_transkrypcja_ucieta:
+    "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
+  kw_transkrypcja_nieczytelna:
+    "Nie udało się przepisać treści działów z tego pliku — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
+  kw_transkrypcja_blad:
+    "Nie udało się przepisać treści działów — odczytane pola zostają, a operat opisze działy bez pełnej treści. Wgraj plik ponownie, jeśli chcesz mieć w operacie treść księgi.",
+};
+
+/** The banner for the second read. Nothing renders for `idle`/`ok`: a book read in full needs no announcement. */
+function KwTranscribeStatus({ state }: { state: KwTranscribeState }) {
+  switch (state.status) {
+    case "idle":
+    case "ok":
+      return null;
+    case "loading":
+      return (
+        <p data-testid="kw-transcribe-status" className="text-sm text-muted-foreground">
+          ⏳ Przepisuję pełną treść działów księgi (może potrwać do dwóch minut)…
+        </p>
+      );
+    // `warn`, not `error`: the file WAS read — the mockup's error banner ("Nie
+    // udało się odczytać pliku PDF księgi") would be a false statement here.
+    // What is left is the manual path's consequence, so it gets the manual
+    // path's weight (spec §12a: warn = "wymaga uwagi, decyzja rzeczoznawcy").
+    case "failed":
+      return (
+        <AutoBanner kind="warn">
+          <span data-testid="kw-transcribe-warn">
+            {TRANSCRIBE_FAILED_TEXT[state.code] ?? TRANSCRIBE_FAILED_TEXT.kw_transkrypcja_blad}
+          </span>
+        </AutoBanner>
+      );
+    case "invalid":
+      return (
+        <AutoBanner kind="warn">
+          <span data-testid="kw-transcribe-warn">
+            Sprawdzenie przepisanej treści księgi nie wypadło pomyślnie, więc operat nie zacytuje
+            działów — odczytane pola zostały wypełnione i wymagają sprawdzenia z księgą.
+            {/* Classes, never values: an error class names WHICH check failed
+                and in which dział, and `kw_validate.py` never puts a value in
+                one. Printing them is the only way the appraiser knows where to
+                look — "coś się nie zgadza" sends them through all five. */}{" "}
+            Niezgodności: {state.klasy.join(", ")}.
+          </span>
+        </AutoBanner>
+      );
+  }
+}
+
 const BOOK_SOURCE_OPTIONS = [
   { value: "odpis_kw", label: "Wgraj PDF" },
   { value: "reczny", label: "Wpisz ręcznie" },
@@ -436,6 +512,11 @@ export function KwSection(props: KwSectionProps) {
   const setKwNumber = kwNumberField.field.onChange;
   const setEncumbrance = useController({ control, name: "encumbranceTreatment" }).field
     .onChange as (value: { wariant: string | null; podstawa: string } | null) => void;
+  // Only the setter, and only for the retraction: `kwMeta` is written by the
+  // parent's extraction, never edited here.
+  const setKwMeta = useController({ control, name: "kwMeta" }).field.onChange as (
+    value: null,
+  ) => void;
 
   // Every edit writes the whole snapshot back, so the manual path builds one
   // object rather than registering a Controller per field — mounting those
@@ -491,6 +572,14 @@ export function KwSection(props: KwSectionProps) {
    * `kwGrunt` is opt-in: only a change of property right invalidates the
    * mother book. Switching the lokal's source, or declaring a developer
    * purchase, leaves it standing — it is still required and still true.
+   *
+   * `kwMeta` is NOT opt-in: it is the provenance OF the lokal's examination
+   * (which model read the document, and when), so it goes wherever `kw` goes.
+   * It used to be left to `resetKwSection`'s `resetField`, which in edit mode
+   * means "put the STORED meta back" — an orphan that was harmless only while
+   * nothing rendered it. `b1-kw-read` renders it, in §7's examination
+   * protocol, so a leftover would date and attribute an examination that does
+   * not exist (ADR-018 reg. 4, I-19).
    */
   const retractExamination = (next: {
     source: KwSource;
@@ -499,6 +588,7 @@ export function KwSection(props: KwSectionProps) {
   }) => {
     props.onSourceChange(next.source);
     setKw(next.kw ?? null);
+    setKwMeta(null);
     setEncumbrance(null);
     if (next.grunt) setKwGrunt(null);
   };
@@ -720,7 +810,16 @@ export function KwSection(props: KwSectionProps) {
                         }}
                       />
                     ) : null}
-                    <KwFetchStatusBar state={state} onRetry={props.onRetry} />
+                    {/* While the transcription runs, ITS line stands alone: the
+                        field read's "może potrwać do pół minuty" is true of that
+                        read, but the card does not settle until both are back,
+                        so showing it here would promise a wait we are not
+                        keeping. Afterwards both speak — one about the fields,
+                        one about the dzialy. */}
+                    {props.transcribe.status === "loading" ? null : (
+                      <KwFetchStatusBar state={state} onRetry={props.onRetry} />
+                    )}
+                    <KwTranscribeStatus state={props.transcribe} />
                   </>
                 )}
 

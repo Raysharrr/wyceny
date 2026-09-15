@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { COMPARABLE_SOURCES, POOL_SOURCES } from "@/domain/kcs";
 import { kwRequirements } from "@/domain/kw-requirements";
+import { ksiegaTrescSchema } from "@/domain/kw-tresc";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { definitionsFromMeasure, featureIssues, measureIssues } from "@/domain/feature-rules";
@@ -443,6 +444,10 @@ export const kwSchema = z.object({
   dataBadania: z.string().nullish(),
   nrLokalu: z.string().nullish(),
   akt: kwAktSchema.nullish(),
+  // The transcribed content of the five dzialy (b1-kw-read). Mirrors
+  // `KwSnapshot["tresc"]`; the schema is the domain's own (`domain/kw-tresc`),
+  // not a copy, so a drift in the worker's wire shape fails in ONE place.
+  tresc: ksiegaTrescSchema.nullish(),
 });
 
 /** Mirrors `KwGruntSnapshot` — the grunt's book, manual-only in paczka 1. */
@@ -518,7 +523,12 @@ export const valuationFormObject = z.object({
   kw: kwSchema.nullish(),
   kwGrunt: kwGruntSchema.nullish(),
   encumbranceTreatment: encumbranceTreatmentSchema.nullish(),
-  kwMeta: kwMetaSchema.optional(),
+  // `.nullish()` for the same reason as the three above, and since `b1-kw-read`
+  // for a sharper one: `retractExamination` now withdraws this too, and a
+  // withdrawal has to be a VALUE the schema accepts. `.optional()` would have
+  // made `setValue("kwMeta", null)` fail on a path no field renders — the W4
+  // dead-end, with the save button silently refusing.
+  kwMeta: kwMetaSchema.nullish(),
   purpose: z.enum(["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"], {
     message: "Wybierz cel wyceny.",
   }),

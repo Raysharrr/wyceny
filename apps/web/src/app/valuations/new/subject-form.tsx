@@ -21,10 +21,18 @@ import { getSubjectData } from "@/app/actions/get-subject-data";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { PURPOSE_LABEL } from "@/domain/document-model";
 import { extractKw } from "@/lib/kw-extract-client";
+import { transcribeKw } from "@/lib/kw-transcribe-client";
+import { polaZTresci } from "@/domain/kw-z-tresci";
 import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
 import { cn } from "@/lib/utils";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
-import { KwSection, localToday, type KwFetchState, type KwSource } from "./kw-section";
+import {
+  KwSection,
+  localToday,
+  type KwFetchState,
+  type KwSource,
+  type KwTranscribeState,
+} from "./kw-section";
 import { PROPERTY_RIGHT_LABEL } from "@/domain/property-right";
 import {
   MapPreview,
@@ -125,6 +133,20 @@ export function SubjectForm({
       typeMismatch: false,
     };
   });
+  /**
+   * The second read of the same PDF — the full content of the five dzialy
+   * (b1-kw-read). SECTION state, like `kwState`, and deliberately not a field
+   * beside `kw` in the form: the content itself rides INSIDE the snapshot
+   * (`kw.tresc`), so the only thing left out here is how the read went, which
+   * nothing persists. That keeps `retractExamination` the single place that
+   * decides what a withdrawn examination takes with it — this state is cleared
+   * by `resetKwSection`, which only that function calls.
+   *
+   * A reopened draft starts `idle`: whether the stored snapshot has `tresc` is
+   * visible in the operat preview, not in a banner about a read that happened
+   * days ago.
+   */
+  const [kwTranscribe, setKwTranscribe] = useState<KwTranscribeState>({ status: "idle" });
   const lastKwFile = useRef<File | null>(null);
   // Same out-of-order guard as `fetchSeq` below, for the KW extraction: a
   // source switch (or a retry) mid-flight invalidates the in-flight upload so
@@ -249,6 +271,10 @@ export function SubjectForm({
     kwSeq.current++; // invalidate any in-flight extraction owning the old section
     setKwSource(nextSource);
     setKwState({ status: "idle" });
+    // The sixth carrier (b1-kw-read). `kw.tresc` itself needs nothing here —
+    // it is a field of `kw`, which `retractExamination` nulls — but a warning
+    // about a book the form no longer holds would outlive its subject.
+    setKwTranscribe({ status: "idle" });
     lastKwFile.current = null;
     resetField("kw");
     resetField("kwMeta");
@@ -281,29 +307,86 @@ export function SubjectForm({
     if (seq !== kwSeq.current) return; // stale — a switch/retry owns the section now
     if ("error" in minted) {
       setKwState({ status: "error", message: minted.error });
+      setKwTranscribe({ status: "idle" });
       return;
     }
-    const result = await extractKw({
-      file,
-      expectedType,
-      token: minted.token,
-      workerUrl: WORKER_URL,
-    });
+    // Only a KW excerpt is transcribed. `/kw-transcribe` reads the five dzialy
+    // of an eKW printout; a deed has none, so on the developer path the call
+    // would spend a minute and a model call to be told so (b1-kw-read).
+    const transcribes = expectedType === "odpis_kw";
+    setKwTranscribe({ status: transcribes ? "loading" : "idle" });
+    // ONE token, ONE await, ONE write of `kw` below. Two independent writes
+    // would race — the reads take different times (the spike measured ~55 s for
+    // the transcription against a fraction of that for the fields), so whichever
+    // landed second would overwrite the other's fields with the stale snapshot
+    // it had closed over. Neither client throws: both turn every failure into a
+    // result, so `Promise.all` needs no `allSettled`.
+    const [result, transcription] = await Promise.all([
+      extractKw({ file, expectedType, token: minted.token, workerUrl: WORKER_URL }),
+      transcribes ? transcribeKw({ file, token: minted.token, workerUrl: WORKER_URL }) : null,
+    ]);
     if (seq !== kwSeq.current) return; // stale response — do not write into the form
     if (result.kind === "invalidDoc") {
       setKwState({ status: "invalidDoc", message: result.message });
+      setKwTranscribe({ status: "idle" });
       return;
     }
     if (result.kind === "error") {
+      // Nothing to attach a transcription to: the snapshot is the field read,
+      // and `tresc` is a field OF it. The mockup's error banner stands alone —
+      // a second warning about the dzialy would describe a document that never
+      // arrived.
       setKwState({ status: "error", message: result.message });
+      setKwTranscribe({ status: "idle" });
       return;
     }
+    // The verdict gates the CONTENT only (ADR-018 "Zmiana 15.09"): the operat
+    // may not print five dzialy that the worker's deterministic checks refused
+    // to vouch for. The fields it also read stay on screen either way — "pola z
+    // odczytu zostają do sprawdzenia" — with the error classes named in a
+    // warning, never their values (F-13).
+    const verdictOk = transcription?.kind === "ok" && transcription.walidacja.ok;
+    const zTresci = transcription?.kind === "ok" ? polaZTresci(transcription.tresc) : null;
+    setKwTranscribe(
+      transcription == null
+        ? { status: "idle" }
+        : transcription.kind === "error"
+          ? { status: "failed", code: transcription.code }
+          : transcription.walidacja.ok
+            ? { status: "ok" }
+            : { status: "invalid", klasy: transcription.walidacja.bledy.map((b) => b.klasa) },
+    );
     // A successful read of a KW excerpt IS the examination, and it happened
     // today — the worker cannot supply the date because no book prints it.
     // Without this the card sat at "Do zbadania" after a perfectly good PDF and
     // step 7 blocked on B-06 with nothing left to fill in (a deed is not a
     // book, so `akt` stays unexamined either way).
-    setValue("kw", { ...result.extract, dataBadania: localToday() }, { shouldDirty: true });
+    setValue(
+      "kw",
+      {
+        ...result.extract,
+        dataBadania: localToday(),
+        // Where the transcription states one of these, it wins: it is the
+        // full-fidelity pass (the spike put it at 57/57 cells against the field
+        // read's 94-98%), and for the unit number and dział II's deed it is the
+        // only source there is. Where it states nothing, the field read stands.
+        ...(zTresci
+          ? {
+              nrLokalu: zTresci.nrLokalu,
+              akt: zTresci.akt,
+              udzial: zTresci.udzial ?? result.extract.udzial,
+              kwGruntu: zTresci.kwGruntu ?? result.extract.kwGruntu,
+              // Header facts, the other way round: the field read has asked for
+              // these since Slice 6 and the header often omits them, so it only
+              // fills a gap here rather than overriding a value.
+              sad: result.extract.sad ?? zTresci.sad,
+              wydzial: result.extract.wydzial ?? zTresci.wydzial,
+            }
+          : {}),
+        tresc: verdictOk ? transcription.tresc : null,
+      },
+      { shouldDirty: true },
+    );
     setValue("kwMeta", result.meta, { shouldDirty: true });
     // Clear a stale kwNumber error left over from a prior empty upload-mode
     // submit (W4) — now that an extract exists, the manual number isn't
@@ -336,16 +419,22 @@ export function SubjectForm({
   // Non-PDF / oversize are rejected client-side before any network call (D9).
   const onKwFileSelected = (file: File) => {
     const expectedType = kwSource === "odpis_kw" ? "odpis_kw" : "akt";
-    if (file.type !== "application/pdf") {
-      kwSeq.current++; // invalidate any in-flight extraction so a late resolve can't overwrite this inline error
+    // A reject invalidates the WHOLE in-flight read, both halves of it. Clearing
+    // only `kwState` would leave the transcription's "⏳ Przepisuję…" standing —
+    // and since that line takes the card's status slot while it runs, the inline
+    // error below would have had nowhere to appear.
+    const rejectFile = (message: string) => {
+      kwSeq.current++; // so a late resolve can't overwrite this inline error
       lastKwFile.current = null;
-      setKwState({ status: "error", message: "Wgraj plik PDF." });
+      setKwTranscribe({ status: "idle" });
+      setKwState({ status: "error", message });
+    };
+    if (file.type !== "application/pdf") {
+      rejectFile("Wgraj plik PDF.");
       return;
     }
     if (file.size > 32 * 1024 * 1024) {
-      kwSeq.current++; // invalidate any in-flight extraction so a late resolve can't overwrite this inline error
-      lastKwFile.current = null;
-      setKwState({ status: "error", message: "Plik jest za duży (maks. 32 MB)." });
+      rejectFile("Plik jest za duży (maks. 32 MB).");
       return;
     }
     void runKwExtraction(file, expectedType);
@@ -434,6 +523,7 @@ export function SubjectForm({
           <KwSection
             control={control}
             state={kwState}
+            transcribe={kwTranscribe}
             source={kwSource}
             onSourceChange={resetKwSection}
             onFileSelected={onKwFileSelected}

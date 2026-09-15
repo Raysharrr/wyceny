@@ -5,7 +5,7 @@ import { buildDocumentModel, type BuildDocumentInput } from "../src/domain/docum
 import { operatSections } from "../src/domain/operat-sections";
 import { renderOperatDocx } from "../src/adapters/docx-render";
 import type { SubjectSnapshot } from "../src/domain/subject-snapshot";
-import type { KwSnapshot } from "../src/domain/kw-snapshot";
+import type { KwGruntSnapshot, KwSnapshot } from "../src/domain/kw-snapshot";
 import {
   goldenInputs,
   syntheticDocumentInput,
@@ -13,6 +13,7 @@ import {
   SUBJECT_NO_MPZP,
   KW_STANDARD,
   KW_DEWELOPERSKI,
+  KW_GRUNT_ZBADANA,
   KW_AKT_NO_DZIAL,
   KW_AKT_NULL_UDZIAL,
   AUTOR_TESTOWY,
@@ -28,8 +29,12 @@ import {
  * Golden inputs + KW/subject fixtures live in ./fixtures/document-model-fixture
  * (shared with tests/docx-render-signature.test.ts, Slice 8/F-7).
  */
-function renderGolden(subject?: SubjectSnapshot, kw?: KwSnapshot): string {
-  const model = buildDocumentModel(syntheticDocumentInput(subject, kw));
+function renderGolden(
+  subject?: SubjectSnapshot,
+  kw?: KwSnapshot,
+  kwGrunt?: KwGruntSnapshot,
+): string {
+  const model = buildDocumentModel(syntheticDocumentInput(subject, kw, kwGrunt));
   const docx = renderOperatDocx(model);
   const zip = new PizZip(docx);
   return zip.files["word/document.xml"]
@@ -179,7 +184,14 @@ describe("F-12: rendered operat — legacy, no subject fetched", () => {
     );
   });
 
-  it("renders exactly as today for the KW examination block: no badanie content, unconditional udział dash text", () => {
+  /**
+   * CHANGED by b1-kw-read (D-24, I-19, ADR-018 reg. 4), and this is the whole
+   * point of the change: a valuation that examined no book used to print
+   * "Udział w nieruchomości wspólnej: wg odpisu księgi wieczystej" — citing, as
+   * its source, a document nobody held. That annotation is gone; the share is a
+   * dash, which is what the operat actually knows.
+   */
+  it("names no KW as a source when none was examined: the udział is a dash (I-19)", () => {
     expect(text).toContain("KW-TEST-9"); // {nr_kw} line still present, unconditional
     expect(text).not.toContain("Badanie ksiąg wieczystych przeprowadzono");
     expect(text).not.toContain("Księga wieczysta lokalu:");
@@ -188,11 +200,12 @@ describe("F-12: rendered operat — legacy, no subject fetched", () => {
     expect(text).not.toContain("Dział IV — wpis:");
     expect(text).not.toContain("Dział III (prawa, roszczenia i ograniczenia): brak wpisów.");
     expect(text).not.toContain("Dział IV (hipoteki): brak wpisów.");
-    expect(text).toContain("Udział w nieruchomości wspólnej: wg odpisu księgi wieczystej.");
+    expect(text).not.toContain("wg odpisu księgi wieczystej");
+    expect(text).toContain("Udział w nieruchomości wspólnej: —");
     expect(text).not.toContain("Powierzchnia użytkowa lokalu (wg dokumentu KW/aktu)");
   });
 
-  it("legacy model fields: kw_badanie/pow_kw_present false, udzial_kw fallback, pow_uzytkowa_kw dash", () => {
+  it("legacy model fields: kw_badanie/pow_kw_present false, udzial_kw dash, pow_uzytkowa_kw dash", () => {
     const inputs = goldenInputs();
     const model = buildDocumentModel({
       address: "ul. Przykładowa 5, Poznań",
@@ -212,7 +225,9 @@ describe("F-12: rendered operat — legacy, no subject fetched", () => {
     expect(model.kw_standard).toBe(false);
     expect(model.kw_deweloperski).toBe(false);
     expect(model.pow_kw_present).toBe(false);
-    expect(model.udzial_kw).toBe("wg odpisu księgi wieczystej");
+    // b1-kw-read: the legacy "wg odpisu księgi wieczystej" fallback is gone —
+    // it was only ever reached when nothing had been examined (D-24, I-19).
+    expect(model.udzial_kw).toBe("—");
     expect(model.pow_uzytkowa_kw).toBe("—");
     expect(model.dzial3_brak).toBe(false);
     expect(model.dzial3_wpisy).toEqual([]);
@@ -280,7 +295,7 @@ describe("F-12: rendered operat — KW examination block (standard variant)", ()
 });
 
 describe("F-12: rendered operat — KW examination block (developer variant)", () => {
-  const text = renderGolden(SUBJECT_WITH_MPZP, KW_DEWELOPERSKI);
+  const text = renderGolden(SUBJECT_WITH_MPZP, KW_DEWELOPERSKI, KW_GRUNT_ZBADANA);
 
   it("has no unresolved template tags and no 'undefined'", () => {
     expect(text).not.toContain("undefined");
