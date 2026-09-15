@@ -378,13 +378,16 @@ export type DocumentModel = {
   vmax: string;
   suma_ui: string;
   /**
-   * Σ of Tabela 3's Ui śr column — "1,000" while every scale has three levels,
-   * "—" as soon as one has two, because the column itself then has a dash in it
-   * (ADR-016 reg. 6, spec §3 P5).
+   * Σ of Tabela 3's Ui śr column — always the plain sum, so with weights adding
+   * to 100 % it is "1,000".
+   *
+   * Ui min/śr/max come from the feature's WEIGHT and the Cmin–Cmax band, not
+   * from how many levels its scale describes, so a two-level feature has a Ui
+   * śr like any other — the appraiser simply can never land on it. The
+   * reference operat (Kościelna) settles it: powierzchnia there has a
+   * two-level scale, its Ui śr cell reads 0,100 and the SUMA row reads 1,000.
    */
   suma_ui_sr: string;
-  /** True when any active feature's described scale has two levels — the template's cue for the "—". */
-  ma_skale_dwustopniowe: boolean;
   cena_1m2: string;
   kredyt: boolean;
   transakcje: TransactionRow[];
@@ -710,11 +713,6 @@ export function buildDocumentModel(
     }))
     .filter((row) => row.poziomy.length > 0);
 
-  // ADR-016 reg. 6: on a two-level scale the middle Ui has no meaning — the
-  // scale has no middle. Ui min and Ui max still print.
-  const twoLevel = (f: Feature) => describedLevels(f).length === 2;
-  const maSkaleDwustopniowe = activeFeatures.some(twoLevel);
-
   /**
    * §12.2 — the flats at the sample's lowest and highest unit price, each
    * described from ITS OWN data (D-51…D-53). A tie describes every flat at
@@ -857,20 +855,14 @@ export function buildDocumentModel(
       nazwa: ui.name,
       waga_pct: formatNumber(ui.weight * 100, 0),
       ui_min: formatNumber(ui.weight * kcs.vmin, 3),
-      ui_sr: twoLevel(feature) ? DASH : formatNumber(ui.weight, 3),
+      ui_sr: formatNumber(ui.weight, 3),
       ui_max: formatNumber(ui.weight * kcs.vmax, 3),
       ui_przedmiot: formatNumber(ui.value, 3),
     })),
-    // Σ of the Ui śr column. With a two-level feature in the table the column
-    // has a dash in it, so its total is a dash too — a partial sum printed as
-    // the total would be a number nothing adds up to.
-    suma_ui_sr: maSkaleDwustopniowe
-      ? DASH
-      : formatNumber(
-          active.reduce((sum, { ui }) => sum + ui.weight, 0),
-          3,
-        ),
-    ma_skale_dwustopniowe: maSkaleDwustopniowe,
+    suma_ui_sr: formatNumber(
+      active.reduce((sum, { ui }) => sum + ui.weight, 0),
+      3,
+    ),
     lokale_cmin: lokaleCmin,
     lokale_cmax: lokaleCmax,
     lokalizacja_cmin: lokaleCmin[0]?.lokalizacja ?? "",

@@ -75,10 +75,20 @@ export type Wariant1409 = {
   kw?: "brak" | "odpis_z_wpisem_dzial_iii";
 };
 
-/** [cena zł/m², powierzchnia m², piętro, ulica, data] — pierwsze dwie to remis Cmin. */
+/**
+ * [cena zł/m², powierzchnia m², **kondygnacja**, ulica, data] — pierwsze dwie to remis Cmin.
+ *
+ * Trzecia liczba jest tym, co trzyma RCN: `lok_nr_kond`, parter = 1. Kondygnacje
+ * lokali Cmin i Cmax dobrane na GRANICACH przedziałów presetu, żeby zestaw nie
+ * był ślepy na konwersję (recenzja PR #58: fikstura z kondygnacjami 3, 10 i 5
+ * dawała ten sam opis z konwersją i bez niej, więc można ją było dodać albo
+ * usunąć i żaden z 2038 testów nie drgnął):
+ * - Cmax na 4 → piętro 3, ostatnie „pośrednie”; bez konwersji byłoby „najwyższa”,
+ * - drugi lokal Cmin na 1 → parter, „najniższa”; bez konwersji „pośrednia”.
+ */
 const TRANSACTIONS: Array<[number, number, number, string, string]> = [
   [9100.0, 48.6, 10, "os. Testowe", "2025-10-14"],
-  [9100.0, 47.9, 5, "ul. Przykładowa", "2025-11-03"],
+  [9100.0, 47.9, 1, "ul. Przykładowa", "2025-11-03"],
   [9650.5, 38.4, 2, "os. Testowe", "2025-11-27"],
   [9820.0, 44.1, 7, "ul. Fikcyjna", "2025-12-09"],
   [10050.25, 52.3, 0, "os. Testowe", "2026-01-15"],
@@ -88,7 +98,7 @@ const TRANSACTIONS: Array<[number, number, number, string, string]> = [
   [10880.4, 50.1, 1, "os. Testowe", "2026-05-20"],
   [11120.0, 39.7, 6, "ul. Przykładowa", "2026-06-16"],
   [11490.6, 43.5, 8, "ul. Fikcyjna", "2026-07-07"],
-  [11880.0, 35.9, 3, "os. Testowe", "2026-08-12"],
+  [11880.0, 35.9, 4, "os. Testowe", "2026-08-12"],
 ];
 
 const PROPOSED: Candidate[] = TRANSACTIONS.map(([pricePerM2, area, floor, street, date], i) => ({

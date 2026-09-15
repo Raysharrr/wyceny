@@ -249,10 +249,11 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
     expect(candidateOf({}, inputs.sampleSelection)).toBeNull();
   });
 
-  it("Cmax na 3. kondygnacji to „wartość pośrednia”, nie „najwyższa” (D-52)", () => {
+  it("Cmax na 4. kondygnacji to „wartość pośrednia”, nie „najwyższa” (D-52)", () => {
     expect(cmaxRows).toHaveLength(1);
-    // Kondygnacja 3 w RCN = 2 piętro, czyli przedział „piętra pośrednie” (1–3).
-    expect(cmaxRows[0].floor).toBe(3);
+    // Kondygnacja 4 w RCN = 3 piętro, ostatnie w przedziale „piętra pośrednie”
+    // (1–3). Bez konwersji ta sama liczba dałaby „wartość najwyższa”.
+    expect(cmaxRows[0].floor).toBe(4);
     const [lokal] = reported().lokale_cmax;
     expect(lokal.cechy).toEqual([
       { nazwa: "Standard wykończenia", opis: OCENA_SPOZA_REJESTRU },
@@ -271,9 +272,10 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
     expect(lokale_cmin).toHaveLength(2);
     const pietro = (i: number) =>
       lokale_cmin[i].cechy.find((c) => c.nazwa === "Położenie na piętrze")!.opis;
-    // Kondygnacje 10 i 5 = piętra 9 i 4 — oba w „4 piętro i powyżej”.
-    expect(cminRows.map((c) => c.floor)).toEqual([10, 5]);
-    expect([pietro(0), pietro(1)]).toEqual(["wartość najwyższa cechy", "wartość najwyższa cechy"]);
+    // Kondygnacje 10 i 1 = 9 piętro i parter — skrajne poziomy skali. Bez
+    // konwersji drugi lokal wyszedłby na 1 piętro, czyli „pośrednia”.
+    expect(cminRows.map((c) => c.floor)).toEqual([10, 1]);
+    expect([pietro(0), pietro(1)]).toEqual(["wartość najwyższa cechy", "wartość najniższa cechy"]);
     // 48,6 i 47,9 m² ≥ 44 m² → „gorsza”, niższy z dwóch opisanych poziomów.
     const pow = (i: number) =>
       lokale_cmin[i].cechy.find((c) => c.nazwa === "Powierzchnia użytkowa")!.opis;
@@ -368,21 +370,31 @@ describe("document model — opis przedmiotu i Tabela 3 (FH.3, D-54, I-11 U)", (
     ]);
   });
 
-  it("Tabela 3: Ui śr „—” przy dwóch opisanych poziomach, liczba przy trzech (ADR-016 reg. 6)", () => {
+  /**
+   * Ui min/śr/max wynikają z WAGI cechy i przedziału Cmin–Cmax, nie z liczby
+   * opisanych poziomów — rozstrzyga Tabela 3 operatu Kościelna, gdzie
+   * powierzchnia ma skalę dwustopniową, jej komórka Ui śr to 0,100, a wiersz
+   * SUMA to 1,000. Rzeczoznawca po prostu nigdy nie trafi oceną w Ui śr takiej
+   * cechy (D-47: „kolumna Ui śr nie jest używana”), ale kolumna się drukuje.
+   */
+  it("Tabela 3: Ui śr to waga cechy także przy dwóch opisanych poziomach", () => {
     const m = buildDocumentModel(wycena1409Anon());
     expect(m.cechy.map((c) => [c.nazwa, c.ui_sr])).toEqual([
       ["Standard wykończenia", "0,400"],
       ["Położenie na piętrze", "0,300"],
-      ["Lokalizacja szczegółowa", "—"],
-      ["Powierzchnia użytkowa", "—"],
-      ["Pomieszczenia przynależne", "—"],
-      ["Dodatkowe", "—"],
+      ["Lokalizacja szczegółowa", "0,100"],
+      ["Powierzchnia użytkowa", "0,100"],
+      ["Pomieszczenia przynależne", "0,040"],
+      ["Dodatkowe", "0,060"],
     ]);
-    // Ui min i Ui max drukują się dalej — „—” dotyczy tylko kolumny środkowej.
+    // Ui min i Ui max drukują się dalej — wszystkie trzy to funkcja wagi.
     expect(m.cechy[2].ui_min).toBe("0,088");
     expect(m.cechy[2].ui_max).toBe("0,115");
-    expect(m.suma_ui_sr).toBe("—");
-    expect(m.ma_skale_dwustopniowe).toBe(true);
+    // Wagi sumują się do 100 %, więc kolumna Ui śr sumuje się do 1,000.
+    expect(m.suma_ui_sr).toBe("1,000");
+
+    // Sedno D-47 to nie pusta kolumna, tylko zakaz lądowania OCENY na Ui śr
+    // cechy dwustopniowej — pilnuje tego `ratingPosition` (feature-rules).
   });
 
   it("same skale trzypoziomowe → Ui śr liczbowe i suma 1,000", () => {
@@ -402,7 +414,6 @@ describe("document model — opis przedmiotu i Tabela 3 (FH.3, D-54, I-11 U)", (
     ]);
     expect(m.cechy.map((c) => c.ui_sr)).toEqual(["0,500", "0,500"]);
     expect(m.suma_ui_sr).toBe("1,000");
-    expect(m.ma_skale_dwustopniowe).toBe(false);
   });
 
   it("ΣUi Tabeli 3 = ΣUi wskaźnika WR, także na silniku ze skalą (I-11 U)", () => {
