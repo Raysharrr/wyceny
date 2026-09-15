@@ -24,21 +24,21 @@ import {
  * - powierzchnia `jak_zgloszono`: opisane lepsza/gorsza, ocena „przeciętna” na nieopisanym
  *   poziomie (po ADR-016 `ratingPosition = null` → brak WR); `poprawiona`: trzy opisane
  *   poziomy jak u Anety, ocena „przeciętna” — jedyny wariant, na którym WR istnieje;
- * - piętro ({@link PIETRO_PRZEDMIOTU}) i powierzchnia przedmiotu (44,2 m²);
+ * - piętro ({@link PIETRO_PRZEDMIOTU}) i powierzchnia przedmiotu (43,6 m²);
  * - 12 transakcji z piętrem, powierzchnią i ulicą, dwie o tej samej najniższej cenie;
  * - `kw: "brak"` → `inputs.kw = null` + numer wpisany ręcznie; `odpis_z_wpisem_dzial_iii`
  *   → snapshot z uploadu odpisu z wpisem w dziale III;
  * - kategoria zdjęć „wnętrza” bez zdjęcia.
  *
- * ΣUi wariantu `poprawiona` (Cśr 10 362,29; Vmin 0,878; Vmax 1,146; pow. 44,2 m²). Reguła
+ * ΣUi wariantu `poprawiona` (Cśr 10 362,29; Vmin 0,878; Vmax 1,146; pow. 43,6 m²). Reguła
  * ustalona 15.09 (koordynator): Ui zaokrąglany do 3 miejsc w każdym wierszu, ΣUi = suma
  * zaokrąglonych wierszy, jak u Anety — zmianę w `kcs.ts` robi FS.1 (`b1-feature-scales`).
  * - dziś (przeciętna → Ui śr; tyle samo w `jak_zgloszono`): 0,400 + 0,344 + 0,100 + 0,100 +
- *   0,035 + 0,053 = 1,032 → WR 472 700 zł (obie reguły dają to samo);
- * - po ADR-016 (lokalizacja → Ui min 0,088): wiersze 1,020 → WR 467 200 zł =
+ *   0,035 + 0,053 = 1,032 → WR 466 300 zł (obie reguły dają to samo);
+ * - po ADR-016 (lokalizacja → Ui min 0,088): wiersze 1,020 → WR 460 800 zł =
  *   {@link OCZEKIWANE_PO_ADR016}. Dopóki FS.1 nie jest w gałęzi integracyjnej, silnik zaokrąga
  *   dopiero sumę (0,4 + 0,3438 + 0,0878 + 0,1 + 0,03512 + 0,05268 = 1,0194) i daje
- *   1,019 → WR 466 700 zł.
+ *   1,019 → WR 460 400 zł.
  * Ceny dobrane tak, żeby rozjazd był taki jak na danych 14.09 (dziś zgodnie, po ADR-016
  * różnica 0,001: tam 1,021 / 466 800 w silniku wobec 1,022 / 467 300 u Anety), a żaden Ui
  * nie leżał na połówce trzeciego miejsca — wynik nie zależy od błędów zmiennoprzecinkowych.
@@ -54,15 +54,15 @@ import {
 export const KW_TESTOWA = ["XX1X", "00000000", "0"].join("/");
 
 /** Piętro przedmiotu. Do czasu pola `subject.pietro` (P1.1, `b1-feature-hints`) stała obok fikstury. */
-export const PIETRO_PRZEDMIOTU = 6;
+export const PIETRO_PRZEDMIOTU = 7;
 
 /**
  * Oczekiwany wynik wariantu `poprawiona` po ADR-016 wg reguły „Ui per wiersz” (komentarz
- * modułu). Asercję na silniku pisze FS.1; do jej merge'u silnik daje 1,019 / 466 700.
+ * modułu). Asercję na silniku pisze FS.1; do jej merge'u silnik daje 1,019 / 460 400.
  */
-export const OCZEKIWANE_PO_ADR016 = { sumUi: 1.02, wr: 467_200 } as const;
+export const OCZEKIWANE_PO_ADR016 = { sumUi: 1.02, wr: 460_800 } as const;
 
-const AREA = 44.2;
+const AREA = 43.6;
 const ADDRESS = "ul. Testowa 7/12, Poznań";
 const VALUATION_ID = "00000000-0000-4000-8000-000000001409";
 
@@ -150,7 +150,7 @@ const KW_ODPIS: KwSnapshot = {
   kwInne: [],
   deweloperski: false,
   powUzytkowaKw: AREA,
-  udzial: "442/10000",
+  udzial: "436/10000",
   sad: "Sąd Rejonowy w Testowie",
   wydzial: "I Wydział Ksiąg Wieczystych",
   dataDokumentu: "2026-09-01",
@@ -264,9 +264,9 @@ export function wycena1409Anon(wariant: Wariant1409 = {}): BuildDocumentInput {
       powEwidHa: 0.5,
       uzytek: "B",
       budynekRodzaj: "budynki mieszkalne",
-      kondygnacjeNadziemne: 11,
+      kondygnacjeNadziemne: 10,
       kondygnacjePodziemne: 1,
-      rokBudowy: 1980,
+      rokBudowy: 1978,
       mpzpAbsent: true,
       przeznaczenieStudium: "teren zabudowy mieszkaniowej wielorodzinnej (dane fikcyjne)",
     },
@@ -314,7 +314,7 @@ export function wycena1409Anon(wariant: Wariant1409 = {}): BuildDocumentInput {
     approvedAt: new Date("2026-09-14T09:00:00Z"),
     inputs,
     kcs: computeKcs(inputs),
-    amountInWords: "czterysta siedemdziesiąt dwa tysiące siedemset złotych",
+    amountInWords: "czterysta sześćdziesiąt sześć tysięcy trzysta złotych",
   };
 }
 
