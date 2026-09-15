@@ -172,11 +172,12 @@ export function ValuationActions({
        * long as the button does. */}
       {canSign ? (
         <p data-testid="sign-explainer" className="max-w-[70ch] text-sm text-muted-foreground">
-          <strong className="font-medium text-foreground">Podpisanie jest ostateczne.</strong>{" "}
-          Operat zostanie złożony jeszcze raz — z Twoim skanem podpisu, z tą samą datą sporządzenia
-          i z mapami zamrożonymi przy zatwierdzeniu. Po podpisaniu żadnej danej tej wyceny nie da
-          się już zmienić, a w dzienniku zapisze się odcisk SHA-256 podpisanych plików. Poprawka
-          jest możliwa wyłącznie przez „Utwórz nową wersję”. Podpisać może tylko właściciel wyceny.
+          <strong className="font-medium text-foreground">Podpisanie jest ostateczne.</strong> Twój
+          skan podpisu trafi na ten sam dokument, który zatwierdziłeś — operat nie jest składany
+          drugi raz, więc jego treść nie może się już od zatwierdzonej różnić. Po podpisaniu żadnej
+          danej tej wyceny nie da się już zmienić, a w dzienniku zapisze się odcisk SHA-256
+          podpisanych plików. Poprawka jest możliwa wyłącznie przez „Utwórz nową wersję”. Podpisać
+          może tylko właściciel wyceny.
         </p>
       ) : null}
       {approveResult?.blockers?.length ? (

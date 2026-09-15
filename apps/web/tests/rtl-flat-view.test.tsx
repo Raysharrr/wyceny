@@ -99,6 +99,10 @@ describe("FlatView — approved valuation, PDF variant (Task 13)", () => {
     const explainer = screen.getByTestId("sign-explainer");
     expect(explainer).toHaveTextContent("Podpisanie jest ostateczne.");
     expect(explainer).toHaveTextContent("Utwórz nową wersję");
+    // ADR-020 wariant (a): the text must not promise a second composition —
+    // the scan goes onto the approved file, which is exactly why its content
+    // cannot drift. The old copy described the mechanism this session removed.
+    expect(explainer).toHaveTextContent("nie jest składany drugi raz");
 
     // Gone with the button: a valuation nobody may sign must not carry a
     // warning about signing it.

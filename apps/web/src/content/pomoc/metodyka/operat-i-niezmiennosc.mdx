@@ -30,7 +30,7 @@ Zatwierdzenie jest jedną akcją serwerową, ale sekwencją kilku kroków wykony
 6. **Złożenie i zapis plików.** Render DOCX, konwersja do PDF, zapis obu.
 7. **Przestawienie statusu.** W jednej transakcji bazodanowej: ponowne uruchomienie bramy na wierszu z bazy, porównanie migawki z tą, z której złożono dokument, warunkowy zapis (tylko gdy wycena wciąż jest szkicem) i wpis do dziennika audytu.
 
-Warto zauważyć, czego w tym opisie **nie ma**: całość nie jest jedną transakcją. Składanie dokumentu i zapis plików dzieją się poza nią. Niezmienna reguła „zatwierdzony operat istnieje jako plik" wynika z **kolejności**, a nie z transakcyjności — pliki najpierw, przestawienie statusu na końcu. Nieudane przestawienie zostawia więc nieszkodliwe pliki-sieroty, które ponowienie nadpisuje pod tymi samymi kluczami. Odwrotna kolejność dawałaby stan gorszy: wycenę oznaczoną jako zatwierdzona, bez dokumentu.
+Warto zauważyć, czego w tym opisie **nie ma**: całość nie jest jedną transakcją. Składanie dokumentu i zapis plików dzieją się poza nią. Niezmienna reguła „zatwierdzony operat istnieje jako plik" wynika z **kolejności**, a nie z transakcyjności — pliki najpierw, przestawienie statusu na końcu. Nieudane przestawienie zostawia więc nieszkodliwe pliki-sieroty, do których nic już nie wskazuje — ponowienie zapisuje własne, bo od wprowadzenia podpisu na zamrożonym dokumencie **każde zatwierdzenie ma własne klucze plików**, znaczone chwilą zatwierdzenia. Odwrotna kolejność dawałaby stan gorszy: wycenę oznaczoną jako zatwierdzona, bez dokumentu.
 
 ## Trzy różne zakresy niezmienności
 
@@ -38,7 +38,7 @@ To rozróżnienie jest najczęstszym źródłem nieporozumień, więc warto je u
 
 **Szkic** jest w pełni edytowalny. Wszystkie operacje domeny odmawiają jednak pracy na czymkolwiek innym niż szkic — po zatwierdzeniu żadna z nich nie ruszy danych wyceny.
 
-**Operat zatwierdzony, jeszcze niepodpisany**, jest chroniony **kodem aplikacji**: kreator jest dla niego zamknięty, nie ma akcji cofającej zatwierdzenie, a mutacje domeny odmawiają wykonania. Na poziomie bazy danych nic go jednak jeszcze nie broni. Jest to świadomy kompromis: gdyby dokumenty zamrażały się już przy zatwierdzeniu, opisana wyżej ścieżka ponowienia (nadpisanie plików pod tymi samymi kluczami) przestałaby działać.
+**Operat zatwierdzony, jeszcze niepodpisany**, jest chroniony **kodem aplikacji**: kreator jest dla niego zamknięty, a mutacje domeny odmawiają wykonania. Na poziomie bazy danych nic go jednak jeszcze nie broni — i nie jest to jedyna różnica wobec operatu podpisanego. Ten stan ma bowiem **jawne wyjście**: „Cofnij zatwierdzenie i popraw” zwraca wycenę do edycji (opisane niżej). Jest to świadomy kompromis: przed podpisem dokument nie wyszedł jeszcze z biura, więc poprawka na miejscu jest właściwszą odpowiedzią niż nowa wersja łańcucha wersji.
 
 **Operat podpisany** jest chroniony **przez bazę danych**. Wyzwalacz odrzuca każdą modyfikację i każde usunięcie wiersza podpisanej wyceny — również próbę cofnięcia statusu. Drugi wyzwalacz zamraża wiersze dokumentów, do których odwołuje się podpisana wycena; jest warunkowy właśnie dlatego, że blankietowe zamrożenie wszystkich dokumentów zepsułoby ponowienie zatwierdzenia.
 
@@ -54,9 +54,9 @@ Trzeba przy tym powiedzieć wprost, czym ta suma **nie** jest. Nic w aplikacji j
 
 ## Dziennik audytu
 
-Każda zmiana stanu wyceny zostawia wiersz w dzienniku (`audit_log`). Lista możliwych akcji jest zamknięta w kodzie — nie ma wpisów o dowolnej treści. Obejmuje utworzenie wyceny, zapis danych przedmiotu, próby i cech, zatwierdzenie kalkulacji, cztery rodzaje potwierdzeń (próby, danych przedmiotu, danych z księgi wieczystej oraz cech i wag), zmianę w oględzinach, wygenerowanie sekcji opisowych oraz ich zatwierdzenie, zatwierdzenie operatu, podpisanie i utworzenie nowej wersji. Jest to katalog akcji możliwych, nie obowiązkowych: pojedyncza wycena zostawia wyłącznie te wiersze, które odpowiadają temu, co się w niej wydarzyło — wycena bez wgranego dokumentu nigdy nie ma wiersza o potwierdzeniu danych z księgi wieczystej.
+Każda zmiana stanu wyceny zostawia wiersz w dzienniku (`audit_log`). Lista możliwych akcji jest zamknięta w kodzie — nie ma wpisów o dowolnej treści. Obejmuje utworzenie wyceny, zapis danych przedmiotu, próby i cech, zatwierdzenie kalkulacji, cztery rodzaje potwierdzeń (próby, danych przedmiotu, danych z księgi wieczystej oraz cech i wag), zmianę w oględzinach, wygenerowanie sekcji opisowych oraz ich zatwierdzenie, zatwierdzenie operatu, cofnięcie zatwierdzenia, podpisanie i utworzenie nowej wersji. Jest to katalog akcji możliwych, nie obowiązkowych: pojedyncza wycena zostawia wyłącznie te wiersze, które odpowiadają temu, co się w niej wydarzyło — wycena bez wgranego dokumentu nigdy nie ma wiersza o potwierdzeniu danych z księgi wieczystej.
 
-Wiersz zapisuje: której wyceny dotyczy, kto go wywołał, jaka to akcja, kiedy nastąpiła oraz metadane zależne od akcji. Metadane są oszczędne i celowo różne dla każdej akcji — adresy zapisanych plików przy zatwierdzeniu (i znacznik zatwierdzenia bez map, gdy taki wybór zapadł), sumy kontrolne przy podpisie, identyfikator poprzednika przy nowej wersji, rodzaj operacji i liczba zdjęć przy oględzinach, informacja o dołączeniu dokumentu przy zapisie przedmiotu, a przy generowaniu opisów — nazwa modelu, wygenerowane sekcje, liczby, przez które sekcja została odrzucona, i zużycie tokenów (nigdy sam tekst); przy zatwierdzeniu opisów same nazwy sekcji.
+Wiersz zapisuje: której wyceny dotyczy, kto go wywołał, jaka to akcja, kiedy nastąpiła oraz metadane zależne od akcji. Metadane są oszczędne i celowo różne dla każdej akcji — adresy zapisanych plików przy zatwierdzeniu (i znacznik zatwierdzenia bez map, gdy taki wybór zapadł), sumy kontrolne przy podpisie, klucze wycofanych plików i wycofaną datę zatwierdzenia przy cofnięciu, identyfikator poprzednika przy nowej wersji, rodzaj operacji i liczba zdjęć przy oględzinach, informacja o dołączeniu dokumentu przy zapisie przedmiotu, a przy generowaniu opisów — nazwa modelu, wygenerowane sekcje, liczby, przez które sekcja została odrzucona, i zużycie tokenów (nigdy sam tekst); przy zatwierdzeniu opisów same nazwy sekcji.
 
 Dwie własności dziennika warto znać:
 
@@ -71,7 +71,9 @@ Podpisanie jest ostatnim krokiem i jedynym, który zamyka wycenę na stałe.
 
 Podpisać może **wyłącznie właściciel** wyceny. Administrator biura widzi cudze operaty, ale jego próba podpisania jest odrzucana, zanim odczytany zostanie cudzy skan podpisu i zanim powstanie jakikolwiek plik. Wymagany jest wcześniej wgrany skan podpisu w profilu; bez niego akcja kończy się odmową.
 
-Sam podpis jest **ponownym złożeniem dokumentu z tych samych zamrożonych danych**: ta sama migawka wejść, te same mapy odczytane z magazynu (bez ponownego kontaktu z usługą map), te same zdjęcia z manifestu, a data sporządzenia wzięta z zapisanej daty zatwierdzenia — nie z zegara. Dzięki temu tekst operatu podpisanego jest identyczny z zatwierdzonym; pilnuje tego osobny test. Jedyną różnicą jest dołożony skan podpisu. Pliki zapisują się pod osobnymi kluczami, a wycena zaczyna wskazywać na wersję podpisaną.
+Sam podpis **nie składa dokumentu po raz drugi**. Przy zatwierdzeniu w dokumencie zostaje puste, niewidoczne miejsce na podpis; podpisanie bierze **ten właśnie zapisany plik**, wstawia w to miejsce skan i zapisuje wynik pod osobnymi kluczami, a wycena zaczyna wskazywać na wersję podpisaną. Tekst operatu podpisanego jest więc identyczny z zatwierdzonym nie dlatego, że drugie złożenie dało ten sam wynik, tylko dlatego, że **drugiego złożenia nie ma**: ani szablon, ani model dokumentu, ani kalkulacja nie mają już którędy wpłynąć na treść. Jest to odpowiedź na realny problem — operat zatwierdzony przed zmianą szablonu, a podpisany po niej, dostawałby inną treść niż zatwierdzona.
+
+Ma to dwie konsekwencje. Operat zatwierdzony **przed** wprowadzeniem tej zasady nie ma w sobie miejsca na podpis i podpisać się go nie da; aplikacja odmawia i kieruje do cofnięcia zatwierdzenia. Miejsce na podpis jest też **zakładką dokumentu, nie znacznikiem tekstowym** — dzięki temu klamra wpisana przez rzeczoznawcę w opisie czy uwagach nigdy nie zostanie wzięta za polecenie i nie zniknie z podpisanego dokumentu.
 
 Dwa zachowania przy odczycie zamrożonych zasobów są tu różne i celowo:
 
@@ -80,9 +82,17 @@ Dwa zachowania przy odczycie zamrożonych zasobów są tu różne i celowo:
 
 Dla rzeczoznawcy podpis oznacza tyle: od tej chwili wiersz wyceny i oba pliki są zamrożone na poziomie bazy danych. Aplikacja nie ma akcji cofającej podpis, a gdyby ją kiedyś napisano przez pomyłkę, wyzwalacz i tak by ją odrzucił. Wycen starego typu — sprzed wprowadzenia migawki wejść i generowania DOCX — nie da się podpisać: nie ma z czego złożyć dokumentu końcowego.
 
+## Cofnięcie zatwierdzenia
+
+Zatwierdzenie nie jest ostateczne — ostateczny jest podpis. Dopóki operatu nikt nie podpisał, jego **autor** (i tylko on) może przyciskiem „Cofnij zatwierdzenie i popraw” zwrócić wycenę do edycji, po potwierdzeniu w osobnym oknie.
+
+Wycena wraca do statusu szkicu. Zostaje to, co wpisał rzeczoznawca: migawka wejść, zamrożone mapy oraz treść i potwierdzenie sekcji opisowych. Zerowane jest to, co **wyprodukowało zatwierdzenie**: data zatwierdzenia, adresy obu plików, kwota słownie i wartość rynkowa. Ostatnie z nich jest regułą, nie skutkiem ubocznym: gdyby kwota słownie przetrwała cofnięcie, ponowne zatwierdzenie bez przeliczenia wydrukowałoby ją obok poprawionej Tabeli 4. Skasowana wartość rynkowa wymusza natomiast ponowne zatwierdzenie kalkulacji, więc brama zatwierdzenia sama pilnuje, żeby rzeczoznawca spojrzał na liczby jeszcze raz.
+
+Wydane pliki **zostają w magazynie**. Klucze, pod którymi leżą, zapisuje wiersz dziennika o cofnięciu — i jest to jedyne miejsce, które je jeszcze zna, skoro data zatwierdzenia została skasowana. Kolejne zatwierdzenie pisze pliki pod własnymi kluczami, obok poprzednich, a nie zamiast nich. Wiersz o zatwierdzeniu też zostaje: dziennik pokazuje i wydanie dokumentu, i jego wycofanie.
+
 ## Nowa wersja
 
-Nowa wersja jest jedynym sposobem, by zmienić cokolwiek w podpisanym operacie — i powstaje **wyłącznie z wyceny podpisanej**. Operat zatwierdzony, ale niepodpisany, tej ścieżki nie ma; jego stan rozwiązuje się podpisem.
+Nowa wersja jest jedynym sposobem, by zmienić cokolwiek w podpisanym operacie — i powstaje **wyłącznie z wyceny podpisanej**. Operat zatwierdzony, ale niepodpisany, tej ścieżki nie ma: jego stan rozwiązuje się podpisem albo cofnięciem zatwierdzenia.
 
 Powstaje wtedy nowy szkic wskazujący na poprzednika. Przenoszą się **wartości**: adres, powierzchnia, migawka wejść, cel wyceny, numer księgi, klient, data oględzin oraz wartość rynkowa. Ich statusy to osobna sprawa, opisana niżej — przeniesiona wartość nie znaczy przeniesionego potwierdzenia. Zerowane są kwota słownie i adresy obu plików — nowa wersja startuje bez dokumentu, bo dokument powstaje dopiero przy jej własnym zatwierdzeniu.
 
@@ -96,7 +106,7 @@ Podpisany oryginał zostaje nietknięty, a cykl potwierdzeń, zatwierdzenia i po
 
 ## Czego niezmienność nie obejmuje
 
-- **Operatu zatwierdzonego, jeszcze niepodpisanego.** Chroni go kod aplikacji, nie baza. Dopiero podpis daje gwarancję na poziomie bazy danych.
+- **Operatu zatwierdzonego, jeszcze niepodpisanego.** Chroni go kod aplikacji, nie baza, a autor może go świadomie cofnąć do edycji. Dopiero podpis daje gwarancję na poziomie bazy danych.
 - **Automatycznej kontroli sum kontrolnych.** Sumy są zapisywane, ale nigdzie nie sprawdzane — porównanie jest czynnością ludzką.
 - **Treści zmian w dzienniku.** Dziennik zapisuje, kto i co zrobił, nie zapisuje, co dokładnie zmienił.
 - **Skanu podpisu w profilu.** Skan jest wymienialny — zamrożone są wyrenderowane dokumenty, nie wzorzec podpisu. Wgranie nowego skanu nie zmienia operatów już podpisanych, ale nie zostawia też śladu w dzienniku żadnej wyceny.

@@ -112,7 +112,7 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
  * przeformulowany tak, zeby nie cytowal nazwy, ktorej juz nie ma.
  */
 const ETYKIETA_RE =
-  /„((?:Potwierdź|Zatwierdź|Dane się zgadzają|Pobierz|Dodaj|Utwórz|Podpisz|Wgraj)[^„”]{0,60})”/g;
+  /„((?:Potwierdź|Zatwierdź|Dane się zgadzają|Pobierz|Dodaj|Utwórz|Podpisz|Wgraj|Cofnij)[^„”]{0,60})”/g;
 
 const zbierzTs = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -144,7 +144,7 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
   // zakres straznika, a to jest dokladnie ten rodzaj cichej utraty pokrycia,
   // przed ktorym ten plik ma bronic. Rosna, gdy Pomoc cytuje nowy przycisk —
   // wtedy zaktualizuj tez liczby w komentarzu wyzej.
-  it("zna dokladny zakres: 40 wystapien, 20 unikalnych etykiet", () => {
+  it("zna dokladny zakres: 47 wystapien, 21 unikalnych etykiet", () => {
     // 36 / 20 od S3 (blok „Prawo spoldzielcze"): `krok-3-proba` cytuje trzy nowe
     // etykiety — „Pobierz probe z rejestru", „Pobierz probe ponownie" i „Dodaj
     // transakcje w Rejestrze →" — a wiekszosc cytatow „Pobierz probe z RCN"
@@ -154,8 +154,12 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
     // 40 od S5 (Task 4f): `rejestr-spoldzielczy` i `krok-1-przedmiot` mowia o doborze
     // z rejestru w czasie terazniejszym i cytuja „Pobierz probe z rejestru" (etykieta
     // cytowana juz przez `krok-3-proba`, wiec unikalnych nadal 20).
-    expect(cytaty.length).toBe(40);
-    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(20);
+    // 47 / 21 od ADR-020 (approval-reopen): wzorzec obejmuje teraz takze „Cofnij",
+    // a `po-zatwierdzeniu` i `operat-i-niezmiennosc` cytuja „Cofnij zatwierdzenie
+    // i popraw" po dwa razy (w tym raz w alt zrzutu); do tego jedno cytowanie
+    // „Utworz nowa wersje" i jedno „Podpisz operat (nieodwracalne)" wiecej.
+    expect(cytaty.length).toBe(47);
+    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(21);
   });
 
   it("kazda cytowana etykieta wystepuje w zrodlach aplikacji", () => {
