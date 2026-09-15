@@ -464,6 +464,12 @@ export type DocumentModel = {
    * is empty, and §2 then keeps the court text it already prints for the
    * lokal's book. The generator must treat an empty court that way; it may not
    * print a placeholder inside the sentence.
+   *
+   * So the sentence's ONLY correct gate is `nr_ksiegi_gruntu` — it is non-empty
+   * exactly when the grunt's book was examined. Not `sad_ksiegi_gruntu`, which
+   * is empty on the everyday manual path, and not `kw_badanie`, which is true
+   * for an examined lokal alone and would print the sentence with no number and
+   * no court.
    */
   nr_ksiegi_gruntu: string;
   sad_ksiegi_gruntu: string;
