@@ -3,7 +3,11 @@ import { computeKcs, type Feature, type KcsInput } from "../../src/domain/kcs";
 import type { BuildDocumentInput } from "../../src/domain/document-model";
 import type { KwSnapshot } from "../../src/domain/kw-snapshot";
 import type { Candidate } from "../../src/domain/sample-selection";
-import { FEATURE_PRESETS, powierzchniaDefinitions } from "../../src/domain/feature-presets";
+import {
+  FEATURE_PRESETS,
+  powierzchniaDefinitions,
+  powierzchniaMeasure,
+} from "../../src/domain/feature-presets";
 import { AUTOR_TESTOWY } from "./document-model-fixture";
 import { buildPhotoKey } from "../../src/domain/inspection";
 import { currentSectionFactsHash } from "../../src/domain/prose-hash";
@@ -118,6 +122,9 @@ function features(skala: NonNullable<Wariant1409["skalaPowierzchni"]>): Feature[
     rating,
     key,
     definitions: { ...preset(key).defaultDefinitions },
+    // Progi presetu jadą razem z tekstami, które z nich powstały (FH.1) —
+    // piętro je ma (D-46), cechy niemierzalne nie.
+    measure: preset(key).defaultMeasure ?? null,
   });
   return [
     fromPreset("standard-wykonczenia", 0.4, "przecietna"),
@@ -137,6 +144,11 @@ function features(skala: NonNullable<Wariant1409["skalaPowierzchni"]>): Feature[
               przecietna: "powierzchnia użytkowa powyżej 40 m² do 46 m²",
               gorsza: "powierzchnia użytkowa powyżej 46 m²",
             },
+      // `jak_zgloszono` to skala z mediany — niesie swoje progi. `poprawiona` ma
+      // teksty wpisane ręcznie przez rzeczoznawczynię, więc progów NIE ma
+      // (FH.1: ręczna edycja tekstu je usuwa) — i to jest drugi przypadek §12.2:
+      // cecha, której oceny transakcji nie da się wyprowadzić z danych rejestru.
+      measure: skala === "jak_zgloszono" ? powierzchniaMeasure(44) : null,
     },
     fromPreset("pomieszczenia-przynalezne", 0.04, "gorsza"),
     fromPreset("dodatkowe", 0.06, "gorsza"),
@@ -344,6 +356,7 @@ export function formValuesOf(v: BuildDocumentInput) {
       weightPct: Math.round(f.weight * 10000) / 100,
       rating: f.rating,
       definitions: f.definitions ?? undefined,
+      measure: f.measure ?? undefined,
     })),
     sampleMeta: inputs.sampleMeta ?? undefined,
     sampleSelection: inputs.sampleSelection ?? undefined,

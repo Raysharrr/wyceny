@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildDocumentModel } from "../src/domain/document-model";
+import {
+  buildDocumentModel,
+  candidateOf,
+  formatNumber,
+  formatPln,
+  OCENA_SPOZA_REJESTRU,
+} from "../src/domain/document-model";
+import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
 import { computeKcs, type KcsInput } from "../src/domain/kcs";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 
@@ -201,5 +208,167 @@ describe("document model — Tabela 3 sums to the printed ΣUi (I-11)", () => {
     const parse = (s: string) => Number(s.replace(",", "."));
     const printed = m.cechy.reduce((sum, row) => sum + parse(row.ui_przedmiot), 0);
     expect(Math.round(printed * 1000) / 1000).toBe(parse(m.suma_ui));
+  });
+});
+
+/**
+ * FH.3 — §12.2 i Tabela 3 na fiksturze 14.09 (D-51…D-54, I-11 U, I-12 U).
+ * Operat z 14.09 opisywał Cmin i Cmax szablonowo („wartość najwyższa” przy
+ * każdej cesze) i pomijał remis Cmin. Po tej sesji opis wynika z danych.
+ */
+describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
+  const reported = () => buildDocumentModel(wycena1409Anon());
+
+  // Ceny i piętra brane z próby, nie z komentarza — fikstura jest źródłem.
+  const proposed = wycena1409Anon().inputs.sampleSelection!.proposed;
+  const prices = proposed.map((c) => c.pricePerM2);
+  const cmaxRows = proposed.filter((c) => c.pricePerM2 === Math.max(...prices));
+  const cminRows = proposed.filter((c) => c.pricePerM2 === Math.min(...prices));
+
+  it("Tabela 1 jest identyczna jak przed wydzieleniem `candidateOf` (R-7)", () => {
+    expect(reported().transakcje).toEqual(
+      proposed.map((c) => ({
+        data_msc: c.date.slice(0, 7),
+        miasto: "Poznań",
+        ulica: c.street!,
+        pow: formatNumber(c.area, 2),
+        cena_jedn: formatPln(c.pricePerM2),
+      })),
+    );
+  });
+
+  it("`candidateOf` łączy porównanie z kandydatem po transactionId + lokalId", () => {
+    const { inputs } = wycena1409Anon();
+    const comparable = inputs.comparables[0];
+    expect(candidateOf(comparable, inputs.sampleSelection)).toEqual({
+      candidate: proposed[0],
+      matched: true,
+    });
+    // Porównanie spoza migawki (ręczny wiersz) nie ma kandydata — stąd kreski w Tabeli 1.
+    expect(candidateOf({}, inputs.sampleSelection)).toBeNull();
+  });
+
+  it("Cmax na 3. piętrze to „wartość pośrednia”, nie „najwyższa” (D-52)", () => {
+    expect(cmaxRows).toHaveLength(1);
+    expect(cmaxRows[0].floor).toBe(3); // próg „przeciętna”: piętra od 1 do 3
+    const [lokal] = reported().lokale_cmax;
+    expect(lokal.cechy).toEqual([
+      { nazwa: "Standard wykończenia", opis: OCENA_SPOZA_REJESTRU },
+      { nazwa: "Położenie na piętrze", opis: "wartość pośrednia cechy" },
+      { nazwa: "Lokalizacja szczegółowa", opis: OCENA_SPOZA_REJESTRU },
+      // 35,9 m² < próg 44 m² → „lepsza”, wyższy z dwóch opisanych poziomów.
+      { nazwa: "Powierzchnia użytkowa", opis: "wartość najwyższa cechy" },
+      { nazwa: "Pomieszczenia przynależne", opis: OCENA_SPOZA_REJESTRU },
+      { nazwa: "Dodatkowe", opis: OCENA_SPOZA_REJESTRU },
+    ]);
+  });
+
+  it("remis ceny najniższej opisuje oba lokale, każdy ze swoim piętrem (D-53)", () => {
+    expect(cminRows).toHaveLength(2);
+    const { lokale_cmin } = reported();
+    expect(lokale_cmin).toHaveLength(2);
+    const pietro = (i: number) =>
+      lokale_cmin[i].cechy.find((c) => c.nazwa === "Położenie na piętrze")!.opis;
+    // Piętra 10 i 5 — oba w przedziale „od 4 piętra”, czyli najwyższy poziom.
+    expect(cminRows.map((c) => c.floor)).toEqual([10, 5]);
+    expect([pietro(0), pietro(1)]).toEqual(["wartość najwyższa cechy", "wartość najwyższa cechy"]);
+    // 48,6 i 47,9 m² ≥ próg 44 m² → „gorsza”, niższy z dwóch opisanych poziomów.
+    const pow = (i: number) =>
+      lokale_cmin[i].cechy.find((c) => c.nazwa === "Powierzchnia użytkowa")!.opis;
+    expect([pow(0), pow(1)]).toEqual(["wartość najniższa cechy", "wartość najniższa cechy"]);
+  });
+
+  it("położenie Cmin/Cmax bierze ulicę z danych transakcji, bez numeru budynku (D-51)", () => {
+    const m = reported();
+    expect(m.lokale_cmin.map((l) => l.lokalizacja)).toEqual(cminRows.map((c) => c.street));
+    expect(m.lokalizacja_cmax).toBe(cmaxRows[0].street);
+    expect(m.lokalizacja_cmin).toBe(cminRows[0].street);
+    // Numer budynku (`streetNumber`) jest w danych, ale nie może trafić do operatu (F-12).
+    for (const lokal of [...m.lokale_cmin, ...m.lokale_cmax]) {
+      expect(lokal.lokalizacja).not.toMatch(/\d/);
+    }
+  });
+
+  it("brak ulicy w danych → puste pole, zdanie zostawia szablonowi", () => {
+    const v = wycena1409Anon();
+    v.inputs.sampleSelection!.proposed = v.inputs.sampleSelection!.proposed.map((c) => ({
+      ...c,
+      street: null,
+    }));
+    expect(buildDocumentModel(v).lokalizacja_cmax).toBe("");
+  });
+
+  it("cecha bez progów mówi wprost, że ocena nie wynika z danych rejestru (D-52)", () => {
+    const opisy = reported().lokale_cmax[0].cechy.map((c) => c.opis);
+    // Cztery cechy niemierzalne — żadna nie udaje oceny wyprowadzonej z rejestru.
+    expect(opisy.filter((o) => o === OCENA_SPOZA_REJESTRU)).toHaveLength(4);
+    expect(OCENA_SPOZA_REJESTRU).not.toContain("wartość");
+  });
+
+  it("`opis_cmin`/`opis_cmax` to zdania pierwszego lokalu o tej cenie", () => {
+    const m = reported();
+    expect(m.opis_cmin).toEqual(m.lokale_cmin[0].cechy.map((c) => `${c.nazwa} – ${c.opis},`));
+    expect(m.opis_cmax).toEqual(m.lokale_cmax[0].cechy.map((c) => `${c.nazwa} – ${c.opis},`));
+  });
+});
+
+describe("document model — opis przedmiotu i Tabela 3 (FH.3, D-54, I-11 U)", () => {
+  it("opis przedmiotu idzie z pozycji w opisanej skali, nie z klucza oceny (D-54)", () => {
+    const m = buildDocumentModel(wycena1409Anon());
+    expect(m.opis_przedmiot).toEqual([
+      "Standard wykończenia – wartość pośrednia cechy,",
+      "Położenie na piętrze – wartość najwyższa cechy,",
+      // Opisane lepsza/przeciętna, ocena „przeciętna” = NIŻSZY z dwóch — rdzeń błędu 14.09.
+      "Lokalizacja szczegółowa – wartość najniższa cechy,",
+      // Ocena na poziomie bez opisu nie ma pozycji — operat nie zgaduje.
+      "Powierzchnia użytkowa – —,",
+      "Pomieszczenia przynależne – wartość najniższa cechy,",
+      "Dodatkowe – wartość najniższa cechy,",
+    ]);
+  });
+
+  it("Tabela 3: Ui śr „—” przy dwóch opisanych poziomach, liczba przy trzech (ADR-016 reg. 6)", () => {
+    const m = buildDocumentModel(wycena1409Anon());
+    expect(m.cechy.map((c) => [c.nazwa, c.ui_sr])).toEqual([
+      ["Standard wykończenia", "0,400"],
+      ["Położenie na piętrze", "0,300"],
+      ["Lokalizacja szczegółowa", "—"],
+      ["Powierzchnia użytkowa", "—"],
+      ["Pomieszczenia przynależne", "—"],
+      ["Dodatkowe", "—"],
+    ]);
+    // Ui min i Ui max drukują się dalej — „—” dotyczy tylko kolumny środkowej.
+    expect(m.cechy[2].ui_min).toBe("0,088");
+    expect(m.cechy[2].ui_max).toBe("0,115");
+    expect(m.suma_ui_sr).toBe("—");
+    expect(m.ma_skale_dwustopniowe).toBe(true);
+  });
+
+  it("same skale trzypoziomowe → Ui śr liczbowe i suma 1,000", () => {
+    const m = modelWith([
+      {
+        name: "standard wykończenia",
+        weight: 0.5,
+        rating: "przecietna",
+        definitions: { lepsza: "a", przecietna: "b", gorsza: "c" },
+      },
+      {
+        name: "lokalizacja",
+        weight: 0.5,
+        rating: "lepsza",
+        definitions: { lepsza: "a", przecietna: "b", gorsza: "c" },
+      },
+    ]);
+    expect(m.cechy.map((c) => c.ui_sr)).toEqual(["0,500", "0,500"]);
+    expect(m.suma_ui_sr).toBe("1,000");
+    expect(m.ma_skale_dwustopniowe).toBe(false);
+  });
+
+  it("ΣUi Tabeli 3 = ΣUi wskaźnika WR (I-11 U)", () => {
+    for (const wariant of [{}, { skalaPowierzchni: "poprawiona" as const }]) {
+      const m = buildDocumentModel(wycena1409Anon(wariant));
+      const suma = m.cechy.reduce((acc, c) => acc + Number(c.ui_przedmiot.replace(",", ".")), 0);
+      expect(formatNumber(Math.round(suma * 1000) / 1000, 3)).toBe(m.suma_ui);
+    }
   });
 });
