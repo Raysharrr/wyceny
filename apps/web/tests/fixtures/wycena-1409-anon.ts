@@ -326,7 +326,7 @@ export function wycena1409Anon(wariant: Wariant1409 = {}): BuildDocumentInput {
     },
   };
   const inputs: KcsInput = { ...base, prose: prose(base) };
-  return {
+  const v: BuildDocumentInput = {
     address: ADDRESS,
     area: AREA,
     purpose: "sprzedaz",
@@ -340,6 +340,19 @@ export function wycena1409Anon(wariant: Wariant1409 = {}): BuildDocumentInput {
     amountInWords: "czterysta sześćdziesiąt sześć tysięcy trzysta złotych",
     author: AUTOR_TESTOWY,
   };
+  // KAŻDE wywołanie dostaje własne, głębokie kopie. Bez tego fikstura wydawała
+  // żywe referencje do stałych modułowych — `PROPOSED` (cała tablica i każdy
+  // kandydat), `KW_ODPIS`, a przez preset także `FEATURE_PRESETS.lokal[…]
+  // .defaultMeasure`, czyli do danych PRODUKCYJNYCH. Zapis w jednym teście
+  // („ustaw kondygnację lokalu Cmax”) był widoczny w każdym następnym, więc o
+  // wyniku decydowała kolejność testów — i to w stronę, która potrafi zamaskować
+  // prawdziwy błąd, bo test dostaje dane spreparowane przez poprzednika.
+  //
+  // Klonowanie na wyjściu, a nie kopiowanie pól po kolei: nowe pole migawki
+  // dokłada się wtedy bez pamiętania o kopii, a przy przeglądzie „po kolei”
+  // wyciekłoby po cichu (recenzent znalazł `proposed`; pomiar pokazał jeszcze
+  // `measure` i `kw`).
+  return structuredClone(v);
 }
 
 /**
