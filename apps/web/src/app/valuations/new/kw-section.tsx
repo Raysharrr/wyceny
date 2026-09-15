@@ -386,7 +386,12 @@ const MANUAL_WARNING =
  * number. `akt` is the deweloperski path: a lokal with no book of its own.
  */
 export function KwSection(props: KwSectionProps) {
-  const { control, state, source, onSourceChange } = props;
+  // `onSourceChange` deliberately NOT destructured: it is the parent's full
+  // section reset, and `retractExamination` below is the only thing allowed to
+  // call it. Pulling it into render scope invites a future control to fire it
+  // straight and skip the clears — which is precisely how three of the four
+  // handlers here lost a field each.
+  const { control, state, source } = props;
   const today = props.today ?? localToday();
   const kw = useWatch({ control, name: "kw" });
   const kwGrunt = useWatch({ control, name: "kwGrunt" });
@@ -492,7 +497,7 @@ export function KwSection(props: KwSectionProps) {
     kw?: Record<string, unknown> | null;
     grunt?: boolean;
   }) => {
-    onSourceChange(next.source);
+    props.onSourceChange(next.source);
     setKw(next.kw ?? null);
     setEncumbrance(null);
     if (next.grunt) setKwGrunt(null);
