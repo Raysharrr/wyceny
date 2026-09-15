@@ -212,6 +212,107 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(reread!.approvedAt).toBeInstanceOf(Date);
   });
 
+  /**
+   * B-15/B-16 W TRANSAKCJI (ADR-020 reg. 3). Bramka na ekranie i fail-fast w
+   * akcji to wygoda; rozstrzyga ta, która biegnie wewnątrz transakcji zapisu
+   * (ADR-012), a jej jedynym nośnikiem danych profilu jest `...gate` w
+   * `valuation-drizzle.ts`. Testy akcji tego nie pilnują — mockują
+   * repozytorium, więc zawężenie przekazywanego kontekstu do
+   * `{ requireProse }` (regresja z PR #50) zostawiłoby je zielone.
+   *
+   * Kryterium: oba przypadki czerwienią się, gdy `...gate` zniknie z wywołania
+   * `approveValuation` w adapterze.
+   *
+   * Dane profilu poniżej są FIKCYJNE (F-9).
+   */
+  it("approve odmawia w transakcji przy niekompletnym profilu autora (B-15)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Profilowa 1"),
+      inputs: withConfirmedProse("ul. Profilowa 1", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+
+    const niepelnyProfil = {
+      fullName: "Jan Testowy",
+      licenseNo: null,
+      officeBlock: "Biuro Wycen Testowe",
+      insuranceDocKey: "polisa/user-test-1/fikcyjna",
+      insuranceValidUntil: "2099-12-31",
+    };
+    try {
+      await repo.approve(created.id, appraiserA, undefined, new Date(), undefined, undefined, {
+        author: niepelnyProfil,
+      });
+      throw new Error("approve powinno odmówić");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApprovalBlockedError);
+      expect((e as ApprovalBlockedError).blockers.map((b) => b.code)).toContain("B-15");
+    }
+    // Odmowa jest atomowa: status nie drgnął.
+    expect((await repo.get(created.id, appraiserA))!.status).toBe("in_progress");
+  });
+
+  it("approve odmawia w transakcji przy polisie po terminie (B-16)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Profilowa 2"),
+      inputs: withConfirmedProse("ul. Profilowa 2", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+
+    const wygaslaPolisa = {
+      fullName: "Jan Testowy",
+      licenseNo: "0000",
+      officeBlock: "Biuro Wycen Testowe",
+      insuranceDocKey: "polisa/user-test-1/fikcyjna",
+      insuranceValidUntil: "2000-01-01",
+    };
+    try {
+      await repo.approve(created.id, appraiserA, undefined, new Date(), undefined, undefined, {
+        author: wygaslaPolisa,
+      });
+      throw new Error("approve powinno odmówić");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApprovalBlockedError);
+      expect((e as ApprovalBlockedError).blockers.map((b) => b.code)).toContain("B-16");
+    }
+    expect((await repo.get(created.id, appraiserA))!.status).toBe("in_progress");
+  });
+
+  /**
+   * Druga połowa tej samej reguły: kompletny profil z ważną polisą przechodzi.
+   * Bez tego przypadku oba testy wyżej zieleniłyby się także wtedy, gdyby
+   * bramka zaczęła odmawiać KAŻDEMU profilowi.
+   */
+  it("approve przechodzi w transakcji przy kompletnym profilu i ważnej polisie", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Profilowa 3"),
+      inputs: withConfirmedProse("ul. Profilowa 3", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+
+    const approved = await repo.approve(
+      created.id,
+      appraiserA,
+      undefined,
+      new Date(),
+      undefined,
+      undefined,
+      {
+        author: {
+          fullName: "Jan Testowy",
+          licenseNo: "0000",
+          officeBlock: "Biuro Wycen Testowe",
+          insuranceDocKey: "polisa/user-test-1/fikcyjna",
+          insuranceValidUntil: "2099-12-31",
+        },
+      },
+    );
+    expect(approved!.status).toBe("approved");
+  });
+
   it("an approved valuation refuses further mutations (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 5"),

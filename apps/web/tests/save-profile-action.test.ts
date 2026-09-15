@@ -28,10 +28,12 @@ import {
   uploadInsurancePage,
 } from "../src/app/actions/save-profile";
 import { profileRepository, storage } from "@/app/valuations/_deps";
+import { StorageNotFoundError } from "@/ports/storage";
 
 const saveAuthorMock = vi.mocked(profileRepository.saveAuthor);
 const saveInsuranceMock = vi.mocked(profileRepository.saveInsurance);
 const storagePutMock = vi.mocked(storage.put);
+const storageGetMock = vi.mocked(storage.get);
 
 const UPLOAD_ID = "11111111-2222-4333-8444-555555555555";
 
@@ -43,9 +45,12 @@ const authorForm = (over: Partial<Record<string, string>> = {}): FormData => {
   return form;
 };
 
-const pageForm = (bytes = "jpeg-page"): FormData => {
+/** Pierwsze trzy bajty prawdziwego JPEG — reszta jest bez znaczenia dla bramki. */
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+const pageForm = (bytes: Uint8Array = JPEG, type = "image/jpeg", name = "page-1.jpg"): FormData => {
   const form = new FormData();
-  form.set("page", new File([bytes], "page-1.jpg", { type: "image/jpeg" }));
+  form.set("page", new File([bytes.buffer as ArrayBuffer], name, { type }));
   return form;
 };
 
@@ -54,6 +59,10 @@ beforeEach(() => {
   saveInsuranceMock.mockReset();
   storagePutMock.mockReset();
   storagePutMock.mockResolvedValue("/api/docs/x");
+  storageGetMock.mockReset();
+  // Domyślnie pierwsza strona istnieje — `finishInsuranceUpload` odmawia, gdy
+  // nie doszła żadna, i ma na to własny przypadek niżej.
+  storageGetMock.mockResolvedValue(Buffer.from([0xff, 0xd8, 0xff]));
 });
 
 describe("saveAuthorProfile", () => {
@@ -130,6 +139,24 @@ describe("uploadInsurancePage", () => {
     expect(result!.error).toBe("Brak strony polisy do zapisania.");
   });
 
+  /**
+   * Bajty stąd trafiają pełnostronicowo do operatu, więc typ sprawdzany jest
+   * dwa razy: zadeklarowany (jak w `save-signature.ts`) i pierwsze trzy bajty,
+   * których wołający nie przemianuje. Wzorzec z `save-signature.ts:29`.
+   */
+  it("odrzuca stronę o zadeklarowanym typie innym niż JPEG", async () => {
+    const result = await uploadInsurancePage(UPLOAD_ID, 0, pageForm(JPEG, "application/pdf"));
+    expect(result!.error).toBe("Strona polisy musi być obrazem JPEG.");
+    expect(storagePutMock).not.toHaveBeenCalled();
+  });
+
+  it("odrzuca plik podszywający się pod JPEG samą nazwą i nagłówkiem", async () => {
+    const udaje = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // "%PDF"
+    const result = await uploadInsurancePage(UPLOAD_ID, 0, pageForm(udaje));
+    expect(result!.error).toBe("Strona polisy musi być obrazem JPEG.");
+    expect(storagePutMock).not.toHaveBeenCalled();
+  });
+
   /** Sam upload NIE przestawia profilu — robi to dopiero finish. */
   it("nie dotyka wiersza profilu", async () => {
     await uploadInsurancePage(UPLOAD_ID, 0, pageForm());
@@ -149,6 +176,20 @@ describe("finishInsuranceUpload", () => {
   it.each(["30.06.2027", "2027-6-3", ""])("odrzuca datę w formacie %s", async (validUntil) => {
     const result = await finishInsuranceUpload(UPLOAD_ID, validUntil);
     expect(result!.fieldErrors).toEqual({ insuranceValidUntil: "Podaj datę ważności polisy." });
+    expect(saveInsuranceMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * B-16 patrzy tylko, czy kolumna jest niepusta, więc klucz wskazujący na
+   * nic zdegradowałby bramkę do „istnieje napis” i wypuścił operat z pustym
+   * Załącznikiem nr 1.
+   */
+  it("odmawia, gdy pod prefiksem nie ma ani jednej strony", async () => {
+    storageGetMock.mockRejectedValueOnce(new StorageNotFoundError("brak"));
+    const result = await finishInsuranceUpload(UPLOAD_ID, "2027-06-30");
+    expect(result!.fieldErrors).toEqual({
+      policy: "Nie wgrano żadnej strony polisy — spróbuj ponownie.",
+    });
     expect(saveInsuranceMock).not.toHaveBeenCalled();
   });
 

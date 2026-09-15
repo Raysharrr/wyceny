@@ -670,13 +670,22 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         //    place that comparison lives; the action calls it too, for its
         //    fail-fast check before it spends anything on generation.
         //
-        // The PROFILE half of `gate` (B-15, B-16) is taken as passed. It is a
-        // read of another table by the same server action — not a client claim
-        // — and re-reading it here would only widen the window in which the
-        // profile is complete on the screen and gone in the transaction.
-        // `today` is the exception: the operat's date is `now`, this row's own
-        // timestamp, so the policy is measured against the date the document
-        // will actually carry rather than one the caller assembled earlier.
+        // The PROFILE half of `gate` (B-15, B-16) is taken as passed — and this
+        // is a weaker guarantee than the prose half above, deliberately so.
+        // Re-reading `appraiser_profile` inside this transaction would be
+        // STRICTER (it would close the window between the action's read and
+        // this write, in which a profile can be emptied), but it is a read of
+        // a second table by the same server action, not a claim from a client,
+        // and the asymmetry is not what ADR-012 is about: the prose options
+        // are re-derived here because they were a per-call decision that could
+        // disable a whole invariant group. Tightening this is a follow-up, not
+        // a correctness hole — `tests/valuation-repo.test.ts` pins that the
+        // profile blockers DO fire inside the transaction.
+        //
+        // `today` is the exception that is settled here: the operat's date is
+        // `now`, this row's own timestamp, so the policy is measured against
+        // the date the document will actually carry rather than one the caller
+        // assembled earlier.
         const requireProse = proseEnabled();
         const updated = approveValuation(valuation, now, docs, {
           ...gate,

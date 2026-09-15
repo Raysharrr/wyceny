@@ -16,12 +16,20 @@ import { proseEnabled } from "@/lib/prose-enabled";
  * transaction (ADR-012) — that read is authoritative, this one is the
  * fail-fast and the screen.
  *
- * `author` is REQUIRED rather than optional, and that is the whole enforcement
- * of B-15/B-16. The domain skips the profile group when the context does not
- * carry one — it cannot invent a blocker out of "the caller does not know" —
- * so the guarantee that no real call site forgets to read the profile has to
- * live in this signature. `null` is a valid answer meaning "no profile row at
- * all", and it raises both blockers.
+ * `author` is REQUIRED rather than optional, because the domain skips the
+ * profile group when the context does not carry one — it cannot invent a
+ * blocker out of "the caller does not know". Making the parameter mandatory
+ * means every caller of THIS helper has to have read the profile first.
+ *
+ * It is not a whole-system guarantee, and should not be read as one:
+ * `GateOptions.author` is itself optional, and `PortValuation.approve`'s
+ * `gate` argument is optional too, so a call that bypasses this helper can
+ * still reach the gate with no profile and no blockers. What actually pins
+ * B-15/B-16 to the authoritative path is `tests/valuation-repo.test.ts`,
+ * which drives `repo.approve` against a real database.
+ *
+ * `null` is a valid answer meaning "no profile row at all", and it raises
+ * both blockers.
  */
 export function gateContextFor(
   valuation: Pick<Valuation, "address" | "inputs">,
