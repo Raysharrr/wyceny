@@ -42,6 +42,19 @@ Lista jest przy tym drobnoziarnista tam, gdzie ma to znaczenie: blokuje **każda
 - **Opisy sekcji** — każda z {PROSE_SECTIONS.length} sekcji opisowych [kroku 6](/pomoc/krok-6-opisy) musi mieć niepusty tekst przyjęty przez rzeczoznawcę. Wycena, przy której nie ma jeszcze żadnych opisów, dostaje jedną blokadę („Opisy sekcji nie zostały wygenerowane."); dalej blokuje osobno każda sekcja pusta („— brak tekstu.") oraz każda z tekstem, którego rzeczoznawca jeszcze nie przyjął („— do weryfikacji."). Propozycja modelu językowego nie przechodzi tej bramy nigdy: status „potwierdzona" nadaje wyłącznie zapis kroku 6.
 - **Aktualność opisów** — przy opisach zapisany jest odcisk danych, wobec których zostały przyjęte. Gdy dane wyceny zmienią się później, blokuje pozycja „Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.". Jest to prozatorski odpowiednik kasowania zatwierdzonej kwoty przy zmianie wejść silnika: tekst zatwierdzony wcześniej nie może opisywać próby, której już nie ma. Wyjściem jest ponowne przeczytanie i zatwierdzenie tekstów — bez nowej generacji.
 
+### Oceny i skala cech
+
+Blokady poniżej niosą kod z katalogu blokad i odsyłają do [kroku 4](/pomoc/krok-4-cechy). Pierwsze trzy sprawdzane są przy każdej cesze z osobna.
+
+| Kod  | Kiedy blokuje                                                                                                                       | Komunikat                                                                              |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| B-08 | cecha nie ma oceny                                                                                                                  | Wybierz ocenę cechy „nazwa”.                                                           |
+| B-09 | ocena wskazuje poziom, który w skali tej cechy nie ma opisu                                                                         | Ocena „poziom” cechy „nazwa” nie ma opisu w skali — opisz ten poziom albo zmień ocenę. |
+| B-10 | cecha z wagą większą od zera ma opisane mniej niż dwa poziomy                                                                       | Cecha „nazwa” musi mieć opisane co najmniej dwa poziomy.                               |
+| B-11 | szkic, którego oceny cech zatwierdzono przed wprowadzeniem skali z opisanych poziomów, nie został od tamtej pory zapisany w kroku 4 | Potwierdź oceny cech — zmieniła się zasada liczenia skali dwupoziomowej.               |
+
+B-09 i B-10 zatrzymuje już zapis kroku 4, więc na liście blokad pojawiają się głównie przy wycenach sprzed tej reguły. B-11 znika po jednym zapisie kroku 4 z kompletem ocen.
+
 ### Sprawdzane warunkowo
 
 Pozostałe grupy **istnieją tylko wtedy, gdy do wyceny dołączono odpowiednią migawkę**. Nie jest to ustępstwo, tylko konsekwencja: nie ma czego potwierdzać w danych, których w wycenie nie ma.
@@ -89,5 +102,5 @@ Potwierdzenie nie jest wieczne. Zapis kroku próby albo cech kasuje zatwierdzon�
 - **Nie pilnuje sumy wag.** Wagi sumujące się do jedności są założeniem metody, nie warunkiem bramy — silnik policzy wynik z dowolnym zestawem, a pilnuje tego [krok cech](/pomoc/krok-4-cechy).
 - **Nie obejmuje oględzin poza datą.** Zdjęcia i notatka z oględzin nie mają wpisu prowenancji i nie blokują zatwierdzenia; wymagana jest wyłącznie data oględzin. Pośrednio notatka i tak waży: bez niej automat nie napisze opisu lokalu ani charakterystyki otoczenia, bo te dwie sekcje nie mają innego źródła. Dwie kolejne — opis zagospodarowania terenu i opis standardu — powstaną i bez notatki, o ile wycena ma dane ewidencyjne albo oceny cech. Sekcja bez tekstu blokuje zatwierdzenie, więc czego automat nie napisze, trzeba napisać ręcznie.
 - **Nie ocenia treści opisów.** Sprawdza, czy każda sekcja ma tekst przyjęty przez rzeczoznawcę i czy opisuje aktualne dane — nie czyta go. Co sprawdza się w samym tekście, opisują [Opisy sekcji generowane z danych wyceny](/pomoc/opisy-generowane).
-- **Nie działa wstecz.** Migawki sprzed wprowadzenia danej grupy przechodzą mniej warunków — celowo, żeby nowa reguła nie unieruchomiła szkiców istniejących już w bazie.
+- **Nie działa wstecz.** Migawki sprzed wprowadzenia danej grupy przechodzą mniej warunków — celowo, żeby nowa reguła nie unieruchomiła szkiców istniejących już w bazie. Wyjątkiem są oceny cech: szkic sprzed skali z opisanych poziomów wymaga ponownego zatwierdzenia cech (B-11), bo zmieniła się zasada liczenia współczynnika.
 - **Nie zna górnej granicy próby.** Sprawdzany jest wyłącznie próg dolny; próba liczniejsza niż {REQUIRED_SAMPLE_SIZE} pozycji przechodzi bez uwag.

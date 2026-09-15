@@ -23,11 +23,15 @@ Vmin jest zawsze mniejszy lub równy jedności, Vmax większy lub równy. To one
 
 ## Współczynniki cech i ich suma
 
-Każda cecha ma wagę (udział w całości korekty; wagi sumują się do jedności) oraz ocenę w trzystopniowej skali. Współczynnik cechy Ui zależy od oceny:
+Każda cecha ma wagę (udział w całości korekty; wagi sumują się do jedności) oraz ocenę w skali, którą tworzą **opisane poziomy** tej cechy — dwa dowolne z trzech (gorsza, przeciętna, lepsza) albo wszystkie trzy. Współczynnik cechy Ui zależy od **miejsca oceny w tej skali**, a nie od samej nazwy poziomu:
 
-- ocena **lepsza** — Ui = waga × Vmax,
-- ocena **przeciętna** — Ui = waga,
-- ocena **gorsza** — Ui = waga × Vmin.
+- ocena na **najwyższym** opisanym poziomie — Ui = waga × Vmax,
+- ocena na poziomie **pośrednim** (tylko przy trzech opisanych poziomach, czyli „przeciętna”) — Ui = waga,
+- ocena na **najniższym** opisanym poziomie — Ui = waga × Vmin.
+
+Przy trzech poziomach daje to znany układ: lepsza — waga × Vmax, przeciętna — waga, gorsza — waga × Vmin. Przy dwóch poziomach skala nie ma środka: gdy cecha opisuje „lepsza” i „przeciętna”, ocena „przeciętna” jest wartością najniższą cechy i daje waga × Vmin; gdy opisuje „przeciętna” i „gorsza”, ta sama ocena jest wartością najwyższą i daje waga × Vmax. Tak skalę dwupoziomową czyta operat — opis poziomu jest tym samym kontraktem, który rzeczoznawca podpisuje, i rachunek czyta go tak samo.
+
+Ocena na poziomie bez opisu, cecha z wagą, która ma opisany mniej niż dwa poziomy, i cecha bez oceny nie dają współczynnika — silnik nie policzy wtedy wyniku, a zatwierdzenie operatu jest [zablokowane](/pomoc/zasady-zatwierdzania). Wycena, której oceny zatwierdzono przed wprowadzeniem tej reguły, liczy się dalej po staremu, dopóki rzeczoznawca nie zatwierdzi cech ponownie; wydany operat zachowuje kwotę, z którą go wydano.
 
 ΣUi, czyli suma współczynników wszystkich cech, jest łącznym mnożnikiem korekty. Poniższe własności zakładają, że wagi sumują się do jedności — silnik tego nie sprawdza i policzy wynik z dowolnym zestawem wag; pilnuje tego [krok ocen](/pomoc/krok-4-cechy). Gdy wszystkie cechy są przeciętne, ΣUi wynosi dokładnie 1 i wycena zatrzymuje się na cenie średniej. Gdy wszystkie są lepsze, ΣUi równa się Vmax i wycena dobija do najdroższej transakcji z próby. Każda pojedyncza ocena przesuwa wynik dokładnie o tyle, ile wynosi jej waga pomnożona przez odległość odpowiedniego współczynnika od jedności.
 

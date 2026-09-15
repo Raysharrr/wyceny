@@ -1,6 +1,12 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
-import { FEATURE_SCALE_RULE, computeKcsOnScale, describedLevels, kcsReady } from "./feature-rules";
+import {
+  FEATURE_SCALE_RULE,
+  computeKcsOnScale,
+  describedLevels,
+  featureIssues,
+  kcsReady,
+} from "./feature-rules";
 import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
@@ -717,7 +723,35 @@ export function applyCalculationConfirm(v: Valuation): Valuation {
  */
 export function approvalBlockers(v: Valuation, ctx: GateOptions): Blocker[] {
   const gate = v.inputs ? approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, ctx) : null;
-  return [...(gate && !gate.ok ? gate.blockers : []), ...documentFieldBlockers(v)];
+  return [
+    ...(gate && !gate.ok ? gate.blockers : []),
+    ...featureScaleBlockers(v),
+    ...documentFieldBlockers(v),
+  ];
+}
+
+/**
+ * B-08…B-11 (ADR-016 reg. 3–4, spec §4) — each feature's rating against its
+ * described scale, then the draft whose ratings were confirmed under the
+ * fixed-key rule and wait for the step-4 save to confirm them again.
+ */
+function featureScaleBlockers(v: Valuation): Blocker[] {
+  if (!v.inputs) return [];
+  const blockers: Blocker[] = v.inputs.features.flatMap((f, i) =>
+    featureIssues(f).map((issue) => ({ path: `features[${i}]`, ...issue })),
+  );
+  if (
+    v.status === "in_progress" &&
+    v.inputs.features.length > 0 &&
+    v.inputs.featureScaleRule !== FEATURE_SCALE_RULE
+  ) {
+    blockers.push({
+      path: "features",
+      code: "B-11",
+      label: "Potwierdź oceny cech — zmieniła się zasada liczenia skali dwupoziomowej.",
+    });
+  }
+  return blockers;
 }
 
 /**

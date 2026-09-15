@@ -18,6 +18,7 @@ import {
 } from "../src/domain/valuation";
 import type { Valuation } from "../src/ports/valuation";
 import type { Comparable, KcsInput } from "../src/domain/kcs";
+import { THREE_LEVEL_SCALE } from "./fixtures/valuation-inputs";
 import { approvalGate, type InputsProvenance } from "../src/domain/provenance";
 import { confirmProseSnapshot, PROSE_SECTIONS } from "../src/domain/prose-snapshot";
 import { confirmedProse } from "./fixtures/valuation-inputs";
@@ -68,7 +69,16 @@ function rcnInputs(): KcsInput {
       transactionId: `tx-${i}`,
       status: "to_verify" as const,
     })),
-    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    // A rating on its described scale, saved under the ADR-016 rule (B-08…B-11 clear).
+    features: [
+      {
+        name: "standard",
+        weight: 1,
+        rating: "przecietna" as const,
+        definitions: THREE_LEVEL_SCALE,
+      },
+    ],
+    featureScaleRule: 2,
     sampleMeta: {
       point: { x: 355300.15, y: 505330.31, source: "subject" as const },
       maxRadiusM: 3000,
