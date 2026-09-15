@@ -90,3 +90,18 @@ describe("isEmptySubject (Fix A)", () => {
     expect(isEmptySubject({ ...EMPTY_SUBJECT, mpzpAbsent: true })).toBe(false);
   });
 });
+
+/**
+ * FH.2 — piętro przedmiotu (ADR-016 reg. 5). Pole ręczne kroku 1: ewidencja
+ * zna liczbę kondygnacji budynku, ale nie piętro lokalu.
+ */
+describe("subject.pietro (FH.2)", () => {
+  it("nie jest wypełniane z propozycji EGiB/MPZP i startuje puste", () => {
+    expect(EMPTY_SUBJECT.pietro).toBeUndefined();
+    expect(proposalToSubjectValues(proposal).pietro).toBeUndefined();
+  });
+
+  it("parter (0) liczy się jako wypełniony przedmiot", () => {
+    expect(isEmptySubject({ ...EMPTY_SUBJECT, pietro: 0 })).toBe(false);
+  });
+});

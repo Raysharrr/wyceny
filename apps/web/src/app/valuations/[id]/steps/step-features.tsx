@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import type { z } from "zod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FieldError } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { saveFeaturesAction } from "@/app/actions/wizard";
 import { featuresStepSchema } from "@/app/actions/wizard-schemas";
@@ -17,15 +17,25 @@ import {
   LEVEL_LABEL,
   medianAreaM2,
   powierzchniaDefinitions,
+  powierzchniaMeasure,
   type LokalFeatureKey,
 } from "@/domain/feature-presets";
 import {
   computeKcsOnScale,
+  definitionsFromMeasure,
   describedLevels,
   featureIssues,
   featureUis,
+  levelForValue,
+  measureIssues,
 } from "@/domain/feature-rules";
-import type { Comparable, FeatureRating, KcsInput } from "@/domain/kcs";
+import type {
+  Comparable,
+  FeatureMeasure,
+  FeatureRating,
+  KcsInput,
+  MeasureBound,
+} from "@/domain/kcs";
 import { cn } from "@/lib/utils";
 import { DEFAULT_FEATURES } from "@/lib/valuation-form-schema";
 import { FootNav } from "@/components/wizard/foot-nav";
@@ -89,13 +99,21 @@ function buildDefaultFeatures(
           przecietna: f.definitions?.przecietna ?? "",
           gorsza: f.definitions?.gorsza ?? "",
         },
+        measure: f.measure ?? null,
       }))
     : DEFAULT_FEATURES;
 
   const median = medianAreaM2(comparableAreas);
   return mapped.map((f) =>
     f.key === "powierzchnia-uzytkowa" && !f.definitions?.lepsza && !f.definitions?.gorsza
-      ? { ...f, definitions: { ...f.definitions, ...powierzchniaDefinitions(median) } }
+      ? {
+          ...f,
+          definitions: { ...f.definitions, ...powierzchniaDefinitions(median) },
+          // The median seed brings its THRESHOLDS too (FH.1) — the texts it
+          // writes were generated from them, so the suggestion works on a
+          // fresh valuation without the appraiser touching the scale.
+          measure: powierzchniaMeasure(median),
+        }
       : f,
   );
 }
@@ -219,20 +237,82 @@ function FeatureRatingGroup({
   );
 }
 
-/** The level definitions of one feature, edited under „Edytuj skalę”. */
+/** The unit each threshold edge is typed in — no explanatory copy, that lives in Pomoc. */
+const BOUND_LABEL: Record<FeatureMeasure["kind"], { od: string; do: string }> = {
+  floor: { od: "od piętra", do: "do piętra" },
+  area: { od: "od [m²]", do: "do [m²]" },
+};
+
+/** One edge of one band, as a number input; blank clears the edge. */
+function BoundInput({
+  featureKey,
+  level,
+  edge,
+  kind,
+  value,
+  onChange,
+}: {
+  featureKey: string;
+  level: FeatureRating;
+  edge: "od" | "do";
+  kind: FeatureMeasure["kind"];
+  value: number | undefined;
+  onChange: (next: number | undefined) => void;
+}) {
+  const id = `feature-bound-${featureKey}-${level}-${edge}`;
+  return (
+    <Field className="gap-1">
+      <FieldLabel htmlFor={id} className="text-xs font-normal text-muted-foreground">
+        {BOUND_LABEL[kind][edge]}
+      </FieldLabel>
+      <Input
+        id={id}
+        data-testid={id}
+        type="number"
+        step={kind === "floor" ? "1" : "0.01"}
+        inputMode="decimal"
+        className="w-28"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+      />
+    </Field>
+  );
+}
+
+/**
+ * The level definitions of one feature, edited under „Edytuj skalę”. For a
+ * measurable feature (FH.1) the bands come first and the texts are their
+ * output: editing a threshold rewrites every definition, and retyping a
+ * definition by hand retracts the thresholds — one direction each way, so the
+ * §12.1 scale block and the suggestion can never state different scales.
+ */
 function ScaleEditor({
   control,
   index,
   featureKey,
   rating,
+  measure,
   onSelectedLevelCleared,
+  onMeasureChange,
 }: {
   control: Control<FormInput, unknown, FormOutput>;
   index: number;
   featureKey: string | undefined;
   rating: FeatureRating | null | undefined;
+  measure: FeatureMeasure | null | undefined;
   onSelectedLevelCleared: () => void;
+  onMeasureChange: (next: FeatureMeasure | null) => void;
 }) {
+  const setBound = (level: FeatureRating, edge: "od" | "do", value: number | undefined) => {
+    if (!measure) return;
+    const bound: MeasureBound = { ...measure.bounds[level], [edge]: value };
+    if (value === undefined) delete bound[edge];
+    const bounds = { ...measure.bounds };
+    if (bound.od === undefined && bound.do === undefined) delete bounds[level];
+    else bounds[level] = bound;
+    onMeasureChange({ ...measure, bounds });
+  };
+
   return (
     <div className="flex flex-col gap-2">
       {SCALE_LEVELS.map((level) => (
@@ -241,26 +321,123 @@ function ScaleEditor({
           control={control}
           name={`features.${index}.definitions.${level}`}
           render={({ field: defField }) => (
-            <label className="flex flex-col gap-1 text-xs">
-              <span className="text-muted-foreground">{LEVEL_LABEL[level]}</span>
-              <Input
-                data-testid={`feature-def-${featureKey ?? index}-${level}`}
-                placeholder="puste pole — poziom nie pojawi się w operacie"
-                name={defField.name}
-                onBlur={defField.onBlur}
-                ref={defField.ref}
-                value={toInputValue(defField.value)}
-                onChange={(e) => {
-                  defField.onChange(e.target.value);
-                  // A rating on a level that no longer has a description is
-                  // off the scale (ADR-016 reg. 4) — the appraiser picks again.
-                  if (rating === level && e.target.value.trim() === "") onSelectedLevelCleared();
-                }}
-              />
-            </label>
+            <div className="flex flex-col gap-1 text-xs">
+              <label className="flex flex-col gap-1">
+                <span className="text-muted-foreground">{LEVEL_LABEL[level]}</span>
+                <Input
+                  data-testid={`feature-def-${featureKey ?? index}-${level}`}
+                  placeholder="puste pole — poziom nie pojawi się w operacie"
+                  name={defField.name}
+                  onBlur={defField.onBlur}
+                  ref={defField.ref}
+                  value={toInputValue(defField.value)}
+                  onChange={(e) => {
+                    defField.onChange(e.target.value);
+                    // Typed by hand, so the text is no longer the thresholds'
+                    // output — they go, and the suggestion with them (FH.1).
+                    if (measure) onMeasureChange(null);
+                    // A rating on a level that no longer has a description is
+                    // off the scale (ADR-016 reg. 4) — the appraiser picks again.
+                    if (rating === level && e.target.value.trim() === "") onSelectedLevelCleared();
+                  }}
+                />
+              </label>
+              {measure ? (
+                <div className="flex flex-wrap gap-2">
+                  {(["od", "do"] as const).map((edge) => (
+                    <BoundInput
+                      key={edge}
+                      featureKey={featureKey ?? String(index)}
+                      level={level}
+                      edge={edge}
+                      kind={measure.kind}
+                      value={measure.bounds[level]?.[edge]}
+                      onChange={(next) => setBound(level, edge, next)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
           )}
         />
       ))}
+    </div>
+  );
+}
+
+/** The measured value of the subject for a feature, as step 1 recorded it. */
+function subjectValueFor(
+  kind: FeatureMeasure["kind"],
+  subject: { area: number; pietro: number | null },
+): number | null {
+  return kind === "floor" ? subject.pietro : subject.area;
+}
+
+const measureValueFormatter = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
+
+/** The subject's value as the hint prints it — "6" for a storey, "44,23 m²" for an area. */
+function measureValueText(kind: FeatureMeasure["kind"], value: number): string {
+  return kind === "floor"
+    ? measureValueFormatter.format(value)
+    : `${measureValueFormatter.format(value)} m²`;
+}
+
+/** The suggested level's own band, in the words the hint uses after „próg”. */
+function boundText(kind: FeatureMeasure["kind"], bound: MeasureBound): string {
+  const unit = (n: number) =>
+    kind === "floor" ? String(n) : `${measureValueFormatter.format(n)} m²`;
+  if (kind === "floor" && bound.od === 0 && bound.do === 0) return "parter";
+  if (bound.od != null && bound.do != null) {
+    return kind === "floor"
+      ? `od ${unit(bound.od)} do ${unit(bound.do)}`
+      : `od ${unit(bound.od)} poniżej ${unit(bound.do)}`;
+  }
+  if (bound.od != null) return `od ${unit(bound.od)}`;
+  if (bound.do != null)
+    return kind === "floor" ? `do ${unit(bound.do)}` : `poniżej ${unit(bound.do)}`;
+  return "";
+}
+
+const MEASURE_NOUN: Record<FeatureMeasure["kind"], string> = {
+  floor: "piętro",
+  area: "powierzchnia",
+};
+
+/**
+ * Mockup `ThresholdHint` — for a measurable feature it reads the subject's own
+ * number from step 1, places it in the scale's bands and names the level that
+ * follows. It only ever SUGGESTS: the rating stays as it is until „Przyjmij”
+ * (ADR-016 reg. 5). Every number in the sentence comes from the valuation —
+ * the subject's value and the suggested level's own threshold.
+ */
+function ThresholdHint({
+  featureKey,
+  measure,
+  value,
+  level,
+  onAccept,
+}: {
+  featureKey: string;
+  measure: FeatureMeasure;
+  value: number;
+  level: FeatureRating;
+  onAccept: () => void;
+}) {
+  return (
+    <div
+      data-testid={`threshold-hint-${featureKey}`}
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed border-[var(--amber-line)] bg-card px-3 py-2 text-[12.5px]"
+    >
+      <span>
+        Podpowiedź: {MEASURE_NOUN[measure.kind]} przedmiotu{" "}
+        <b className="num">{measureValueText(measure.kind, value)}</b> (krok 1) · próg „
+        {LEVEL_LABEL[level]}”{" "}
+        <b className="num">{boundText(measure.kind, measure.bounds[level]!)}</b> →{" "}
+        <b>{LEVEL_LABEL[level]}</b>
+      </span>
+      <Button type="button" variant="outline" size="xs" onClick={onAccept}>
+        Przyjmij
+      </Button>
     </div>
   );
 }
@@ -277,11 +454,14 @@ export function StepFeatures({
   features: initialFeatures,
   comparables,
   area,
+  pietro = null,
 }: {
   valuationId: string;
   features: KcsInput["features"];
   comparables: Comparable[];
   area: number;
+  /** Storey of the subject from step 1 (parter = 0); null when not filled in. */
+  pietro?: number | null;
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -386,15 +566,27 @@ export function StepFeatures({
                 const definitions = current?.definitions ?? field.definitions;
                 const isRated = rating != null;
                 const ui = uis[index];
+                const measure = current?.measure ?? null;
+                // FH.2: the suggestion needs thresholds AND a subject value the
+                // scale actually covers; it stays until the rating agrees with
+                // it, so a deliberately different rating keeps the comparison
+                // on screen rather than silently hiding it.
+                const measuredValue = measure
+                  ? subjectValueFor(measure.kind, { area, pietro })
+                  : null;
+                const suggested = measure ? levelForValue(measure, measuredValue) : null;
+                const showHint = suggested != null && suggested !== rating;
                 // I-10 live, not on submit: a scale the save would refuse (B-09,
                 // B-10) says so in the row while the appraiser is editing it.
                 // B-08 is skipped — the „Wybierz ocenę” badge already says it.
-                const rowIssue = featureIssues({
-                  name: field.name,
-                  weight: (Number(current?.weightPct) || 0) / 100,
-                  rating,
-                  definitions,
-                }).find((issue) => issue.code !== "B-08");
+                const rowIssue =
+                  featureIssues({
+                    name: field.name,
+                    weight: (Number(current?.weightPct) || 0) / 100,
+                    rating,
+                    definitions,
+                  }).find((issue) => issue.code !== "B-08")?.label ??
+                  (measure ? measureIssues(measure)[0] : undefined);
                 return (
                   <FeatureRatingRow
                     key={field.id}
@@ -476,20 +668,49 @@ export function StepFeatures({
                         })
                       }
                     />
+                    {showHint ? (
+                      <ThresholdHint
+                        featureKey={key ?? String(index)}
+                        measure={measure!}
+                        value={measuredValue!}
+                        level={suggested}
+                        onAccept={() =>
+                          setValue(`features.${index}.rating`, suggested, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                      />
+                    ) : null}
                     {editingScale[field.id] ? (
                       <ScaleEditor
                         control={control}
                         index={index}
                         featureKey={key}
                         rating={rating}
+                        measure={measure}
                         onSelectedLevelCleared={() =>
                           setValue(`features.${index}.rating`, null, { shouldDirty: true })
                         }
+                        onMeasureChange={(next) => {
+                          setValue(`features.${index}.measure`, next, { shouldDirty: true });
+                          if (!next) return;
+                          // The bands are the scale: every text is rewritten from
+                          // them, so a level that lost its band loses its card too.
+                          const generated = definitionsFromMeasure(next);
+                          for (const level of SCALE_LEVELS) {
+                            setValue(
+                              `features.${index}.definitions.${level}`,
+                              generated[level] ?? "",
+                              { shouldDirty: true },
+                            );
+                          }
+                        }}
                       />
                     ) : null}
                     {rowIssue ? (
                       <p role="alert" className="text-sm text-destructive">
-                        {rowIssue.label}
+                        {rowIssue}
                       </p>
                     ) : null}
                   </FeatureRatingRow>

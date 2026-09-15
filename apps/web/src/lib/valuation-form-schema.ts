@@ -3,7 +3,7 @@ import { COMPARABLE_SOURCES, POOL_SOURCES } from "@/domain/kcs";
 import { kwRequirements } from "@/domain/kw-requirements";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
-import { featureIssues } from "@/domain/feature-rules";
+import { definitionsFromMeasure, featureIssues, measureIssues } from "@/domain/feature-rules";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
 import type { CandidatePool } from "@/ports/sample";
 
@@ -39,16 +39,63 @@ export const featureDefinitionsSchema = z.object({
   gorsza: z.string().optional(),
 });
 
-export const featureSchema = z.object({
-  // Closed pool (F-6): a custom feature is added by a commit to the preset,
-  // never free-typed (brainstorm decision 2).
-  key: z.enum(LOKAL_FEATURE_KEYS, { message: "Nieznana cecha — wybierz z puli." }),
-  name: z.string().trim().min(1, "Podaj nazwę cechy."),
-  weightPct: z.coerce.number().min(0, "Waga nie może być ujemna."),
-  // ADR-016 reg. 3: no default rating — null until the appraiser picks a level.
-  rating: z.enum(["gorsza", "przecietna", "lepsza"]).nullable(),
-  definitions: featureDefinitionsSchema.optional(),
+/**
+ * Mirrors `MeasureBound` from `@/domain/kcs` — an absent edge is unbounded.
+ * Plain `z.number()`, not `z.coerce`: the threshold inputs already hand over a
+ * number, and coercion would type the form's own value as `unknown`.
+ */
+const measureBoundSchema = z.object({
+  od: z.number().optional(),
+  do: z.number().optional(),
 });
+
+/**
+ * Mirrors `FeatureMeasure` from `@/domain/kcs` (FH.1). `.nullish()`, not
+ * `.optional()`: retyping a definition by hand RETRACTS the thresholds, and
+ * `setValue(…, undefined)` is not a reliable clear in RHF — the form has to be
+ * able to say "there are no thresholds" with a value.
+ */
+export const featureMeasureSchema = z.object({
+  kind: z.enum(["floor", "area"]),
+  bounds: z.object({
+    lepsza: measureBoundSchema.optional(),
+    przecietna: measureBoundSchema.optional(),
+    gorsza: measureBoundSchema.optional(),
+  }),
+});
+
+export const featureSchema = z
+  .object({
+    // Closed pool (F-6): a custom feature is added by a commit to the preset,
+    // never free-typed (brainstorm decision 2).
+    key: z.enum(LOKAL_FEATURE_KEYS, { message: "Nieznana cecha — wybierz z puli." }),
+    name: z.string().trim().min(1, "Podaj nazwę cechy."),
+    weightPct: z.coerce.number().min(0, "Waga nie może być ujemna."),
+    // ADR-016 reg. 3: no default rating — null until the appraiser picks a level.
+    rating: z.enum(["gorsza", "przecietna", "lepsza"]).nullable(),
+    definitions: featureDefinitionsSchema.optional(),
+    measure: featureMeasureSchema.nullish(),
+  })
+  // FH.1 (D-46, D-48): thresholds with a gap or an overlap are not a scale —
+  // the 14.09 operat shipped both. Saved thresholds also have to BE the texts,
+  // so the operat's §12.1 block and the suggestion can never disagree.
+  .superRefine((feature, ctx) => {
+    if (!feature.measure) return;
+    for (const message of measureIssues(feature.measure)) {
+      ctx.addIssue({ code: "custom", path: ["measure"], message });
+    }
+    const generated = definitionsFromMeasure(feature.measure);
+    const matches = (["lepsza", "przecietna", "gorsza"] as const).every(
+      (level) => (feature.definitions?.[level] ?? "") === (generated[level] ?? ""),
+    );
+    if (!matches) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["measure"],
+        message: "Opisy poziomów nie odpowiadają progom liczbowym.",
+      });
+    }
+  });
 
 /** Mirrors `PoolPoint` from `@/ports/sample` — the subject point the pool was fetched around (ADR-015 v3). */
 export const poolPointSchema = z.object({
@@ -331,6 +378,14 @@ export const subjectSchema = z.object({
     .min(1500, "Rok budowy wygląda na błędny.")
     .max(2100, "Rok budowy wygląda na błędny.")
     .optional(),
+  // FH.2 — piętro lokalu, parter = 0. Podziemia nie są piętrem lokalu
+  // mieszkalnego, więc dolna granica to parter.
+  pietro: z.coerce
+    .number()
+    .int("Piętro podaj liczbą całkowitą.")
+    .min(0, "Piętro nie może być ujemne — parter to 0.")
+    .max(100, "Piętro wygląda na błędne.")
+    .nullish(),
   mpzpAbsent: z.boolean().optional(),
   mpzpSymbol: z.string().optional(),
   mpzpNazwa: z.string().optional(),

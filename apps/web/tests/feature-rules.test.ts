@@ -1,15 +1,30 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { computeKcs, type Comparable, type Feature, type KcsInput } from "../src/domain/kcs";
+import {
+  computeKcs,
+  type Comparable,
+  type Feature,
+  type FeatureMeasure,
+  type KcsInput,
+} from "../src/domain/kcs";
 import {
   computeKcsOnScale,
+  definitionFromBounds,
+  definitionsFromMeasure,
   describedLevels,
   featureIssues,
   featureUis,
   kcsReady,
+  levelForValue,
+  measureIssues,
   ratingPosition,
 } from "../src/domain/feature-rules";
+import {
+  FEATURE_PRESETS,
+  powierzchniaDefinitions,
+  powierzchniaMeasure,
+} from "../src/domain/feature-presets";
 import { OCZEKIWANE_PO_ADR016, wycena1409Anon } from "./fixtures/wycena-1409-anon";
 
 /**
@@ -285,5 +300,111 @@ describe("one engine entry point for the application (ADR-016 reg. 2)", () => {
       )
       .map((file) => path.relative(SRC, file));
     expect(importers).toEqual(["domain/feature-rules.ts"]);
+  });
+});
+
+/**
+ * FH.1 — progi liczbowe cech mierzalnych (plan §P1.1 „Progi cech mierzalnych”,
+ * ADR-016 reg. 5, D-46/D-48). Skala piętra i powierzchni ma POLA liczbowe, a
+ * tekst definicji powstaje z nich; parsowania tekstu nie ma nigdzie.
+ */
+describe("definitionFromBounds — tekst definicji z progów (D-46, D-48)", () => {
+  it("piętro: parter, przedział i próg otwarty od góry — brzmienie presetu", () => {
+    expect(definitionFromBounds("floor", { od: 0, do: 0 })).toBe("parter");
+    expect(definitionFromBounds("floor", { od: 1, do: 3 })).toBe("piętra od 1 do 3");
+    expect(definitionFromBounds("floor", { od: 4 })).toBe("od 4 piętra");
+  });
+
+  it("powierzchnia: próg otwarty z dołu, z góry i przedział — brzmienie presetu", () => {
+    expect(definitionFromBounds("area", { do: 47 })).toBe("powierzchnia użytkowa poniżej 47 m²");
+    expect(definitionFromBounds("area", { od: 47 })).toBe("powierzchnia użytkowa 47 m² i więcej");
+    expect(definitionFromBounds("area", { od: 40, do: 46 })).toBe(
+      "powierzchnia użytkowa od 40 m² do 46 m²",
+    );
+  });
+});
+
+describe("levelForValue — poziom z wartości przedmiotu lub transakcji (ADR-016 reg. 5)", () => {
+  const PIETRO: FeatureMeasure = {
+    kind: "floor",
+    bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+  };
+  const POWIERZCHNIA: FeatureMeasure = {
+    kind: "area",
+    bounds: { lepsza: { do: 47 }, gorsza: { od: 47 } },
+  };
+
+  it("piętro: przedziały domknięte obustronnie, bo kondygnacje są całkowite", () => {
+    expect(levelForValue(PIETRO, 0)).toBe("gorsza");
+    expect(levelForValue(PIETRO, 1)).toBe("przecietna");
+    expect(levelForValue(PIETRO, 3)).toBe("przecietna");
+    expect(levelForValue(PIETRO, 6)).toBe("lepsza");
+  });
+
+  it("powierzchnia: `do` jest granicą wyłączną, `od` włączną — 47 m² to „gorsza”", () => {
+    expect(levelForValue(POWIERZCHNIA, 44.23)).toBe("lepsza");
+    expect(levelForValue(POWIERZCHNIA, 46.999)).toBe("lepsza");
+    expect(levelForValue(POWIERZCHNIA, 47)).toBe("gorsza");
+    expect(levelForValue(POWIERZCHNIA, 80)).toBe("gorsza");
+  });
+
+  it("wartość poza wszystkimi przedziałami nie daje poziomu", () => {
+    // Kondygnacja podziemna (rejestr zna −1) leży poniżej parteru.
+    expect(levelForValue(PIETRO, -1)).toBeNull();
+    expect(levelForValue(PIETRO, null)).toBeNull();
+    expect(levelForValue(PIETRO, undefined)).toBeNull();
+  });
+});
+
+describe("measureIssues — przedziały domknięte i rozłączne (D-46, D-48)", () => {
+  const ok = (bounds: FeatureMeasure["bounds"], kind: FeatureMeasure["kind"] = "floor") =>
+    measureIssues({ kind, bounds });
+
+  it("przyjmuje skalę bez luk i bez nakładania", () => {
+    expect(
+      ok({ gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } }),
+    ).toEqual([]);
+    expect(ok({ lepsza: { do: 47 }, gorsza: { od: 47 } }, "area")).toEqual([]);
+  });
+
+  it("odrzuca lukę między przedziałami", () => {
+    // Skala Anety z D-48 ma dziury 40–41 i 45–46 m².
+    expect(
+      ok({ lepsza: { do: 40 }, przecietna: { od: 41, do: 45 }, gorsza: { od: 46 } }, "area"),
+    ).toHaveLength(2);
+    expect(ok({ gorsza: { od: 0, do: 0 }, lepsza: { od: 4 } })).toHaveLength(1);
+  });
+
+  it("odrzuca nakładanie przedziałów", () => {
+    expect(
+      ok({ gorsza: { od: 0, do: 2 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } }),
+    ).toHaveLength(1);
+  });
+
+  it("odrzuca przedział odwrócony i skalę z jednym przedziałem", () => {
+    expect(ok({ gorsza: { od: 3, do: 1 }, lepsza: { od: 4 } })).not.toEqual([]);
+    expect(ok({ lepsza: { od: 4 } })).not.toEqual([]);
+  });
+});
+
+describe("presety cech mierzalnych niosą progi (FH.1 „Done”)", () => {
+  it("piętro: progi D-46 i teksty wygenerowane z nich", () => {
+    const pietro = FEATURE_PRESETS.lokal.find((e) => e.key === "polozenie-na-pietrze")!;
+    expect(pietro.defaultMeasure).toEqual({
+      kind: "floor",
+      bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+    });
+    expect(measureIssues(pietro.defaultMeasure!)).toEqual([]);
+    expect(pietro.defaultDefinitions).toEqual(definitionsFromMeasure(pietro.defaultMeasure!));
+  });
+
+  it("powierzchnia: progi z mediany próby i teksty wygenerowane z nich", () => {
+    expect(powierzchniaMeasure(47)).toEqual({
+      kind: "area",
+      bounds: { lepsza: { do: 47 }, gorsza: { od: 47 } },
+    });
+    expect(powierzchniaMeasure(null)).toBeNull();
+    // Ta sama treść, którą preset drukował przed FH.1 — golden i F-6 bez zmian.
+    expect(definitionsFromMeasure(powierzchniaMeasure(47)!)).toEqual(powierzchniaDefinitions(47));
   });
 });

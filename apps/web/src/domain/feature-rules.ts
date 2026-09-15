@@ -1,14 +1,39 @@
-import { LEVEL_LABEL } from "./feature-presets";
-import { computeKcs, type Feature, type FeatureRating, type KcsInput, type KcsResult } from "./kcs";
+import {
+  computeKcs,
+  type Feature,
+  type FeatureMeasure,
+  type FeatureRating,
+  type KcsInput,
+  type KcsResult,
+  type MeasureBound,
+} from "./kcs";
 
 /**
  * Rating scale of a feature (ADR-016, P5). The scale is the levels the
  * appraiser DESCRIBED — any two, or all three — and Ui follows the rating's
  * position in that scale. One path: this module maps the position onto the
  * engine's key before calling it, always. Pure (F-10).
+ *
+ * For a MEASURABLE feature (piętro, powierzchnia) the scale additionally
+ * carries numeric bands (`Feature.measure`, FH.1): the definition texts are
+ * generated FROM the bands, and the same bands place the subject (the step-4
+ * suggestion) and the Cmin/Cmax transactions of §12.2 (D-52).
  */
 
 export type RatingPosition = "min" | "mid" | "max";
+
+/**
+ * Label per rating level — the internal enum stays diacritic-free. One map for
+ * the §12.1 scale block, the prose facts, the step-4 cards and the ADR-016
+ * blockers. It lives here, beside the rules that read the levels, so
+ * `feature-presets.ts` can import the threshold helpers below without a cycle;
+ * that module re-exports it, so existing import sites are unchanged.
+ */
+export const LEVEL_LABEL: Record<FeatureRating, string> = {
+  lepsza: "lepsza",
+  przecietna: "przeciętna",
+  gorsza: "gorsza",
+};
 
 /** Scale order, lowest first (ADR-016 reg. 1). */
 const SCALE_ORDER: FeatureRating[] = ["gorsza", "przecietna", "lepsza"];
@@ -19,6 +44,122 @@ const ENGINE_RATING: Record<RatingPosition, FeatureRating> = {
   mid: "przecietna",
   max: "lepsza",
 };
+
+// ─── Numeric thresholds of measurable features (FH.1, plan §P1.1, D-46/D-48) ─
+
+/** Polish decimal, no trailing zeros — the scale texts print whole m² today. */
+function measureNumber(value: number): string {
+  return String(value).replace(".", ",");
+}
+
+/**
+ * The definition text of ONE band, in the wording the presets already print
+ * (D-46 for piętro, the sample-median pair for powierzchnia) — this is the
+ * only place a scale text is written, so a threshold edit and the preset can
+ * never drift apart.
+ */
+export function definitionFromBounds(kind: FeatureMeasure["kind"], bound: MeasureBound): string {
+  const { od, do: upper } = bound;
+  if (kind === "area") {
+    if (od == null && upper == null) return "";
+    if (od == null) return `powierzchnia użytkowa poniżej ${measureNumber(upper!)} m²`;
+    if (upper == null) return `powierzchnia użytkowa ${measureNumber(od)} m² i więcej`;
+    return `powierzchnia użytkowa od ${measureNumber(od)} m² do ${measureNumber(upper)} m²`;
+  }
+  // Piętro: parter = 0, both edges inclusive.
+  if (od == null && upper == null) return "";
+  if (od == null) return upper === 0 ? "parter" : `do ${measureNumber(upper!)} piętra`;
+  if (upper == null) return od === 0 ? "parter i wyżej" : `od ${measureNumber(od)} piętra`;
+  if (od === 0 && upper === 0) return "parter";
+  if (od === 0) return `parter i piętra do ${measureNumber(upper)}`;
+  if (od === upper) return `${measureNumber(od)} piętro`;
+  return `piętra od ${measureNumber(od)} do ${measureNumber(upper)}`;
+}
+
+/** Every band's definition text — what `Feature.definitions` must equal while `measure` stands. */
+export function definitionsFromMeasure(
+  measure: FeatureMeasure,
+): Partial<Record<FeatureRating, string>> {
+  const out: Partial<Record<FeatureRating, string>> = {};
+  for (const level of SCALE_ORDER) {
+    const bound = measure.bounds[level];
+    if (bound) out[level] = definitionFromBounds(measure.kind, bound);
+  }
+  return out;
+}
+
+/**
+ * The level a measured value falls into, or null when no band covers it — a
+ * kondygnacja below parter, a blank field, a scale with a gap. Floor bands are
+ * closed on both edges; area bands take `do` as the exclusive upper edge, so
+ * exactly 47 m² belongs to the "47 m² i więcej" band and to no other.
+ */
+export function levelForValue(
+  measure: FeatureMeasure,
+  value: number | null | undefined,
+): FeatureRating | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  for (const level of SCALE_ORDER) {
+    const bound = measure.bounds[level];
+    if (!bound) continue;
+    if (bound.od != null && value < bound.od) continue;
+    if (bound.do != null && (measure.kind === "floor" ? value > bound.do : value >= bound.do))
+      continue;
+    return level;
+  }
+  return null;
+}
+
+/**
+ * What stops the bands from being a scale (D-46, D-48): fewer than two bands,
+ * an inverted band, an overlap, or a gap. Aneta's corrected area scale (do 40 /
+ * 41–45 / od 46) is the worked example of the gap case.
+ */
+export function measureIssues(measure: FeatureMeasure): string[] {
+  const issues: string[] = [];
+  const bands = SCALE_ORDER.flatMap((level) => {
+    const bound = measure.bounds[level];
+    return bound ? [{ level, bound }] : [];
+  });
+  if (bands.length < 2) {
+    issues.push("Skala liczbowa musi mieć co najmniej dwa przedziały.");
+    return issues;
+  }
+  for (const { level, bound } of bands) {
+    if (bound.od != null && bound.do != null && bound.od > bound.do) {
+      issues.push(`Przedział poziomu „${LEVEL_LABEL[level]}” zaczyna się powyżej swojego końca.`);
+    }
+  }
+  if (issues.length > 0) return issues;
+
+  // Sorted by their lower edge — the value order, which for powierzchnia runs
+  // opposite to the rating order (lepsza = the smaller flat).
+  const sorted = [...bands].sort(
+    (a, b) => (a.bound.od ?? Number.NEGATIVE_INFINITY) - (b.bound.od ?? Number.NEGATIVE_INFINITY),
+  );
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const next = sorted[i];
+    const prevEnd = prev.bound.do;
+    const nextStart = next.bound.od;
+    const pair = `„${LEVEL_LABEL[prev.level]}” i „${LEVEL_LABEL[next.level]}”`;
+    if (prevEnd == null || nextStart == null) {
+      issues.push(`Przedziały poziomów ${pair} nachodzą na siebie.`);
+      continue;
+    }
+    // Floors are whole numbers, so the bands touch one storey apart; areas are
+    // continuous, so they touch at the same number (`do` exclusive).
+    const touching = measure.kind === "floor" ? prevEnd + 1 === nextStart : prevEnd === nextStart;
+    if (touching) continue;
+    const overlaps = measure.kind === "floor" ? nextStart <= prevEnd : nextStart < prevEnd;
+    issues.push(
+      overlaps
+        ? `Przedziały poziomów ${pair} nachodzą na siebie.`
+        : `Między przedziałami poziomów ${pair} jest luka.`,
+    );
+  }
+  return issues;
+}
 
 type ScaledFeature = Pick<Feature, "rating" | "definitions">;
 

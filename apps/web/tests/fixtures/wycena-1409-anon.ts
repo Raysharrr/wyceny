@@ -53,7 +53,7 @@ import {
  */
 export const KW_TESTOWA = ["XX1X", "00000000", "0"].join("/");
 
-/** Piętro przedmiotu. Do czasu pola `subject.pietro` (P1.1, `b1-feature-hints`) stała obok fikstury. */
+/** Piętro przedmiotu — od FH.2 trzymane w `inputs.subject.pietro` (P1.1, ADR-016 reg. 5). */
 export const PIETRO_PRZEDMIOTU = 7;
 
 /**
@@ -267,6 +267,7 @@ export function wycena1409Anon(wariant: Wariant1409 = {}): BuildDocumentInput {
       kondygnacjeNadziemne: 10,
       kondygnacjePodziemne: 1,
       rokBudowy: 1978,
+      pietro: PIETRO_PRZEDMIOTU,
       mpzpAbsent: true,
       przeznaczenieStudium: "teren zabudowy mieszkaniowej wielorodzinnej (dane fikcyjne)",
     },

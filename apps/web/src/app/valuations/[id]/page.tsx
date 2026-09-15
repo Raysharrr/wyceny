@@ -130,6 +130,7 @@ export default async function ValuationViewPage({
             features={valuation.inputs?.features ?? []}
             comparables={valuation.inputs?.comparables ?? []}
             area={valuation.area}
+            pietro={valuation.inputs?.subject?.pietro ?? null}
           />
         ) : step === 5 ? (
           <StepCalculation valuation={valuation} />
