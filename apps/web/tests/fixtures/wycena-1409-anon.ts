@@ -30,15 +30,18 @@ import {
  *   → snapshot z uploadu odpisu z wpisem w dziale III;
  * - kategoria zdjęć „wnętrza” bez zdjęcia.
  *
- * ΣUi wariantu `poprawiona` (Cśr 10 363,13; Vmin 0,878; Vmax 1,147; pow. 44,2 m²):
+ * ΣUi wariantu `poprawiona` (Cśr 10 362,29; Vmin 0,878; Vmax 1,146; pow. 44,2 m²). Reguła
+ * ustalona 15.09 (koordynator): Ui zaokrąglany do 3 miejsc w każdym wierszu, ΣUi = suma
+ * zaokrąglonych wierszy, jak u Anety — zmianę w `kcs.ts` robi FS.1 (`b1-feature-scales`).
  * - dziś (przeciętna → Ui śr; tyle samo w `jak_zgloszono`): 0,400 + 0,344 + 0,100 + 0,100 +
- *   0,035 + 0,053 = 1,032 → 10 694,75 zł/m² → WR 472 700 zł;
- * - po ADR-016 (lokalizacja → Ui min 0,088): 1,020 → 10 570,39 zł/m² → WR 467 200 zł.
- * Ceny dobrane tak, żeby żaden Ui nie wypadał na połówce trzeciego miejsca: suma silnika
- * (zaokrąglana raz) i suma wierszy Tabeli 3 (każdy zaokrąglony) są tu równe. Na danych 14.09
- * było 1,034 → 1,022, ale tam się rozjeżdżają: Aneta sumuje wiersze zaokrąglone, a silnik
- * zaokrąga dopiero sumę i daje 1,021 (zgłoszone koordynatorowi; rozstrzyga FS.1 w
- * `b1-feature-scales`, nie ta fikstura).
+ *   0,035 + 0,053 = 1,032 → WR 472 700 zł (obie reguły dają to samo);
+ * - po ADR-016 (lokalizacja → Ui min 0,088): wiersze 1,020 → WR 467 200 zł =
+ *   {@link OCZEKIWANE_PO_ADR016}. Dopóki FS.1 nie jest w gałęzi integracyjnej, silnik zaokrąga
+ *   dopiero sumę (0,4 + 0,3438 + 0,0878 + 0,1 + 0,03512 + 0,05268 = 1,0194) i daje
+ *   1,019 → WR 466 700 zł.
+ * Ceny dobrane tak, żeby rozjazd był taki jak na danych 14.09 (dziś zgodnie, po ADR-016
+ * różnica 0,001: tam 1,021 / 466 800 w silniku wobec 1,022 / 467 300 u Anety), a żaden Ui
+ * nie leżał na połówce trzeciego miejsca — wynik nie zależy od błędów zmiennoprzecinkowych.
  *
  * Pola nowych kontraktów paczki 1 (`subject.pietro`, `ekw_reczne`, `kwGrunt`,
  * `encumbranceTreatment`, progi `measure`, profil autora) dopisują sesje-właściciele.
@@ -52,6 +55,12 @@ export const KW_TESTOWA = ["XX1X", "00000000", "0"].join("/");
 
 /** Piętro przedmiotu. Do czasu pola `subject.pietro` (P1.1, `b1-feature-hints`) stała obok fikstury. */
 export const PIETRO_PRZEDMIOTU = 6;
+
+/**
+ * Oczekiwany wynik wariantu `poprawiona` po ADR-016 wg reguły „Ui per wiersz” (komentarz
+ * modułu). Asercję na silniku pisze FS.1; do jej merge'u silnik daje 1,019 / 466 700.
+ */
+export const OCZEKIWANE_PO_ADR016 = { sumUi: 1.02, wr: 467_200 } as const;
 
 const AREA = 44.2;
 const ADDRESS = "ul. Testowa 7/12, Poznań";
@@ -75,7 +84,7 @@ const TRANSACTIONS: Array<[number, number, number, string, string]> = [
   [10880.4, 50.1, 1, "os. Testowe", "2026-05-20"],
   [11120.0, 39.7, 6, "ul. Przykładowa", "2026-06-16"],
   [11490.6, 43.5, 8, "ul. Fikcyjna", "2026-07-07"],
-  [11890.0, 35.9, 3, "os. Testowe", "2026-08-12"],
+  [11880.0, 35.9, 3, "os. Testowe", "2026-08-12"],
 ];
 
 const PROPOSED: Candidate[] = TRANSACTIONS.map(([pricePerM2, area, floor, street, date], i) => ({

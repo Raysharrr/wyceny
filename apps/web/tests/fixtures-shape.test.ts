@@ -9,6 +9,7 @@ import { renderOperatDocx } from "../src/adapters/docx-render";
 import { expectNoText, openDocx, sectionText } from "./support/docx-invariants";
 import {
   KW_TESTOWA,
+  OCZEKIWANE_PO_ADR016,
   PIETRO_PRZEDMIOTU,
   formValuesOf,
   wycena1409Anon,
@@ -101,6 +102,37 @@ describe("fikstura wycena-1409-anon — przypadki paczki 1", () => {
     const others = (v: typeof reported) =>
       v.inputs.features.filter((x) => x.key !== "powierzchnia-uzytkowa");
     expect(others(corrected)).toEqual(others(reported));
+  });
+
+  it("oczekiwanie po ADR-016 = suma Ui zaokrąglonych per wiersz na danych fikstury", () => {
+    // Liczone niezależnie od silnika: pozycje wg ADR-016 (lokalizacja → min, powierzchnia z
+    // trzema poziomami → środek), każdy Ui do 3 miejsc, potem suma — reguła z 15.09.
+    const { kcs, inputs } = corrected;
+    const position: Record<string, "min" | "mid" | "max"> = {
+      "standard-wykonczenia": "mid",
+      "polozenie-na-pietrze": "max",
+      lokalizacja: "min",
+      "powierzchnia-uzytkowa": "mid",
+      "pomieszczenia-przynalezne": "min",
+      dodatkowe: "min",
+    };
+    const round = (x: number, dp: number) => Math.round(x * 10 ** dp) / 10 ** dp;
+    const rows = inputs.features.map((f) => {
+      const p = position[f.key!];
+      return round(p === "mid" ? f.weight : f.weight * (p === "min" ? kcs.vmin : kcs.vmax), 3);
+    });
+    const sumUi = round(
+      rows.reduce((a, b) => a + b, 0),
+      3,
+    );
+    const wr = Math.round(round(round(kcs.csr * sumUi, 2) * inputs.area, 2) / 100) * 100;
+    expect({ sumUi, wr }).toEqual(OCZEKIWANE_PO_ADR016);
+    // Dzisiejszy silnik (suma zaokrąglana raz) daje na tych danych mniej — rozjazd jak w 14.09.
+    const raw = inputs.features.reduce((sum, f) => {
+      const p = position[f.key!];
+      return sum + (p === "mid" ? f.weight : f.weight * (p === "min" ? kcs.vmin : kcs.vmax));
+    }, 0);
+    expect(round(raw, 3)).toBe(1.019);
   });
 
   it("piętro i powierzchnia przedmiotu", () => {
