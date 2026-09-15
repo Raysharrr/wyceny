@@ -396,6 +396,13 @@ export type DocumentModel = {
    * carries one line per active feature, derived from that flat's own data
    * (D-52). `b1-template` prints these; the flat `opis_cmin`/`opis_cmax`
    * below are the first flat's lines, the shape the template renders today.
+   *
+   * BLOCKER for whoever prints these: the piętro line is NOT verified for the
+   * `rcn` source. RCN's `lok_nr_kond` counts kondygnacje (parter = 1), while
+   * the coop register's `floor` is hand-typed under a "Piętro" label (parter =
+   * 0), so the two sources are off by one against each other and against
+   * `subject.pietro`. Evidence and the three options are in PR #58; until it is
+   * decided, do not print a piętro sentence from these entries.
    */
   lokale_cmin: ComparableDescription[];
   lokale_cmax: ComparableDescription[];
