@@ -10,17 +10,14 @@ import { storage, worker, valuationRepository, mapImages } from "@/app/valuation
 import {
   ApprovalBlockedError,
   InputsChangedError,
+  approvalBlockers,
   mapsFrozenForCurrentAddress,
 } from "@/domain/valuation";
-import { approvalGate, type Blocker } from "@/domain/provenance";
-import { proseEnabled } from "@/lib/prose-enabled";
-import {
-  buildDocumentModel,
-  documentFieldBlockers,
-  type OperatPurpose,
-} from "@/domain/document-model";
+import type { Blocker } from "@/domain/provenance";
+import { gateContextFor } from "@/lib/gate-context";
+import { buildDocumentModel } from "@/domain/document-model";
+import { documentInputFor } from "@/domain/document-input";
 import { computeKcs } from "@/domain/kcs";
-import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
@@ -91,23 +88,11 @@ export async function approveValuation(
     // here and, through the repo, inside the write transaction (ADR-012).
     // `domain/` reads no env (F-10). Unset means enabled, like every other
     // NEXT_PUBLIC_* switch in this app.
-    const requireProse = proseEnabled();
+    const gateContext = gateContextFor(valuation);
 
     // Fail fast with the first blocker before any expensive generation work.
     if (valuation.inputs) {
-      const gate = approvalGate(
-        { ...valuation.inputs, propertyRight: valuation.propertyRight },
-        {
-          requireProse,
-          // Lets the gate see the sections whose facts have since moved on (T6
-          // review, I-2; per section since T4). Derived here, never taken from
-          // the client.
-          currentSectionHashes: requireProse
-            ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
-            : undefined,
-        },
-      );
-      const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(valuation)];
+      const blockers = approvalBlockers(valuation, gateContext);
       if (blockers.length > 0) {
         // `error` stays the one-line summary it has always been; `blockers`
         // carries the rest, so the action bar can show them all with their steps.
@@ -209,19 +194,9 @@ export async function approveValuation(
       }
       const maps = embedded?.maps ?? null;
 
-      const model = buildDocumentModel({
-        address: valuation.address,
-        area: valuation.area,
-        purpose: valuation.purpose as OperatPurpose,
-        kwNumber: valuation.kwNumber,
-        propertyRight: valuation.propertyRight,
-        client: valuation.client ?? "",
-        inspectionDate: valuation.inspectionDate ?? "",
-        approvedAt: now,
-        inputs: valuation.inputs,
-        kcs,
-        amountInWords,
-      });
+      const model = buildDocumentModel(
+        documentInputFor(valuation, { approvedAt: now, kcs, amountInWords }),
+      );
       // Keyed on "nothing embedded", never on "did not fetch". Today the two
       // coincide — every branch that produces maps sets `embedded` — but only
       // the first stays correct if a third way of obtaining them is ever added,
@@ -323,7 +298,7 @@ export async function approveValuation(
             ? { mapsFrozenFor: embedded.address }
             : undefined,
         valuation.inputs,
-        { requireProse },
+        { requireProse: gateContext.requireProse },
       );
       if (!updated) {
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };

@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   approvalGate,
   REQUIRED_SAMPLE_SIZE,
+  type GateOptions,
   type InputsProvenance,
 } from "../src/domain/provenance";
-import { confirmedProse } from "./fixtures/valuation-inputs";
+import { documentFieldBlockers } from "../src/domain/document-model";
+import type { KwSnapshot } from "../src/domain/kw-snapshot";
+import { currentSectionFactsHashes } from "../src/domain/prose-hash";
+import { approvalBlockers } from "../src/domain/valuation";
+import type { Valuation } from "../src/ports/valuation";
+import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
 
 const confirmedScalars: InputsProvenance = {
   address: { source: "rzeczoznawca", status: "confirmed" },
@@ -583,5 +589,165 @@ describe("featureDefs group (Slice 7)", () => {
       approvalGate({ comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars })
         .ok,
     ).toBe(true);
+  });
+});
+
+/**
+ * R-1 (operat-bugfix, paczka 1): `approvalBlockers` is the one composition of
+ * the approval gate (step 7, the flat view, the approve action and the domain
+ * `approveValuation` all read it). This pins the ORDER and the SHAPES of that
+ * list: gate blockers first (none without an inputs snapshot), then the
+ * document-field blockers, on every fixture shape below. A new blocker group
+ * that lands somewhere else in the list turns these red and has to say so.
+ */
+describe("R-1: approvalBlockers — pin kolejności i kształtów blokad", () => {
+  const ADDRESS = "Audit approvable";
+
+  function gateThenFieldBlockers(v: Valuation, ctx: GateOptions) {
+    const gate = v.inputs
+      ? approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, ctx)
+      : null;
+    return [...(gate && !gate.ok ? gate.blockers : []), ...documentFieldBlockers(v)];
+  }
+
+  const valuation = (overrides: Partial<Valuation> = {}): Valuation => {
+    const input = approvableInput("test-user");
+    return {
+      id: "valuation-r1",
+      address: input.address,
+      area: input.area,
+      wr: 700_000,
+      inputs: input.inputs,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: input.purpose ?? null,
+      propertyRight: "wlasnosc_lokalu",
+      kwNumber: input.kwNumber ?? null,
+      client: input.client ?? null,
+      inspectionDate: input.inspectionDate ?? null,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
+      mapsFrozenFor: null,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      ...overrides,
+    };
+  };
+
+  const ctxFor = (v: Valuation, requireProse: boolean): GateOptions => ({
+    requireProse,
+    currentSectionHashes:
+      requireProse && v.inputs
+        ? currentSectionFactsHashes({ address: v.address, inputs: v.inputs })
+        : undefined,
+  });
+
+  const withProse = (v: Valuation): Valuation => ({
+    ...v,
+    inputs: { ...v.inputs!, prose: confirmedProseFor(ADDRESS, v.inputs!) },
+  });
+
+  const kwConfirmed = { source: "akt" as const, status: "confirmed" as const };
+  const kwNoGrunt: KwSnapshot = {
+    source: "akt",
+    kwLokalu: "AB1C/1/9",
+    kwGruntu: null,
+    kwInne: [],
+    deweloperski: false,
+    powUzytkowaKw: null,
+    udzial: null,
+    sad: null,
+    wydzial: null,
+    dataDokumentu: null,
+    dzial3: null,
+    dzial4: null,
+  };
+
+  const cases: Array<[string, Valuation]> = [
+    ["kompletna (confirmed prose)", withProse(valuation())],
+    ["bez prozy", valuation()],
+    [
+      "proza nieaktualna (facts moved on after confirmation)",
+      (() => {
+        const confirmed = withProse(valuation());
+        return { ...confirmed, inputs: { ...confirmed.inputs!, area: 99 } };
+      })(),
+    ],
+    ["bez KW (no number, no extract)", withProse(valuation({ kwNumber: null }))],
+    [
+      "KW extract without KW gruntu (własność)",
+      withProse(
+        valuation({
+          inputs: {
+            ...valuation().inputs!,
+            kw: kwNoGrunt,
+            provenance: { ...valuation().inputs!.provenance!, kw: kwConfirmed },
+          },
+        }),
+      ),
+    ],
+    [
+      "spółdzielcza (no KW number, extract without KW gruntu)",
+      withProse(
+        valuation({
+          propertyRight: "spoldzielcze_wlasnosciowe",
+          kwNumber: null,
+          inputs: {
+            ...valuation().inputs!,
+            kw: kwNoGrunt,
+            provenance: { ...valuation().inputs!.provenance!, kw: kwConfirmed },
+          },
+        }),
+      ),
+    ],
+    [
+      "both groups blocked (to_verify sample, missing document fields, no wr)",
+      valuation({
+        inputs: {
+          ...valuation().inputs!,
+          comparables: valuation()
+            .inputs!.comparables.slice(0, 5)
+            .map((c) => ({
+              ...c,
+              status: "to_verify" as const,
+            })),
+        },
+        purpose: null,
+        client: null,
+        inspectionDate: null,
+        wr: null,
+      }),
+    ],
+    ["legacy draft without inputs snapshot", valuation({ inputs: null })],
+    [
+      "legacy draft without inputs, document fields missing",
+      valuation({ inputs: null, purpose: null, kwNumber: null }),
+    ],
+  ];
+
+  for (const [name, v] of cases) {
+    for (const requireProse of [true, false]) {
+      it(`${name} — requireProse=${requireProse}`, () => {
+        const ctx = ctxFor(v, requireProse);
+        const blockers = approvalBlockers(v, ctx);
+        expect(blockers).toEqual(gateThenFieldBlockers(v, ctx));
+        // `code` is additive and only the paczka-1 B-xx blockers will set it.
+        expect(blockers.every((b) => b.code === undefined)).toBe(true);
+      });
+    }
+  }
+
+  it("the fixture set exercises both empty and non-empty lists, gate and field blockers", () => {
+    const all = cases.map(([, v]) => approvalBlockers(v, ctxFor(v, true)));
+    expect(all.some((b) => b.length === 0)).toBe(true);
+    const paths = [...new Set(all.flat().map((b) => b.path))];
+    for (const p of ["prose", "kw.kwGruntu", "kwNumber", "comparables", "purpose", "wr"]) {
+      expect(paths, `no case emits "${p}"`).toContain(p);
+    }
+    // The stale case really is stale: a per-section blocker, not the missing-snapshot one.
+    expect(paths.some((p) => p.startsWith("prose."))).toBe(true);
   });
 });
