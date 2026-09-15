@@ -1,10 +1,8 @@
 import { ClipboardCheck, FileStack } from "lucide-react";
 import { BlockerList } from "@/components/wizard/blocker-list";
 import { SectionCard } from "@/components/wizard/section-card";
-import { approvalGate } from "@/domain/provenance";
-import { documentFieldBlockers } from "@/domain/document-model";
-import { currentSectionFactsHashes } from "@/domain/prose-hash";
-import { proseEnabled } from "@/lib/prose-enabled";
+import { approvalBlockers } from "@/domain/valuation";
+import { gateContextFor } from "@/lib/gate-context";
 import type { Valuation } from "@/ports/valuation";
 import { currencyFormatter } from "../cards";
 import { ValuationActions } from "../valuation-actions";
@@ -24,7 +22,8 @@ import { PreviewMapsProvider } from "./preview-maps-state";
  * sections). That is the whole slice in one line: the appraiser was being
  * asked to take responsibility for a document nobody had shown them.
  * `OperatPreview` is a Client Component and takes only what it needs — this
- * module reaches `domain/prose-hash`, which imports `node:crypto`.
+ * module reaches `domain/prose-hash` (via `lib/gate-context`), which imports
+ * `node:crypto`.
  *
  * An ISSUED operat is still not rendered here: `page.tsx` sends anything that
  * is no longer a draft to the flat view, which embeds `docUrl`.
@@ -38,23 +37,10 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
   // to sit under this card asked the appraiser to vouch for data the card
   // never displayed; confirming moved to steps 1/3/4 in T7, where it IS
   // displayed, and what is left here is a report with a link per blocker.
-  const requireProse = proseEnabled();
-  const gate = valuation.inputs
-    ? approvalGate(
-        { ...valuation.inputs, propertyRight: valuation.propertyRight },
-        {
-          requireProse,
-          currentSectionHashes: requireProse
-            ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
-            : undefined,
-        },
-      )
-    : null;
-  const fieldBlockers = documentFieldBlockers(valuation);
-  // Approval requires BOTH the F-4 provenance gate and the document-field
-  // check (spec §4) — the button is enabled only when neither has a blocker.
-  const allBlockers = [...(gate && !gate.ok ? gate.blockers : []), ...fieldBlockers];
-  const gateOk = gate?.ok === true && fieldBlockers.length === 0;
+  const allBlockers = approvalBlockers(valuation, gateContextFor(valuation));
+  // A draft without an inputs snapshot can never be approved, even with an
+  // empty list (only its document fields are checkable).
+  const gateOk = valuation.inputs != null && allBlockers.length === 0;
 
   return (
     // T12: the reader and the issue button are separate components with these
