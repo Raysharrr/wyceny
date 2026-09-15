@@ -1,0 +1,357 @@
+{
+  "naglowek": {
+    "numerKsiegi": "PO1P/00271836/3",
+    "stanZDnia": "2026-09-10 14:22",
+    "sad": "SĄD REJONOWY POZNAŃ-STARE MIASTO W POZNANIU",
+    "wydzial": "V WYDZIAŁ KSIĄG WIECZYSTYCH",
+    "rodzajKsiegi": "LOKAL STANOWIĄCY ODRĘBNĄ NIERUCHOMOŚĆ"
+  },
+  "dzialy": [
+    {
+      "kod": "I-O",
+      "tytul": "DZIAŁ I-O - OZNACZENIE NIERUCHOMOŚCI",
+      "brakWpisow": false,
+      "tabele": [
+        {
+          "naglowek": "Lokal",
+          "wpisy": [
+            {
+              "lp": null,
+              "nrPodstawyWpisu": "1",
+              "rubryki": [
+                {
+                  "nazwa": "Położenie (województwo, powiat, gmina, miejscowość, dzielnica)",
+                  "lp": null,
+                  "wartosci": [
+                    "WIELKOPOLSKIE, M. POZNAŃ, POZNAŃ M., POZNAŃ"
+                  ]
+                },
+                {
+                  "nazwa": "Ulica",
+                  "lp": null,
+                  "wartosci": [
+                    "UL. ZIELARSKA"
+                  ]
+                },
+                {
+                  "nazwa": "Numer budynku",
+                  "lp": null,
+                  "wartosci": [
+                    "17"
+                  ]
+                },
+                {
+                  "nazwa": "Numer lokalu",
+                  "lp": null,
+                  "wartosci": [
+                    "24"
+                  ]
+                },
+                {
+                  "nazwa": "Przeznaczenie lokalu",
+                  "lp": null,
+                  "wartosci": [
+                    "LOKAL MIESZKALNY"
+                  ]
+                },
+                {
+                  "nazwa": "Opis lokalu (liczba izb, kondygnacja)",
+                  "lp": null,
+                  "wartosci": [
+                    "3 POKOJE, KUCHNIA, ŁAZIENKA Z WC, PRZEDPOKÓJ; KONDYGNACJA 3"
+                  ]
+                },
+                {
+                  "nazwa": "Opis pomieszczeń przynależnych (rodzaj pomieszczenia)",
+                  "lp": null,
+                  "wartosci": [
+                    "PIWNICA NR 24"
+                  ]
+                },
+                {
+                  "nazwa": "Pole powierzchni użytkowej lokalu wraz z powierzchnią pomieszczeń przynależnych",
+                  "lp": null,
+                  "wartosci": [
+                    "44,2300 M2"
+                  ]
+                },
+                {
+                  "nazwa": "Przyłączenie (numer księgi wieczystej, z której wyodrębniono lokal)",
+                  "lp": null,
+                  "wartosci": [
+                    "PO1P/00098765/7"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "dokumenty": [
+        {
+          "nrPodstawyWpisu": "1",
+          "dokument": "AKT NOTARIALNY, UMOWA USTANOWIENIA ODRĘBNEJ WŁASNOŚCI LOKALU I SPRZEDAŻY; 12.03.2009; NOTARIUSZ MAŁGORZATA ZIELIŃSKA-BORUCKA, REP. A NR 2851/2009; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO1P/8812/09/1; 2009-03-18 10:14:32; 2009-04-07 09:02:11; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        }
+      ]
+    },
+    {
+      "kod": "I-Sp",
+      "tytul": "DZIAŁ I-SP - SPIS PRAW ZWIĄZANYCH Z WŁASNOŚCIĄ",
+      "brakWpisow": false,
+      "tabele": [
+        {
+          "naglowek": "Udział w nieruchomości wspólnej",
+          "wpisy": [
+            {
+              "lp": "1",
+              "nrPodstawyWpisu": "1",
+              "rubryki": [
+                {
+                  "nazwa": "Wielkość udziału w nieruchomości wspólnej (licznik / mianownik)",
+                  "lp": null,
+                  "wartosci": [
+                    "3817 / 5294410"
+                  ]
+                },
+                {
+                  "nazwa": "Rodzaj nieruchomości wspólnej",
+                  "lp": null,
+                  "wartosci": [
+                    "GRUNT ORAZ CZĘŚCI WSPÓLNE BUDYNKU I URZĄDZENIA, KTÓRE NIE SŁUŻĄ WYŁĄCZNIE DO UŻYTKU WŁAŚCICIELI LOKALI"
+                  ]
+                },
+                {
+                  "nazwa": "Numer księgi wieczystej, z której wyodrębniono lokal",
+                  "lp": null,
+                  "wartosci": [
+                    "PO1P/00098765/7"
+                  ]
+                },
+                {
+                  "nazwa": "Numer udziału w prawie w księdze, z której wyodrębniono lokal",
+                  "lp": null,
+                  "wartosci": [
+                    "57"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "dokumenty": [
+        {
+          "nrPodstawyWpisu": "1",
+          "dokument": "AKT NOTARIALNY, UMOWA USTANOWIENIA ODRĘBNEJ WŁASNOŚCI LOKALU I SPRZEDAŻY; 12.03.2009; NOTARIUSZ MAŁGORZATA ZIELIŃSKA-BORUCKA, REP. A NR 2851/2009; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO1P/8812/09/1; 2009-03-18 10:14:32; 2009-04-07 09:02:11; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        }
+      ]
+    },
+    {
+      "kod": "II",
+      "tytul": "DZIAŁ II - WŁASNOŚĆ",
+      "brakWpisow": false,
+      "tabele": [
+        {
+          "naglowek": "Właściciele",
+          "wpisy": [
+            {
+              "lp": "1",
+              "nrPodstawyWpisu": "2",
+              "rubryki": [
+                {
+                  "nazwa": "Udział (numer udziału w prawie / wielkość udziału)",
+                  "lp": null,
+                  "wartosci": [
+                    "1",
+                    "1 / 2"
+                  ]
+                },
+                {
+                  "nazwa": "Osoba fizyczna (imię pierwsze, imię drugie, nazwisko, imię ojca, imię matki, PESEL)",
+                  "lp": null,
+                  "wartosci": [
+                    "ALEKSANDRA, MARTA, WIŚNIEWSKA-DĄBEK, ZBIGNIEW, HALINA, 84071203461"
+                  ]
+                }
+              ]
+            },
+            {
+              "lp": "2",
+              "nrPodstawyWpisu": "2",
+              "rubryki": [
+                {
+                  "nazwa": "Udział (numer udziału w prawie / wielkość udziału)",
+                  "lp": null,
+                  "wartosci": [
+                    "2",
+                    "1 / 2"
+                  ]
+                },
+                {
+                  "nazwa": "Osoba fizyczna (imię pierwsze, imię drugie, nazwisko, imię ojca, imię matki, PESEL)",
+                  "lp": null,
+                  "wartosci": [
+                    "TOMASZ, KRZYSZTOF, DĄBEK, RYSZARD, ELŻBIETA, 82110507354"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "dokumenty": [
+        {
+          "nrPodstawyWpisu": "2",
+          "dokument": "AKT NOTARIALNY, UMOWA SPRZEDAŻY; 21.06.2018; NOTARIUSZ PIOTR KALINOWSKI, REP. A NR 6497/2018; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO1P/31207/18/1; 2018-06-25 12:40:05; 2018-07-19 08:55:47; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        }
+      ]
+    },
+    {
+      "kod": "III",
+      "tytul": "DZIAŁ III - PRAWA, ROSZCZENIA I OGRANICZENIA",
+      "brakWpisow": false,
+      "tabele": [
+        {
+          "naglowek": "Wpisy",
+          "wpisy": [
+            {
+              "lp": "1",
+              "nrPodstawyWpisu": "3",
+              "rubryki": [
+                {
+                  "nazwa": "Rodzaj wpisu",
+                  "lp": null,
+                  "wartosci": [
+                    "SŁUŻEBNOŚĆ OSOBISTA"
+                  ]
+                },
+                {
+                  "nazwa": "Treść wpisu",
+                  "lp": null,
+                  "wartosci": [
+                    "NIEODPŁATNA I DOŻYWOTNIA SŁUŻEBNOŚĆ OSOBISTA MIESZKANIA POLEGAJĄCA NA PRAWIE WYŁĄCZNEGO KORZYSTANIA Z POKOJU O POWIERZCHNI 12,40 M2 ORAZ WSPÓŁKORZYSTANIA Z KUCHNI, ŁAZIENKI I PRZEDPOKOJU"
+                  ]
+                },
+                {
+                  "nazwa": "Uprawniony",
+                  "lp": null,
+                  "wartosci": []
+                },
+                {
+                  "nazwa": "Osoba fizyczna (imię pierwsze, imię drugie, nazwisko, imię ojca, imię matki, PESEL)",
+                  "lp": null,
+                  "wartosci": [
+                    "HALINA, JADWIGA, WIŚNIEWSKA, STEFAN, IRENA, 56030409823"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "dokumenty": [
+        {
+          "nrPodstawyWpisu": "3",
+          "dokument": "AKT NOTARIALNY, UMOWA USTANOWIENIA SŁUŻEBNOŚCI OSOBISTEJ; 21.06.2018; NOTARIUSZ PIOTR KALINOWSKI, REP. A NR 6502/2018; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO1P/31208/18/1; 2018-06-25 12:41:17; 2018-07-19 09:03:22; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        }
+      ]
+    },
+    {
+      "kod": "IV",
+      "tytul": "DZIAŁ IV - HIPOTEKA",
+      "brakWpisow": false,
+      "tabele": [
+        {
+          "naglowek": "Hipoteka",
+          "wpisy": [
+            {
+              "lp": "1",
+              "nrPodstawyWpisu": "4",
+              "rubryki": [
+                {
+                  "nazwa": "Rodzaj hipoteki",
+                  "lp": null,
+                  "wartosci": [
+                    "HIPOTEKA UMOWNA"
+                  ]
+                },
+                {
+                  "nazwa": "Suma (liczbą), waluta",
+                  "lp": null,
+                  "wartosci": [
+                    "384 000,00 ZŁ"
+                  ]
+                },
+                {
+                  "nazwa": "Suma (słownie), waluta",
+                  "lp": null,
+                  "wartosci": [
+                    "(TRZYSTA OSIEMDZIESIĄT CZTERY TYSIĄCE) ZŁ"
+                  ]
+                },
+                {
+                  "nazwa": "Zabezpieczona wierzytelność (rodzaj stosunku prawnego)",
+                  "lp": null,
+                  "wartosci": [
+                    "KREDYT HIPOTECZNY UDZIELONY NA PODSTAWIE UMOWY NR KH/2018/04417/PZN Z DNIA 14.06.2018"
+                  ]
+                },
+                {
+                  "nazwa": "Wierzyciel hipoteczny",
+                  "lp": null,
+                  "wartosci": []
+                },
+                {
+                  "nazwa": "Osoba prawna (nazwa, siedziba, REGON, KRS)",
+                  "lp": null,
+                  "wartosci": [
+                    "BANK NADWARCIAŃSKI SPÓŁKA AKCYJNA, POZNAŃ, 632918470, 0000418253"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "dokumenty": [
+        {
+          "nrPodstawyWpisu": "4",
+          "dokument": "OŚWIADCZENIE O USTANOWIENIU HIPOTEKI; 14.06.2018; BANK NADWARCIAŃSKI SPÓŁKA AKCYJNA; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO1P/31209/18/1; 2018-06-25 12:42:50; 2018-07-19 09:11:04; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        }
+      ]
+    }
+  ],
+  "polaDodatkowe": {
+    "numerLokalu": "24",
+    "kwLokalu": "PO1P/00271836/3",
+    "kwGruntu": "PO1P/00098765/7",
+    "udzial": "3817 / 5294410",
+    "powierzchniaUzytkowa": "44,2300 M2",
+    "podstawaNabycia": {
+      "tytulAktu": "UMOWA SPRZEDAŻY",
+      "repA": "6497/2018",
+      "dataAktu": "2018-06-21",
+      "notariusz": "PIOTR KALINOWSKI",
+      "siedzibaNotariusza": "POZNAŃ"
+    }
+  },
+  "walidacja": {
+    "ok": true,
+    "bledy": []
+  }
+}

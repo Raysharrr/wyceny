@@ -18,6 +18,7 @@ from typing import Literal, NamedTuple
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 import app.rcn as rcn
@@ -25,6 +26,7 @@ import app.street_index as street_index
 import app.subject as subject
 from app import coop_xls
 from app import kw as kw_core
+from app import kw_transcribe
 import app.maps as maps
 from app import photo as photo_core
 from app import prose as prose_core
@@ -650,6 +652,81 @@ def kw_extract(
         typeMismatch=payload.docType != expected_type,
         model=KW_MODEL,
     )
+
+
+# (HTTP status, Polish detail) per `TranscriptionFailed.code`. 422 = the same book
+# fails the same way again; 502 = worth retrying.
+TRANSCRIBE_ERRORS = {
+    "kw_transkrypcja_ucieta": (
+        422,
+        "Treść księgi jest zbyt obszerna, żeby odczytać ją w całości — wpisz dane ręcznie.",
+    ),
+    "kw_transkrypcja_odmowa": (
+        422,
+        "Nie udało się odczytać treści księgi z tego pliku — wpisz dane ręcznie.",
+    ),
+    "kw_transkrypcja_blad": (
+        502,
+        "Nie udało się odczytać treści księgi — spróbuj ponownie albo wpisz dane ręcznie.",
+    ),
+}
+
+
+def _transcribe_error(code: str) -> JSONResponse:
+    status, detail = TRANSCRIBE_ERRORS[code]
+    return JSONResponse(status_code=status, content={"detail": detail, "code": code})
+
+
+@app.post("/kw-transcribe", response_model=kw_transcribe.KsiegaTresc)
+def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
+    """Full content of the five sections of a unit's book (spike KW, ADR-018
+    "Zmiana 15.09"). Persons' data stays in the answer and NEVER reaches a log:
+    only counters and error classes are logged, never `str(exc)` — pydantic and
+    SDK messages can quote the model's text."""
+    _require_token(token)
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail="Obsługiwane są wyłącznie pliki PDF.")
+    data = file.file.read()
+    if len(data) > kw_max_bytes():
+        raise HTTPException(status_code=413, detail="Plik jest za duży (limit 32 MB).")
+
+    started = time.monotonic()
+    try:
+        result = kw_transcribe.transcribe(kw_llm(), base64.standard_b64encode(data).decode())
+    except kw_transcribe.TranscriptionFailed as exc:
+        logger.error(
+            "kw_transcribe_failed",
+            code=exc.code,
+            stop_reason=exc.result.stop_reason,
+            input_tokens=exc.result.input_tokens,
+            output_tokens=exc.result.output_tokens,
+            bytes=len(data),
+            ms=round((time.monotonic() - started) * 1000),
+        )
+        return _transcribe_error(exc.code)
+    except Exception as exc:
+        logger.error(
+            "kw_transcribe_failed",
+            code="kw_transkrypcja_blad",
+            err_type=type(exc).__name__,
+            status_code=getattr(exc, "status_code", None),
+            bytes=len(data),
+            ms=round((time.monotonic() - started) * 1000),
+        )
+        return _transcribe_error("kw_transkrypcja_blad")
+    # File bytes are never persisted or logged: `data` dies with this request.
+
+    tresc = result.parsed
+    logger.info(
+        "kw_transcribe_done",
+        bytes=len(data),
+        ms=round((time.monotonic() - started) * 1000),
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        dzialy=len(tresc.dzialy),
+        wpisy=sum(len(t.wpisy) for d in tresc.dzialy for t in d.tabele),
+    )
+    return tresc
 
 
 # --- T-13: cooperative register import (S2a) --------------------------------
