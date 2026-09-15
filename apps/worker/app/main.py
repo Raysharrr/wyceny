@@ -18,6 +18,7 @@ from typing import Literal, NamedTuple
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 import app.rcn as rcn
@@ -25,11 +26,14 @@ import app.street_index as street_index
 import app.subject as subject
 from app import coop_xls
 from app import kw as kw_core
+from app import kw_transcribe, kw_validate
 import app.maps as maps
+from app import pdf_pages as pdf_pages_core
 from app import photo as photo_core
 from app import prose as prose_core
 from app.amount_in_words import to_amount_in_words
 from app.convert import ConversionError, docx_to_pdf
+from app.llm import AnthropicAdapter, LlmClient
 from app.logging_setup import RequestIdMiddleware, configure_logging
 from app.logging_setup import log as logger
 
@@ -576,7 +580,7 @@ class KwExtractResponse(BaseModel):
     model: str
 
 
-KW_MODEL = "claude-sonnet-5"
+KW_MODEL = os.environ.get("LLM_KW_EXTRACT_MODEL", "claude-sonnet-5")
 
 
 def kw_max_bytes() -> int:
@@ -584,37 +588,25 @@ def kw_max_bytes() -> int:
     return kw_core.MAX_PDF_BYTES
 
 
-def _extract_kw_payload(pdf_b64: str) -> kw_core.KwExtractPayload:
-    """The ONLY anthropic touchpoint — monkeypatched in every CI test.
-    thinking disabled: spike showed identical quality, pure-JSON output."""
-    import anthropic
+def kw_llm() -> LlmClient:
+    # Seam for tests, like kw_max_bytes: the KW reads go through the port only.
+    return AnthropicAdapter()
 
-    client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from worker env (Railway secret)
-    response = client.messages.parse(
+
+def _extract_kw_payload(pdf_b64: str) -> kw_core.KwExtractPayload:
+    """Monkeypatched in every CI test.
+    thinking disabled: spike showed identical quality, pure-JSON output."""
+    result = kw_llm().parse_pdf(
         model=KW_MODEL,
+        pdf_b64=pdf_b64,
+        prompt=kw_core.EXTRACTION_PROMPT,
+        schema=kw_core.KwExtractPayload,
         max_tokens=4096,
         thinking={"type": "disabled"},
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": pdf_b64,
-                        },
-                    },
-                    {"type": "text", "text": kw_core.EXTRACTION_PROMPT},
-                ],
-            }
-        ],
-        output_format=kw_core.KwExtractPayload,
     )
-    if response.parsed_output is None:
-        raise RuntimeError(f"kw extraction returned no parsed output ({response.stop_reason})")
-    return response.parsed_output
+    if result.parsed is None:
+        raise RuntimeError(f"kw extraction returned no parsed output ({result.stop_reason})")
+    return result.parsed
 
 
 @app.post("/kw-extract")
@@ -661,6 +653,93 @@ def kw_extract(
         typeMismatch=payload.docType != expected_type,
         model=KW_MODEL,
     )
+
+
+# (HTTP status, Polish detail) per `TranscriptionFailed.code`. 422 = the same book
+# fails the same way again; 502 = worth retrying.
+TRANSCRIBE_ERRORS = {
+    "kw_transkrypcja_ucieta": (
+        422,
+        "Treść księgi jest zbyt obszerna, żeby odczytać ją w całości — wpisz dane ręcznie.",
+    ),
+    "kw_transkrypcja_nieczytelna": (
+        422,
+        "Nie udało się odczytać treści księgi z tego pliku — wpisz dane ręcznie.",
+    ),
+    "kw_transkrypcja_blad": (
+        502,
+        "Nie udało się odczytać treści księgi — spróbuj ponownie albo wpisz dane ręcznie.",
+    ),
+}
+
+
+def _transcribe_error(code: str) -> JSONResponse:
+    status, detail = TRANSCRIBE_ERRORS[code]
+    return JSONResponse(status_code=status, content={"detail": detail, "code": code})
+
+
+class KwTranscribeResponse(kw_transcribe.KsiegaTresc):
+    """The book's content, flat, plus the deterministic verdict. The endpoint never
+    rejects on a failed verdict — web stores the content only when `walidacja.ok`."""
+
+    walidacja: kw_validate.Walidacja
+
+
+@app.post("/kw-transcribe", response_model=KwTranscribeResponse)
+def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
+    """Full content of the five sections of a unit's book (spike KW, ADR-018
+    "Zmiana 15.09"). Persons' data stays in the answer and NEVER reaches a log:
+    only counters and error classes are logged, never `str(exc)` — pydantic and
+    SDK messages can quote the model's text."""
+    _require_token(token)
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail="Obsługiwane są wyłącznie pliki PDF.")
+    # One byte past the limit is enough to know it is too large — never the whole upload.
+    data = file.file.read(kw_max_bytes() + 1)
+    if len(data) > kw_max_bytes():
+        raise HTTPException(status_code=413, detail="Plik jest za duży (limit 32 MB).")
+
+    started = time.monotonic()
+    try:
+        result = kw_transcribe.transcribe(kw_llm(), base64.standard_b64encode(data).decode())
+    except kw_transcribe.TranscriptionFailed as exc:
+        logger.error(
+            "kw_transcribe_failed",
+            code=exc.code,
+            stop_reason=exc.result.stop_reason,
+            input_tokens=exc.result.input_tokens,
+            output_tokens=exc.result.output_tokens,
+            bytes=len(data),
+            ms=round((time.monotonic() - started) * 1000),
+        )
+        return _transcribe_error(exc.code)
+    except Exception as exc:
+        logger.error(
+            "kw_transcribe_failed",
+            code="kw_transkrypcja_blad",
+            err_type=type(exc).__name__,
+            status_code=getattr(exc, "status_code", None),
+            bytes=len(data),
+            ms=round((time.monotonic() - started) * 1000),
+        )
+        return _transcribe_error("kw_transkrypcja_blad")
+    # File bytes are never persisted or logged: `data` dies with this request.
+
+    tresc = result.parsed
+    walidacja = kw_validate.validate(tresc)
+    logger.info(
+        "kw_transcribe_done",
+        bytes=len(data),
+        ms=round((time.monotonic() - started) * 1000),
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        dzialy=len(tresc.dzialy),
+        wpisy=sum(len(t.wpisy) for d in tresc.dzialy for t in d.tabele),
+        walidacja_ok=walidacja.ok,
+        # Classes and section codes only — `kw_validate` never puts a value in them.
+        walidacja_bledy=walidacja.bledy,
+    )
+    return KwTranscribeResponse(**tresc.model_dump(), walidacja=walidacja)
 
 
 # --- T-13: cooperative register import (S2a) --------------------------------
@@ -1092,4 +1171,54 @@ def photo_process(
     # File bytes are never persisted or logged: `data` dies with this request (RODO).
     return PhotoProcessResponse(
         photo=base64.standard_b64encode(jpeg).decode(), width=width, height=height
+    )
+
+
+class PdfPage(BaseModel):
+    image: str  # base64 JPEG, ~150 DPI
+    width: int
+    height: int
+
+
+class PdfPagesResponse(BaseModel):
+    """Insurance policy pages for Załącznik nr 1, in document order. F-11: images only."""
+
+    pages: list[PdfPage]
+
+
+PDF_UNREADABLE_DETAIL = "Nie udało się odczytać pliku PDF polisy — wgraj plik PDF."
+
+
+@app.post("/pdf-pages")
+def pdf_pages(file: UploadFile = File(...), token: str = Form(...)) -> PdfPagesResponse:
+    _require_token(token)
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail=PDF_UNREADABLE_DETAIL)
+    # One byte past the limit is enough to know it is too large — never the whole upload.
+    data = file.file.read(pdf_pages_core.MAX_PDF_BYTES + 1)
+    if len(data) > pdf_pages_core.MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="Plik jest za duży (limit 10 MB).")
+    started = time.monotonic()
+    try:
+        pages = pdf_pages_core.render_pages(data)
+    except pdf_pages_core.TooManyPages as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Plik polisy ma za dużo stron (limit {pdf_pages_core.MAX_PAGES}).",
+        ) from exc
+    except Exception as exc:  # unreadable / not a PDF — same user answer
+        logger.error("pdf_pages_failed", err_type=type(exc).__name__, bytes=len(data))
+        raise HTTPException(status_code=415, detail=PDF_UNREADABLE_DETAIL) from exc
+    # F-13: counters only; file bytes are never persisted or logged (RODO).
+    logger.info(
+        "pdf_pages_rendered",
+        pages=len(pages),
+        bytes=len(data),
+        ms=round((time.monotonic() - started) * 1000),
+    )
+    return PdfPagesResponse(
+        pages=[
+            PdfPage(image=base64.standard_b64encode(jpeg).decode(), width=width, height=height)
+            for jpeg, width, height in pages
+        ]
     )
