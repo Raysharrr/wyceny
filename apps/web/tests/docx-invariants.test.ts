@@ -192,6 +192,20 @@ describe("sectionText — tekst pod nagłówkiem do następnego nagłówka tego 
     expect(sectionText(doc, "3. Założenia")).toBe("Treść założeń.");
   });
 
+  it("sam numer bez tytułu też kończy sekcję (szablon: „12.4. ” w osobnym akapicie)", () => {
+    const split = openDocx(
+      docx(
+        para("1. Sekcja") + para("Treść 1.") + para("1.1. ") + para("Tabela 4") + para("2. Dalej"),
+      ),
+    );
+    expect(sectionText(split, "1. Sekcja")).toContain("Tabela 4");
+    const bare = openDocx(
+      docx(para("1.1. Podsekcja") + para("Treść 1.1.") + para("1.2. ") + para("Tabela 4")),
+    );
+    expect(sectionText(bare, "1.1. Podsekcja")).toBe("Treść 1.1.");
+    expect(sectionText(bare, "1.2.")).toBe("Tabela 4");
+  });
+
   it("dopasowuje nagłówek po prefiksie i pomija wpis spisu treści", () => {
     expect(sectionText(doc, "1. Wst")).toContain("Tekst wstępu.");
   });
@@ -215,6 +229,9 @@ describe("sectionText — tekst pod nagłówkiem do następnego nagłówka tego 
     expect(sectionText(rendered, "12. Określenie wartości rynkowej")).toContain(
       "12.2. Charakterystyka",
     );
+    expect(sectionText(rendered, "12.3.")).toContain("Tabela 3");
+    expect(sectionText(rendered, "12.3.")).not.toContain("Tabela 4");
+    expect(sectionText(rendered, "12.4.")).toContain("Tabela 4");
   });
 });
 
@@ -223,8 +240,8 @@ describe("expectNoText", () => {
     expect(() => expectNoText(openDocx(SECTIONS), "wg wypisu z ewidencji")).not.toThrow();
   });
 
-  it("wykrywa frazę w body, także z twardą spacją i podwójnym odstępem", () => {
-    const doc = openDocx(docx(para("Dane ewidencyjne: wg  wypisu z ewidencji gruntów")));
+  it("wykrywa frazę w body mimo wielkiej litery, twardej spacji i podwójnego odstępu", () => {
+    const doc = openDocx(docx(para("Dane ewidencyjne:\u00A0Wg  wypisu z ewidencji gruntów")));
     expect(() => expectNoText(doc, "wg wypisu z ewidencji")).toThrow(/wg wypisu z ewidencji/);
   });
 
@@ -252,11 +269,11 @@ describe("expectExactlyOne", () => {
     expect(() => expectExactlyOne(openDocx(docx(para("Inny tekst."))), VARIANTS)).toThrow();
   });
 
-  it("rzuca, gdy występują dwa różne warianty", () => {
+  it("rzuca, gdy występują dwa różne warianty — także z wielką literą na początku zdania", () => {
     const doc = openDocx(
       docx(
         para("Dla terenu obowiązuje miejscowy plan.") +
-          para("Stwierdzono brak obowiązującego miejscowego planu."),
+          para("Brak obowiązującego miejscowego planu."),
       ),
     );
     expect(() => expectExactlyOne(doc, VARIANTS)).toThrow();

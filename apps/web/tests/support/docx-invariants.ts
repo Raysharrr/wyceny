@@ -264,18 +264,32 @@ export function openDocx(buffer: Buffer | Uint8Array): DocxDoc {
 }
 
 /** Twarda spacja → spacja, ciągi białych znaków → jedna spacja. */
-const normalize = (s: string) => s.replace(/ /g, " ").replace(/\s+/g, " ").trim();
+const normalize = (s: string) =>
+  s
+    .replace(/\u00A0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * Do dopasowania fraz: {@link normalize} + małe litery. Zdania szablonu zaczynają się wielką
+ * literą, a fraza w teście zwykle nie — asercja „nie ma” wrażliwa na wielkość liter
+ * przechodziłaby fałszywie (ta sama klasa błędu co deklinacja w f12-template-integrity).
+ */
+const fold = (s: string) => normalize(s).toLowerCase();
 
 /**
  * Poziom nagłówka z NUMERU w jego tekście („8.” → 1, „8.4.” → 2), nie ze stylu: w szablonie
  * „8.4.” ma styl `Iza1` jak nagłówki pierwszego poziomu, a „10.1.” nie ma `pStyle` wcale.
- * Nagłówkiem jest akapit body z takim numerem, poza stylami spisu treści („toc N”).
+ * Nagłówkiem jest akapit body z takim numerem, poza stylami spisu treści („toc N”). Sam numer
+ * bez tytułu też jest nagłówkiem: szablon ma „12.4. ” w osobnym akapicie, a tytuł w akapicie
+ * listy dalej (D-56) — bez tego §12.3 wchłonęłaby Tabelę 4. Taki nagłówek znajdzie się po
+ * samym numerze („12.4.”), nie po tytule.
  */
 function headingLevel(doc: DocxDoc, p: DocxParagraph): number | null {
   if (p.container !== "body") return null;
   const styleName = p.style == null ? null : (doc.styles.byId[p.style]?.name ?? null);
   if (styleName != null && /^toc/i.test(styleName)) return null;
-  const match = /^(\d+(?:\.\d+)*)\.\s+\S/.exec(normalize(p.text));
+  const match = /^(\d+(?:\.\d+)*)\.(?:\s+\S|$)/.exec(normalize(p.text));
   return match ? match[1].split(".").length : null;
 }
 
@@ -330,33 +344,34 @@ function occurrences(haystack: string, needle: string): number {
 
 /**
  * Fraza nie występuje w żadnym akapicie — w body, tabelach i OBU kopiach pola tekstowego
- * (dane w samej kopii VML też są w dokumencie). Porównanie po normalizacji białych znaków,
- * w obrębie akapitu. Zamiast dokumentu można podać tekst, np. {@link sectionText}.
+ * (dane w samej kopii VML też są w dokumencie). Porównanie bez rozróżniania wielkości liter
+ * i po normalizacji białych znaków, w obrębie akapitu. Zamiast dokumentu można podać tekst, np. {@link sectionText}.
  */
 export function expectNoText(target: DocxDoc | string, phrase: string): void {
-  const wanted = normalize(phrase);
+  const wanted = fold(phrase);
   if (typeof target === "string") {
-    expect(normalize(target), `niedozwolona fraza „${phrase}”`).not.toContain(wanted);
+    expect(fold(target), `niedozwolona fraza „${phrase}”`).not.toContain(wanted);
     return;
   }
   const hits = target.paragraphs
-    .filter((p) => normalize(p.text).includes(wanted))
+    .filter((p) => fold(p.text).includes(wanted))
     .map((p) => `${p.container}#${p.index}: ${normalize(p.text).slice(0, 160)}`);
   expect(hits, `niedozwolona fraza „${phrase}”`).toEqual([]);
 }
 
 /**
- * Dokładnie jeden z wariantów występuje dokładnie raz. Pole tekstowe liczone raz (kopia
+ * Dokładnie jeden z wariantów występuje dokładnie raz (bez rozróżniania wielkości liter, jak
+ * {@link expectNoText}). Pole tekstowe liczone raz (kopia
  * `mc:Choice`; zgodność kopii sprawdza {@link textboxTexts}). Zwraca znaleziony wariant.
  */
 export function expectExactlyOne(target: DocxDoc | string, sentinels: string[]): string {
   const texts =
     typeof target === "string"
-      ? [normalize(target)]
-      : target.paragraphs.filter((p) => p.container !== "txbx-vml").map((p) => normalize(p.text));
+      ? [fold(target)]
+      : target.paragraphs.filter((p) => p.container !== "txbx-vml").map((p) => fold(p.text));
   const counts = sentinels.map((s) => ({
     sentinel: s,
-    count: texts.reduce((sum, t) => sum + occurrences(t, normalize(s)), 0),
+    count: texts.reduce((sum, t) => sum + occurrences(t, fold(s)), 0),
   }));
   expect(
     counts.reduce((sum, c) => sum + c.count, 0),
