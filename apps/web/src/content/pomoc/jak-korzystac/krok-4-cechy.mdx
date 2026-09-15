@@ -2,7 +2,7 @@ W kroku 4 ustalasz cechy rynkowe: ich wagi oraz ocenę wycenianego lokalu na tle
 
 <img
   src="/api/pomoc/krok-4-cechy.png"
-  alt="Krok 4 kreatora: lista cech rynkowych z wagami w procentach i kartami opisanych poziomów skali; cechy bez oceny wyróżnione odznaką „Wybierz ocenę”, przy ocenionych współczynnik Ui, licznik ocenionych cech. Pod kartami cech mierzalnych — położenia na piętrze i powierzchni użytkowej — podpowiedź porównująca wartość przedmiotu z kroku 1 z progiem skali, z przyciskiem „Przyjmij”. Obok wskaźnik korekty ΣUi i podgląd wartości czekające na komplet ocen."
+  alt="Krok 4 kreatora: lista cech rynkowych z wagami w procentach i kartami opisanych poziomów skali; cechy bez oceny wyróżnione odznaką „Wybierz ocenę”, przy ocenionych współczynnik Ui, licznik ocenionych cech. Karty piętra niosą brzmienia z operatów — „parter”, „piętra pośrednie”, „4 piętro i powyżej”. Pod kartami cech mierzalnych — położenia na piętrze i powierzchni użytkowej — podpowiedź porównująca wartość przedmiotu z kroku 1 z progiem skali, z przyciskiem „Przyjmij”. Obok wskaźnik korekty ΣUi i podgląd wartości czekające na komplet ocen."
   style={{
     width: "100%",
     height: "auto",
@@ -32,21 +32,27 @@ Skalę cechy tworzą poziomy, które mają opis: dwa dowolne albo wszystkie trzy
 
 Definicje poprawiasz pod przyciskiem „Edytuj skalę” w wierszu cechy. Dopisanie opisu brakującego poziomu dokłada jego kartę. Skasowanie opisu poziomu, który był wybrany, kasuje też ocenę tej cechy — trzeba ją wskazać ponownie na skali, która została.
 
-Wyjątkiem jest „powierzchnia użytkowa”: jej progi wyliczają się z mediany powierzchni transakcji z próby („powierzchnia użytkowa poniżej N m²” / „N m² i więcej”). Gdy próba nie ma podanych powierzchni, oba pola zostają puste. Wypełnienie automatyczne dotyczy wyłącznie poziomów „lepsza” i „gorsza” — poziomu „przeciętna” nie wypełnia nigdy — i wchodzi tylko wtedy, gdy **oba** te pola są puste. Własnego tekstu aplikacja nie nadpisze, ale też nie dopisze progu obok niego: gdy wpiszesz swoje zdanie do jednego z tych dwóch poziomów, drugi zostanie pusty i trzeba go uzupełnić samodzielnie.
+Wyjątkiem jest „powierzchnia użytkowa”: jej progi wyliczają się z mediany powierzchni transakcji z próby („do N m²” / „od N+1 m²”). Gdy próba nie ma podanych powierzchni, oba pola zostają puste. Wypełnienie automatyczne dotyczy wyłącznie poziomów „lepsza” i „gorsza” — poziomu „przeciętna” nie wypełnia nigdy — i wchodzi tylko wtedy, gdy **oba** te pola są puste. Własnego tekstu aplikacja nie nadpisze, ale też nie dopisze progu obok niego: gdy wpiszesz swoje zdanie do jednego z tych dwóch poziomów, drugi zostanie pusty i trzeba go uzupełnić samodzielnie.
 
 ### Skale liczbowe: położenie na piętrze i powierzchnia użytkowa
 
-Te dwie cechy opisuje liczba, więc ich skalę tworzą **przedziały liczbowe**, a zdania na kartach poziomów powstają z tych przedziałów. Pod „Edytuj skalę” każdy poziom ma obok swojego opisu pola „od” i „do”; zmiana progu przepisuje zdanie na karcie od razu — próg „od 6” daje „od 6 piętra”. Piętra liczymy od parteru, a parter to 0.
+Te dwie cechy opisuje liczba, więc ich skalę tworzą **przedziały liczbowe**, a zdania na kartach poziomów powstają z tych przedziałów. Pod „Edytuj skalę” każdy poziom ma obok swojego opisu pola „od” i „do”; zmiana progu przepisuje zdanie na karcie od razu — próg „od 6” daje „6 piętro i powyżej”. Piętra liczymy od parteru, a parter to 0.
 
-Przedziały muszą do siebie przylegać: bez dziur i bez zachodzenia na siebie. Gdy zostanie luka — na przykład „piętra od 1 do 3” obok „od 6 piętra” — wiersz cechy powie, między którymi poziomami ona jest, a krok się nie zapisze, dopóki jej nie domkniesz. Przy powierzchni górna granica jest wyłączna: „poniżej 47 m²” i „47 m² i więcej” stykają się dokładnie na 47 m², a lokal o powierzchni równo 47 m² należy do drugiego przedziału.
+Brzmienia są takie, jakich używają operaty: najniższy przedział piętra wylicza kondygnacje („parter”, „parter, 1 piętro”), najwyższy podaje próg („4 piętro i powyżej”), a środkowy to zawsze „piętra pośrednie” — jego liczby pracują, choć karta ich nie pokazuje. Przy powierzchni definicja nie powtarza nazwy cechy: „do 40 m²”, „od 41 m² do 45 m²”, „od 46 m²”.
+
+Przedziały muszą do siebie przylegać: bez dziur i bez zachodzenia na siebie. Progi podajesz w liczbach całkowitych, obie granice należą do przedziału, a sąsiedzi stykają się o jeden od siebie — „do 40 m²” obok „od 41 m²”, „parter, 1 piętro” obok przedziału zaczynającego się na 2. Gdy zostanie luka — na przykład przedział do 3 piętra obok progu „od 6” — wiersz cechy powie, między którymi poziomami ona jest, a krok się nie zapisze, dopóki jej nie domkniesz.
+
+Powierzchnia lokalu zaokrągla się do pełnych m², zanim aplikacja przypisze ją do przedziału. Dzięki temu metraż 40,5 m² trafia do „od 41 m²”, choć żadne zdanie skali nie obejmuje go dosłownie. Podpowiedź pokazuje wtedy obie liczby — wpisaną i zaokrągloną.
 
 Gdy wpiszesz zdanie poziomu ręcznie, progi tej cechy znikają razem z podpowiedzią — od tego momentu skala jest Twoim tekstem i aplikacja nie czyta jej jako liczb. Żeby wrócić do skali liczbowej, trzeba opisać poziomy progami od nowa.
 
 ### Podpowiedź oceny dla cech liczbowych
 
-Gdy cecha ma progi, a przedmiot ma odpowiadającą im wartość z kroku 1 — piętro albo powierzchnię — pod kartami poziomów pojawia się podpowiedź w rodzaju: „Podpowiedź: piętro przedmiotu 6 (krok 1) · próg „lepsza” od 4 → lepsza”. To wyłącznie porównanie liczb; **żadna ocena nie zapisuje się sama**. Przyjmujesz ją przyciskiem „Przyjmij”, który zaznacza wskazaną kartę. Możesz też kliknąć inną kartę — podpowiedź zostanie wtedy na ekranie jako informacja, że Twoja ocena różni się od tego, co mówi skala. Gdy ocena zgadza się z podpowiedzią, podpowiedź znika.
+Gdy cecha ma progi, a przedmiot ma odpowiadającą im wartość z kroku 1 — piętro albo powierzchnię — pod kartami poziomów pojawia się podpowiedź w rodzaju: „Podpowiedź: piętro przedmiotu 6 (krok 1) · próg „lepsza” od 4 → lepsza”, a przy powierzchni „Podpowiedź: powierzchnia przedmiotu 44,23 m² ≈ 44 m² (krok 1) · próg „lepsza” do 46 m² → lepsza”. To wyłącznie porównanie liczb; **żadna ocena nie zapisuje się sama**. Przyjmujesz ją przyciskiem „Przyjmij”, który zaznacza wskazaną kartę. Możesz też kliknąć inną kartę — podpowiedź zostanie wtedy na ekranie jako informacja, że Twoja ocena różni się od tego, co mówi skala. Gdy ocena zgadza się z podpowiedzią, podpowiedź znika.
 
 Podpowiedzi nie ma, gdy cecha nie ma progów (nigdy ich nie miała albo opis wpisano ręcznie), gdy krok 1 nie ma wypełnionego piętra, albo gdy wartość przedmiotu nie mieści się w żadnym opisanym przedziale.
+
+Podpowiedź liczy zawsze według **Twoich** progów. Gdy zmienisz skalę — na przykład na „6 piętro i powyżej”, bo budynek ma jedenaście kondygnacji — podpowiedzi pójdą za nowymi liczbami, a nie za tymi, które aplikacja zaproponowała.
 
 Te same progi opisują w operacie lokale o cenie najniższej i najwyższej — [Metoda KCS](/pomoc/metoda-kcs) tłumaczy, skąd biorą się tam oceny cech.
 
@@ -71,7 +77,7 @@ Cecha z wagą 0 nie trafia do operatu — dokument opisuje wyłącznie cechy o w
 - Przycisk „Zatwierdź cechy i dalej” jest nieaktywny, dopóki **każda cecha nie ma oceny**.
 - Krok nie zapisze się, dopóki **suma wag nie wyniesie 100%** (z tolerancją 0,1 pkt proc.). Dopóki się nie zgadza, pod listą widać „Suma wag wynosi X% — powinna wynosić 100%.”. Waga nie może być ujemna, a każda cecha może wystąpić na liście najwyżej raz.
 - Cecha z wagą większą od zera musi mieć **opisane co najmniej dwa poziomy** — inaczej zapis zostanie odrzucony z komunikatem przy tej cesze. Dotyczy to zwłaszcza powierzchni użytkowej, gdy próba nie ma podanych powierzchni: jej skalę trzeba wtedy opisać samemu.
-- Cecha ze **skalą liczbową** musi mieć przedziały bez luk i bez zachodzenia na siebie — inaczej zapis zostanie odrzucony z komunikatem, między którymi poziomami jest problem.
+- Cecha ze **skalą liczbową** musi mieć przedziały bez luk i bez zachodzenia na siebie, opisane liczbami całkowitymi — inaczej zapis zostanie odrzucony z komunikatem, między którymi poziomami jest problem.
 - Zapis kroku **kasuje zatwierdzoną wartość rynkową**. Po każdej zmianie cech kwotę trzeba potwierdzić w kroku 5 jeszcze raz, a do tego czasu kroki 6 i 7 są z powrotem niedostępne.
 - Jeśli zostawisz wagi dokładnie takie, jakie zaproponowała aplikacja, wchodzą one ze [statusem „do weryfikacji”](/pomoc/zasady-zatwierdzania); tak samo definicje skali ocen, dopóki są w wersji zaproponowanej. Potwierdza je zapis tego kroku: przycisk „Zatwierdź cechy i dalej” w pasku na dole ekranu zapisuje je i potwierdza naraz — krok 7 już o to nie poprosi, bo wag ani definicji nie wyświetla. Własna zmiana wagi albo definicji jest potwierdzona z definicji, a same oceny cech są potwierdzone zawsze — wskazujesz je sam.
 

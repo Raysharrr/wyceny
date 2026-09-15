@@ -484,6 +484,11 @@ describe("measureIssues — przedziały domknięte i rozłączne (D-46, D-48)", 
   it("odrzuca przedział odwrócony i skalę z jednym przedziałem", () => {
     expect(ok({ gorsza: { od: 3, do: 1 }, lepsza: { od: 4 } })).not.toEqual([]);
     expect(ok({ lepsza: { od: 4 } })).not.toEqual([]);
+    // Poziom z obydwoma polami pustymi nie jest przedziałem — inaczej dopycha
+    // licznik i skala z jednym realnym przedziałem przechodzi.
+    expect(ok({ gorsza: {}, lepsza: { od: 4 } })).toEqual([
+      "Skala liczbowa musi mieć co najmniej dwa przedziały.",
+    ]);
   });
 });
 
