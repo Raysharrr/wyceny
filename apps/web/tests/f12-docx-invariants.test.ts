@@ -221,6 +221,79 @@ describe("I-13 G: §8.2 w kolejności operatu wzorcowego (TP.2, D-21/D-24/D-25)"
   });
 });
 
+/**
+ * I-14 (TP.3, ADR-018 „Zmiana 15.09”). Wycena BEZ uwzględnienia ograniczonego
+ * prawa rzeczowego to nie przypis — to doprecyzowanie, CO wyceniono, więc fraza
+ * wraca wszędzie tam, gdzie operat wzorcowy nazywa przedmiot albo wynik.
+ *
+ * Każde miejsce sprawdzane osobno (`expectExactlyOne` na tekście sekcji, nie
+ * globalnie): asercja globalna przepuściłaby brak frazy w jednym miejscu, gdy
+ * gdzie indziej stoi dwa razy.
+ */
+describe("I-14: fraza o obciążeniu w siedmiu miejscach i nigdzie indziej (TP.3)", () => {
+  const FRAZA = "bez uwzględnienia obciążenia ograniczonym prawem rzeczowym";
+  const bez = () => render({ kw: "ekw_reczne_obie_ksiegi" });
+
+  const zWariantem = (wariant: "z_uwzglednieniem" | null) => {
+    const input = wycena1409Anon({ kw: "ekw_reczne_obie_ksiegi" });
+    input.inputs.encumbranceTreatment!.wariant = wariant;
+    return openDocx(renderOperatDocx(buildDocumentModel(input)));
+  };
+
+  it("wariant „bez”: fraza dokładnie raz w każdym z siedmiu miejsc", () => {
+    const doc = bez();
+    // Okładka i wstęp wyciągu stoją przed pierwszym nagłówkiem.
+    const naglowek = doc.paragraphs.findIndex((p) =>
+      p.text.startsWith("1. Wyciąg z operatu szacunkowego "),
+    );
+    expect(naglowek).toBeGreaterThan(0);
+    const przedWyciagiem = doc.paragraphs
+      .slice(0, naglowek)
+      .filter((p) => p.container !== "txbx-vml")
+      .map((p) => p.text)
+      .join("\n");
+    expect(przedWyciagiem.split(FRAZA)).toHaveLength(2); // okładka ×1
+
+    const wyciag = sectionText(doc, "1.");
+    // wstęp + „Zakres wyceny” + „Cel wyceny” + „Określona wartość rynkowa”
+    expect(wyciag.split(FRAZA)).toHaveLength(5);
+    expect(sectionText(doc, "2.").split(FRAZA)).toHaveLength(2);
+    expect(sectionText(doc, "3.").split(FRAZA)).toHaveLength(2);
+  });
+
+  it("wariant „bez”: wiersz „Przedmiot wyceny” i §13 zostają bez frazy", () => {
+    const doc = bez();
+    const przedmiot = doc.paragraphs.find((p) =>
+      p.text.startsWith("Nieruchomość lokalowa obejmująca lokal mieszkalny."),
+    );
+    expect(przedmiot?.text).not.toContain(FRAZA);
+    expectNoText(sectionText(doc, "13."), FRAZA);
+  });
+
+  it("D-35: założenie §10.1 z podstawą stoi przy każdym stanie obciążenia", () => {
+    for (const doc of [bez(), zWariantem("z_uwzglednieniem"), zWariantem(null)]) {
+      const sec = sectionText(doc, "10.1.");
+      expect(sec).toContain("W dziale III księgi wieczystej lokalu ujawniono wpis");
+      expect(sec).toContain("ograniczone prawo rzeczowe nie zostaje uwzględnione");
+    }
+  });
+
+  it("wariant „z” i decyzja w połowie: nigdzie ani słowa frazy", () => {
+    for (const doc of [zWariantem("z_uwzglednieniem"), zWariantem(null)]) {
+      expectNoText(doc, FRAZA);
+    }
+  });
+
+  it("bez wpisu w dziale III: ani frazy, ani założenia, ani „Uwagi”", () => {
+    const doc = render({ kw: "odpis_z_wpisem_dzial_iii" });
+    expect(doc).toBeDefined();
+    const bezObciazenia = render({ kw: "brak" });
+    expectNoText(bezObciazenia, FRAZA);
+    expectNoText(bezObciazenia, "W dziale III księgi wieczystej lokalu ujawniono wpis");
+    expectNoText(bezObciazenia, "Uwaga: w dziale III księgi wieczystej lokalu");
+  });
+});
+
 /** Sentinele akapitów, które w §8.2 dokłada etap 14 generatora. */
 const SENTINELS_82 = [
   "dokonano badania księgi wieczystej",
