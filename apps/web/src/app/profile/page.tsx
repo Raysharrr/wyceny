@@ -4,6 +4,7 @@ import { FileBadge, PenLine, UserRound } from "lucide-react";
 import { getSession } from "@/auth/session";
 import { profileRepository } from "@/app/valuations/_deps";
 import { SectionCard } from "@/components/wizard/section-card";
+import { formatDatePl } from "@/domain/document-model";
 import { AuthorForm } from "./author-form";
 import { InsuranceForm } from "./insurance-form";
 import { SignatureForm } from "./signature-form";
@@ -46,7 +47,7 @@ export default async function ProfilePage() {
             Profil i ustawienia
           </h1>
           <p className="max-w-[70ch] text-[14.5px] text-muted-foreground">
-            Dane autora operatu oraz podpis, który pojawia się w wygenerowanym dokumencie.
+            Dane autora, polisa OC i podpis — wszystko, co operat bierze od Ciebie, a nie od wyceny.
           </p>
         </div>
 
@@ -63,6 +64,9 @@ export default async function ProfilePage() {
             <InsuranceForm
               hasPolicy={Boolean(profile?.insuranceDocKey)}
               validUntil={profile?.insuranceValidUntil ?? null}
+              validUntilLabel={
+                profile?.insuranceValidUntil ? formatDatePl(profile.insuranceValidUntil) : null
+              }
             />
           </SectionCard>
 

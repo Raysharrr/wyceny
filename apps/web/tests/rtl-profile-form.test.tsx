@@ -94,7 +94,7 @@ describe("InsuranceForm", () => {
         { blob: new Blob(["s2"]), width: 1, height: 1 },
       ],
     });
-    render(<InsuranceForm hasPolicy={false} validUntil={null} />);
+    render(<InsuranceForm hasPolicy={false} validUntil={null} validUntilLabel={null} />);
     await userEvent.upload(screen.getByLabelText(/polisa oc/i), pdfFile());
     await userEvent.type(screen.getByLabelText(/ważna do/i), "2027-06-30");
     await userEvent.click(screen.getByRole("button", { name: /zapisz polisę/i }));
@@ -106,7 +106,7 @@ describe("InsuranceForm", () => {
   });
 
   it("odrzuca plik inny niż PDF, nie wołając workera", async () => {
-    render(<InsuranceForm hasPolicy={false} validUntil={null} />);
+    render(<InsuranceForm hasPolicy={false} validUntil={null} validUntilLabel={null} />);
     await userEvent.upload(
       screen.getByLabelText(/polisa oc/i),
       new File(["x"], "polisa.jpg", { type: "image/jpeg" }),
@@ -122,7 +122,7 @@ describe("InsuranceForm", () => {
   });
 
   it("wymaga daty ważności", async () => {
-    render(<InsuranceForm hasPolicy={false} validUntil={null} />);
+    render(<InsuranceForm hasPolicy={false} validUntil={null} validUntilLabel={null} />);
     await userEvent.upload(screen.getByLabelText(/polisa oc/i), pdfFile());
     await userEvent.click(screen.getByRole("button", { name: /zapisz polisę/i }));
 
@@ -137,7 +137,7 @@ describe("InsuranceForm", () => {
       message: "Plik polisy ma za dużo stron (limit 10).",
       retryable: false,
     });
-    render(<InsuranceForm hasPolicy={false} validUntil={null} />);
+    render(<InsuranceForm hasPolicy={false} validUntil={null} validUntilLabel={null} />);
     await userEvent.upload(screen.getByLabelText(/polisa oc/i), pdfFile());
     await userEvent.type(screen.getByLabelText(/ważna do/i), "2027-06-30");
     await userEvent.click(screen.getByRole("button", { name: /zapisz polisę/i }));
@@ -160,7 +160,7 @@ describe("InsuranceForm", () => {
     });
     uploadInsurancePage.mockResolvedValueOnce(undefined);
     uploadInsurancePage.mockResolvedValueOnce({ error: "Nie udało się zapisać strony polisy." });
-    render(<InsuranceForm hasPolicy validUntil="2026-01-01" />);
+    render(<InsuranceForm hasPolicy validUntil="2026-01-01" validUntilLabel="01.01.2026" />);
     await userEvent.upload(screen.getByLabelText(/polisa oc/i), pdfFile());
     await userEvent.click(screen.getByRole("button", { name: /zapisz polisę/i }));
     await waitFor(() => expect(uploadInsurancePage).toHaveBeenCalledTimes(2));
@@ -170,10 +170,12 @@ describe("InsuranceForm", () => {
   });
 
   it("mówi, że polisy nie ma, i że nowy plik zastąpi poprzedni", () => {
-    const { unmount } = render(<InsuranceForm hasPolicy={false} validUntil={null} />);
+    const { unmount } = render(
+      <InsuranceForm hasPolicy={false} validUntil={null} validUntilLabel={null} />,
+    );
     expect(screen.getByTestId("insurance-missing")).toHaveTextContent(/nie wgrano jeszcze polisy/i);
     unmount();
-    render(<InsuranceForm hasPolicy validUntil="2027-06-30" />);
-    expect(screen.getByTestId("insurance-current")).toHaveTextContent(/ważna do 2027-06-30/i);
+    render(<InsuranceForm hasPolicy validUntil="2027-06-30" validUntilLabel="30.06.2027" />);
+    expect(screen.getByTestId("insurance-current")).toHaveTextContent(/ważna do 30\.06\.2027/i);
   });
 });

@@ -25,9 +25,13 @@ const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? "http://localhost:8000"
 export function InsuranceForm({
   hasPolicy,
   validUntil,
+  validUntilLabel,
 }: {
   hasPolicy: boolean;
+  /** `YYYY-MM-DD` — what `<input type="date">` needs. */
   validUntil: string | null;
+  /** The same date as `dd.mm.rrrr`, the form every other date in the operat takes. */
+  validUntilLabel: string | null;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -111,8 +115,8 @@ export function InsuranceForm({
     >
       {hasPolicy ? (
         <p data-testid="insurance-current" className="text-sm text-muted-foreground">
-          Polisa wgrana{validUntil ? `, ważna do ${validUntil}` : ""}. Wgranie nowego pliku zastąpi
-          poprzedni.
+          Polisa wgrana{validUntilLabel ? `, ważna do ${validUntilLabel}` : ""}. Wgranie nowego
+          pliku zastąpi poprzedni.
         </p>
       ) : (
         <p data-testid="insurance-missing" className="text-sm text-muted-foreground">
