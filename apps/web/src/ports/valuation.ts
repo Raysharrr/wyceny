@@ -269,4 +269,13 @@ export interface PortValuation {
    * source isn't signed). The audit row is recorded against the NEW id.
    */
   createNewVersion(id: string, user: SessionUser): Promise<Valuation | null>;
+  /**
+   * „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6): sends an approved but
+   * unsigned valuation back to editing. Same null/throw contract as
+   * `confirmSample` (null = not found or not owner; throws NotReopenableError
+   * for status violations). The `reopened` audit row names the storage keys of
+   * the documents the withdrawn approval issued — they stay in storage, and
+   * with `approvedAt` cleared that row is the only thing that still knows them.
+   */
+  reopen(id: string, user: SessionUser): Promise<Valuation | null>;
 }

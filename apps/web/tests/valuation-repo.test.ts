@@ -4,8 +4,14 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
-import { ApprovalBlockedError, InputsChangedError, assertNotSigned } from "../src/domain/valuation";
+import {
+  ApprovalBlockedError,
+  InputsChangedError,
+  NotReopenableError,
+  assertNotSigned,
+} from "../src/domain/valuation";
 import { buildPhotoKey } from "../src/domain/inspection";
+import { approvedOperatKeys } from "../src/lib/operat-doc-keys";
 import type { KcsInput } from "../src/domain/kcs";
 import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
@@ -356,6 +362,113 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
       .orderBy(schema.auditLog.id);
     expect(rows.at(-1)!.action).toBe("approved");
     expect(rows.at(-1)!.meta).toMatchObject({ mapsSkipped: true });
+  });
+
+  /**
+   * „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6) — end to end on real
+   * Postgres, because the interesting part is the audit row: with `approvedAt`
+   * cleared, that row is the only record of which documents the withdrawn
+   * approval issued, and the whole promise („Obecny plik zostanie w historii
+   * wyceny”) rests on being able to read their keys back.
+   */
+  async function approvedFixture(address: string, now = new Date()) {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, address),
+      inputs: withConfirmedProse(address, approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+    const keys = approvedOperatKeys(created.id, now);
+    await repo.approve(
+      created.id,
+      appraiserA,
+      {
+        docUrl: `/api/docs/${keys.pdf}`,
+        docxUrl: `/api/docs/${keys.docx}`,
+        amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+      },
+      now,
+    );
+    return { id: created.id, keys };
+  }
+
+  const auditRowsFor = (id: string) =>
+    db
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.valuationId, id))
+      .orderBy(schema.auditLog.id);
+
+  it("reopen sends an unsigned approval back to editing and clears what the approval produced", async () => {
+    const { id } = await approvedFixture("ul. Cofnieta 1");
+
+    const reopened = await repo.reopen(id, appraiserA);
+
+    expect(reopened!.status).toBe("in_progress");
+    expect(reopened!.approvedAt).toBeNull();
+    expect(reopened!.docUrl).toBeNull();
+    expect(reopened!.docxUrl).toBeNull();
+    expect(reopened!.amountInWords).toBeNull();
+    expect(reopened!.wr).toBeNull();
+    // And it is the row that changed, not just the object handed back.
+    const reread = await repo.get(id, appraiserA);
+    expect(reread!.status).toBe("in_progress");
+    expect(reread!.docxUrl).toBeNull();
+    // The valuation is editable again — which is the point of the button.
+    await repo.confirmSubject(id, appraiserA);
+  });
+
+  it("the reopened audit row names the withdrawn documents by their storage keys", async () => {
+    const now = new Date("2026-09-15T09:30:00.500Z");
+    const { id, keys } = await approvedFixture("ul. Cofnieta 2", now);
+
+    await repo.reopen(id, appraiserA);
+
+    const rows = await auditRowsFor(id);
+    expect(rows.at(-1)!.action).toBe("reopened");
+    expect(rows.at(-1)!.actorId).toBe(appraiserA.id);
+    expect(rows.at(-1)!.meta).toMatchObject({
+      docKey: keys.pdf,
+      docxKey: keys.docx,
+      approvedAt: now.toISOString(),
+    });
+    // The `approved` row stays: the trail shows both that it was issued and
+    // that it was withdrawn.
+    expect(rows.map((r) => r.action)).toContain("approved");
+  });
+
+  it("after a reopen the stale amount in words cannot come back (D-57)", async () => {
+    const { id } = await approvedFixture("ul. Cofnieta 5");
+    expect((await repo.get(id, appraiserA))!.amountInWords).not.toBeNull();
+
+    await repo.reopen(id, appraiserA);
+    // The calculation has to be confirmed again — reopening cleared `wr`, so
+    // the F-4 gate refuses until the appraiser has looked at the numbers once
+    // more. That refusal is the point: the corrections happen in between.
+    await expect(repo.approve(id, appraiserA)).rejects.toThrow(ApprovalBlockedError);
+    await repo.confirmCalculation(id, appraiserA);
+    // Re-approved by a caller that does NOT recompute the words: `approve`
+    // only WRITES `amountInWords` when given one, so without the clearing
+    // above this would print the withdrawn amount beside a corrected Tabela 4.
+    const keys = approvedOperatKeys(id, new Date());
+    const reapproved = await repo.approve(id, appraiserA, {
+      docUrl: `/api/docs/${keys.pdf}`,
+      docxUrl: `/api/docs/${keys.docx}`,
+    });
+
+    expect(reapproved!.status).toBe("approved");
+    expect(reapproved!.amountInWords).toBeNull();
+  });
+
+  it("reopen refuses a draft, and answers null for someone else's valuation", async () => {
+    const draft = await repo.create(valuationInput(appraiserA.id, "ul. Cofnieta 3"));
+    await expect(repo.reopen(draft.id, appraiserA)).rejects.toThrow(NotReopenableError);
+
+    const { id } = await approvedFixture("ul. Cofnieta 4");
+    expect(await repo.reopen(id, appraiserB)).toBeNull();
+    // Refused, not half-done: the valuation is still approved.
+    expect((await repo.get(id, appraiserA))!.status).toBe("approved");
+    expect(await auditRowsFor(id).then((r) => r.map((x) => x.action))).not.toContain("reopened");
   });
 
   it("approve rejects with InputsChangedError when expectedInputs no longer matches the row (approve-window drift guard, final review)", async () => {

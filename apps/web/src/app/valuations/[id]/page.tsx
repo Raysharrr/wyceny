@@ -145,6 +145,12 @@ export default async function ValuationViewPage({
   const isDraft = valuation.status === "in_progress";
   const canSign =
     valuation.status === "approved" && Boolean(valuation.inputs) && Boolean(valuation.docxUrl);
+  // „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6): an approval nobody has
+  // signed, and only for its author — an admin looking at someone else's
+  // valuation sees the document, not the way to withdraw it. `signedAt` is
+  // checked rather than the status alone, so a row that is somehow both
+  // approved and signed offers nothing.
+  const canReopen = valuation.status === "approved" && valuation.signedAt === null && isOwner;
   // Successor lookup (Task 9): no dedicated port method (YAGNI) — a signed
   // valuation is superseded by at most one draft, found by scanning the
   // owner's own list for a row that points back at this one.
@@ -174,6 +180,7 @@ export default async function ValuationViewPage({
   const hasAnyAction =
     valuation.status === "in_progress" || // canApprove
     canSign ||
+    canReopen ||
     canCreateNewVersion;
 
   return (
@@ -182,6 +189,7 @@ export default async function ValuationViewPage({
       isOwner={isOwner}
       isDraft={isDraft}
       canSign={canSign}
+      canReopen={canReopen}
       successor={successor}
       allBlockers={allBlockers}
       gateOk={gateOk}

@@ -81,6 +81,6 @@ describe("inspection keys + audit action", () => {
     expect(AUDIT_ACTIONS).toContain("inspection_updated");
     // Slice 11a (wizard-domain.test.ts) added 4 more actions on top of these 9,
     // ADR-014 (prose) two more — prose_generated and prose_confirmed.
-    expect(AUDIT_ACTIONS).toHaveLength(15);
+    expect(AUDIT_ACTIONS).toHaveLength(16);
   });
 });

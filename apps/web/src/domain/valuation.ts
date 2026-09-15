@@ -742,6 +742,7 @@ export const AUDIT_ACTIONS = [
   "approved",
   "signed",
   "version_created",
+  "reopened",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -767,6 +768,51 @@ export function signValuation(v: Valuation, now: Date): Valuation {
     throw new NotSignableError(`Valuation ${v.id} is a legacy row — not signable`);
   }
   return { ...v, status: "signed", signedAt: now };
+}
+
+export class NotReopenableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotReopenableError";
+  }
+}
+
+/**
+ * „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6): approved → in_progress,
+ * for an operat nobody has signed. The opposite of `signValuation`, and only
+ * as far as the signature: once a document is signed it is write-once at the
+ * database level (F-7) and the way back is „Utwórz nową wersję”.
+ *
+ * Everything the approval PRODUCED is cleared — issue date, both document
+ * URLs, the amount in words, the market value — so the next approval computes
+ * them again. Carrying `amountInWords` over would print the old amount beside
+ * a corrected Tabela 4 (D-57); carrying `wr` over would leave the calculation
+ * confirmed while the numbers behind it changed.
+ *
+ * What the appraiser ENTERED is untouched: `inputs` (the corrections are made
+ * on them), the frozen maps, and the prose stamps. Reopening is a step back,
+ * not a reset — and re-fetching maps would silently change a document nobody
+ * asked to change.
+ *
+ * The already-issued DOCX and PDF stay in storage under their own keys
+ * (`approvedOperatKeys`); the `reopened` audit row is what names them, since
+ * with `approvedAt` cleared nothing else could.
+ */
+export function reopenApproved(v: Valuation): Valuation {
+  if (v.status !== "approved" || v.signedAt !== null) {
+    throw new NotReopenableError(
+      `Valuation ${v.id} is not an unsigned approval (status: ${v.status}) — cannot reopen`,
+    );
+  }
+  return {
+    ...v,
+    status: "in_progress",
+    approvedAt: null,
+    docUrl: null,
+    docxUrl: null,
+    amountInWords: null,
+    wr: null,
+  };
 }
 
 /**

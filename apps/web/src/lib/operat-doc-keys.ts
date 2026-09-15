@@ -13,3 +13,14 @@ export function approvedOperatKeys(valuationId: string, approvedAt: Date) {
   const stem = `operat-${valuationId}-${approvedAt.getTime()}`;
   return { docx: `${stem}.docx`, pdf: `${stem}.pdf` };
 }
+
+/**
+ * The storage key behind a `docUrl`/`docxUrl` — the inverse of what the
+ * storage adapters return (`/api/docs/${encodeURIComponent(key)}`). Used by
+ * the `reopened` audit row, which has to name the withdrawn documents by the
+ * key they are stored under rather than by the URL that pointed at them.
+ */
+export function storageKeyOf(docUrl: string | null): string | null {
+  if (!docUrl?.startsWith("/api/docs/")) return null;
+  return decodeURIComponent(docUrl.slice("/api/docs/".length));
+}

@@ -17,6 +17,7 @@ globalThis.ResizeObserver ??= class {
 vi.mock("@/app/actions/approve-valuation", () => ({ approveValuation: vi.fn() }));
 vi.mock("@/app/actions/sign-valuation", () => ({ signValuationAction: vi.fn() }));
 vi.mock("@/app/actions/create-new-version", () => ({ createNewVersionAction: vi.fn() }));
+vi.mock("@/app/actions/reopen-valuation", () => ({ reopenValuationAction: vi.fn() }));
 
 import { FlatView } from "@/app/valuations/[id]/flat-view";
 import type { Valuation } from "@/ports/valuation";
@@ -50,6 +51,7 @@ const baseProps = {
   isOwner: true,
   isDraft: false,
   canSign: true,
+  canReopen: false,
   successor: undefined,
   allBlockers: [],
   gateOk: true,
@@ -110,6 +112,24 @@ describe("FlatView — approved valuation, PDF variant (Task 13)", () => {
 // draft: no document exists yet, so the data cards ARE the page. They used to
 // live in the left column of the two-column grid; with that grid gone they
 // have to keep rendering from their new place.
+describe("FlatView — cofnięcie zatwierdzenia (ADR-020 reguła 6)", () => {
+  it("offers the withdrawal in the actions card when the page says it may be reopened", () => {
+    render(<FlatView {...baseProps} canReopen />);
+
+    expect(
+      screen.getByRole("button", { name: /cofnij zatwierdzenie i popraw/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not offer it otherwise — an admin's view of someone else's approval", () => {
+    render(<FlatView {...baseProps} canReopen={false} />);
+
+    expect(
+      screen.queryByRole("button", { name: /cofnij zatwierdzenie i popraw/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("FlatView — draft seen by a non-owner admin (no document)", () => {
   const draftProps = {
     ...baseProps,

@@ -14,6 +14,8 @@ import {
   confirmSampleProvenance,
   confirmSubjectProvenance,
   newVersionOf,
+  NotReopenableError,
+  reopenApproved,
   signValuation,
 } from "../src/domain/valuation";
 import type { Valuation } from "../src/ports/valuation";
@@ -768,6 +770,51 @@ describe("signValuation (F-7)", () => {
   });
 });
 
+/**
+ * „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6, spec §3 P9): an operat
+ * that is approved but not yet signed goes back to editing. The files it
+ * already issued stay in storage — the audit row names their keys — and every
+ * field the approval computed is cleared, so the next approval computes it
+ * again rather than carrying a stale number into a new document (D-57).
+ */
+describe("reopenApproved (ADR-020 reguła 6)", () => {
+  it("flips approved → in_progress and clears everything the approval produced", () => {
+    const reopened = reopenApproved(approvedValuation);
+
+    expect(reopened.status).toBe("in_progress");
+    expect(reopened.approvedAt).toBeNull();
+    expect(reopened.docUrl).toBeNull();
+    expect(reopened.docxUrl).toBeNull();
+    expect(reopened.amountInWords).toBeNull();
+    expect(reopened.wr).toBeNull();
+  });
+
+  it("leaves the inputs — the corrections are made ON them, not instead of them", () => {
+    const reopened = reopenApproved(approvedValuation);
+
+    expect(reopened.inputs).toBe(approvedValuation.inputs);
+    // The frozen maps and the prose stamps survive: reopening is not a reset,
+    // and re-fetching maps would change the document nobody asked to change.
+    expect(reopened.mapsFrozenFor).toBe(approvedValuation.mapsFrozenFor);
+    expect(reopened.signedAt).toBeNull();
+  });
+
+  it("refuses a draft and a signed valuation — only an unsigned approval reopens", () => {
+    expect(() => reopenApproved({ ...approvedValuation, status: "in_progress" })).toThrow(
+      NotReopenableError,
+    );
+    expect(() =>
+      reopenApproved({ ...approvedValuation, status: "signed", signedAt: new Date() }),
+    ).toThrow(NotReopenableError);
+  });
+
+  it("refuses an approved row that is already signed, whatever its status says", () => {
+    expect(() =>
+      reopenApproved({ ...approvedValuation, signedAt: new Date("2026-07-20T10:00:00Z") }),
+    ).toThrow(NotReopenableError);
+  });
+});
+
 describe("newVersionOf (NFR-3)", () => {
   it("copies a signed valuation into a linked draft", () => {
     const signed = signValuation(approvedValuation, new Date());
@@ -936,6 +983,7 @@ describe("AUDIT_ACTIONS (FR-12)", () => {
       "approved",
       "signed",
       "version_created",
+      "reopened",
     ]);
   });
 });

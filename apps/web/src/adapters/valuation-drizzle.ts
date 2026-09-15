@@ -17,6 +17,7 @@ import {
   InputsChangedError,
   newValuation,
   newVersionOf,
+  reopenApproved,
   signValuation,
   type AuditAction,
   type FeaturesUpdate,
@@ -28,6 +29,7 @@ import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
 import { currentSectionFactsHashes } from "../domain/prose-hash";
 import { proseEnabled } from "../lib/prose-enabled";
+import { storageKeyOf } from "../lib/operat-doc-keys";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -755,6 +757,47 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           meta: { supersedes: id },
         });
         return toValuation(inserted);
+      });
+    },
+
+    async reopen(id: string, user: SessionUser): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = reopenApproved(valuation);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({
+            status: updated.status,
+            approvedAt: updated.approvedAt,
+            docUrl: updated.docUrl,
+            docxUrl: updated.docxUrl,
+            amountInWords: updated.amountInWords,
+            wr: updated.wr,
+          })
+          // CAS on the status the domain just checked: two clicks on the same
+          // button must not produce two `reopened` rows, and one arriving after
+          // a signature must not un-sign anything (the write-once trigger would
+          // refuse it, but the refusal belongs here, with a message).
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "approved")))
+          .returning();
+        if (!saved) return null;
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "reopened",
+          // Storage keys and the withdrawn issue date — F-13: identifiers, no
+          // operat content. With `approvedAt` cleared this row is the only
+          // record of which files that approval issued; they stay in storage.
+          meta: {
+            approvedAt: valuation.approvedAt?.toISOString() ?? null,
+            docKey: storageKeyOf(valuation.docUrl),
+            docxKey: storageKeyOf(valuation.docxUrl),
+          },
+        });
+        return toValuation(saved);
       });
     },
   };

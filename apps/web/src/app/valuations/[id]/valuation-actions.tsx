@@ -4,9 +4,20 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { BlockerList } from "@/components/wizard/blocker-list";
 import { FootNav } from "@/components/wizard/foot-nav";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { approveValuation, type ApproveValuationResult } from "@/app/actions/approve-valuation";
 import { signValuationAction } from "@/app/actions/sign-valuation";
 import { createNewVersionAction } from "@/app/actions/create-new-version";
+import { reopenValuationAction } from "@/app/actions/reopen-valuation";
 import { usePreviewMaps } from "./steps/preview-maps-state";
 import { currencyFormatter } from "./cards";
 
@@ -36,6 +47,7 @@ export function ValuationActions({
   gateOk,
   canApprove,
   canSign,
+  canReopen = false,
   canCreateNewVersion,
   wr,
 }: {
@@ -43,6 +55,12 @@ export function ValuationActions({
   gateOk: boolean;
   canApprove: boolean;
   canSign: boolean;
+  /**
+   * The owner's approved, unsigned operat may go back to editing (ADR-020
+   * reguła 6). Defaults to false so the call sites that never offer it — the
+   * step-7 preview — stay as they are.
+   */
+  canReopen?: boolean;
   canCreateNewVersion: boolean;
   /** Optional: ValuationActions also mounts on the flat view
    * (page.tsx), whose call site doesn't pass it — `undefined` and `null`
@@ -103,6 +121,36 @@ export function ValuationActions({
           >
             {isPending ? "Podpisywanie…" : "Podpisz operat (nieodwracalne)"}
           </Button>
+        ) : null}
+        {canReopen ? (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="reopen-button"
+                disabled={isPending}
+              >
+                {isPending ? "Cofanie…" : "Cofnij zatwierdzenie i popraw"}
+              </Button>
+            </AlertDialogTrigger>
+            {/* Texts verbatim from spec §4 (wiersz „Krok 7”): they are what
+                tells the appraiser that a NEW version of the document will be
+                produced and the current one kept. */}
+            <AlertDialogContent>
+              <AlertDialogTitle>Cofnąć zatwierdzenie?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Operat wróci do edycji. Po poprawkach zatwierdzisz go ponownie i powstanie nowa
+                wersja dokumentu. Obecny plik zostanie w historii wyceny.
+              </AlertDialogDescription>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                <AlertDialogAction onClick={() => run(reopenValuationAction)}>
+                  Cofnij zatwierdzenie
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         ) : null}
         {canCreateNewVersion ? (
           <Button
