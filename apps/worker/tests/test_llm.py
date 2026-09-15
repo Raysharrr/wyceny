@@ -82,6 +82,7 @@ def anthropic_imports(path: Path) -> list[str]:
 def test_on_the_kw_path_only_the_adapter_imports_anthropic():
     assert anthropic_imports(APP / "llm.py") == ["<module>"]
     assert anthropic_imports(APP / "kw.py") == []
+    assert anthropic_imports(APP / "kw_validate.py") == []
     # The prose call stays as it was (ADR-021 moves it behind the port, not this block).
     assert anthropic_imports(APP / "main.py") == ["_generate_prose_section"]
 

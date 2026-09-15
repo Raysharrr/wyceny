@@ -68,10 +68,8 @@ def test_transcription_of_the_synthetic_book_comes_back_verbatim(monkeypatch):
     pdf = b"%PDF-1.4 ksiega"
     resp = post(mint(), pdf)
     assert resp.status_code == 200
-    body = resp.json()
-    assert {k: v for k, v in body.items() if k != "walidacja"} == {
-        k: v for k, v in sample().items() if k != "walidacja"
-    }
+    # The wire shape IS the fixture: KsiegaTresc + walidacja (web contract test reads it).
+    assert resp.json() == sample()
     assert fake.calls == [
         dict(
             model="claude-opus-5",
@@ -82,6 +80,20 @@ def test_transcription_of_the_synthetic_book_comes_back_verbatim(monkeypatch):
             thinking={"type": "adaptive"},
         )
     ]
+
+
+def test_a_transcription_failing_validation_is_returned_with_the_verdict(monkeypatch):
+    """Validation judges, the endpoint does not reject: web decides (stores only `ok`)."""
+    tresc = sample_tresc()
+    tresc.polaDodatkowe.numerLokalu = (tresc.polaDodatkowe.numerLokalu or "") + "1"
+    use_llm(monkeypatch, LlmResult(tresc, "end_turn", 1, 1))
+    resp = post(mint())
+    assert resp.status_code == 200
+    assert resp.json()["walidacja"] == {
+        "ok": False,
+        "bledy": [{"klasa": "pole_niezgodne:numerLokalu", "dzial": "I-O"}],
+    }
+    assert resp.json()["polaDodatkowe"]["numerLokalu"] == tresc.polaDodatkowe.numerLokalu
 
 
 def test_persons_are_not_scrubbed(monkeypatch):

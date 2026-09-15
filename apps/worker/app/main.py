@@ -26,7 +26,7 @@ import app.street_index as street_index
 import app.subject as subject
 from app import coop_xls
 from app import kw as kw_core
-from app import kw_transcribe
+from app import kw_transcribe, kw_validate
 import app.maps as maps
 from app import photo as photo_core
 from app import prose as prose_core
@@ -677,7 +677,14 @@ def _transcribe_error(code: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"detail": detail, "code": code})
 
 
-@app.post("/kw-transcribe", response_model=kw_transcribe.KsiegaTresc)
+class KwTranscribeResponse(kw_transcribe.KsiegaTresc):
+    """The book's content, flat, plus the deterministic verdict. The endpoint never
+    rejects on a failed verdict — web stores the content only when `walidacja.ok`."""
+
+    walidacja: kw_validate.Walidacja
+
+
+@app.post("/kw-transcribe", response_model=KwTranscribeResponse)
 def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
     """Full content of the five sections of a unit's book (spike KW, ADR-018
     "Zmiana 15.09"). Persons' data stays in the answer and NEVER reaches a log:
@@ -717,6 +724,7 @@ def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
     # File bytes are never persisted or logged: `data` dies with this request.
 
     tresc = result.parsed
+    walidacja = kw_validate.validate(tresc)
     logger.info(
         "kw_transcribe_done",
         bytes=len(data),
@@ -725,8 +733,11 @@ def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
         output_tokens=result.output_tokens,
         dzialy=len(tresc.dzialy),
         wpisy=sum(len(t.wpisy) for d in tresc.dzialy for t in d.tabele),
+        walidacja_ok=walidacja.ok,
+        # Classes and section codes only — `kw_validate` never puts a value in them.
+        walidacja_bledy=walidacja.bledy,
     )
-    return tresc
+    return KwTranscribeResponse(**tresc.model_dump(), walidacja=walidacja)
 
 
 # --- T-13: cooperative register import (S2a) --------------------------------
