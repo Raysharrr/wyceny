@@ -587,6 +587,49 @@ describe("StepFeatures — progi liczbowe i podpowiedź (FH.1, FH.2)", () => {
     ).toBe("6 piętro i powyżej");
   });
 
+  it("wyczyszczenie obu progów kasuje poziom ze skali, a reszta zostaje policzalna", async () => {
+    // Zejście z trzech poziomów na dwa to normalna edycja (Kościelna i
+    // Meissnera mają przy powierzchni dwa) — nie może kończyć się martwym
+    // przyciskiem zapisu ani komunikatem bez powodu.
+    const user = userEvent.setup();
+    saveFeaturesAction.mockClear();
+    saveFeaturesAction.mockResolvedValue({ ok: true });
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={placeholderComparables([40, 47, 60])}
+        area={PLACEHOLDER_AREA}
+      />,
+    );
+    await openScale(user, "polozenie-na-pietrze");
+    await user.clear(bound("polozenie-na-pietrze", "gorsza", "do"));
+    await user.type(bound("polozenie-na-pietrze", "gorsza", "do"), "3");
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "od"));
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "do"));
+
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "gorszaparter, 1 piętro, 2 piętro, 3 piętro",
+      "lepsza4 piętro i powyżej",
+    ]);
+    expect(within(row("polozenie-na-pietrze")).queryByRole("alert")).toBeNull();
+
+    await rateEvery(user);
+    await user.click(screen.getByRole("button", { name: "Zatwierdź cechy i dalej" }));
+    await waitFor(() => expect(saveFeaturesAction).toHaveBeenCalled());
+    const zapisana = (
+      saveFeaturesAction.mock.calls[0][1] as { features: Array<Record<string, unknown>> }
+    ).features.find((f) => f.key === "polozenie-na-pietrze");
+    expect(zapisana).toMatchObject({
+      definitions: {
+        gorsza: "parter, 1 piętro, 2 piętro, 3 piętro",
+        przecietna: "",
+        lepsza: "4 piętro i powyżej",
+      },
+      measure: { kind: "floor", bounds: { gorsza: { od: 0, do: 3 }, lepsza: { od: 4 } } },
+    });
+  });
+
   it("luka między progami mówi o tym w wierszu, przed zapisem (D-46)", async () => {
     const user = userEvent.setup();
     render(
