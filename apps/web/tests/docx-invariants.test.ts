@@ -460,13 +460,16 @@ describe("effectiveRunFormat — krój i rozmiar (wersja minimalna)", () => {
       expect(effectiveRunFormat(tpl, bare)).toEqual({ font: "Segoe UI", sizePt: 10 });
     });
 
-    it("każdy run z tekstem w Tekstpodstawowy22 wychodzi w Segoe UI 10 — i niesie to w rPr", () => {
+    // Drugi człon tej asercji („…i niesie to w rPr") był prawdą, dopóki cały
+    // Segoe UI brał się z runów operatu źródłowego. Akapity dokładane przez
+    // generator rPr nie mają i mieć nie muszą — biorą krój ze stylu (etap 10c).
+    // Sprawdzamy więc WYNIK, nie sposób jego uzyskania.
+    it("każdy run z tekstem w Tekstpodstawowy22 wychodzi w Segoe UI 10", () => {
       const runs = tp22.flatMap((p) => p.runs).filter((r) => r.text.trim() !== "");
       expect(runs.length).toBeGreaterThan(0);
       expect(new Set(runs.map((r) => JSON.stringify(effectiveRunFormat(tpl, r))))).toEqual(
         new Set([JSON.stringify({ font: "Segoe UI", sizePt: 10 })]),
       );
-      expect(runs.every((r) => r.props.ascii === "Segoe UI" && r.props.szHalfPt === 20)).toBe(true);
     });
   });
 });

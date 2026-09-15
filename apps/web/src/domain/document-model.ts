@@ -216,11 +216,9 @@ function terminateSentence(text: string): string {
 }
 
 /**
- * T9 handoff: the template's `{#dzial3_wpisy}Dział III — wpis: {.}{/dzial3_wpisy}`
- * loop repeats the label per entry with no separator between iterations, so
- * 2+ entries would otherwise run together (`…wpisDział III — wpis: …`).
- * Template tags are FINAL — fixed here by terminating each entry with a
- * period (+ trailing space) so repeated iterations read as separate sentences.
+ * Entries of one dział, each turned into a complete sentence. The template
+ * prints them as ONE paragraph with no separator between entries, so 2+ entries
+ * would otherwise run together (`…wpisDział III — wpis: …`).
  */
 function terminateEntries(tresc: string[]): string[] {
   return tresc.map((t) => `${terminateSentence(t)} `);
@@ -540,6 +538,21 @@ export type DocumentModel = {
   dzial3_opis: string;
   dzial4_opis: string;
   /**
+   * The SAME two sentences for the ground book (b1-template, TP.2). Its
+   * protocol sentence ends with a colon and introduces the dzialy, exactly like
+   * the lokal book's — but the ground book is never transcribed (§P1.8: its
+   * card is filled by hand), so without these the colon introduced nothing.
+   * Empty when that dział was never answered.
+   */
+  dzial3_opis_gruntu: string;
+  dzial4_opis_gruntu: string;
+  /**
+   * The lokal's number as the book states it (dział I-O). One of §8.2's facts on
+   * the manual path, where there is no transcription to quote it from; empty
+   * when the book did not give it.
+   */
+  nr_lokalu_kw: string;
+  /**
    * Dział II's deed, as §7 prints it (ADR-018 reg. 5, D-12): the kind, the Rep.
    * A number and the date, joined. `ma_akt` false means the operat says nothing
    * about a deed at all — never a sentence with blanks in it.
@@ -560,10 +573,6 @@ export type DocumentModel = {
   udzial_kw: string;
   pow_kw_present: boolean;
   pow_uzytkowa_kw: string;
-  dzial3_brak: boolean;
-  dzial3_wpisy: string[];
-  dzial4_brak: boolean;
-  dzial4_wpisy: string[];
   // Section 9 MPZP variants — `{#mpzp}`/`{#mpzp_brak}` are mutually exclusive,
   // enforced here (never both, never neither, when a subject is present).
   mpzp: MpzpBlock | null;
@@ -1054,6 +1063,9 @@ export function buildDocumentModel(
     ma_tresc_lokalu: kw?.tresc != null,
     dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),
     dzial4_opis: dzialOpis(kw?.dzial4, "Dział IV"),
+    dzial3_opis_gruntu: dzialOpis(kwGrunt?.dzial3, "Dział III"),
+    dzial4_opis_gruntu: dzialOpis(kwGrunt?.dzial4, "Dział IV"),
+    nr_lokalu_kw: kw?.nrLokalu ?? "",
     akt_opis: aktOpis(kw?.akt),
     ma_akt: aktOpis(kw?.akt) !== "",
     ma_obciazenie: maObciazenie,
@@ -1068,14 +1080,6 @@ export function buildDocumentModel(
     udzial_kw: kw?.udzial ?? DASH,
     pow_kw_present: kw?.powUzytkowaKw != null,
     pow_uzytkowa_kw: kw?.powUzytkowaKw != null ? formatNumber(kw.powUzytkowaKw, 2) : DASH,
-    // dzialN == null means the source document carries NO dział info (e.g. an
-    // akt notarialny) — that must render NOTHING, not "brak wpisów" (a
-    // fabricated clean-title/no-mortgage claim). brak is true ONLY when the
-    // dział was actually examined (non-null) and came back empty.
-    dzial3_brak: kw != null && kw.dzial3 != null && !kw.dzial3.wpisy,
-    dzial3_wpisy: kw?.dzial3?.wpisy ? terminateEntries(kw.dzial3.tresc) : [],
-    dzial4_brak: kw != null && kw.dzial4 != null && !kw.dzial4.wpisy,
-    dzial4_wpisy: kw?.dzial4?.wpisy ? terminateEntries(kw.dzial4.tresc) : [],
     mpzp: hasMpzp
       ? {
           symbol: subject.mpzpSymbol ?? "",

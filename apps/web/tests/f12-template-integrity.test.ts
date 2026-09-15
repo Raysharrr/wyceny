@@ -209,14 +209,34 @@ const REQUIRED_PLACEHOLDERS = [
   "{/kw_standard}",
   "{#kw_deweloperski}",
   "{/kw_deweloperski}",
-  "{#dzial3_brak}",
-  "{/dzial3_brak}",
-  "{#dzial3_wpisy}",
-  "{/dzial3_wpisy}",
-  "{#dzial4_brak}",
-  "{/dzial4_brak}",
-  "{#dzial4_wpisy}",
-  "{/dzial4_wpisy}",
+  // Paczka 1 (TP.2): §8.2 w kolejności operatu wzorcowego — protokół badania
+  // każdej księgi, potem jej działy (transkrypcja jako tabela albo zdania
+  // ścieżki ręcznej), na końcu akapit o obciążeniu. Dawna para
+  // `dzialN_brak`/`dzialN_wpisy` wyszła razem z wierszami, które ją czytały.
+  "{#ma_protokol_ksiegi_lokalu}",
+  "{/ma_protokol_ksiegi_lokalu}",
+  "{protokol_ksiegi_lokalu}",
+  "{#ma_protokol_ksiegi_gruntu}",
+  "{/ma_protokol_ksiegi_gruntu}",
+  "{protokol_ksiegi_gruntu}",
+  "{#ma_tresc_lokalu}",
+  "{^ma_tresc_lokalu}",
+  "{/ma_tresc_lokalu}",
+  "{#ksiega_lokalu_wiersze}",
+  "{/ksiega_lokalu_wiersze}",
+  "{kol1}",
+  "{kol2}",
+  "{kol3}",
+  "{dzial3_opis}",
+  "{dzial4_opis}",
+  "{dzial3_opis_gruntu}",
+  "{dzial4_opis_gruntu}",
+  "{nr_lokalu_kw}",
+  "{#obciazenie_bez_uwzglednienia}",
+  "{/obciazenie_bez_uwzglednienia}",
+  "{#obciazenie_z_uwzglednieniem}",
+  "{/obciazenie_z_uwzglednieniem}",
+  "{obciazenie_podstawa}",
   // Paczka 1 (TP.1): §2's land-register sentence and §7's two source bullets
   // stopped being literals of the source operat. Each prints only under its own
   // fact — an examined ground book (with its court, when the book carries one)

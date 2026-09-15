@@ -6,6 +6,7 @@ import {
   effectiveRunFormat,
   expectNoText,
   openDocx,
+  sectionParagraphs,
   sectionText,
   type DocxDoc,
   type DocxRun,
@@ -119,3 +120,112 @@ describe("I-13 G / I-19: zdania o księgach i o akcie tylko z faktów (TP.1)", (
     expectNoText(doc, "gruntowej  prowadzi");
   });
 });
+
+describe("I-13 G: §8.2 w kolejności operatu wzorcowego (TP.2, D-21/D-24/D-25)", () => {
+  const sec82 = (wariant: Parameters<typeof wycena1409Anon>[0]) => {
+    const doc = render(wariant);
+    return { doc, paragraphs: sectionParagraphs(doc, "8.2."), text: sectionText(doc, "8.2.") };
+  };
+
+  it("bez badania: ani protokołu, ani tabeli, ani zdań o działach", () => {
+    const { doc, paragraphs } = sec82({ kw: "brak" });
+    expectNoText(doc, "dokonano badania księgi wieczystej");
+    expectNoText(doc, "Dział III:");
+    expectNoText(doc, "Dział IV:");
+    expect(paragraphs.filter((p) => p.container === "table")).toHaveLength(0);
+  });
+
+  it("obie księgi ręcznie: dwa protokoły zdaniami, bez tabeli", () => {
+    const { paragraphs, text } = sec82({ kw: "ekw_reczne_obie_ksiegi" });
+    // Zdanie protokołu jest cytatem z operatów biura — sprawdzamy je w całości,
+    // razem z „r." bez spacji, domeną bez polskich znaków i dwukropkiem.
+    expect(text).toContain(
+      "W dniu 14.09.2026r. dokonano badania księgi wieczystej nieruchomości lokalowej " +
+        "nr XX1X/00000000/0 (źródło: przegladarka-ekw.ms.gov.pl):",
+    );
+    expect(text).toContain(
+      "W dniu 14.09.2026r. dokonano badania księgi wieczystej nieruchomości gruntowej " +
+        "nr XX1X/00000001/0 (źródło: przegladarka-ekw.ms.gov.pl):",
+    );
+    // Dwukropek protokołu musi coś wprowadzać — także przy księdze gruntu,
+    // której nigdy nie transkrybujemy (§P1.8).
+    expect(text).toContain("Dział III: Służebność osobista mieszkania");
+    expect(text).toContain("Dział IV: brak wpisów.");
+    expect(text).toContain("Numer lokalu wg księgi wieczystej: 12.");
+    expect(paragraphs.filter((p) => p.container === "table")).toHaveLength(0);
+  });
+
+  it("PDF lokalu z treścią: tabela działów w kolejności eKW, zamiast zdań", () => {
+    const { doc, paragraphs, text } = sec82({ kw: "pdf_lokalu_z_trescia" });
+    const cells = paragraphs.filter((p) => p.container === "table").map((p) => p.text);
+    expect(
+      cells.filter((c) => c.startsWith("DZIAŁ ")),
+      "pięć działów w kolejności eKW",
+    ).toEqual([
+      "DZIAŁ I-O - OZNACZENIE NIERUCHOMOŚCI",
+      "DZIAŁ I-SP - SPIS PRAW ZWIĄZANYCH Z WŁASNOŚCIĄ",
+      "DZIAŁ II - WŁASNOŚĆ",
+      "DZIAŁ III - PRAWA, ROSZCZENIA I OGRANICZENIA",
+      "DZIAŁ IV - HIPOTEKA",
+    ]);
+    expect(cells).toContain("Ulica");
+    expect(cells).toContain("UL. ZIELARSKA");
+    // Transkrypcja zastępuje zdania ścieżki ręcznej dla KSIĘGI LOKALU — zdania o
+    // działach księgi gruntu zostają, bo tej nigdy nie transkrybujemy.
+    expectNoText(sectionText(doc, "8.2."), "Numer lokalu wg księgi wieczystej:");
+    expectNoText(sectionText(doc, "8.2."), "Dział III: Służebność osobista mieszkania");
+    expect(doc).toBeDefined();
+    // Księga gruntu nadal ręczna, więc jej protokół zostaje zdaniami.
+    expect(text).toContain("dokonano badania księgi wieczystej nieruchomości gruntowej");
+  });
+
+  /**
+   * Trzy stany obciążenia, nie dwa (kontrakt po PR #55). `wariant === null` to
+   * decyzja w połowie: podstawa wpisana, brzmienie niewybrane. B-07 nie dopuści
+   * tego do zatwierdzenia, ale PODGLĄD tam sięga — i dokument nie ma prawa
+   * wybrać brzmienia za rzeczoznawcę.
+   */
+  it("D-25: akapit „Uwaga” tylko przy wybranym wariancie obciążenia", () => {
+    const wybrany = sec82({ kw: "ekw_reczne_obie_ksiegi" });
+    expect(wybrany.text).toContain(
+      "Uwaga: w dziale III księgi wieczystej lokalu ujawniony jest wpis ograniczonego prawa rzeczowego.",
+    );
+    expect(wybrany.text).toContain("Wartość rynkową określono bez uwzględnienia tego obciążenia.");
+
+    const polDecyzji = wycena1409Anon({ kw: "ekw_reczne_obie_ksiegi" });
+    polDecyzji.inputs.encumbranceTreatment!.wariant = null;
+    const doc = openDocx(renderOperatDocx(buildDocumentModel(polDecyzji)));
+    expectNoText(doc, "Uwaga: w dziale III księgi wieczystej lokalu");
+    expectNoText(doc, "bez uwzględnienia tego obciążenia");
+    expectNoText(doc, "z uwzględnieniem tego obciążenia");
+
+    const zUwzglednieniem = wycena1409Anon({ kw: "ekw_reczne_obie_ksiegi" });
+    zUwzglednieniem.inputs.encumbranceTreatment!.wariant = "z_uwzglednieniem";
+    const docZ = openDocx(renderOperatDocx(buildDocumentModel(zUwzglednieniem)));
+    expect(sectionText(docZ, "8.2.")).toContain(
+      "Wartość rynkową określono z uwzględnieniem tego obciążenia.",
+    );
+  });
+
+  // Wariant `brak` nie dokłada w §8.2 ani jednego akapitu — nie ma tu czego mierzyć.
+  it.each([
+    ["ekw_reczne_obie_ksiegi", "ekw_reczne_obie_ksiegi"],
+    ["pdf_lokalu_z_trescia", "pdf_lokalu_z_trescia"],
+  ] as const)("§8.2 (%s): akapity dołożone w TP.2 mają jawny pStyle", (_, kw) => {
+    const { paragraphs } = sec82({ kw });
+    const dolozone = paragraphs.filter(
+      (p) => p.container === "table" || SENTINELS_82.some((s) => p.text.includes(s)),
+    );
+    expect(dolozone.length).toBeGreaterThan(0);
+    expect(dolozone.filter((p) => p.style == null)).toEqual([]);
+  });
+});
+
+/** Sentinele akapitów, które w §8.2 dokłada etap 14 generatora. */
+const SENTINELS_82 = [
+  "dokonano badania księgi wieczystej",
+  "Dział III:",
+  "Dział IV:",
+  "Numer lokalu wg księgi wieczystej:",
+  "Uwaga: w dziale III księgi wieczystej lokalu",
+];

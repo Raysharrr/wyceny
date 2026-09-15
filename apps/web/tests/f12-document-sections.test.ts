@@ -217,10 +217,8 @@ describe("F-12: rendered operat — legacy, no subject fetched", () => {
     expect(text).not.toContain("Badanie ksiąg wieczystych przeprowadzono");
     expect(text).not.toContain("Księga wieczysta lokalu:");
     expect(text).not.toContain("księgę macierzystą gruntu");
-    expect(text).not.toContain("Dział III — wpis:");
-    expect(text).not.toContain("Dział IV — wpis:");
-    expect(text).not.toContain("Dział III (prawa, roszczenia i ograniczenia): brak wpisów.");
-    expect(text).not.toContain("Dział IV (hipoteki): brak wpisów.");
+    expect(text).not.toContain("Dział III:");
+    expect(text).not.toContain("Dział IV:");
     expect(text).not.toContain("wg odpisu księgi wieczystej");
     expect(text).toContain("Udział w nieruchomości wspólnej: —");
     expect(text).not.toContain("Powierzchnia użytkowa lokalu (wg dokumentu KW/aktu)");
@@ -250,10 +248,10 @@ describe("F-12: rendered operat — legacy, no subject fetched", () => {
     // it was only ever reached when nothing had been examined (D-24, I-19).
     expect(model.udzial_kw).toBe("—");
     expect(model.pow_uzytkowa_kw).toBe("—");
-    expect(model.dzial3_brak).toBe(false);
-    expect(model.dzial3_wpisy).toEqual([]);
-    expect(model.dzial4_brak).toBe(false);
-    expect(model.dzial4_wpisy).toEqual([]);
+    // TP.2: §8.2 opisuje działy zdaniami z faktów (`dzialN_opis`), a nie parą
+    // flaga+lista — stąd tu pusty opis zamiast dawnych dzialN_brak/dzialN_wpisy.
+    expect(model.dzial3_opis).toBe("");
+    expect(model.dzial4_opis).toBe("");
   });
 });
 
@@ -279,19 +277,20 @@ describe("F-12: rendered operat — KW examination block (standard variant)", ()
     expect(text).toContain("Oznaczenie księgi wieczystej:");
   });
 
-  it("renders both dział III and dział IV entries from the two-entry fixture (T9 loop-shaping)", () => {
-    expect(text).toContain("Dział III — wpis: Ostrzeżenie o toczącym się postępowaniu");
+  // ZMIENIONE przez b1-template (TP.2): działy opisuje jedno zdanie na dział
+  // (`dzialN_opis`) zamiast pętli powtarzającej etykietę przy każdym wpisie —
+  // to ten sam zestaw faktów w kształcie, w jakim pisze je operat biura.
+  it("renders both dział III and dział IV entries from the two-entry fixture", () => {
+    expect(text).toContain("Dział III: Ostrzeżenie o toczącym się postępowaniu");
     expect(text).toContain("Wzmianka o wniosku");
-    expect(text).toContain("Dział IV — wpis: Hipoteka umowna na rzecz banku X");
+    expect(text).toContain("Dział IV: Hipoteka umowna na rzecz banku X");
     expect(text).toContain("Hipoteka przymusowa na rzecz US");
-    // Loop-shaping fix: entries must not run together label-to-text or
-    // text-to-next-label with no separator (raw docxtemplater loop output
-    // would read "…postępowaniuDział III — wpis:…" / "…banku XDział IV — wpis:…").
-    expect(text).not.toMatch(/postępowaniuDział/);
-    expect(text).not.toMatch(/banku XDział/);
+    // Wpisy nie mogą się zlewać — każdy kończy się kropką i spacją.
+    expect(text).not.toMatch(/postępowaniuWzmianka/);
+    expect(text).not.toMatch(/banku XHipoteka/);
   });
 
-  it("kw_standard/kw_deweloperski and dzialN_brak/dzialN_wpisy are mutually exclusive on the model", () => {
+  it("kw_standard/kw_deweloperski are mutually exclusive on the model", () => {
     const inputs = goldenInputs(SUBJECT_WITH_MPZP, KW_STANDARD);
     const model = buildDocumentModel({
       address: "ul. Przykładowa 5, Poznań",
@@ -309,10 +308,8 @@ describe("F-12: rendered operat — KW examination block (standard variant)", ()
     });
     expect(model.kw_standard).toBe(true);
     expect(model.kw_deweloperski).toBe(false);
-    expect(model.dzial3_brak).toBe(false);
-    expect(model.dzial3_wpisy.length).toBe(2);
-    expect(model.dzial4_brak).toBe(false);
-    expect(model.dzial4_wpisy.length).toBe(2);
+    expect(model.dzial3_opis).toContain("Ostrzeżenie o toczącym się postępowaniu");
+    expect(model.dzial4_opis).toContain("Hipoteka umowna na rzecz banku X");
     expect(model.pow_kw_present).toBe(true);
   });
 });
@@ -340,10 +337,8 @@ describe("F-12: rendered operat — akt notarialny with no dział III/IV info (d
   });
 
   it("renders NEITHER the brak sentence NOR the wpisy loop for either dział (honest silence, not a fabricated clean-title claim)", () => {
-    expect(text).not.toContain("Dział III (prawa, roszczenia i ograniczenia): brak wpisów.");
-    expect(text).not.toContain("Dział III — wpis:");
-    expect(text).not.toContain("Dział IV (hipoteki): brak wpisów.");
-    expect(text).not.toContain("Dział IV — wpis:");
+    expect(text).not.toContain("Dział III:");
+    expect(text).not.toContain("Dział IV:");
   });
 
   // Fix #5b bronił się tu przed zdaniem o odpisie nad „…na podstawie: akt
@@ -373,10 +368,8 @@ describe("F-12: rendered operat — akt notarialny with no dział III/IV info (d
       amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
       author: AUTOR_TESTOWY,
     });
-    expect(model.dzial3_brak).toBe(false);
-    expect(model.dzial3_wpisy).toEqual([]);
-    expect(model.dzial4_brak).toBe(false);
-    expect(model.dzial4_wpisy).toEqual([]);
+    expect(model.dzial3_opis).toBe("");
+    expect(model.dzial4_opis).toBe("");
   });
 });
 
