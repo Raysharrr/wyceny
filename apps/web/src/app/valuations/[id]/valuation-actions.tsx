@@ -15,7 +15,7 @@ import { currencyFormatter } from "./cards";
  * `draft` → approve button (gated by `canApprove`); `approved` → sign button
  * (gated by `canSign`); `signed` → new-version button (gated by
  * `canCreateNewVersion`, Task 9). `gateOk` is computed server-side by the RSC
- * (approvalGate) — the disabled state is UX sugar; the actions re-check
+ * (approvalBlockers) — the disabled state is UX sugar; the actions re-check
  * everything server-side (F-4 is an invariant, not UI).
  *
  * T8 removed the four bulk `confirm-*` buttons that used to lead this bar.

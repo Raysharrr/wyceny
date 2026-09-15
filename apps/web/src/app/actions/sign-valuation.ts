@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, profileRepository } from "@/app/valuations/_deps";
 import { NotSignableError } from "@/domain/valuation";
-import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
+import { buildDocumentModel } from "@/domain/document-model";
+import { documentInputFor } from "@/domain/document-input";
 import { computeKcs } from "@/domain/kcs";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { StorageNotFoundError } from "@/ports/storage";
@@ -63,19 +64,9 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
     try {
       const kcs = computeKcs(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
-      const model = buildDocumentModel({
-        address: valuation.address,
-        area: valuation.area,
-        purpose: valuation.purpose as OperatPurpose,
-        kwNumber: valuation.kwNumber,
-        propertyRight: valuation.propertyRight,
-        client: valuation.client ?? "",
-        inspectionDate: valuation.inspectionDate ?? "",
-        approvedAt: valuation.approvedAt,
-        inputs: valuation.inputs,
-        kcs,
-        amountInWords,
-      });
+      const model = buildDocumentModel(
+        documentInputFor(valuation, { approvedAt: valuation.approvedAt, kcs, amountInWords }),
+      );
       // Slice 9: sign NEVER contacts WMS — it re-renders the maps frozen at
       // approve (spec decision 1). A StorageNotFoundError means "approved
       // without maps" — the only case map absence is silent. Any OTHER error

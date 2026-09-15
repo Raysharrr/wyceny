@@ -3,10 +3,8 @@ import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { WizardShell } from "@/components/wizard/wizard-shell";
 import { getSession } from "@/auth/session";
-import { approvalGate } from "@/domain/provenance";
-import { currentSectionFactsHashes } from "@/domain/prose-hash";
-import { proseEnabled } from "@/lib/prose-enabled";
-import { documentFieldBlockers } from "@/domain/document-model";
+import { approvalBlockers } from "@/domain/valuation";
+import { gateContextFor } from "@/lib/gate-context";
 import { maxReachedStep, resolveStep } from "@/domain/wizard";
 import { step1DefaultsFromInputs } from "@/lib/subject-form";
 import { valuationRepository } from "../_deps";
@@ -160,25 +158,11 @@ export default async function ValuationViewPage({
   // — offering the button here would let the owner spawn a second, duplicate
   // draft.
   const canCreateNewVersion = valuation.status === "signed" && isOwner && !successor;
-  // Mirrors step-operat.tsx: this list has to name the same blockers the
-  // approve action refuses on, kill switch (FR-6) included.
-  const gate =
-    isDraft && valuation.inputs
-      ? approvalGate(
-          { ...valuation.inputs, propertyRight: valuation.propertyRight },
-          {
-            requireProse: proseEnabled(),
-            currentSectionHashes: proseEnabled()
-              ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
-              : undefined,
-          },
-        )
-      : null;
-  const fieldBlockers = isDraft ? documentFieldBlockers(valuation) : [];
-  // Approval requires BOTH the F-4 provenance gate and the document-field
-  // check (spec §4) — the button is enabled only when neither has a blocker.
-  const allBlockers = [...(gate && !gate.ok ? gate.blockers : []), ...fieldBlockers];
-  const gateOk = gate?.ok === true && fieldBlockers.length === 0;
+  // The same list the approve action refuses on, kill switch (FR-6) included.
+  const allBlockers = isDraft ? approvalBlockers(valuation, gateContextFor(valuation)) : [];
+  // A draft without an inputs snapshot can never be approved, even with an
+  // empty list (only its document fields are checkable).
+  const gateOk = isDraft && valuation.inputs != null && allBlockers.length === 0;
   // A legacy `approved` row (no inputs) or a superseded `signed` row leaves
   // every can* flag false — without this check the action-bar Card would
   // render empty for the owner.

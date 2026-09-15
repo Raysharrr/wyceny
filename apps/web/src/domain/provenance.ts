@@ -40,7 +40,12 @@ export type InputsProvenance = {
   kw?: Provenance;
 };
 
-export type Blocker = { path: string; label: string };
+/**
+ * `code` is the catalogue id of a paczka-1 blocker (B-01…B-16, spec §4) that
+ * tests and E2E assert on. Additive: blockers from before the catalogue leave
+ * it unset.
+ */
+export type Blocker = { path: string; label: string; code?: string };
 
 export type GateResult = { ok: true } | { ok: false; blockers: Blocker[] };
 
