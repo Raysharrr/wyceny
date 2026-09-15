@@ -116,6 +116,36 @@ export type Comparable = {
   status?: ProvenanceStatus;
 };
 
+/** One band of a measurable scale; whole numbers, an absent edge is unbounded on that side. */
+export type MeasureBound = { od?: number; do?: number };
+
+/**
+ * Numeric thresholds of a MEASURABLE feature — piętro and powierzchnia only
+ * (plan §P1.1 "Progi cech mierzalnych", ADR-016 reg. 5). The bands are the
+ * scale; the definition TEXTS are generated from them
+ * (`definitionsFromMeasure`), never parsed back — so an appraiser who retypes
+ * a definition by hand drops `measure` and with it the suggestion.
+ *
+ * Both kinds share ONE convention, taken from how the operats actually write
+ * these scales: edges are WHOLE numbers, both INCLUSIVE, neighbours touch at
+ * `prev.do + 1 === next.od`. Aneta's 14.09 area scale is literally "do 40 m² /
+ * od 41 m² do 45 m² / od 46 m²", and a continuous `do`-exclusive reading cannot
+ * express it — 40→41 and 45→46 come out as gaps and the step refuses to save.
+ * `kind` therefore fixes only what the number MEANS and how a measured value
+ * reaches the bands:
+ * - `"floor"` — piętro as a whole number, parter = 0; the value is whole already;
+ * - `"area"` — m²; the measured area is rounded half-up to whole m² before it is
+ *   placed, so no flat lands in the gap the operat's own wording leaves open
+ *   (40,5 m² is "do 40 m²" or "od 41 m²" — never neither).
+ *
+ * The engine never reads this; it feeds the step-4 suggestion and the §12.2
+ * Cmin/Cmax sentences (D-52).
+ */
+export type FeatureMeasure = {
+  kind: "floor" | "area";
+  bounds: Partial<Record<FeatureRating, MeasureBound>>;
+};
+
 export type Feature = {
   name: string;
   /** Weight as a fraction (Σ over features = 1.0). UI works in %, converts before calling. */
@@ -130,6 +160,12 @@ export type Feature = {
    * position before calling it (ADR-016 reg. 2).
    */
   definitions?: Partial<Record<FeatureRating, string>> | null;
+  /**
+   * Numeric thresholds behind `definitions` for a measurable feature (piętro,
+   * powierzchnia). Optional and additive: a snapshot saved before FH.1 has no
+   * `measure` and reads exactly as it did — it simply gets no suggestion.
+   */
+  measure?: FeatureMeasure | null;
 };
 
 export type KcsInput = {

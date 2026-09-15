@@ -479,6 +479,35 @@ export function SubjectForm({
                     </Field>
                   )}
                 />
+                {/* FH.2 (ADR-016 reg. 5): the flat's own storey. EGiB records
+                    the BUILDING's storey count, never which one the flat sits
+                    on, so this is manual — step 4 compares it with the piętro
+                    scale's thresholds. */}
+                <Controller
+                  control={control}
+                  name="subject.pietro"
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={!!fieldState.error}>
+                      <FieldLabel htmlFor="subject-pietro">Piętro</FieldLabel>
+                      <Input
+                        id="subject-pietro"
+                        type="number"
+                        step="1"
+                        min="0"
+                        inputMode="numeric"
+                        placeholder="parter = 0"
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                        value={toInputValue(field.value)}
+                        onChange={(e) =>
+                          field.onChange(e.target.value === "" ? undefined : e.target.value)
+                        }
+                      />
+                      <FieldError errors={[fieldState.error]} />
+                    </Field>
+                  )}
+                />
               </FieldGroup>
 
               <SubjectSection

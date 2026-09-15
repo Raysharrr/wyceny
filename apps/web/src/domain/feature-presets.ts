@@ -1,4 +1,5 @@
-import type { FeatureRating } from "./kcs";
+import { definitionsFromMeasure } from "./feature-rules";
+import type { FeatureMeasure, FeatureRating } from "./kcs";
 
 /**
  * Expert feature preset (F-6, ADR-006) — the domain source of truth for the
@@ -12,22 +13,34 @@ import type { FeatureRating } from "./kcs";
  * — Aneta verifies them during app testing (user decision 2026-07-15); names
  * and texts corrected after her 14.09 operat (D-43, D-45, D-46, D-49). The
  * MODEL (per-valuation, editable) is confirmed. Pure module: zero I/O (F-10).
+ *
+ * The two MEASURABLE features are the exception to "texts": piętro and
+ * powierzchnia carry numeric thresholds (`defaultMeasure`), and their texts are
+ * GENERATED from them (`definitionsFromMeasure`, FH.1) — editing a threshold
+ * rewrites the text, so the two can never state different scales.
  */
 
 /** Document/display order of rating levels. */
 export const FEATURE_LEVELS = ["lepsza", "przecietna", "gorsza"] as const;
 
 /**
- * Label per rating level — the internal enum stays diacritic-free. One map for
- * the §12.1 scale block, the prose facts and the ADR-016 blockers.
+ * Label per rating level — defined in `feature-rules.ts` beside the rules that
+ * read the levels, re-exported here because this module has been the import
+ * site since Slice 7.
  */
-export const LEVEL_LABEL: Record<FeatureRating, string> = {
-  lepsza: "lepsza",
-  przecietna: "przeciętna",
-  gorsza: "gorsza",
-};
+export { LEVEL_LABEL } from "./feature-rules";
 
 export type FeatureDefinitions = Partial<Record<FeatureRating, string>>;
+
+/**
+ * Piętro thresholds (D-46): parter / 1–3 / od 4, closed and disjoint —
+ * the 14.09 operat's "piętra pośrednie" had no numbers at all. Piętro is
+ * counted parter = 0, the convention the definition texts print.
+ */
+const PIETRO_MEASURE: FeatureMeasure = {
+  kind: "floor",
+  bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+};
 
 export type FeaturePresetEntry = {
   /** Stable slug (no diacritics) — closed pool, validated by zod. */
@@ -39,6 +52,12 @@ export type FeaturePresetEntry = {
   kind: "basic" | "exceptional";
   /** Static level definitions; powierzchnia-uzytkowa is dynamic — see powierzchniaDefinitions(). */
   defaultDefinitions: FeatureDefinitions;
+  /**
+   * Numeric thresholds behind those texts, for the two measurable features
+   * (FH.1). Absent on every other feature — nothing to measure, no suggestion.
+   * powierzchnia-uzytkowa is dynamic here too: `powierzchniaMeasure()`.
+   */
+  defaultMeasure?: FeatureMeasure;
 };
 
 export const LOKAL_FEATURE_KEYS = [
@@ -74,12 +93,9 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
       name: "Położenie na piętrze",
       defaultWeightPct: 30,
       kind: "basic",
-      defaultDefinitions: {
-        // D-46: closed, disjoint ranges (parter = 0).
-        lepsza: "od 4 piętra",
-        przecietna: "piętra od 1 do 3",
-        gorsza: "parter",
-      },
+      // D-46: the texts ARE the thresholds — generated, never typed twice.
+      defaultDefinitions: definitionsFromMeasure(PIETRO_MEASURE),
+      defaultMeasure: PIETRO_MEASURE,
     },
     {
       key: "lokalizacja",
@@ -167,13 +183,25 @@ export function medianAreaM2(areas: Array<number | null | undefined>): number | 
   return Math.round(median);
 }
 
+/**
+ * Sample-derived powierzchnia thresholds; null when the sample carries no
+ * areas. The median splits the scale in two: below it the flat is the smaller
+ * (and, per m², the dearer) one. Both edges are inclusive whole m², so the
+ * bands touch one m² apart — "do 46 m²" / "od 47 m²" for a median of 47, which
+ * leaves a flat of exactly the median area in the larger band, as before.
+ *
+ * TWO levels, not three: that is the real shape of the Kościelna and Meissnera
+ * operats, and it is all a median can honestly say.
+ */
+export function powierzchniaMeasure(medianM2: number | null): FeatureMeasure | null {
+  if (medianM2 == null) return null;
+  return { kind: "area", bounds: { lepsza: { do: medianM2 - 1 }, gorsza: { od: medianM2 } } };
+}
+
 /** Sample-derived powierzchnia definitions; {} when the sample carries no areas. */
 export function powierzchniaDefinitions(medianM2: number | null): FeatureDefinitions {
-  if (medianM2 == null) return {};
-  return {
-    lepsza: `powierzchnia użytkowa poniżej ${medianM2} m²`,
-    gorsza: `powierzchnia użytkowa ${medianM2} m² i więcej`,
-  };
+  const measure = powierzchniaMeasure(medianM2);
+  return measure ? definitionsFromMeasure(measure) : {};
 }
 
 /** Expected preset definitions for a key, resolving the dynamic powierzchnia case. */
@@ -217,6 +245,7 @@ export function defaultFeatureFormValues(): Array<{
   weightPct: number;
   rating: FeatureRating | null;
   definitions: FeatureDefinitions;
+  measure?: FeatureMeasure;
 }> {
   return FEATURE_PRESETS.lokal
     .filter((e) => e.kind === "basic")
@@ -226,5 +255,6 @@ export function defaultFeatureFormValues(): Array<{
       weightPct: e.defaultWeightPct,
       rating: null,
       definitions: { ...e.defaultDefinitions },
+      ...(e.defaultMeasure ? { measure: e.defaultMeasure } : {}),
     }));
 }

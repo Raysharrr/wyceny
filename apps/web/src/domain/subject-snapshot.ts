@@ -18,6 +18,13 @@ export type SubjectSnapshot = {
   kondygnacjeNadziemne?: number;
   kondygnacjePodziemne?: number;
   rokBudowy?: number;
+  /**
+   * Storey of the valued flat, parter = 0 (ADR-016 reg. 5, FH.2). Manual like
+   * `rokBudowy`: EGiB records the BUILDING's storey count, never which one the
+   * flat sits on. Feeds the step-4 threshold suggestion; optional and
+   * additive, so every snapshot saved before FH.2 parses unchanged.
+   */
+  pietro?: number | null;
   mpzpAbsent?: boolean;
   mpzpSymbol?: string;
   mpzpNazwa?: string;

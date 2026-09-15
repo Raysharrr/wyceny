@@ -3,7 +3,11 @@ import { computeKcs, type Feature, type KcsInput } from "../../src/domain/kcs";
 import type { BuildDocumentInput } from "../../src/domain/document-model";
 import type { KwSnapshot } from "../../src/domain/kw-snapshot";
 import type { Candidate } from "../../src/domain/sample-selection";
-import { FEATURE_PRESETS, powierzchniaDefinitions } from "../../src/domain/feature-presets";
+import {
+  FEATURE_PRESETS,
+  powierzchniaDefinitions,
+  powierzchniaMeasure,
+} from "../../src/domain/feature-presets";
 import { AUTOR_TESTOWY } from "./document-model-fixture";
 import { buildPhotoKey } from "../../src/domain/inspection";
 import { currentSectionFactsHash } from "../../src/domain/prose-hash";
@@ -53,7 +57,7 @@ import {
  */
 export const KW_TESTOWA = ["XX1X", "00000000", "0"].join("/");
 
-/** Piętro przedmiotu. Do czasu pola `subject.pietro` (P1.1, `b1-feature-hints`) stała obok fikstury. */
+/** Piętro przedmiotu — od FH.2 trzymane w `inputs.subject.pietro` (P1.1, ADR-016 reg. 5). */
 export const PIETRO_PRZEDMIOTU = 7;
 
 /**
@@ -71,10 +75,20 @@ export type Wariant1409 = {
   kw?: "brak" | "odpis_z_wpisem_dzial_iii";
 };
 
-/** [cena zł/m², powierzchnia m², piętro, ulica, data] — pierwsze dwie to remis Cmin. */
+/**
+ * [cena zł/m², powierzchnia m², **kondygnacja**, ulica, data] — pierwsze dwie to remis Cmin.
+ *
+ * Trzecia liczba jest tym, co trzyma RCN: `lok_nr_kond`, parter = 1. Kondygnacje
+ * lokali Cmin i Cmax dobrane na GRANICACH przedziałów presetu, żeby zestaw nie
+ * był ślepy na konwersję (recenzja PR #58: fikstura z kondygnacjami 3, 10 i 5
+ * dawała ten sam opis z konwersją i bez niej, więc można ją było dodać albo
+ * usunąć i żaden z 2038 testów nie drgnął):
+ * - Cmax na 4 → piętro 3, ostatnie „pośrednie”; bez konwersji byłoby „najwyższa”,
+ * - drugi lokal Cmin na 1 → parter, „najniższa”; bez konwersji „pośrednia”.
+ */
 const TRANSACTIONS: Array<[number, number, number, string, string]> = [
   [9100.0, 48.6, 10, "os. Testowe", "2025-10-14"],
-  [9100.0, 47.9, 5, "ul. Przykładowa", "2025-11-03"],
+  [9100.0, 47.9, 1, "ul. Przykładowa", "2025-11-03"],
   [9650.5, 38.4, 2, "os. Testowe", "2025-11-27"],
   [9820.0, 44.1, 7, "ul. Fikcyjna", "2025-12-09"],
   [10050.25, 52.3, 0, "os. Testowe", "2026-01-15"],
@@ -84,7 +98,7 @@ const TRANSACTIONS: Array<[number, number, number, string, string]> = [
   [10880.4, 50.1, 1, "os. Testowe", "2026-05-20"],
   [11120.0, 39.7, 6, "ul. Przykładowa", "2026-06-16"],
   [11490.6, 43.5, 8, "ul. Fikcyjna", "2026-07-07"],
-  [11880.0, 35.9, 3, "os. Testowe", "2026-08-12"],
+  [11880.0, 35.9, 4, "os. Testowe", "2026-08-12"],
 ];
 
 const PROPOSED: Candidate[] = TRANSACTIONS.map(([pricePerM2, area, floor, street, date], i) => ({
@@ -118,6 +132,9 @@ function features(skala: NonNullable<Wariant1409["skalaPowierzchni"]>): Feature[
     rating,
     key,
     definitions: { ...preset(key).defaultDefinitions },
+    // Progi presetu jadą razem z tekstami, które z nich powstały (FH.1) —
+    // piętro je ma (D-46), cechy niemierzalne nie.
+    measure: preset(key).defaultMeasure ?? null,
   });
   return [
     fromPreset("standard-wykonczenia", 0.4, "przecietna"),
@@ -137,6 +154,11 @@ function features(skala: NonNullable<Wariant1409["skalaPowierzchni"]>): Feature[
               przecietna: "powierzchnia użytkowa powyżej 40 m² do 46 m²",
               gorsza: "powierzchnia użytkowa powyżej 46 m²",
             },
+      // `jak_zgloszono` to skala z mediany — niesie swoje progi. `poprawiona` ma
+      // teksty wpisane ręcznie przez rzeczoznawczynię, więc progów NIE ma
+      // (FH.1: ręczna edycja tekstu je usuwa) — i to jest drugi przypadek §12.2:
+      // cecha, której oceny transakcji nie da się wyprowadzić z danych rejestru.
+      measure: skala === "jak_zgloszono" ? powierzchniaMeasure(44) : null,
     },
     fromPreset("pomieszczenia-przynalezne", 0.04, "gorsza"),
     fromPreset("dodatkowe", 0.06, "gorsza"),
@@ -267,6 +289,7 @@ export function wycena1409Anon(wariant: Wariant1409 = {}): BuildDocumentInput {
       kondygnacjeNadziemne: 10,
       kondygnacjePodziemne: 1,
       rokBudowy: 1978,
+      pietro: PIETRO_PRZEDMIOTU,
       mpzpAbsent: true,
       przeznaczenieStudium: "teren zabudowy mieszkaniowej wielorodzinnej (dane fikcyjne)",
     },
@@ -343,6 +366,7 @@ export function formValuesOf(v: BuildDocumentInput) {
       weightPct: Math.round(f.weight * 10000) / 100,
       rating: f.rating,
       definitions: f.definitions ?? undefined,
+      measure: f.measure ?? undefined,
     })),
     sampleMeta: inputs.sampleMeta ?? undefined,
     sampleSelection: inputs.sampleSelection ?? undefined,

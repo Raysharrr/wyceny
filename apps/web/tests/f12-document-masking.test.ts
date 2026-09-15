@@ -5,6 +5,7 @@ import {
   documentFieldBlockers,
   formatNumber,
   formatPln,
+  OCENA_SPOZA_REJESTRU,
 } from "../src/domain/document-model";
 import type { KwSnapshot } from "../src/domain/kw-snapshot";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
@@ -23,9 +24,29 @@ function syntheticInputs(): KcsInput {
       transactionId: `rcn-tx-${i}`, // must never reach the model
       status: "confirmed" as const,
     })),
+    // Trzy opisane poziomy w każdej cesze (ADR-016 reg. 1) — bez opisów ocena nie
+    // ma pozycji w skali, a od FH.3 to z pozycji bierze się opis słowny (D-54).
     features: [
-      { name: "standard wykończenia", weight: 0.6, rating: "lepsza" as const },
-      { name: "lokalizacja", weight: 0.4, rating: "gorsza" as const },
+      {
+        name: "standard wykończenia",
+        weight: 0.6,
+        rating: "lepsza" as const,
+        definitions: {
+          lepsza: "opis lepszej",
+          przecietna: "opis przeciętnej",
+          gorsza: "opis gorszej",
+        },
+      },
+      {
+        name: "lokalizacja",
+        weight: 0.4,
+        rating: "gorsza" as const,
+        definitions: {
+          lepsza: "opis lepszej",
+          przecietna: "opis przeciętnej",
+          gorsza: "opis gorszej",
+        },
+      },
     ],
     sampleMeta: null,
     provenance: null,
@@ -118,8 +139,11 @@ describe("F-12: professional-secrecy masking in the document model", () => {
       "lokalizacja – wartość najniższa cechy,",
     ]);
     expect(model.opis_cmin).toHaveLength(2);
-    expect(model.opis_cmin[0]).toContain("wartość najniższa");
-    expect(model.opis_cmax[0]).toContain("wartość najwyższa");
+    // FH.3 (D-52): żadna z tych cech nie ma progów liczbowych, a rejestr nie
+    // niesie standardu ani lokalizacji — operat mówi to wprost, zamiast
+    // przypisywać lokalowi Cmin same wartości najniższe.
+    expect(model.opis_cmin[0]).toContain(OCENA_SPOZA_REJESTRU);
+    expect(model.opis_cmax[0]).toContain(OCENA_SPOZA_REJESTRU);
   });
 });
 

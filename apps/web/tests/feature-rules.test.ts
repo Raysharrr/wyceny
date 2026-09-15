@@ -1,15 +1,29 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { computeKcs, type Comparable, type Feature, type KcsInput } from "../src/domain/kcs";
+import {
+  computeKcs,
+  type Comparable,
+  type Feature,
+  type FeatureMeasure,
+  type KcsInput,
+} from "../src/domain/kcs";
 import {
   computeKcsOnScale,
+  definitionsFromMeasure,
   describedLevels,
   featureIssues,
   featureUis,
   kcsReady,
+  levelForValue,
+  measureIssues,
   ratingPosition,
 } from "../src/domain/feature-rules";
+import {
+  FEATURE_PRESETS,
+  powierzchniaDefinitions,
+  powierzchniaMeasure,
+} from "../src/domain/feature-presets";
 import { OCZEKIWANE_PO_ADR016, wycena1409Anon } from "./fixtures/wycena-1409-anon";
 
 /**
@@ -285,5 +299,222 @@ describe("one engine entry point for the application (ADR-016 reg. 2)", () => {
       )
       .map((file) => path.relative(SRC, file));
     expect(importers).toEqual(["domain/feature-rules.ts"]);
+  });
+});
+
+/**
+ * FH.1 — progi liczbowe cech mierzalnych (plan §P1.1 „Progi cech mierzalnych”,
+ * ADR-016 reg. 5, D-46/D-48). Skala piętra i powierzchni ma POLA liczbowe, a
+ * tekst definicji powstaje z nich; parsowania tekstu nie ma nigdzie.
+ */
+describe("definitionsFromMeasure — brzmienia wprost z czterech operatów KCŚ", () => {
+  it("piętro Kościelnej, Meissnera i Starołęckiej: parter / piętra pośrednie / 4 piętro i powyżej", () => {
+    expect(
+      definitionsFromMeasure({
+        kind: "floor",
+        bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+      }),
+    ).toEqual({
+      gorsza: "parter",
+      przecietna: "piętra pośrednie",
+      lepsza: "4 piętro i powyżej",
+    });
+  });
+
+  it("piętro Bohaterów II: dolny przedział to wyliczenie, górny próg to inna liczba", () => {
+    expect(
+      definitionsFromMeasure({
+        kind: "floor",
+        bounds: { gorsza: { od: 0, do: 1 }, przecietna: { od: 2, do: 5 }, lepsza: { od: 6 } },
+      }),
+    ).toEqual({
+      gorsza: "parter, 1 piętro",
+      przecietna: "piętra pośrednie",
+      lepsza: "6 piętro i powyżej",
+    });
+  });
+
+  it("powierzchnia Bohaterów II: nazwa cechy nie wraca w definicji", () => {
+    expect(
+      definitionsFromMeasure({
+        kind: "area",
+        bounds: { lepsza: { do: 40 }, przecietna: { od: 41, do: 45 }, gorsza: { od: 46 } },
+      }),
+    ).toEqual({
+      lepsza: "do 40 m²",
+      przecietna: "od 41 m² do 45 m²",
+      gorsza: "od 46 m²",
+    });
+  });
+
+  it("powierzchnia dwustopniowa (Kościelna, Meissnera) — bez poziomu pośredniego", () => {
+    expect(
+      definitionsFromMeasure({
+        kind: "area",
+        bounds: { lepsza: { do: 64 }, gorsza: { od: 65 } },
+      }),
+    ).toEqual({ lepsza: "do 64 m²", gorsza: "od 65 m²" });
+  });
+
+  it("„piętra pośrednie” tylko w środku skali — skrajny przedział zawsze podaje swoje liczby", () => {
+    // Skala dwustopniowa nie ma środka, więc żaden przedział nie jest pośredni.
+    expect(
+      definitionsFromMeasure({
+        kind: "floor",
+        bounds: { gorsza: { od: 0, do: 3 }, lepsza: { od: 4 } },
+      }),
+    ).toEqual({ gorsza: "parter, 1 piętro, 2 piętro, 3 piętro", lepsza: "4 piętro i powyżej" });
+    // Najniższy przedział, który nie zaczyna się od parteru, wylicza od swojego „od”.
+    expect(
+      definitionsFromMeasure({
+        kind: "floor",
+        bounds: { gorsza: { od: 2, do: 3 }, lepsza: { od: 4 } },
+      }),
+    ).toEqual({ gorsza: "2 piętro, 3 piętro", lepsza: "4 piętro i powyżej" });
+  });
+
+  it("każde wygenerowane zdanie jest prawdziwe na obu krańcach swojego przedziału", () => {
+    const skale: FeatureMeasure[] = [
+      {
+        kind: "floor",
+        bounds: { gorsza: { od: 0, do: 1 }, przecietna: { od: 2, do: 5 }, lepsza: { od: 6 } },
+      },
+      {
+        kind: "area",
+        bounds: { lepsza: { do: 40 }, przecietna: { od: 41, do: 45 }, gorsza: { od: 46 } },
+      },
+    ];
+    for (const measure of skale) {
+      for (const [level, bound] of Object.entries(measure.bounds)) {
+        if (bound.od != null) expect(levelForValue(measure, bound.od)).toBe(level);
+        if (bound.do != null) expect(levelForValue(measure, bound.do)).toBe(level);
+      }
+    }
+  });
+});
+
+describe("levelForValue — poziom z wartości przedmiotu lub transakcji (ADR-016 reg. 5)", () => {
+  const PIETRO: FeatureMeasure = {
+    kind: "floor",
+    bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+  };
+  const POWIERZCHNIA: FeatureMeasure = {
+    kind: "area",
+    bounds: { lepsza: { do: 46 }, gorsza: { od: 47 } },
+  };
+
+  it("piętro: przedziały domknięte obustronnie, bo kondygnacje są całkowite", () => {
+    expect(levelForValue(PIETRO, 0)).toBe("gorsza");
+    expect(levelForValue(PIETRO, 1)).toBe("przecietna");
+    expect(levelForValue(PIETRO, 3)).toBe("przecietna");
+    expect(levelForValue(PIETRO, 6)).toBe("lepsza");
+  });
+
+  it("powierzchnia: obie granice włączne, a metraż zaokrągla się do pełnych m²", () => {
+    expect(levelForValue(POWIERZCHNIA, 44.23)).toBe("lepsza");
+    expect(levelForValue(POWIERZCHNIA, 46)).toBe("lepsza");
+    expect(levelForValue(POWIERZCHNIA, 47)).toBe("gorsza");
+    expect(levelForValue(POWIERZCHNIA, 80)).toBe("gorsza");
+    // 46,4 → 46 (lepsza), 46,5 → 47 (gorsza): połówka w górę, tak jak mediana.
+    expect(levelForValue(POWIERZCHNIA, 46.4)).toBe("lepsza");
+    expect(levelForValue(POWIERZCHNIA, 46.5)).toBe("gorsza");
+  });
+
+  it("żaden metraż nie wypada poza skalę, której brzmienie zostawia szczelinę", () => {
+    // Operaty piszą „do 40 m²” obok „od 41 m²” — 40,5 m² nie należy do żadnego
+    // z tych zdań dosłownie, a mimo to musi dostać poziom.
+    const anety: FeatureMeasure = {
+      kind: "area",
+      bounds: { lepsza: { do: 40 }, przecietna: { od: 41, do: 45 }, gorsza: { od: 46 } },
+    };
+    expect(levelForValue(anety, 40.4)).toBe("lepsza");
+    expect(levelForValue(anety, 40.5)).toBe("przecietna");
+    expect(levelForValue(anety, 45.6)).toBe("gorsza");
+  });
+
+  it("granica `do` jest włączna także bez sąsiedniego przedziału", () => {
+    // Bez tego przypadku „47 należy do gorsza” przechodzi przez sam porządek
+    // skali, a nie przez granicę — mutant `value >= do` przeżywa.
+    const zLuka: FeatureMeasure = {
+      kind: "area",
+      bounds: { lepsza: { do: 47 }, gorsza: { od: 100 } },
+    };
+    expect(levelForValue(zLuka, 47)).toBe("lepsza");
+    expect(levelForValue(zLuka, 48)).toBeNull();
+  });
+
+  it("wartość poza wszystkimi przedziałami nie daje poziomu", () => {
+    // Kondygnacja podziemna (rejestr zna −1) leży poniżej parteru.
+    expect(levelForValue(PIETRO, -1)).toBeNull();
+    expect(levelForValue(PIETRO, null)).toBeNull();
+    expect(levelForValue(PIETRO, undefined)).toBeNull();
+  });
+});
+
+describe("measureIssues — przedziały domknięte i rozłączne (D-46, D-48)", () => {
+  const ok = (bounds: FeatureMeasure["bounds"], kind: FeatureMeasure["kind"] = "floor") =>
+    measureIssues({ kind, bounds });
+
+  it("przyjmuje skalę bez luk i bez nakładania", () => {
+    expect(
+      ok({ gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } }),
+    ).toEqual([]);
+    expect(ok({ lepsza: { do: 46 }, gorsza: { od: 47 } }, "area")).toEqual([]);
+    // Skala powierzchni z operatu 14.09 — kontrakt MUSI ją przyjąć.
+    expect(
+      ok({ lepsza: { do: 40 }, przecietna: { od: 41, do: 45 }, gorsza: { od: 46 } }, "area"),
+    ).toEqual([]);
+    // I skala piętra z tego samego operatu (szóste piętro i powyżej).
+    expect(
+      ok({ gorsza: { od: 0, do: 1 }, przecietna: { od: 2, do: 5 }, lepsza: { od: 6 } }),
+    ).toEqual([]);
+  });
+
+  it("odrzuca lukę między przedziałami", () => {
+    expect(ok({ gorsza: { od: 0, do: 0 }, lepsza: { od: 4 } })).toHaveLength(1);
+    expect(ok({ lepsza: { do: 40 }, gorsza: { od: 46 } }, "area")).toHaveLength(1);
+  });
+
+  it("odrzuca nakładanie przedziałów", () => {
+    expect(
+      ok({ gorsza: { od: 0, do: 2 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } }),
+    ).toHaveLength(1);
+  });
+
+  it("odrzuca przedział odwrócony i skalę z jednym przedziałem", () => {
+    expect(ok({ gorsza: { od: 3, do: 1 }, lepsza: { od: 4 } })).not.toEqual([]);
+    expect(ok({ lepsza: { od: 4 } })).not.toEqual([]);
+    // Poziom z obydwoma polami pustymi nie jest przedziałem — inaczej dopycha
+    // licznik i skala z jednym realnym przedziałem przechodzi.
+    expect(ok({ gorsza: {}, lepsza: { od: 4 } })).toEqual([
+      "Skala liczbowa musi mieć co najmniej dwa przedziały.",
+    ]);
+  });
+});
+
+describe("presety cech mierzalnych niosą progi (FH.1 „Done”)", () => {
+  it("piętro: progi D-46 i teksty wygenerowane z nich", () => {
+    const pietro = FEATURE_PRESETS.lokal.find((e) => e.key === "polozenie-na-pietrze")!;
+    expect(pietro.defaultMeasure).toEqual({
+      kind: "floor",
+      bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+    });
+    expect(measureIssues(pietro.defaultMeasure!)).toEqual([]);
+    expect(pietro.defaultDefinitions).toEqual(definitionsFromMeasure(pietro.defaultMeasure!));
+  });
+
+  it("powierzchnia: progi z mediany próby i teksty wygenerowane z nich", () => {
+    expect(powierzchniaMeasure(47)).toEqual({
+      kind: "area",
+      bounds: { lepsza: { do: 46 }, gorsza: { od: 47 } },
+    });
+    expect(measureIssues(powierzchniaMeasure(47)!)).toEqual([]);
+    expect(powierzchniaDefinitions(47)).toEqual({ lepsza: "do 46 m²", gorsza: "od 47 m²" });
+    expect(powierzchniaMeasure(null)).toBeNull();
+    expect(definitionsFromMeasure(powierzchniaMeasure(47)!)).toEqual(powierzchniaDefinitions(47));
+    // Lokal o metrażu dokładnie medianowym zostaje w większym przedziale, tak
+    // jak przed zmianą konwencji — przesuwa się brzmienie, nie klasyfikacja.
+    expect(levelForValue(powierzchniaMeasure(47)!, 47)).toBe("gorsza");
+    expect(levelForValue(powierzchniaMeasure(47)!, 46)).toBe("lepsza");
   });
 });
