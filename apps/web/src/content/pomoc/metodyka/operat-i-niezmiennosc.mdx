@@ -88,7 +88,7 @@ Zatwierdzenie nie jest ostateczne — ostateczny jest podpis. Dopóki operatu ni
 
 Wycena wraca do statusu szkicu. Zostaje to, co wpisał rzeczoznawca: migawka wejść, zamrożone mapy oraz treść i potwierdzenie sekcji opisowych. Zerowane jest to, co **wyprodukowało zatwierdzenie**: data zatwierdzenia, adresy obu plików, kwota słownie i wartość rynkowa. Ostatnie z nich jest regułą, nie skutkiem ubocznym: gdyby kwota słownie przetrwała cofnięcie, ponowne zatwierdzenie bez przeliczenia wydrukowałoby ją obok poprawionej Tabeli 4. Skasowana wartość rynkowa wymusza natomiast ponowne zatwierdzenie kalkulacji, więc brama zatwierdzenia sama pilnuje, żeby rzeczoznawca spojrzał na liczby jeszcze raz.
 
-Wydane pliki **zostają w magazynie**. Klucze, pod którymi leżą, zapisuje wiersz dziennika o cofnięciu — i jest to jedyne miejsce, które je jeszcze zna, skoro data zatwierdzenia została skasowana. Kolejne zatwierdzenie pisze pliki pod własnymi kluczami, obok poprzednich, a nie zamiast nich. Wiersz o zatwierdzeniu też zostaje: dziennik pokazuje i wydanie dokumentu, i jego wycofanie.
+Wydane pliki **zostają w magazynie, ale przestają być osiągalne z aplikacji**. Trasa `/api/docs/[key]` autoryzuje przez `doc_url`/`docx_url` wyceny, a cofnięcie oba zeruje — link do wycofanego dokumentu przestaje więc działać, mimo że bajty są nietknięte. Klucze, pod którymi leżą, zapisuje wiersz dziennika o cofnięciu i jest to jedyne miejsce, które je jeszcze zna, skoro data zatwierdzenia została skasowana. Ekran z poprzednimi wersjami nie istnieje — to świadomy dług, nie właściwość. Kolejne zatwierdzenie pisze pliki pod własnymi kluczami, obok poprzednich, a nie zamiast nich. Wiersz o zatwierdzeniu też zostaje: dziennik pokazuje i wydanie dokumentu, i jego wycofanie.
 
 ## Nowa wersja
 

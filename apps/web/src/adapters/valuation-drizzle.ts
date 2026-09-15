@@ -17,6 +17,7 @@ import {
   InputsChangedError,
   newValuation,
   newVersionOf,
+  NotReopenableError,
   reopenApproved,
   signValuation,
   type AuditAction,
@@ -783,14 +784,25 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           // refuse it, but the refusal belongs here, with a message).
           .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "approved")))
           .returning();
-        if (!saved) return null;
+        if (!saved) {
+          // The row exists and is this caller's — the domain said so a few
+          // lines up — so a CAS miss can only mean the status moved between
+          // the read and the write (a second click, a signature landing
+          // first). That is a STATUS refusal, not a missing row: `null` here
+          // would tell the owner „nie znaleziono wyceny albo nie masz do niej
+          // dostępu” about a valuation they are looking at.
+          throw new NotReopenableError(
+            `Valuation ${id} stopped being an unsigned approval mid-reopen — cannot reopen`,
+          );
+        }
         await insertAudit(tx, {
           valuationId: id,
           actorId: user.id,
           action: "reopened",
           // Storage keys and the withdrawn issue date — F-13: identifiers, no
           // operat content. With `approvedAt` cleared this row is the only
-          // record of which files that approval issued; they stay in storage.
+          // record of which files that approval issued; the bytes stay in
+          // storage even though the valuation no longer points at them.
           meta: {
             approvedAt: valuation.approvedAt?.toISOString() ?? null,
             docKey: storageKeyOf(valuation.docUrl),

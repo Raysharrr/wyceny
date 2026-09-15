@@ -484,6 +484,32 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(reapproved!.amountInWords).toBeNull();
   });
 
+  it("a lost CAS is a status refusal, not a missing valuation (two clicks at once)", async () => {
+    const { id } = await approvedFixture("ul. Cofnieta 7");
+
+    // A real race: both transactions read an approved row, one commits, the
+    // other's `WHERE status = 'approved'` then matches nothing. The loser must
+    // not tell the owner „nie znaleziono wyceny albo nie masz do niej dostępu”
+    // about a valuation open in front of them.
+    const results = await Promise.allSettled([
+      repo.reopen(id, appraiserA),
+      repo.reopen(id, appraiserA),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect((fulfilled[0] as PromiseFulfilledResult<Valuation | null>).value!.status).toBe(
+      "in_progress",
+    );
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(NotReopenableError);
+
+    // Exactly one withdrawal happened — the loser wrote no audit row.
+    const rows = await auditRowsFor(id);
+    expect(rows.filter((r) => r.action === "reopened")).toHaveLength(1);
+  });
+
   it("reopen refuses a draft, and answers null for someone else's valuation", async () => {
     const draft = await repo.create(valuationInput(appraiserA.id, "ul. Cofnieta 3"));
     await expect(repo.reopen(draft.id, appraiserA)).rejects.toThrow(NotReopenableError);

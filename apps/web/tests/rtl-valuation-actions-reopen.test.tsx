@@ -57,8 +57,12 @@ describe("ValuationActions — cofnięcie zatwierdzenia", () => {
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Cofnąć zatwierdzenie?");
     expect(dialog).toHaveTextContent(
-      "Operat wróci do edycji. Po poprawkach zatwierdzisz go ponownie i powstanie nowa wersja dokumentu. Obecny plik zostanie w historii wyceny.",
+      "Operat wróci do edycji. Po poprawkach zatwierdzisz go ponownie i powstanie nowa wersja dokumentu. Obecny plik przestanie być dostępny do pobrania.",
     );
+    // The withdrawn file really does become unreachable (`/api/docs/[key]`
+    // authorises through doc_url/docx_url, which reopening clears), so the
+    // window must not promise a history screen that does not exist.
+    expect(dialog).not.toHaveTextContent("w historii wyceny");
     expect(reopenValuationAction).not.toHaveBeenCalled();
   });
 

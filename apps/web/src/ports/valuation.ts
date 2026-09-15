@@ -273,9 +273,12 @@ export interface PortValuation {
    * „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6): sends an approved but
    * unsigned valuation back to editing. Same null/throw contract as
    * `confirmSample` (null = not found or not owner; throws NotReopenableError
-   * for status violations). The `reopened` audit row names the storage keys of
-   * the documents the withdrawn approval issued — they stay in storage, and
-   * with `approvedAt` cleared that row is the only thing that still knows them.
+   * for status violations) — INCLUDING a status that moves under the write:
+   * losing the CAS on an existing, owned row is a status refusal, not a
+   * missing one. The `reopened` audit row names the storage keys of the
+   * documents the withdrawn approval issued; the bytes stay in storage (the
+   * valuation stops pointing at them), and with `approvedAt` cleared that row
+   * is the only thing that still knows those keys.
    */
   reopen(id: string, user: SessionUser): Promise<Valuation | null>;
 }

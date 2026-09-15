@@ -134,14 +134,19 @@ export function ValuationActions({
                 {isPending ? "Cofanie…" : "Cofnij zatwierdzenie i popraw"}
               </Button>
             </AlertDialogTrigger>
-            {/* Texts verbatim from spec §4 (wiersz „Krok 7”): they are what
-                tells the appraiser that a NEW version of the document will be
-                produced and the current one kept. */}
+            {/* Texts verbatim from spec §4 (wiersz „Krok 7”), with the last
+                sentence changed by the coordinator's decision (review PR #56):
+                the spec promised the current file would stay „w historii
+                wyceny”, and there is no such history — `/api/docs/[key]`
+                authorises through the valuation's `doc_url`/`docx_url`, which
+                reopening clears, so the file becomes unreachable. The window
+                now says what actually happens. Restoring access to earlier
+                versions is a follow-up, not a thing to promise here. */}
             <AlertDialogContent>
               <AlertDialogTitle>Cofnąć zatwierdzenie?</AlertDialogTitle>
               <AlertDialogDescription>
                 Operat wróci do edycji. Po poprawkach zatwierdzisz go ponownie i powstanie nowa
-                wersja dokumentu. Obecny plik zostanie w historii wyceny.
+                wersja dokumentu. Obecny plik przestanie być dostępny do pobrania.
               </AlertDialogDescription>
               <AlertDialogFooter>
                 <AlertDialogCancel>Anuluj</AlertDialogCancel>

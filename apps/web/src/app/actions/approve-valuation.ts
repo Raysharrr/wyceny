@@ -201,18 +201,21 @@ export async function approveValuation(
       // Keyed on "nothing embedded", never on "did not fetch". Today the two
       // coincide — every branch that produces maps sets `embedded` — but only
       // the first stays correct if a third way of obtaining them is ever added,
-      // and the failure it guards against is not recoverable: this arm reached
-      // after a REUSE would delete the very bytes the document was rendered
-      // from, and `signValuationAction` re-renders from those keys and reads
-      // their absence as "approved without maps", silently. The office would
-      // then hold an illustrated operat and send out an unillustrated signed
-      // one. (Pinned by "reuse touches neither the bytes nor the marker";
-      // verified by mutating this condition to fire on the reuse path.)
+      // and this arm reached after a REUSE would delete the very bytes the
+      // document was rendered from. (Pinned by "reuse touches neither the bytes
+      // nor the marker"; verified by mutating this condition to fire on the
+      // reuse path.)
+      //
+      // Since ADR-020 wariant (a) the stakes are lower than they were: signing
+      // no longer re-renders from these keys — it puts the scan on the DOCX
+      // this approval stored, maps already embedded — so a wrong delete can no
+      // longer produce an unillustrated SIGNED operat behind an illustrated
+      // approved one. What it still costs is the preview's ability to reuse the
+      // frozen bytes, and a marker left pointing at bytes that are gone.
       //
       // A PRIOR failed approve attempt (e.g. a PDF conversion crash) may have
-      // left these keys behind; uncleaned, sign would find and embed maps this
-      // approved document does not have. delete() is idempotent, so this is a
-      // no-op on the common case where nothing was ever orphaned.
+      // left these keys behind. delete() is idempotent, so this is a no-op on
+      // the common case where nothing was ever orphaned.
       if (!embedded) {
         // MARKER FIRST, bytes only if the lift took — the order `previewOperat`
         // uses for the same act, and here it is what makes the delete safe.
@@ -225,19 +228,17 @@ export async function approveValuation(
         // and they stay, and this issue cannot commit either.
         //
         // Without that condition the loser of two concurrent issues deleted the
-        // WINNER's frozen bytes, and `signValuationAction` — which re-renders
-        // from those keys and reads their absence as "approved without maps",
-        // silently — would sign an operat without the §8.1 maps the approved
-        // copy carries. Task 12 sharpened that window from both ends: the
-        // winner now REUSES the frozen bytes instead of re-putting them, so
+        // WINNER's frozen bytes. Task 12 sharpened that window from both ends:
+        // the winner now REUSES the frozen bytes instead of re-putting them, so
         // nothing heals behind the delete, and it no longer waits on the WMS,
-        // so it commits sooner.
+        // so it commits sooner. (Before ADR-020 this also decided what the
+        // SIGNED operat contained, because signing re-rendered from these keys;
+        // it no longer does — see the note above the branch.)
         //
-        // What has to be true at commit time is that the BYTES are gone — sign
-        // reads the bytes and never the marker. This order guarantees exactly
-        // that; the reverse could leave bytes deleted under a marker still
-        // claiming them, which is the lying-marker state the whole design
-        // avoids.
+        // What has to be true at commit time is that the BYTES are gone. This
+        // order guarantees exactly that; the reverse could leave bytes deleted
+        // under a marker still claiming them, which is the lying-marker state
+        // the whole design avoids.
         const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
         if (unfrozen) {
           const keys = frozenMapKeys(id);
