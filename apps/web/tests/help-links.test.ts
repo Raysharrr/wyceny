@@ -112,7 +112,7 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
  * przeformulowany tak, zeby nie cytowal nazwy, ktorej juz nie ma.
  */
 const ETYKIETA_RE =
-  /„((?:Potwierdź|Zatwierdź|Dane się zgadzają|Pobierz|Dodaj|Utwórz|Podpisz|Wgraj)[^„”]{0,60})”/g;
+  /„((?:Potwierdź|Zatwierdź|Dane się zgadzają|Pobierz|Dodaj|Utwórz|Podpisz|Wgraj|Cofnij)[^„”]{0,60})”/g;
 
 const zbierzTs = (dir: string): string[] =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -144,7 +144,7 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
   // zakres straznika, a to jest dokladnie ten rodzaj cichej utraty pokrycia,
   // przed ktorym ten plik ma bronic. Rosna, gdy Pomoc cytuje nowy przycisk —
   // wtedy zaktualizuj tez liczby w komentarzu wyzej.
-  it("zna dokladny zakres: 39 wystapien, 18 unikalnych etykiet", () => {
+  it("zna dokladny zakres: 46 wystapien, 19 unikalnych etykiet", () => {
     // 36 / 20 od S3 (blok „Prawo spoldzielcze"): `krok-3-proba` cytuje trzy nowe
     // etykiety — „Pobierz probe z rejestru", „Pobierz probe ponownie" i „Dodaj
     // transakcje w Rejestrze →" — a wiekszosc cytatow „Pobierz probe z RCN"
@@ -157,8 +157,16 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
     // 39 / 18 od P6 (ADR-018): krok 1 nie ma juz trzech kafli zrodla, wiec
     // `krok-1-przedmiot` przestalo cytowac „Wgraj akt notarialny" i „Wgraj
     // odpis KW" — zostal opis dwoch ksiag i przelacznika „Wgraj PDF".
-    expect(cytaty.length).toBe(39);
-    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(18);
+    // 47 / 21 od ADR-020 (approval-reopen): wzorzec obejmuje teraz takze „Cofnij",
+    // a `po-zatwierdzeniu` i `operat-i-niezmiennosc` cytuja „Cofnij zatwierdzenie
+    // i popraw" po dwa razy (w tym raz w alt zrzutu); do tego jedno cytowanie
+    // „Utworz nowa wersje" i jedno „Podpisz operat (nieodwracalne)" wiecej.
+    // 46 / 19 po scaleniu P6 z ADR-020: liczba jest PRZELICZONA dla obu zestawow
+    // stron razem (40/20 przed nimi, −1/−2 z P6, +7/+1 z ADR-020), nie przejeta
+    // z zadnej z galezi — kazda z tamtych liczb jest prawdziwa tylko dla polowy
+    // drzewa, a ten straznik pilnuje calosci.
+    expect(cytaty.length).toBe(46);
+    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(19);
   });
 
   it("kazda cytowana etykieta wystepuje w zrodlach aplikacji", () => {

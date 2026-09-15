@@ -43,6 +43,7 @@ export function FlatView({
   isOwner,
   isDraft,
   canSign,
+  canReopen,
   successor,
   allBlockers,
   gateOk,
@@ -53,6 +54,7 @@ export function FlatView({
   isOwner: boolean;
   isDraft: boolean;
   canSign: boolean;
+  canReopen: boolean;
   successor: Valuation | undefined;
   allBlockers: Blocker[];
   gateOk: boolean;
@@ -233,6 +235,7 @@ export function FlatView({
               gateOk={gateOk}
               canApprove={valuation.status === "in_progress"}
               canSign={canSign}
+              canReopen={canReopen}
               canCreateNewVersion={canCreateNewVersion}
             />
           </SectionCard>

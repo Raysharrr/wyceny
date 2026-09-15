@@ -6,7 +6,13 @@ import { getSession } from "@/auth/session";
 import { recordFailure } from "@/app/actions/_record-failure";
 import { log } from "@/lib/log";
 import { errorWithCode, withTrace } from "@/lib/trace";
-import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
+import {
+  storage,
+  worker,
+  valuationRepository,
+  mapImages,
+  profileRepository,
+} from "@/app/valuations/_deps";
 import {
   ApprovalBlockedError,
   InputsChangedError,
@@ -16,11 +22,12 @@ import {
 import type { Blocker } from "@/domain/provenance";
 import { gateContextFor } from "@/lib/gate-context";
 import { buildDocumentModel } from "@/domain/document-model";
-import { documentInputFor } from "@/domain/document-input";
+import { authorFrom, documentInputFor } from "@/domain/document-input";
 import { computeKcs } from "@/domain/kcs";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
+import { approvedOperatKeys } from "@/lib/operat-doc-keys";
 import { dropMapBytesIfStillOurDraft, frozenMapKeys, readFrozenMaps } from "@/lib/frozen-maps";
 
 export type ApproveValuationResult =
@@ -88,7 +95,17 @@ export async function approveValuation(
     // here and, through the repo, inside the write transaction (ADR-012).
     // `domain/` reads no env (F-10). Unset means enabled, like every other
     // NEXT_PUBLIC_* switch in this app.
-    const gateContext = gateContextFor(valuation);
+    // The operat's date, fixed ONCE: B-16 measures the policy against it,
+    // `approveValuation` stamps `approvedAt` with it and the title page prints
+    // it. Two separate `new Date()` calls could straddle midnight and hand the
+    // appraiser a document dated a day before the policy check it passed.
+    const now = new Date();
+    // ADR-020 cz. 1: the author block and the OC policy come from the profile
+    // of whoever is logged in, never from the template. ONE read feeds both the
+    // gate (B-15/B-16) and the render.
+    const profile = await profileRepository.get(session.user.id);
+    const author = authorFrom(profile);
+    const gateContext = gateContextFor(valuation, profile, now);
 
     // Fail fast with the first blocker before any expensive generation work.
     if (valuation.inputs) {
@@ -104,7 +121,6 @@ export async function approveValuation(
       if (!valuation.inputs) {
         return { error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu." };
       }
-      const now = new Date();
       const kcs = computeKcs(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
 
@@ -195,23 +211,26 @@ export async function approveValuation(
       const maps = embedded?.maps ?? null;
 
       const model = buildDocumentModel(
-        documentInputFor(valuation, { approvedAt: now, kcs, amountInWords }),
+        documentInputFor(valuation, { approvedAt: now, kcs, amountInWords, author }),
       );
       // Keyed on "nothing embedded", never on "did not fetch". Today the two
       // coincide — every branch that produces maps sets `embedded` — but only
       // the first stays correct if a third way of obtaining them is ever added,
-      // and the failure it guards against is not recoverable: this arm reached
-      // after a REUSE would delete the very bytes the document was rendered
-      // from, and `signValuationAction` re-renders from those keys and reads
-      // their absence as "approved without maps", silently. The office would
-      // then hold an illustrated operat and send out an unillustrated signed
-      // one. (Pinned by "reuse touches neither the bytes nor the marker";
-      // verified by mutating this condition to fire on the reuse path.)
+      // and this arm reached after a REUSE would delete the very bytes the
+      // document was rendered from. (Pinned by "reuse touches neither the bytes
+      // nor the marker"; verified by mutating this condition to fire on the
+      // reuse path.)
+      //
+      // Since ADR-020 wariant (a) the stakes are lower than they were: signing
+      // no longer re-renders from these keys — it puts the scan on the DOCX
+      // this approval stored, maps already embedded — so a wrong delete can no
+      // longer produce an unillustrated SIGNED operat behind an illustrated
+      // approved one. What it still costs is the preview's ability to reuse the
+      // frozen bytes, and a marker left pointing at bytes that are gone.
       //
       // A PRIOR failed approve attempt (e.g. a PDF conversion crash) may have
-      // left these keys behind; uncleaned, sign would find and embed maps this
-      // approved document does not have. delete() is idempotent, so this is a
-      // no-op on the common case where nothing was ever orphaned.
+      // left these keys behind. delete() is idempotent, so this is a no-op on
+      // the common case where nothing was ever orphaned.
       if (!embedded) {
         // MARKER FIRST, bytes only if the lift took — the order `previewOperat`
         // uses for the same act, and here it is what makes the delete safe.
@@ -224,19 +243,17 @@ export async function approveValuation(
         // and they stay, and this issue cannot commit either.
         //
         // Without that condition the loser of two concurrent issues deleted the
-        // WINNER's frozen bytes, and `signValuationAction` — which re-renders
-        // from those keys and reads their absence as "approved without maps",
-        // silently — would sign an operat without the §8.1 maps the approved
-        // copy carries. Task 12 sharpened that window from both ends: the
-        // winner now REUSES the frozen bytes instead of re-putting them, so
+        // WINNER's frozen bytes. Task 12 sharpened that window from both ends:
+        // the winner now REUSES the frozen bytes instead of re-putting them, so
         // nothing heals behind the delete, and it no longer waits on the WMS,
-        // so it commits sooner.
+        // so it commits sooner. (Before ADR-020 this also decided what the
+        // SIGNED operat contained, because signing re-rendered from these keys;
+        // it no longer does — see the note above the branch.)
         //
-        // What has to be true at commit time is that the BYTES are gone — sign
-        // reads the bytes and never the marker. This order guarantees exactly
-        // that; the reverse could leave bytes deleted under a marker still
-        // claiming them, which is the lying-marker state the whole design
-        // avoids.
+        // What has to be true at commit time is that the BYTES are gone. This
+        // order guarantees exactly that; the reverse could leave bytes deleted
+        // under a marker still claiming them, which is the lying-marker state
+        // the whole design avoids.
         const unfrozen = await valuationRepository.freezeMaps(id, session.user, null);
         if (unfrozen) {
           const keys = frozenMapKeys(id);
@@ -276,8 +293,13 @@ export async function approveValuation(
       }
       const docx = renderOperatDocx(model, { maps, photos });
       const pdf = await worker.convertToPdf(docx);
-      const docxUrl = await storage.put(`operat-${id}.docx`, docx);
-      const docUrl = await storage.put(`operat-${id}.pdf`, pdf);
+      // One key per approval (ADR-020 wariant a): the DOCX stored here is the
+      // very file `signValuationAction` puts the signature on, and after
+      // „Cofnij zatwierdzenie i popraw” the next approval must not overwrite
+      // it — reguła 6 promises the previous document stays in the history.
+      const issued = approvedOperatKeys(id, now);
+      const docxUrl = await storage.put(issued.docx, docx);
+      const docUrl = await storage.put(issued.pdf, pdf);
 
       const updated = await valuationRepository.approve(
         id,
@@ -298,7 +320,10 @@ export async function approveValuation(
             ? { mapsFrozenFor: embedded.address }
             : undefined,
         valuation.inputs,
-        { requireProse: gateContext.requireProse },
+        // The WHOLE context, not just the prose switch: the transaction re-derives
+        // the prose half itself (ADR-012) but has no profile of its own, so B-15
+        // and B-16 would silently vanish at the one refusal that is authoritative.
+        gateContext,
       );
       if (!updated) {
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };

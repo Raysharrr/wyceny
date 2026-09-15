@@ -6,13 +6,9 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, profileRepository } from "@/app/valuations/_deps";
 import { NotSignableError } from "@/domain/valuation";
-import { buildDocumentModel } from "@/domain/document-model";
-import { documentInputFor } from "@/domain/document-input";
-import { computeKcs } from "@/domain/kcs";
-import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
+import { UnsignableDocxError, signOperatDocx } from "@/adapters/docx-render";
 import { StorageNotFoundError } from "@/ports/storage";
-import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
-import { frozenMapKeys } from "@/lib/frozen-maps";
+import { approvedOperatKeys } from "@/lib/operat-doc-keys";
 import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 
@@ -21,13 +17,21 @@ export type SignValuationResult = { error: string } | undefined;
 const sha256 = (buf: Buffer) => createHash("sha256").update(buf).digest("hex");
 
 /**
- * Sign = final re-render of the FROZEN inputs with the owner's signature
- * scan + irreversible status flip (F-7). Mirrors approve-valuation.ts:
- * files stored first, the flip (CAS on 'approved' + audit row with SHA-256
- * hashes, in one transaction) happens last; a failed flip leaves orphan
- * -signed files the retry overwrites. data_sporzadzenia derives from the
- * persisted approvedAt, so the signed text is identical to the approved one
- * (drift guard test in docx-render-signature.test.ts).
+ * Legacy refusal (ADR-020, spec §9.1): an operat approved before the signature
+ * marker existed cannot take a signature; the way out is to reopen and approve
+ * again. Wording proposed in the PR, pending the user's acceptance.
+ */
+const APPROVED_BEFORE_UPDATE =
+  "Tego operatu nie można podpisać — zatwierdzono go przed aktualizacją programu. Użyj „Cofnij zatwierdzenie i popraw”, popraw operat i zatwierdź go ponownie.";
+
+/**
+ * Sign = the owner's scan on the STORED approved DOCX + irreversible status
+ * flip (F-7, ADR-020 wariant a). Nothing is re-rendered: no template, no
+ * document model, no maps or photos — the signed text is the approved text by
+ * construction (I-21, docx-render-signature.test.ts). Mirrors
+ * approve-valuation.ts: files stored first, the flip (CAS on 'approved' +
+ * audit row with SHA-256 hashes, in one transaction) happens last; a failed
+ * flip leaves orphan -signed files the retry overwrites.
  */
 export async function signValuationAction(id: string): Promise<SignValuationResult> {
   const session = await getSession();
@@ -61,72 +65,45 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
       return { error: "Brak skanu podpisu — wgraj go w profilu, a potem podpisz operat." };
     }
 
-    try {
-      const kcs = computeKcs(valuation.inputs);
-      const amountInWords = await worker.amountInWords(kcs.wr);
-      const model = buildDocumentModel(
-        documentInputFor(valuation, { approvedAt: valuation.approvedAt, kcs, amountInWords }),
-      );
-      // Slice 9: sign NEVER contacts WMS — it re-renders the maps frozen at
-      // approve (spec decision 1). A StorageNotFoundError means "approved
-      // without maps" — the only case map absence is silent. Any OTHER error
-      // (e.g. a transient dead pooled connection) must NOT be treated as "no
-      // maps" — spec decision 4 says map absence is never silent — so it is
-      // returned as an error WITHOUT signing (final review, Important #2).
-      // The Buffer.isBuffer guard also covers PortStorage fakes that resolve
-      // undefined instead of throwing (advisor B2).
-      let maps: RenderMaps | null = null;
-      try {
-        // The keys come from the one place that spells them (`frozenMapKeys`),
-        // shared with the preview that freezes them and the issue that reuses
-        // them. This is the call site where a typo costs the most: a key that
-        // misses reads as StorageNotFoundError, which this branch treats as the
-        // legal "approved without maps" — silently.
-        const keys = frozenMapKeys(id);
-        const ewidencyjna = await storage.get(keys.ewidencyjna);
-        const orto = await storage.get(keys.orto);
-        if (Buffer.isBuffer(ewidencyjna) && Buffer.isBuffer(orto)) {
-          maps = { ewidencyjna, orto };
-        }
-      } catch (error) {
-        if (!(error instanceof StorageNotFoundError)) {
-          await recordFailure({
-            event: "signValuationAction.frozenMapsReadFailed",
-            valuationId: id,
-            actorId: session.user.id,
-            error: error,
-          });
-          return {
-            error: errorWithCode(
-              "Nie udało się odczytać zamrożonych map operatu — spróbuj ponownie.",
-            ),
-          };
-        }
-      }
+    // ADR-020 cz. 1 (I-18) — the signed document names the person signing it —
+    // is satisfied WITHOUT a profile read here. Under cz. 2 wariant (a) signing
+    // renders nothing, so there is no author block to fill: the one in the file
+    // was written at approval, from the owner's profile, and only the owner may
+    // sign. A read here would have nowhere to go, and re-rendering to use it is
+    // exactly what this variant removes. This also closes the drift ADR-020
+    // cz. 1 accepted on purpose — a profile edited between approval and
+    // signature used to give the signed file a different author block than the
+    // approved one; it now cannot, because there is only one file.
 
-      // Slice 10 (Task 8): sign reads the photo manifest from the FROZEN
-      // inputs, same as maps — but unlike maps, StorageNotFoundError here is
-      // NOT swallowed. The manifest is written in the same tx as the bytes, so
-      // a missing key is a hard integrity error: every failure aborts the sign
-      // rather than being treated as a legal absence (final review, contrast
-      // with the maps try/catch above).
-      let photos: RenderPhotos | null = null;
+    try {
+      let approvedDocx: Buffer;
       try {
-        photos = await loadInspectionPhotos(storage, valuation.inputs.inspection);
+        approvedDocx = await storage.get(approvedOperatKeys(id, valuation.approvedAt).docx);
       } catch (error) {
+        if (error instanceof StorageNotFoundError) {
+          return { error: APPROVED_BEFORE_UPDATE };
+        }
+        // Anything else is storage being unavailable, not an old operat — the
+        // appraiser must not be sent to reopen a valuation that is fine.
         await recordFailure({
-          event: "signValuationAction.frozenPhotosReadFailed",
+          event: "signValuationAction.approvedDocxReadFailed",
           valuationId: id,
           actorId: session.user.id,
-          error: error,
+          error,
         });
         return {
-          error: errorWithCode(
-            "Nie udało się odczytać zamrożonych zdjęć operatu — spróbuj ponownie.",
-          ),
+          error: errorWithCode("Nie udało się odczytać zatwierdzonego operatu — spróbuj ponownie."),
         };
       }
-      const docx = renderOperatDocx(model, { signature: signature.bytes, maps, photos });
+      let docx: Buffer;
+      try {
+        docx = signOperatDocx(approvedDocx, signature.bytes);
+      } catch (error) {
+        if (error instanceof UnsignableDocxError) {
+          return { error: APPROVED_BEFORE_UPDATE };
+        }
+        throw error;
+      }
       const pdf = await worker.convertToPdf(docx);
       const docxUrl = await storage.put(`operat-${id}-signed.docx`, docx);
       const docUrl = await storage.put(`operat-${id}-signed.pdf`, pdf);

@@ -4,6 +4,7 @@ import { auth } from "../src/auth/auth";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { resolveSeedUsers, type SeedUser } from "./seed-users";
+import { insurancePageKey, insurancePrefix } from "../src/domain/insurance-doc";
 
 /**
  * Seeds the two users required by Task 6 (Better Auth + roles):
@@ -71,10 +72,70 @@ async function seedUser(seed: SeedUser) {
   await db.update(schema.user).set({ role: seed.role }).where(eq(schema.user.email, seed.email));
 }
 
+/**
+ * A 16x22 white JPEG — a placeholder "policy page", not a document. It exists
+ * so the seeded `insurance_doc_key` points at a prefix that really holds a
+ * page: a key with nothing under it is the inconsistent state the upload
+ * action refuses to create, and the seed must not be the one place that
+ * fabricates it.
+ */
+const SEEDED_POLICY_PAGE_JPEG =
+  "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABsSFBcUERsXFhceHBsgKEIrKCUlKFE6PTBCYFVlZF9VXVtqeJmBanGQc1tdhbWGkJ6jq62rZ4C8ybqmx5moq6T/2wBDARweHigjKE4rK06kbl1upKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKSkpKT/wAARCAAWABADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKQAAAH/2Q==";
+
+/**
+ * A complete appraiser profile for the automated runs (ADR-020 cz. 1). Without
+ * it B-15/B-16 block every approval, and the e2e specs — which walk a draft all
+ * the way to "Zatwierdzony" — fail on a gate that is doing its job.
+ *
+ * Behind an EXPLICIT flag, and this is the whole point of the flag: the same
+ * `pnpm seed` is the password-rotation tool for STAGING, where these addresses
+ * belong to people who really sign operaty. Writing an invented name and
+ * licence number into a working appraiser's profile would hand B-15/B-16 a
+ * false "complete" and let a document leave the building under a licence
+ * number that does not exist — precisely the failure ADR-020 was written to
+ * end. CI sets `SEED_E2E_PROFILE=1`; nothing else may.
+ *
+ * `onConflictDoNothing` on top: even under the flag, a profile somebody has
+ * already filled in is never overwritten.
+ */
+async function seedE2eProfile(userId: string, name: string) {
+  const docKey = insurancePrefix(userId, "seed");
+  await db
+    .insert(schema.document)
+    .values({
+      key: insurancePageKey(docKey, 0),
+      content: null,
+      contentBytes: Buffer.from(SEEDED_POLICY_PAGE_JPEG, "base64"),
+    })
+    .onConflictDoNothing();
+  await db
+    .insert(schema.appraiserProfile)
+    .values({
+      userId,
+      fullName: `${name} — konto testowe`,
+      // Fikcyjne: nie jest to numer uprawnień żadnej istniejącej osoby.
+      licenseNo: "0000",
+      officeBlock: "Biuro Wycen Testowe\nul. Przykładowa 1\n60-000 Poznań",
+      insuranceDocKey: docKey,
+      // Daleka data celowo: bramka porównuje z DZISIEJSZĄ, więc realistyczny
+      // rok zaczerwieniłby e2e w dniu wygaśnięcia, bez żadnej zmiany w kodzie.
+      insuranceValidUntil: "2099-12-31",
+    })
+    .onConflictDoNothing();
+  console.log(`  e2e profile ensured for ${name}`);
+}
+
 async function main() {
   // Throws (before touching the DB) if the password variables are unset.
-  for (const user of resolveSeedUsers()) {
+  const users = resolveSeedUsers();
+  for (const user of users) {
     await seedUser(user);
+  }
+  if (process.env.SEED_E2E_PROFILE === "1") {
+    for (const user of users) {
+      const [row] = await db.select().from(schema.user).where(eq(schema.user.email, user.email));
+      if (row) await seedE2eProfile(row.id, user.name);
+    }
   }
 }
 
