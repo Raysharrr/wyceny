@@ -222,13 +222,19 @@ describe("§2 sentence about the grunt's book (D-07, check dryfu D-3)", () => {
     expect(model.sad_ksiegi_gruntu).toBe("");
   });
 
-  it("falls back to the lokal book's court text when the snapshot states no court", () => {
+  it("leaves the court empty — never a dash — when the snapshot states none", () => {
+    // This is the manual eKW path, the one the office uses every day: the card
+    // has no court field at all (`EMPTY_MANUAL_KW`), so `sad` is null while the
+    // number is filled. A dash would print "Dla nieruchomości gruntowej —
+    // prowadzi księgę wieczystą nr AB1C/2/7"; empty tells the generator to keep
+    // §2's own court text, which is a literal in the template (check dryfu D-3).
     const model = modelOf({
       kw: { ...EXAMINED_LOKAL, sad: null, wydzial: null },
       kwGrunt: EXAMINED_GRUNT,
     });
     expect(model.nr_ksiegi_gruntu).toBe("AB1C/2/7");
-    expect(model.sad_ksiegi_gruntu).toBe(model.kw_sad);
+    expect(model.sad_ksiegi_gruntu).toBe("");
+    expect(model.kw_sad).toBe("—"); // the dash this field must NOT copy
   });
 });
 

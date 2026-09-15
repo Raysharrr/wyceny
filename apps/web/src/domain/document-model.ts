@@ -457,6 +457,13 @@ export type DocumentModel = {
    * Sąd Rejonowy … prowadzi księgę wieczystą nr …". Both empty when the grunt's
    * book was not examined — the generic "właściwy sąd rejonowy prowadzi odrębną
    * księgę wieczystą" is forbidden, because it implies an examination.
+   *
+   * The two are NOT filled together: the number comes from the grunt's own
+   * snapshot, the court only from a PDF read of the lokal's book. On the manual
+   * eKW path — the office's everyday path — the number is there and the court
+   * is empty, and §2 then keeps the court text it already prints for the
+   * lokal's book. The generator must treat an empty court that way; it may not
+   * print a placeholder inside the sentence.
    */
   nr_ksiegi_gruntu: string;
   sad_ksiegi_gruntu: string;
@@ -805,12 +812,15 @@ export function buildDocumentModel(
     // book's `kwGruntu` alone — that number is a fact the lokal's book states,
     // not evidence anyone opened the book it names.
     nr_ksiegi_gruntu: kwReq.gruntZbadana ? (kwGrunt?.nrKsiegi ?? "") : "",
-    // The lokal was carved out of the grunt, so the same court keeps both books
-    // — and when the snapshot names no court, §2's sentence about the grunt says
-    // exactly what §2's sentence about the lokal says, rather than inventing one.
-    sad_ksiegi_gruntu: kwReq.gruntZbadana
-      ? [kw?.sad, kw?.wydzial].filter(Boolean).join(" ") || (kw?.sad ?? DASH)
-      : "",
+    // The lokal was carved out of the grunt, so the same court keeps both books.
+    // EMPTY when the snapshot names no court — which is the routine case, not an
+    // edge one: only `/kw-extract` ever fills `sad`, the manual eKW path has no
+    // field for it (`EMPTY_MANUAL_KW`). Empty means "§2 keeps the court text it
+    // already prints for the lokal's book", per the handoff; that text is a
+    // literal in the template (check dryfu D-3), so the model cannot repeat it
+    // and must not substitute a dash — "Dla nieruchomości gruntowej — prowadzi
+    // księgę wieczystą nr …" is a broken sentence, not a missing value.
+    sad_ksiegi_gruntu: kwReq.gruntZbadana ? [kw?.sad, kw?.wydzial].filter(Boolean).join(" ") : "",
     ksiega_lokalu_wiersze: kw?.tresc ? ksiegaRows(kw.tresc) : [],
     ma_tresc_lokalu: kw?.tresc != null,
     dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),
