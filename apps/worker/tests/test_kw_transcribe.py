@@ -14,9 +14,9 @@ from fastapi.testclient import TestClient
 
 from app import kw_transcribe, main
 from app.kw_transcribe import KsiegaTresc
-from app.llm import INVALID_OUTPUT, LlmResult
+from app.llm import INVALID_OUTPUT, AnthropicAdapter, LlmResult
 from tests.fake_llm import FakeLlmClient
-from tests.test_llm import anthropic_imports
+from tests.test_llm import anthropic_imports, message, sdk_answering
 
 SECRET = "test-secret"
 FIXTURE = Path(__file__).parent / "fixtures" / "kw_transcribe_sample.json"
@@ -122,8 +122,8 @@ def test_persons_are_not_scrubbed(monkeypatch):
     ("stop_reason", "status", "code"),
     [
         ("max_tokens", 422, "kw_transkrypcja_ucieta"),
-        (INVALID_OUTPUT, 422, "kw_transkrypcja_ucieta"),
-        ("refusal", 422, "kw_transkrypcja_odmowa"),
+        (INVALID_OUTPUT, 422, "kw_transkrypcja_nieczytelna"),
+        ("refusal", 422, "kw_transkrypcja_nieczytelna"),
         ("end_turn", 502, "kw_transkrypcja_blad"),
     ],
 )
@@ -137,6 +137,22 @@ def test_no_parsed_output_is_an_error_with_a_code_never_partial_content(
     assert set(body) == {"detail", "code"}
     assert body["code"] == code
     assert "ręcznie" in body["detail"]
+
+
+def test_only_a_real_truncation_is_called_too_large(monkeypatch):
+    """A refusal written as plain text fails the SDK's schema validation and comes
+    back as INVALID_OUTPUT — it must not tell the appraiser the book is too large."""
+    refusal = message([{"type": "text", "text": "Nie mogę pomóc."}], stop_reason="refusal")
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(refusal)))
+    resp = post(mint())
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "kw_transkrypcja_nieczytelna"
+    assert "obszerna" not in resp.json()["detail"]
+
+    use_llm(monkeypatch, LlmResult(None, "max_tokens", 14440, 16000))
+    resp = post(mint())
+    assert resp.json()["code"] == "kw_transkrypcja_ucieta"
+    assert "obszerna" in resp.json()["detail"]
 
 
 def test_a_failing_model_call_is_a_retryable_502(monkeypatch):

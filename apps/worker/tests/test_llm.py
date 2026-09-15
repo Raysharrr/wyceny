@@ -107,6 +107,15 @@ def test_refusal_is_explicit_in_the_result():
     assert result.stop_reason == "refusal"
 
 
+def test_refusal_written_as_text_is_invalid_output_not_an_exception():
+    """With a text block the SDK validates the refusal against the schema, raises,
+    and the real stop_reason is lost — the adapter can only report INVALID_OUTPUT."""
+    refusal = message([{"type": "text", "text": "Nie mogę pomóc."}], stop_reason="refusal")
+    result = parse_with(sdk_answering(refusal))
+    assert result.parsed is None
+    assert result.stop_reason == INVALID_OUTPUT
+
+
 def test_text_cut_mid_json_comes_back_as_no_parsed_output_not_an_exception():
     """`messages.parse` validates the text INSIDE the SDK, so JSON cut at max_tokens
     raises pydantic's ValidationError there — and its message quotes the input.
