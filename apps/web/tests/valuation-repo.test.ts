@@ -437,6 +437,30 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(rows.map((r) => r.action)).toContain("approved");
   });
 
+  it("names the keys of a row approved BEFORE the per-approval keys existed", async () => {
+    // The seven valuations waiting on staging: their files sit under the old
+    // fixed `operat-<id>.docx`, and reopening them is exactly the way out that
+    // the signature refusal points at. The audit row has to name THOSE keys.
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Cofnieta 6"),
+      inputs: withConfirmedProse("ul. Cofnieta 6", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+    await repo.approve(created.id, appraiserA, {
+      docUrl: `/api/docs/operat-${created.id}.pdf`,
+      docxUrl: `/api/docs/operat-${created.id}.docx`,
+    });
+
+    await repo.reopen(created.id, appraiserA);
+
+    const rows = await auditRowsFor(created.id);
+    expect(rows.at(-1)!.meta).toMatchObject({
+      docKey: `operat-${created.id}.pdf`,
+      docxKey: `operat-${created.id}.docx`,
+    });
+  });
+
   it("after a reopen the stale amount in words cannot come back (D-57)", async () => {
     const { id } = await approvedFixture("ul. Cofnieta 5");
     expect((await repo.get(id, appraiserA))!.amountInWords).not.toBeNull();
