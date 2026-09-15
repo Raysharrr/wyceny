@@ -368,9 +368,11 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
   describe("kondygnacja RCN staje się piętrem (wariant b)", () => {
     /**
      * Pisze po `v`, ale `v` jest prywatne — `wycena1409Anon()` zwraca głęboką
-     * kopię, więc zapis nie wychodzi poza to wywołanie. Dowód osobnym testem
-     * („każde wywołanie fikstury…”) niżej; gdyby fikstura wróciła do płytkiej
-     * kopii, ten helper zatruwałby każdy następny test w przebiegu.
+     * kopię, więc zapis nie wychodzi poza to wywołanie. Pilnuje tego bramka
+     * `fixtures-isolation.test.ts` (rekurencyjny przemiat wszystkich fabryk) i
+     * describe „izolacja fikstury wycena1409Anon” wyżej w tym pliku; gdyby
+     * fikstura wróciła do płytkiej kopii, ten helper zatruwałby każdy następny
+     * test w przebiegu.
      */
     const naKondygnacji = (floor: number | null, source: "rcn" | "rejestr_sm") => {
       const v = wycena1409Anon();

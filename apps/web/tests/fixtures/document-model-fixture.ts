@@ -178,7 +178,7 @@ export function syntheticDocumentInput(
   kw?: KwSnapshot,
 ): BuildDocumentInput {
   const inputs = goldenInputs(subject, kw);
-  return {
+  const v: BuildDocumentInput = {
     address: "ul. Przykładowa 5, Poznań",
     area: 48.2,
     purpose: "informacyjny",
@@ -192,4 +192,8 @@ export function syntheticDocumentInput(
     amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
     author: AUTOR_TESTOWY,
   };
+  // Bez klonu `author` byłby tym samym obiektem co stała `AUTOR_TESTOWY` we
+  // wszystkich wywołaniach (`goldenInputs` jest czyste, więc to jedyny
+  // przeciek tej fabryki). Pilnuje tego `leakingPaths` w `fixtures.test.ts`.
+  return structuredClone(v);
 }

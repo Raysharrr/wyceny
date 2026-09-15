@@ -165,7 +165,7 @@ export const EXAMINED_BOOKS = {
  * the gate refuses a bare draft.
  */
 export function approvableInputs(): KcsInput {
-  return {
+  const base: KcsInput = {
     ...EXAMINED_BOOKS,
     area: 50,
     comparables: Array.from({ length: 12 }, (_, i) => ({
@@ -203,6 +203,14 @@ export function approvableInputs(): KcsInput {
       kw: { source: "rzeczoznawca" as const, status: "confirmed" as const },
     },
   };
+  // Głęboka kopia na wyjściu: `...EXAMINED_BOOKS` i `THREE_LEVEL_SCALE` to
+  // stałe modułowe, więc bez tego `kw`, `kwGrunt` i `features[0].definitions`
+  // byłyby WSPÓLNE dla wszystkich wywołań — test zmieniający datę badania
+  // księgi albo opis poziomu pisałby dane każdemu następnemu w przebiegu.
+  // Domyka to także `approvableInput` i `confirmableInput`, bo obie budują
+  // stąd. Klon na wyjściu, nie kopiowanie pól: nowe pole nie wymaga wtedy
+  // pamiętania o kopii (pilnuje tego `leakingPaths` w `fixtures.test.ts`).
+  return structuredClone(base);
 }
 
 /**
