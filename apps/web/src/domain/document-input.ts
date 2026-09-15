@@ -61,8 +61,15 @@ export function documentInputFor(
   // carries. Being ABLE to compute a result is not the same as computing the
   // SAME result — a valuation approved under an earlier rule still holds the
   // amount it was issued with, while a render from its own snapshot can now
-  // land elsewhere. Checked here because every render path is assembled through
-  // this one function (R-2), so no future one can skip it.
+  // land elsewhere.
+  //
+  // NOTHING reaches this today: signing re-renders nothing (it signs the stored
+  // DOCX, ADR-020), and approve and the preview only ever see drafts, whose
+  // amount `readFeatureScale` has already dropped unless the snapshot still
+  // produces it. This is a BARRIER FOR THE PATHS TO COME, not protection of a
+  // live state — it costs two lines and stands at the one junction every render
+  // is assembled through (R-2), so a fourth path, or a loosened status gate,
+  // cannot quietly print a number the valuation does not carry.
   if (valuation.wr != null && render.kcs.wr !== valuation.wr) {
     throw new AmountMismatchError(valuation.wr, render.kcs.wr);
   }

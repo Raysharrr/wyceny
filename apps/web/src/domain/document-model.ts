@@ -1,5 +1,6 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { LEVEL_LABEL } from "./feature-presets";
+import { kwRequirements } from "./kw-requirements";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
@@ -50,8 +51,21 @@ const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is inv
 
 const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 
-/** `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych na podstawie: …"). */
-const KW_ZRODLO_TEXT = { akt: "akt notarialny", odpis_kw: "odpis księgi wieczystej" } as const;
+/**
+ * `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych
+ * na podstawie: …"). `ekw_reczne` names what the appraiser actually did — read
+ * the book in the eKW browser — because the operat may never describe a
+ * document nobody held (ADR-018 reg. 4). Note `kw_stub_odpis` below already
+ * excludes this source from the "pełna treść odpisu pozostaje w dokumentacji"
+ * sentence, which is the whole point. The §7 wording of the examination
+ * protocol belongs to `b1-template`; this phrase is the honest minimum until
+ * it lands.
+ */
+const KW_ZRODLO_TEXT = {
+  akt: "akt notarialny",
+  odpis_kw: "odpis księgi wieczystej",
+  ekw_reczne: "badanie księgi wieczystej w systemie eKW",
+} as const;
 
 /**
  * The §1 Wyciąg cell's own area sentence — the template prints it through an
@@ -403,10 +417,7 @@ export type DocumentFields = {
 export function documentFieldBlockers(v: DocumentFields): Blocker[] {
   const blockers: Blocker[] = [];
   if (!v.purpose) blockers.push({ path: "purpose", label: "Cel wyceny — brak." });
-  // A coop right has no KW of its own: step 1 lets the number stay empty, so
-  // demanding it here would send the appraiser back to a legally empty field.
-  const kwRequired = (v.propertyRight ?? "wlasnosc_lokalu") !== "spoldzielcze_wlasnosciowe";
-  if (!v.kwNumber && kwRequired)
+  if (!v.kwNumber && kwRequirements(v.propertyRight, null).numerKwWDokumencie)
     blockers.push({ path: "kwNumber", label: "Numer księgi wieczystej — brak." });
   if (!v.client) blockers.push({ path: "client", label: "Klient — brak." });
   if (!v.inspectionDate) blockers.push({ path: "inspectionDate", label: "Data oględzin — brak." });

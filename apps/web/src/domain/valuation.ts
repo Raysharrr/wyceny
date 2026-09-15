@@ -515,6 +515,9 @@ export type SubjectUpdate = {
   subject: KcsInput["subject"];
   subjectMeta: KcsInput["subjectMeta"];
   kw: KcsInput["kw"];
+  /** Examination of the grunt's book and the encumbrance decision (ADR-018) — optional so callers that predate the block keep compiling. */
+  kwGrunt?: KcsInput["kwGrunt"];
+  encumbranceTreatment?: KcsInput["encumbranceTreatment"];
   kwMeta: KcsInput["kwMeta"];
   provenance: Partial<InputsProvenance> & Pick<InputsProvenance, "address" | "area">;
 };
@@ -584,6 +587,8 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
       subject: u.subject ?? null,
       subjectMeta: u.subjectMeta ?? null,
       kw: u.kw ?? null,
+      kwGrunt: u.kwGrunt ?? null,
+      encumbranceTreatment: u.encumbranceTreatment ?? null,
       kwMeta: u.kwMeta ?? null,
       provenance,
     },
@@ -673,6 +678,12 @@ export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation 
  * computed under an earlier one. Two callers, one question: the draft read
  * below drops such an amount, and the views refuse to show recomputed tables
  * beside it (I-21).
+ *
+ * `false` ALSO when there is no amount at all (`wr == null`) or the snapshot
+ * produces none — the question is "does the amount follow", and a missing one
+ * does not. Callers that treat `false` as "the numbers disagree" have to check
+ * `wr != null` first, the way `flat-view` does; otherwise a draft before step 5
+ * reads as a mismatch.
  */
 export function amountMatchesSnapshot(v: Valuation): boolean {
   if (v.wr == null || !v.inputs || !kcsReady(v.inputs)) return false;

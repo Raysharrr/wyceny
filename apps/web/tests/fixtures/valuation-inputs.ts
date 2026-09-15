@@ -121,6 +121,41 @@ export const THREE_LEVEL_SCALE = {
 };
 
 /**
+ * Both books examined, the way ADR-018 requires of any valuation allowed to be
+ * approved: B-06 asks on every path, not only after an upload, so a fixture
+ * that clears the gate has to carry an examination. Manual source, because
+ * that is the office's actual practice; both dzialy answered "no entries", so
+ * B-07 stays out of the way of tests about other things. KW numbers are short
+ * synthetic strings, never the real format (F-9).
+ */
+export const EXAMINED_BOOKS = {
+  kw: {
+    source: "ekw_reczne" as const,
+    kwLokalu: "PO1P/1/6",
+    kwGruntu: "PO1P/2/4",
+    kwInne: [],
+    deweloperski: false,
+    powUzytkowaKw: null,
+    udzial: null,
+    sad: null,
+    wydzial: null,
+    dataDokumentu: null,
+    dataBadania: "2026-07-10",
+    nrLokalu: null,
+    akt: null,
+    dzial3: { wpisy: false, tresc: [] },
+    dzial4: { wpisy: false, tresc: [] },
+  },
+  kwGrunt: {
+    source: "ekw_reczne" as const,
+    nrKsiegi: "PO1P/2/4",
+    dataBadania: "2026-07-10",
+    dzial3: { wpisy: false, tresc: [] },
+    dzial4: { wpisy: false, tresc: [] },
+  },
+};
+
+/**
  * `KcsInput` fixture with 12 rcn comparables + geocode, both `to_verify`
  * (moved from `valuation-repo.test.ts`, F-7 Task 4). Does NOT pass the F-4
  * gate on its own: `confirmSample` must flip the sample to `confirmed`, and
@@ -131,6 +166,7 @@ export const THREE_LEVEL_SCALE = {
  */
 export function approvableInputs(): KcsInput {
   return {
+    ...EXAMINED_BOOKS,
     area: 50,
     comparables: Array.from({ length: 12 }, (_, i) => ({
       pricePerM2: 10_000 + i,
@@ -161,6 +197,10 @@ export function approvableInputs(): KcsInput {
       weights: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       ratings: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       geocode: { source: "geokoder" as const, status: "to_verify" as const },
+      // The examination above is the appraiser's own work (ADR-018 reg. 1),
+      // so it enters confirmed — the same stamp `assignSubjectProvenance` puts
+      // on it when the manual card is saved.
+      kw: { source: "rzeczoznawca" as const, status: "confirmed" as const },
     },
   };
 }

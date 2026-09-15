@@ -125,6 +125,13 @@ function coerceLegacyKw(kw: Partial<KwSnapshot>): KwSnapshot {
     dataDokumentu: kw.dataDokumentu ?? null,
     dzial3: kw.dzial3 ?? null,
     dzial4: kw.dzial4 ?? null,
+    // ADR-018: every field this function forgets is a field that survives the
+    // save and then vanishes on the way back in — the appraiser re-opens step 1
+    // and the examination they recorded is gone. Enumerated here, so a new
+    // `KwSnapshot` field is a compile error rather than silent data loss.
+    dataBadania: kw.dataBadania ?? null,
+    nrLokalu: kw.nrLokalu ?? null,
+    akt: kw.akt ?? null,
   };
 }
 
@@ -154,6 +161,12 @@ export function step1DefaultsFromInputs(v: {
       : { ...EMPTY_SUBJECT },
     subjectMeta: v.inputs?.subjectMeta ?? undefined,
     kw: v.inputs?.kw ? coerceLegacyKw(v.inputs.kw) : undefined,
+    // The grunt's book and the encumbrance decision are saved by
+    // `applySubjectUpdate` but were not read back here — re-entering step 1
+    // wiped a book that had been examined and a decision that had been made,
+    // and step 7 re-raised B-06/B-07 with nothing on screen to explain why.
+    kwGrunt: v.inputs?.kwGrunt ?? undefined,
+    encumbranceTreatment: v.inputs?.encumbranceTreatment ?? undefined,
     kwMeta: v.inputs?.kwMeta ?? undefined,
   };
 }

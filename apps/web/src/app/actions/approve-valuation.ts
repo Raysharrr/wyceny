@@ -353,9 +353,13 @@ export async function approveValuation(
       }
     } catch (error) {
       // I-21 (`documentInputFor`): the render would print an amount other than
-      // the one this valuation carries. Reachable after „Cofnij zatwierdzenie i
-      // popraw” if the reopened draft kept an amount it no longer produces —
-      // say what is wrong instead of blaming the generator below.
+      // the one this valuation carries. NO live path reaches this today —
+      // `reopenApproved` clears `wr`, and every read goes through
+      // `readFeatureScale`, so a draft arrives here either without an amount or
+      // with the one its snapshot produces. It is caught anyway because the
+      // throw would otherwise surface as "nie udało się wygenerować operatu",
+      // blaming the generator for a data problem, and because the guard exists
+      // for the path that does not exist YET.
       if (error instanceof AmountMismatchError) {
         return {
           error:

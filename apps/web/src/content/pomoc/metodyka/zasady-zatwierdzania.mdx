@@ -74,12 +74,14 @@ Pozostałe grupy **istnieją tylko wtedy, gdy do wyceny dołączono odpowiednią
 - **Definicje skali ocen** — tylko gdy migawka niesie ten klucz. Wyceny sprzed wprowadzenia gotowego zestawu cech go nie mają i nie dostają blokady wstecz.
 - **Geokodowanie adresu** — tylko gdy próba pochodzi z pobrania z rejestru. Próba wpisana w całości ręcznie nie ma czego geokodować.
 - **Dane ewidencyjne (EGiB) oraz przeznaczenie planistyczne (MPZP)** — obie grupy naraz, gdy do wyceny dołączono migawkę przedmiotu. Potwierdzony brak planu jest tu równie świadomą decyzją co potwierdzenie jego treści, więc grupa planu obejmuje oba przypadki.
-- **Stan prawny (KW)** — tylko gdy dołączono odczyt aktu notarialnego albo odpisu księgi. Numer księgi wpisany ręcznie nie tworzy migawki i nie dokłada tu żadnej blokady.
+- **Stan prawny (KW)** — status odczytu, tylko gdy dołączono odczyt dokumentu. Badanie wpisane ręcznie jest pracą własną rzeczoznawcy, więc wchodzi jako potwierdzone i tej pozycji nie dokłada.
 
-Grupa stanu prawnego ma dodatkowo dwa warunki, które nie dotyczą statusów, tylko kompletności:
+### Badanie ksiąg wieczystych i obciążenie
 
-- **brak numeru KW gruntu** (księgi macierzystej) blokuje przy własności lokalu; przy spółdzielczym własnościowym prawie księga macierzysta gruntu nie jest warunkiem i jej brak niczego nie blokuje,
-- **brak numeru KW lokalu** blokuje, chyba że zaznaczono wariant deweloperski albo wyceniane jest spółdzielcze własnościowe prawo. Lokal bez własnej księgi jest stanem dopuszczalnym, ale musi zostać zadeklarowany — wariantem deweloperskim albo rodzajem prawa — a nie przemilczany.
+Te dwie blokady **nie zależą od ścieżki**: pytamy o nie tak samo, gdy dane przyszły z PDF-a, jak wtedy, gdy zostały przepisane z eKW. Do 15.09.2026 wymóg badania siedział wewnątrz warunku „jeśli dołączono odczyt dokumentu”, więc wpis ręczny go omijał — a operat i tak twierdził, że zbadano obie księgi.
+
+- **B-06 — brak badania księgi wieczystej.** Komunikat: „Uzupełnij badanie księgi wieczystej: KW lokalu, KW gruntu i datę badania.”, odsyła do [kroku 1](/pomoc/krok-1-przedmiot). Księga jest zbadana, gdy pochodzi z odpisu albo z eKW, ma numer, datę badania oraz **rozstrzygnięte oba działy** (III i IV). Przy własności lokalu wymagane są obie księgi — lokalu i gruntu. Przy lokalu bez własnej księgi (wariant deweloperski) wystarczy księga macierzysta gruntu. Przy spółdzielczym własnościowym prawie badanie nie jest wymagane wcale.
+- **B-07 — wpis w dziale III bez decyzji o obciążeniu.** Komunikat: „Księga zawiera ograniczone prawo rzeczowe — wskaż, czy wartość je uwzględnia, i podaj podstawę.”, odsyła do [kroku 1](/pomoc/krok-1-przedmiot). Wyzwala go wpis w dziale III **księgi lokalu**; podstawa jest wymagana przy obu wariantach, bo operat drukuje ją jako założenie. Wpisy w dziale III księgi gruntu opisujemy, ale tej blokady nie wywołują.
 
 O tym, które z tych warunków obowiązują, rozstrzyga rodzaj prawa wybrany w kroku 1 (`apps/web/src/domain/property-right.ts`) — ta sama reguła, którą operat czyta przy składaniu tekstu, więc brama i dokument nie mogą się rozjechać.
 

@@ -125,6 +125,10 @@ describe("createDraft", () => {
           subject: null,
           subjectMeta: null,
           kw: null,
+          // ADR-018: step 1 carries the grunt's book and the encumbrance
+          // decision too — absent here, so both persist as an honest null.
+          kwGrunt: null,
+          encumbranceTreatment: null,
           kwMeta: null,
           hasBasement: false,
           provenance: {
@@ -260,6 +264,8 @@ describe("saveSubjectAction", () => {
       subject: null,
       subjectMeta: null,
       kw: normalizeKw(rawKw),
+      kwGrunt: null,
+      encumbranceTreatment: null,
       kwMeta: null,
       provenance: {
         address: { source: "rzeczoznawca", status: "confirmed" },

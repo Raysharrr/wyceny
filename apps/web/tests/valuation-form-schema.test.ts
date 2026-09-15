@@ -309,6 +309,24 @@ describe("valuationFormSchema — RCN provenance (F-5)", () => {
     expect(step1Schema.safeParse(noKw).success).toBe(false);
   });
 
+  /**
+   * The W4 trap, one field over: a shape the FORM can produce must parse, or
+   * the save dies on a path no input displays and the appraiser sees nothing
+   * happen. Typing the Podstawa before picking a tile leaves `wariant: null` —
+   * saveable here, still blocked by B-07 in the gate.
+   */
+  it("accepts a half-made encumbrance decision (wariant null) — B-07 blocks it, the schema must not", () => {
+    const half = { wariant: null, podstawa: "Zgodnie z poleceniem Zleceniodawcy." };
+    expect(valuationFormSchema.safeParse({ ...valid, encumbranceTreatment: half }).success).toBe(
+      true,
+    );
+    expect(step1Schema.safeParse({ ...valid, encumbranceTreatment: half }).success).toBe(true);
+    expect(
+      step1Schema.safeParse({ ...valid, encumbranceTreatment: { ...half, wariant: "inne" } })
+        .success,
+    ).toBe(false);
+  });
+
   it("still validates when sampleMeta is absent", () => {
     expect(valuationFormSchema.safeParse(valid).success).toBe(true);
   });

@@ -29,10 +29,30 @@ export class SubjectStep {
     await this.page.locator("#area").fill(o.area);
     await this.page.locator("#purpose").selectOption("sprzedaz");
     await this.page.locator("#client").fill(o.client);
-    await this.page.getByRole("button", { name: /^Wpisz ręcznie/ }).click();
-    if (o.kw) await this.page.locator("#kwNumber").fill(o.kw);
+    if (o.right === "spoldzielcze") {
+      // A coop right has no book of its own (T-12): one optional flat number,
+      // and no examination section at all.
+      if (o.kw) await this.page.locator("#kwNumber").fill(o.kw);
+    } else if (o.kw) {
+      await this.page.locator("#kw-lokalu").fill(o.kw);
+    }
     if (o.basement)
       await this.page.getByRole("checkbox", { name: "Lokal ma przynależną piwnicę" }).check();
+  }
+
+  /**
+   * The examination both books need before step 7 will let the operat out
+   * (B-06, ADR-018). Manual path — the office's own — with both dzialy
+   * answered "no entries", which is also what keeps B-07 out of the way.
+   */
+  async examineBooks(o: { kwLokalu: string; kwGruntu: string }) {
+    await this.page.locator("#kw-lokalu").fill(o.kwLokalu);
+    await this.page.locator("#kw-gruntu").fill(o.kwGruntu);
+    await this.page.locator("#kwg-nr").fill(o.kwGruntu);
+    for (const group of await this.page.getByRole("radiogroup", { name: /^Dział I(II|V)/ }).all()) {
+      await group.getByRole("radio", { name: "Brak wpisów" }).click();
+    }
+    await expect(this.page.getByText(/Zbadane księgi: 2 z 2/)).toBeVisible();
   }
 
   get summary(): Locator {

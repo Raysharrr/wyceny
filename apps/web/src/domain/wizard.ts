@@ -64,6 +64,11 @@ const BLOCKER_STEP: Record<string, number> = {
   "provenance.mpzp": 1,
   "provenance.kw": 1,
   kw: 1,
+  // Spelled out rather than left to the `kw` prefix: B-06 and B-07 are the
+  // two blockers people land on most, and a future rename of the prefix must
+  // not quietly strand them (ADR-018).
+  "kw.badanie": 1,
+  encumbranceTreatment: 1,
   purpose: 1,
   kwNumber: 1,
   client: 1,

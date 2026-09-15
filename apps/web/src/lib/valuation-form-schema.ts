@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COMPARABLE_SOURCES, POOL_SOURCES } from "@/domain/kcs";
+import { kwRequirements } from "@/domain/kw-requirements";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { featureIssues } from "@/domain/feature-rules";
@@ -358,8 +359,15 @@ export const subjectMetaSchema = z.object({
 /** Mirrors `KwDzialSnapshot`/`KwSnapshot` from `@/domain/kw-snapshot` (Slice 6). */
 export const kwDzialSchema = z.object({ wpisy: z.boolean(), tresc: z.array(z.string()) });
 
+/** Mirrors `KwAkt` — dział II in three fields (ADR-018 reg. 1). */
+export const kwAktSchema = z.object({
+  rodzaj: z.string(),
+  rep: z.string(),
+  data: z.string(),
+});
+
 export const kwSchema = z.object({
-  source: z.enum(["akt", "odpis_kw"]),
+  source: z.enum(["akt", "odpis_kw", "ekw_reczne"]),
   kwLokalu: z.string().nullable(),
   kwGruntu: z.string().nullable(),
   kwInne: z.array(z.string()),
@@ -371,6 +379,26 @@ export const kwSchema = z.object({
   dataDokumentu: z.string().nullable(),
   dzial3: kwDzialSchema.nullable(),
   dzial4: kwDzialSchema.nullable(),
+  // Optional like the domain type: a snapshot saved before ADR-018 (and every
+  // extract the worker emits today) must still parse — no data migration.
+  dataBadania: z.string().nullish(),
+  nrLokalu: z.string().nullish(),
+  akt: kwAktSchema.nullish(),
+});
+
+/** Mirrors `KwGruntSnapshot` — the grunt's book, manual-only in paczka 1. */
+export const kwGruntSchema = z.object({
+  source: z.literal("ekw_reczne"),
+  nrKsiegi: z.string().nullable(),
+  dataBadania: z.string().nullable(),
+  dzial3: kwDzialSchema.nullable(),
+  dzial4: kwDzialSchema.nullable(),
+});
+
+/** Mirrors `EncumbranceTreatment` — the appraiser's call on a dział III entry (ADR-018 reg. 6). */
+export const encumbranceTreatmentSchema = z.object({
+  wariant: z.enum(["bez_uwzglednienia", "z_uwzglednieniem"]).nullable(),
+  podstawa: z.string(),
 });
 
 /** Mirrors `KwMetaSnapshot` from `@/domain/kw-snapshot`. */
@@ -421,7 +449,16 @@ export const valuationFormObject = z.object({
   streetView: streetViewSchema.optional(),
   subject: subjectSchema.optional(),
   subjectMeta: subjectMetaSchema.optional(),
-  kw: kwSchema.optional(),
+  // `.nullish()`, not `.optional()`: retracting an examination is a real act —
+  // unticking "zakup deweloperski", or switching the property right — and the
+  // form has to be able to SAY "there is no snapshot" rather than merely omit
+  // the key. `setValue(…, undefined)` is not a reliable clear in RHF, so the
+  // retraction has to be a value, and a value the schema rejects would fail on
+  // a path no field renders (the W4 dead-end). `wizard.ts` already writes
+  // `parsed.kw ? normalizeKw(parsed.kw) : null`.
+  kw: kwSchema.nullish(),
+  kwGrunt: kwGruntSchema.nullish(),
+  encumbranceTreatment: encumbranceTreatmentSchema.nullish(),
   kwMeta: kwMetaSchema.optional(),
   purpose: z.enum(["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"], {
     message: "Wybierz cel wyceny.",
@@ -442,8 +479,7 @@ export const valuationFormObject = z.object({
  * extract is present (Slice 6).
  */
 export const valuationFormSchema = valuationFormObject.superRefine((values, ctx) => {
-  // A coop right has no KW of its own (T-12) — the number is optional there.
-  if (!values.kw && !values.kwNumber && values.propertyRight !== "spoldzielcze_wlasnosciowe") {
+  if (!values.kwNumber && kwRequirements(values.propertyRight, values.kw).numerKwWFormularzu) {
     ctx.addIssue({
       code: "custom",
       path: ["kwNumber"],

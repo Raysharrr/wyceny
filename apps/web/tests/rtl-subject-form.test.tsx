@@ -58,7 +58,7 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("Adres"), "ul. Testowa 1, Poznań");
   await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
   await user.selectOptions(screen.getByLabelText(/cel wyceny/i), "sprzedaz");
-  await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "AB1C/1/1");
+  await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/1");
   await user.type(screen.getByLabelText(/zamawiający wycenę/i), "p. Test Testowy");
 }
 
@@ -121,7 +121,7 @@ describe("SubjectForm — validation", () => {
     await user.type(screen.getByLabelText("Adres"), "ul. Testowa 1, Poznań");
     await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
     await user.selectOptions(screen.getByLabelText(/cel wyceny/i), "sprzedaz");
-    await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "AB1C/1/1");
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/1");
     // client left empty
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
 
@@ -289,7 +289,10 @@ describe("step1DefaultsFromInputs", () => {
     expect(defaults.subject?.kondygnacjeNadziemne).toBe("4");
     expect(defaults.subject?.kondygnacjePodziemne).toBe("1");
     expect(defaults.subject?.rokBudowy).toBe("1965");
-    expect(defaults.kw).toEqual(inputs.kw);
+    // A pre-ADR-018 snapshot comes back with the three new fields materialised
+    // as nulls — `coerceLegacyKw`'s whole job. "Nobody recorded a date" and
+    // "the field did not exist yet" have to look the same to the form.
+    expect(defaults.kw).toEqual({ ...inputs.kw, dataBadania: null, nrLokalu: null, akt: null });
     expect(defaults.kwMeta).toEqual(inputs.kwMeta);
   });
 

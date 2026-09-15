@@ -1,5 +1,11 @@
 Numer księgi wieczystej, udział w nieruchomości wspólnej, sąd i wydział, treść działów III i IV oraz powierzchnia użytkowa mogą pochodzić z wgranego dokumentu — aktu notarialnego albo odpisu księgi wieczystej. Odczytuje je model językowy, a nie parser formatu, więc ta strona mówi nie tylko, co z dokumentu wyciągamy, ale przede wszystkim czego z niego nie wyciągamy i jaki status ma wynik. Mechanizm żyje w workerze (`apps/worker/app/kw.py`, `apps/worker/app/main.py`).
 
+## Wgranie PDF-a i wpis ręczny są równorzędne
+
+Biuro bada księgi w przeglądarce eKW, nie przez odpis PDF — i od 15.09.2026 taka ścieżka jest pełnoprawnym źródłem, zapisywanym dokładnie tym samym zestawem pól co odczyt z dokumentu. Różnica dotyczy jednej rzeczy: **pełnej treści działów**. Z PDF-a operat może ją zacytować; z wpisu ręcznego dostaje opis tego, co wpisałeś, i karta w kroku 1 uprzedza o tym wprost.
+
+**Data badania nie pochodzi z dokumentu ani z odczytu.** Księga nigdy nie zawiera dnia, w którym ją przeglądano, więc to pole wypełnia zawsze rzeczoznawca — aplikacja podpowiada dzisiejszą datę i nigdy nie wstawia jej za Ciebie w tle. Bez niej księga nie liczy się jako zbadana i [krok 7 blokuje zatwierdzenie](/pomoc/zasady-zatwierdzania).
+
 ## Jakie dokumenty przyjmujemy
 
 - **Wyłącznie PDF.** Plik innego typu odrzuca przeglądarka, zanim cokolwiek zostanie wysłane; worker odrzuca go drugi raz u siebie.

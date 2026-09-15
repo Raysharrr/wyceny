@@ -101,7 +101,7 @@ describe("odnosniki /pomoc/ w tresci MDX", () => {
  * przeniesieniu komponentu, a oba historyczne rozjazdy polegaly na tym, ze
  * przycisk PRZESTAL istniec.
  *
- * Zakres na dzis: 40 wystapien, 20 unikalnych etykiet. To siec bezpieczenstwa
+ * Zakres na dzis: 39 wystapien, 18 unikalnych etykiet. To siec bezpieczenstwa
  * na jedna, najczestsza klase bledu — nie dowod zgodnosci Pomocy z aplikacja.
  *
  * T12 potwierdzil to empirycznie po raz trzeci: skasowanie przycisku
@@ -144,7 +144,7 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
   // zakres straznika, a to jest dokladnie ten rodzaj cichej utraty pokrycia,
   // przed ktorym ten plik ma bronic. Rosna, gdy Pomoc cytuje nowy przycisk —
   // wtedy zaktualizuj tez liczby w komentarzu wyzej.
-  it("zna dokladny zakres: 47 wystapien, 21 unikalnych etykiet", () => {
+  it("zna dokladny zakres: 46 wystapien, 19 unikalnych etykiet", () => {
     // 36 / 20 od S3 (blok „Prawo spoldzielcze"): `krok-3-proba` cytuje trzy nowe
     // etykiety — „Pobierz probe z rejestru", „Pobierz probe ponownie" i „Dodaj
     // transakcje w Rejestrze →" — a wiekszosc cytatow „Pobierz probe z RCN"
@@ -154,15 +154,22 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
     // 40 od S5 (Task 4f): `rejestr-spoldzielczy` i `krok-1-przedmiot` mowia o doborze
     // z rejestru w czasie terazniejszym i cytuja „Pobierz probe z rejestru" (etykieta
     // cytowana juz przez `krok-3-proba`, wiec unikalnych nadal 20).
-    // 47 / 21 od ADR-020 (approval-reopen): wzorzec obejmuje teraz takze „Cofnij",
+    // 39 / 18 od P6 (ADR-018): krok 1 nie ma juz trzech kafli zrodla, wiec
+    // `krok-1-przedmiot` przestalo cytowac „Wgraj akt notarialny" i „Wgraj
+    // odpis KW" — zostal opis dwoch ksiag i przelacznika „Wgraj PDF".
+    // 46 / 19 od ADR-020 (approval-reopen): wzorzec obejmuje teraz takze „Cofnij",
     // a `po-zatwierdzeniu` i `operat-i-niezmiennosc` cytuja „Cofnij zatwierdzenie
     // i popraw" po dwa razy (w tym raz w alt zrzutu); do tego jedno cytowanie
     // „Utworz nowa wersje" i jedno „Podpisz operat (nieodwracalne)" wiecej.
-    // 48 od ADR-016 (feature-scales): `zasady-zatwierdzania` kieruje do „Cofnij
-    // zatwierdzenie i popraw" operat, ktorego kwoty nie da sie dzis odtworzyc
-    // z jego danych (I-21). Etykieta byla juz cytowana, wiec unikalnych nadal 21.
-    expect(cytaty.length).toBe(48);
-    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(21);
+    // 47 / 19 PRZELICZONE na scalonym drzewie (P5 + P6 + ADR-020), nie przejete
+    // z zadnej z galezi: 48/21 z feature-scales i 46/19 z integracyjnej opisuja
+    // kazde tylko polowe tego drzewa, a ten straznik pilnuje calosci. Roznica
+    // wzgledem 46/19 to jedno cytowanie „Cofnij zatwierdzenie i popraw" wiecej,
+    // dodane w `zasady-zatwierdzania` dla operatu, ktorego kwoty nie da sie dzis
+    // odtworzyc z jego danych (I-21); etykieta byla juz cytowana, wiec unikalnych
+    // nadal 19.
+    expect(cytaty.length).toBe(47);
+    expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(19);
   });
 
   it("kazda cytowana etykieta wystepuje w zrodlach aplikacji", () => {
