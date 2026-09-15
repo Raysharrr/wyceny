@@ -5,8 +5,11 @@ here with Pillow — no binary fixture."""
 import base64
 import hashlib
 import hmac
+import subprocess
+import sys
 import time
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -107,6 +110,35 @@ def test_too_many_pages_is_413(monkeypatch):
     resp = post(pdf(*[((50, 50), RED)] * 3), mint())
     assert resp.status_code == 413
     assert "stron" in resp.json()["detail"]
+
+
+STRESS_SCRIPT = """
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from app.pdf_pages import render_pages
+
+data = sys.stdin.buffer.read()
+with ThreadPoolExecutor(max_workers=16) as pool:
+    for _ in range(40):
+        results = list(pool.map(lambda _: render_pages(data), range(16)))
+        assert all(len(pages) == 3 for pages in results)
+"""
+
+
+def test_parallel_renders_do_not_crash_the_process():
+    """PDFium is not thread-safe and sync handlers run in Starlette's threadpool:
+    without a lock, parallel uploads kill the whole worker (SIGBUS/SIGSEGV) — so
+    the stress runs in a subprocess, where a crash is a returncode, not a dead pytest."""
+    result = subprocess.run(
+        [sys.executable, "-c", STRESS_SCRIPT],
+        # Small pages, many documents: measured without the lock this fails
+        # (PdfiumError, ObjectTracker errors, SIGSEGV) in 5 runs out of 5.
+        input=pdf(((50, 50), RED), ((50, 50), BLUE), ((50, 50), RED)),
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")[-500:]
 
 
 def test_bad_token_is_401():
