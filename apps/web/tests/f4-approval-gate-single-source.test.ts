@@ -5,17 +5,29 @@
  * only by "Mirrors …" comments. Paczka 1 adds nine blockers; a blocker added
  * to three of the four would show an enabled button the action then refuses,
  * or refuse on the screen what the transaction would let through. This test
- * reads the sources and pins that every one of the four goes through
- * `approvalBlockers` and none spells out `approvalGate` /
- * `documentFieldBlockers` itself. Behavioural equivalence lives in
- * `f4-approval-gate.test.ts` ("R-1: approvalBlockers ≡ …").
+ * reads the sources and pins that nothing under `src/` except
+ * `domain/valuation.ts` calls `approvalGate` / `documentFieldBlockers`, and
+ * that the known call sites go through `approvalBlockers`. The order and
+ * shapes of the list are pinned in `f4-approval-gate.test.ts` ("R-1:
+ * approvalBlockers — pin …").
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const src = (path: string) =>
-  readFileSync(fileURLToPath(new URL(`../src/${path}`, import.meta.url)), "utf8");
+const SRC_DIR = fileURLToPath(new URL("../src", import.meta.url));
+
+const src = (path: string) => readFileSync(join(SRC_DIR, path), "utf8");
+
+/** Every `.ts`/`.tsx` file under `src/`, as a path relative to it. */
+function sourceFiles(dir = SRC_DIR): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(full);
+    return /\.tsx?$/.test(entry.name) ? [relative(SRC_DIR, full)] : [];
+  });
+}
 
 /** The body of a top-level `export function name(...) { ... }`, up to its closing brace. */
 function functionBody(source: string, name: string): string {
@@ -26,8 +38,10 @@ function functionBody(source: string, name: string): string {
   return source.slice(start, end);
 }
 
+/** Call sites of `fn` — its own `function fn(` definition does not count. */
 const calls = (source: string, fn: string) =>
-  source.match(new RegExp(`\\b${fn}\\(`, "g"))?.length ?? 0;
+  (source.match(new RegExp(`\\b${fn}\\(`, "g"))?.length ?? 0) -
+  (source.match(new RegExp(`\\bfunction\\s+${fn}\\(`, "g"))?.length ?? 0);
 
 const CALL_SITES = [
   "app/valuations/[id]/page.tsx",
@@ -44,11 +58,16 @@ describe("F-4 single source: approvalBlockers is the only gate composition (R-1)
     expect(calls(source, "approvalBlockers")).toBeGreaterThan(0);
   });
 
-  it.each(CALL_SITES)("%s composes nothing by hand", (path) => {
-    const source = src(path);
-    expect(calls(source, "approvalGate")).toBe(0);
-    expect(calls(source, "documentFieldBlockers")).toBe(0);
-  });
+  it.each(["approvalGate", "documentFieldBlockers"])(
+    "%s is called nowhere in src/ but domain/valuation.ts",
+    (fn) => {
+      const files = sourceFiles();
+      // Sanity: the walk really reached the tree, including the known call sites.
+      expect(files).toEqual(expect.arrayContaining([...CALL_SITES, "domain/valuation.ts"]));
+      const callers = files.filter((path) => calls(src(path), fn) > 0);
+      expect(callers).toEqual(["domain/valuation.ts"]);
+    },
+  );
 
   it("domain approveValuation goes through approvalBlockers, not the parts", () => {
     const body = functionBody(src("domain/valuation.ts"), "approveValuation");

@@ -594,16 +594,16 @@ describe("featureDefs group (Slice 7)", () => {
 
 /**
  * R-1 (operat-bugfix, paczka 1): `approvalBlockers` is the one composition of
- * the approval gate. Before it, step 7, the flat view, the approve action and
- * the domain `approveValuation` each spelled out
- * `approvalGate(...).blockers + documentFieldBlockers(...)` by hand. The
- * oracle below is that hand-written composition, verbatim — the refactor is
- * correct only if the list (content AND order) is identical on every shape.
+ * the approval gate (step 7, the flat view, the approve action and the domain
+ * `approveValuation` all read it). This pins the ORDER and the SHAPES of that
+ * list: gate blockers first (none without an inputs snapshot), then the
+ * document-field blockers, on every fixture shape below. A new blocker group
+ * that lands somewhere else in the list turns these red and has to say so.
  */
-describe("R-1: approvalBlockers ≡ approvalGate + documentFieldBlockers", () => {
+describe("R-1: approvalBlockers — pin kolejności i kształtów blokad", () => {
   const ADDRESS = "Audit approvable";
 
-  function legacyComposition(v: Valuation, ctx: GateOptions) {
+  function gateThenFieldBlockers(v: Valuation, ctx: GateOptions) {
     const gate = v.inputs
       ? approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, ctx)
       : null;
@@ -733,7 +733,7 @@ describe("R-1: approvalBlockers ≡ approvalGate + documentFieldBlockers", () =>
       it(`${name} — requireProse=${requireProse}`, () => {
         const ctx = ctxFor(v, requireProse);
         const blockers = approvalBlockers(v, ctx);
-        expect(blockers).toEqual(legacyComposition(v, ctx));
+        expect(blockers).toEqual(gateThenFieldBlockers(v, ctx));
         // `code` is additive and only the paczka-1 B-xx blockers will set it.
         expect(blockers.every((b) => b.code === undefined)).toBe(true);
       });
