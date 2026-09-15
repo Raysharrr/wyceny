@@ -39,6 +39,14 @@ const MAP_SIZE: [number, number] = [600, 450];
 export const PHOTO_BOX: [number, number] = [290, 220];
 
 /**
+ * Print box for one rasterised page of the OC policy, px @96dpi — ~15×21 cm,
+ * the size the reference operat's scans occupy in „Załącznik nr 1". Aspect is
+ * preserved inside it, and two boxes this tall cannot share a page, so Word
+ * flows one scan per page without any explicit page break in the template.
+ */
+export const POLICY_BOX: [number, number] = [567, 794];
+
+/**
  * Where the signature goes, left in the approved DOCX (ADR-020 wariant a). A
  * bookmark, not text: it prints nothing in Word or in the PDF, and the
  * appraiser's own text can never spell it — unlike a tag, which is also why
@@ -85,6 +93,12 @@ export function renderOperatDocx(
   opts?: {
     maps?: RenderMaps | null;
     photos?: RenderPhotos | null;
+    /**
+     * Rasterised pages of the author's OC policy, in document order (D-60).
+     * Bytes, like the inspection photos: the model carries only the markers
+     * `polisa-0`, `polisa-1`, … and these fill them.
+     */
+    policyPages?: readonly Buffer[] | null;
     /** The template bytes; tests pass a variant, production reads the shipped file. */
     template?: Buffer;
   },
@@ -111,6 +125,19 @@ export function renderOperatDocx(
     foto_budynek: fotoLoop("budynekZewn"),
     foto_wnetrza: fotoLoop("wnetrza"),
   };
+  // „Załącznik nr 1" dzieli tagName `img` z pętlami zdjęć, więc bajty idą tą
+  // samą mapą po tagVALUE. Model wydał tyle znaczników, ile stron miał autor —
+  // rozjazd długości oznaczałby stronę bez bajtów, czyli obraz, którego moduł
+  // nie umie wstawić; wtedy lepsza jest głośna odmowa niż operat z dziurą.
+  const policyPages = opts?.policyPages ?? [];
+  if (policyPages.length !== model.polisa_strony.length) {
+    throw new Error(
+      `Stron polisy w renderze (${policyPages.length}) ≠ znaczników w modelu (${model.polisa_strony.length})`,
+    );
+  }
+  policyPages.forEach((buf, i) => {
+    photoMap[`polisa-${i}`] = buf;
+  });
   const zip = new PizZip(opts?.template ?? fs.readFileSync(TEMPLATE_PATH));
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
@@ -121,10 +148,14 @@ export function renderOperatDocx(
         centered: false,
         getImage: (tagValue: string, tagName: string) =>
           tagName === "img" ? photoMap[tagValue] : images[tagName],
-        getSize: (buf: Buffer, _tagValue: string, tagName: string) => {
+        getSize: (buf: Buffer, tagValue: string, tagName: string) => {
           if (tagName === "img") {
+            // Zdjęcia z oględzin i strony polisy dzielą tag `img`, ale nie
+            // rozmiar: zdjęcie ma się mieścić dwa w rzędzie, a skan polisy ma
+            // być czytelny, czyli prawie na całą stronę. Rozróżnia je znacznik.
+            const box = tagValue.startsWith("polisa-") ? POLICY_BOX : PHOTO_BOX;
             const dims = jpegDimensions(buf);
-            return dims ? fitBox(dims, PHOTO_BOX) : PHOTO_BOX;
+            return dims ? fitBox(dims, box) : box;
           }
           return MAP_SIZE;
         },

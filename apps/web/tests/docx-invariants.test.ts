@@ -140,8 +140,10 @@ describe("openDocx — parser XML bez usuwania znaczników", () => {
   it("nie gubi txbxContent — obie kopie pola tekstowego szablonu są osobnymi polami", () => {
     const doc = openDocx(TEMPLATE);
     expect(doc.textboxes.map((t) => t.copy)).toEqual(["choice", "vml"]);
-    expect(doc.textboxes[0].text).toContain("e-mail");
-    expect(doc.textboxes[1].text).toContain("e-mail");
+    // Dane kontaktowe biura były w szablonie literałem operatu źródłowego;
+    // od TP.5 obie kopie niosą ten sam tag z profilu (ADR-020 reg. 4/5).
+    expect(doc.textboxes[0].text).toContain("{biuro}");
+    expect(doc.textboxes[1].text).toContain("{biuro}");
   });
 
   it("rzuca, gdy dokument nie ma żadnego akapitu — pusty render nie przejdzie asercji", () => {

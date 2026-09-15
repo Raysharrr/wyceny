@@ -457,6 +457,12 @@ export type DocumentModel = {
    * marker in `docx-render.ts`.
    */
   polisa_strony: Array<{ img: string }>;
+  /**
+   * Honest silence for §15 and „Załącznik nr 1": bez stron polisy dokument nie
+   * wymienia załącznika, którego nie ma. Osiągalne tylko w PODGLĄDZIE — B-16
+   * nie wyda operatu bez ważnej polisy.
+   */
+  ma_polise: boolean;
   // EGiB/building facts (section 8.2) — from the auto-fetched subject snapshot;
   // dashes when no subject was fetched (legacy manual-entry inputs).
   obreb: string;
@@ -761,11 +767,10 @@ export type OperatAuthor = {
   /**
    * Rasterised policy pages in document order, as JPEG.
    *
-   * ALWAYS EMPTY as of this session: the model turns the list into markers,
-   * but nothing reads the pages back out of storage yet and `docx-render.ts`
-   * has no "Załącznik nr 1" tag to dispatch them to — both belong to the
-   * template session (plan §P1.9). Filling this array is the whole change on
-   * this side when that lands.
+   * Wypełniane przez `policyPagesFrom` z prefiksu `insurance_doc_key` (jedna
+   * strona = jeden klucz `page-00N.jpg`). Model robi z nich ZNACZNIKI; bajty
+   * jadą do renderu osobno, tą samą drogą co zdjęcia z oględzin — obrazy nigdy
+   * nie podróżują wewnątrz modelu.
    */
   policyPages: Buffer[];
 };
@@ -1025,6 +1030,7 @@ export function buildDocumentModel(
     autor_uprawnienia: input.author.licenseNo || DASH,
     biuro: input.author.officeBlock || DASH,
     polisa_strony: input.author.policyPages.map((_, i) => ({ img: `polisa-${i}` })),
+    ma_polise: input.author.policyPages.length > 0,
     obreb: subject?.obreb || DASH,
     arkusz: subject?.arkusz || DASH,
     nr_dzialki: subject?.nrDzialki || DASH,

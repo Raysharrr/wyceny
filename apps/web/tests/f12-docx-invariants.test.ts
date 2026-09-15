@@ -3,12 +3,16 @@ import { buildDocumentModel } from "../src/domain/document-model";
 import { computeKcs } from "../src/domain/kcs";
 import { renderOperatDocx } from "../src/adapters/docx-render";
 import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
+import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
+import { JPG_1PX } from "./fixtures/jpeg-fixtures";
 import {
   effectiveRunFormat,
+  expectImageInParagraph,
   expectNoText,
   openDocx,
   sectionParagraphs,
   sectionText,
+  textboxTexts,
   type DocxDoc,
   type DocxRun,
 } from "./support/docx-invariants";
@@ -390,6 +394,68 @@ describe("I-11 G / I-12 G: Tabela 3 i opisy §12.2 (TP.4, D-47 unieważnione / D
     expectNoText(d, "Lokal mieszkalny położony jest przy .");
     expectNoText(d, "położony jest przy {lokalizacja}");
     expect(sectionText(d, "12.2.")).toContain(`${m.lokale_cmin[0].cechy[0].nazwa} – `);
+  });
+});
+
+describe("I-18: autor, biuro i polisa z profilu zalogowanego (TP.5, ADR-020 reg. 4-5)", () => {
+  const AUTOR = AUTOR_TESTOWY;
+  const zAutorem = (policyPages: Buffer[] = []) => {
+    const input = wycena1409Anon({ kw: "ekw_reczne_obie_ksiegi" });
+    input.author = { ...AUTOR, policyPages };
+    const model = buildDocumentModel(input);
+    return { model, doc: openDocx(renderOperatDocx(model, { policyPages })) };
+  };
+
+  it("dane autora stoją w OBU kopiach pola tekstowego i w akapitach body", () => {
+    const { doc } = zAutorem();
+    const pola = textboxTexts(doc);
+    expect(pola.choice).toHaveLength(1);
+    expect(pola.choice).toEqual(pola.vml);
+    for (const kopia of [...pola.choice, ...pola.vml]) {
+      expect(kopia).toContain("Biuro Wycen Testowe");
+    }
+    const body = doc.paragraphs
+      .filter((p) => p.container !== "txbx-vml")
+      .map((p) => p.text)
+      .join("\n");
+    expect(body).toContain(`${AUTOR.fullName} numer uprawnień ${AUTOR.licenseNo}`);
+    expect(body).toContain(`świadectwo nadania uprawnień zawodowych nr ${AUTOR.licenseNo}`);
+    expect(body).toContain("Wycenę sporządza się na podstawie zlecenia złożonego przez");
+    expect(sectionText(doc, "4.")).toContain("Biuro Wycen Testowe");
+  });
+
+  it("w całym DOCX nie ma danych innej osoby ani innego biura", () => {
+    const { doc } = zAutorem();
+    for (const literal of [
+      "Dembsk",
+      "5667",
+      "dembscy.pl",
+      "606 111",
+      "Biura Wyceny Nieruchomości",
+    ]) {
+      expectNoText(doc, literal);
+    }
+  });
+
+  it("D-60: strony polisy w „Załączniku nr 1”, pozycja w §15", () => {
+    const { doc } = zAutorem([JPG_1PX, JPG_1PX]);
+    expect(sectionText(doc, "15.")).toContain("Kopia polisy ubezpieczeniowej.");
+    expect(sectionText(doc, "15.")).toContain("Załącznik nr 1");
+    const obrazy = expectImageInParagraph(doc, { section: "15." });
+    expect(obrazy.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("podgląd bez polisy: brak pozycji i brak załącznika, render nie pada", () => {
+    const { doc } = zAutorem([]);
+    expectNoText(doc, "Kopia polisy ubezpieczeniowej.");
+    expectNoText(doc, "Załącznik nr 1");
+  });
+
+  it("render odmawia, gdy liczba stron nie zgadza się ze znacznikami modelu", () => {
+    const input = wycena1409Anon({ kw: "ekw_reczne_obie_ksiegi" });
+    input.author = { ...AUTOR, policyPages: [JPG_1PX, JPG_1PX] };
+    const model = buildDocumentModel(input);
+    expect(() => renderOperatDocx(model, { policyPages: [JPG_1PX] })).toThrow(/Stron polisy/);
   });
 });
 

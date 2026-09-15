@@ -12,7 +12,7 @@ import {
 } from "@/app/valuations/_deps";
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
 import { buildDocumentModel } from "@/domain/document-model";
-import { authorFrom, documentInputFor } from "@/domain/document-input";
+import { authorFrom, documentInputFor, policyPagesFrom } from "@/domain/document-input";
 import { computeKcsOnScale, kcsReady } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -184,7 +184,8 @@ export async function previewOperat(
       // The preview reads the CURRENT profile (ADR-020 cz. 1): the appraiser
       // sees their own author block filling in as they complete /profile, and
       // dashes until then — which is exactly what B-15 refuses to issue.
-      const author = authorFrom(await profileRepository.get(session.user.id));
+      const profile = await profileRepository.get(session.user.id);
+      const author = authorFrom(profile, await policyPagesFrom(storage, profile?.insuranceDocKey));
       const model = buildDocumentModel(
         // The preview's "data sporządzenia" is TODAY; the issued operat gets
         // the date it was issued. That difference is why issuing re-renders
@@ -196,7 +197,7 @@ export async function previewOperat(
         // may pass the flag — approve and sign must not.
         { preview: true },
       );
-      const docx = renderOperatDocx(model, { maps, photos });
+      const docx = renderOperatDocx(model, { maps, photos, policyPages: author.policyPages });
       const pdf = await worker.convertToPdf(docx);
       await storage.put(previewDocKey(id), pdf);
 
