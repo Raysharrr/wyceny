@@ -7,7 +7,7 @@ import { storage, worker, valuationRepository, mapImages } from "@/app/valuation
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
 import { buildDocumentModel } from "@/domain/document-model";
 import { documentInputFor } from "@/domain/document-input";
-import { computeKcsOnScale } from "@/domain/feature-rules";
+import { computeKcsOnScale, kcsReady } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
@@ -77,6 +77,14 @@ export async function previewOperat(
     }
     if (!valuation.inputs) {
       return { error: "Brak danych wejściowych operatu — nie ma czego pokazać." };
+    }
+    // ADR-016: a draft whose ratings predate the scale rule has no WR to print.
+    // Said here, where it is true, instead of as the worker error below.
+    if (!kcsReady(valuation.inputs)) {
+      return {
+        error:
+          "Oceny cech pochodzą sprzed zmiany skali ocen — zatwierdź cechy ponownie w kroku 4, żeby zobaczyć podgląd.",
+      };
     }
 
     try {

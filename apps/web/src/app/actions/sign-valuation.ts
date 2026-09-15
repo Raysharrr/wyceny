@@ -8,7 +8,7 @@ import { storage, worker, valuationRepository, profileRepository } from "@/app/v
 import { NotSignableError } from "@/domain/valuation";
 import { buildDocumentModel } from "@/domain/document-model";
 import { documentInputFor } from "@/domain/document-input";
-import { computeKcsOnScale } from "@/domain/feature-rules";
+import { computeKcsOnScale, kcsReady } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { StorageNotFoundError } from "@/ports/storage";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -54,6 +54,15 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
     }
     if (!valuation.inputs || !valuation.docxUrl || !valuation.approvedAt) {
       return { error: "Wyceny starego typu nie można podpisać — utwórz ją ponownie." };
+    }
+    // ADR-016: signing RE-RENDERS the document, so it needs the engine. A
+    // valuation approved before the scale rule may carry a rating with no place
+    // in its described scale — say so here, not as a worker failure below.
+    if (!kcsReady(valuation.inputs)) {
+      return {
+        error:
+          "Oceny cech tej wyceny pochodzą sprzed zmiany skali ocen — utwórz nową wersję i zatwierdź cechy ponownie, żeby podpisać operat.",
+      };
     }
 
     const signature = await profileRepository.getSignature(session.user.id);

@@ -307,6 +307,31 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     expect(convertToPdfMock).not.toHaveBeenCalled();
   });
 
+  // ADR-016: a draft whose ratings predate the scale rule has no WR to print.
+  // Named here rather than surfacing as a worker failure further down.
+  it("refuses a draft whose ratings predate the scale rule, naming the reason", async () => {
+    current = {
+      ...current,
+      inputs: {
+        ...current.inputs!,
+        features: [
+          {
+            key: "standard-wykonczenia",
+            name: "Standard wykończenia",
+            weight: 1,
+            rating: "przecietna" as const,
+            definitions: { lepsza: "opis lepszej", gorsza: "opis gorszej" },
+          },
+        ],
+      },
+    };
+
+    const result = await previewOperat(ID);
+
+    expect(result).toEqual({ error: expect.stringContaining("sprzed zmiany skali ocen") });
+    expect(convertToPdfMock).not.toHaveBeenCalled();
+  });
+
   it("re-fetches when the frozen bytes are gone — the freeze is a claim about storage", async () => {
     await previewOperat(ID);
     blobs.delete(ORTO_KEY);

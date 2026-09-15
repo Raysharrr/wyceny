@@ -139,6 +139,31 @@ describe("signValuationAction", () => {
     expect(result?.error).toMatch(/starego typu|nie można podpisać/i);
   });
 
+  // ADR-016: signing RE-RENDERS the document, so a rating with no place in its
+  // described scale has no WR to print. The message must name that reason —
+  // the generic render failure below blames the worker, which would be a lie.
+  it("refuses an approval whose ratings predate the scale rule, naming the reason", async () => {
+    getMock.mockResolvedValue({
+      ...approvedValuation,
+      inputs: {
+        ...approvedValuation.inputs!,
+        features: [
+          {
+            key: "standard-wykonczenia",
+            name: "Standard wykończenia",
+            weight: 1,
+            rating: "przecietna" as const,
+            definitions: { lepsza: "opis lepszej", gorsza: "opis gorszej" },
+          },
+        ],
+      },
+    });
+
+    const result = await signValuationAction("v1");
+
+    expect(result?.error).toMatch(/sprzed zmiany skali ocen/i);
+  });
+
   it("renders, converts, stores -signed keys, hashes and signs", async () => {
     getMock.mockResolvedValue(approvedValuation);
     getSignatureMock.mockResolvedValue({
