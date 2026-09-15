@@ -1,4 +1,5 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
+import { kwRequirements } from "./kw-requirements";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
@@ -393,10 +394,7 @@ export type DocumentFields = {
 export function documentFieldBlockers(v: DocumentFields): Blocker[] {
   const blockers: Blocker[] = [];
   if (!v.purpose) blockers.push({ path: "purpose", label: "Cel wyceny — brak." });
-  // A coop right has no KW of its own: step 1 lets the number stay empty, so
-  // demanding it here would send the appraiser back to a legally empty field.
-  const kwRequired = (v.propertyRight ?? "wlasnosc_lokalu") !== "spoldzielcze_wlasnosciowe";
-  if (!v.kwNumber && kwRequired)
+  if (!v.kwNumber && kwRequirements(v.propertyRight, null).numerKwWDokumencie)
     blockers.push({ path: "kwNumber", label: "Numer księgi wieczystej — brak." });
   if (!v.client) blockers.push({ path: "client", label: "Klient — brak." });
   if (!v.inspectionDate) blockers.push({ path: "inspectionDate", label: "Data oględzin — brak." });

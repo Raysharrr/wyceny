@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COMPARABLE_SOURCES, POOL_SOURCES } from "@/domain/kcs";
+import { kwRequirements } from "@/domain/kw-requirements";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
@@ -428,8 +429,7 @@ export const valuationFormObject = z.object({
  * extract is present (Slice 6).
  */
 export const valuationFormSchema = valuationFormObject.superRefine((values, ctx) => {
-  // A coop right has no KW of its own (T-12) — the number is optional there.
-  if (!values.kw && !values.kwNumber && values.propertyRight !== "spoldzielcze_wlasnosciowe") {
+  if (!values.kwNumber && kwRequirements(values.propertyRight, values.kw).numerKwWFormularzu) {
     ctx.addIssue({
       code: "custom",
       path: ["kwNumber"],

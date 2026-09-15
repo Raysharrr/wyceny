@@ -6,7 +6,8 @@ import {
   type Sourced,
 } from "@wyceny/shared";
 import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
-import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
+import { kwRequirements } from "./kw-requirements";
+import type { PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 
 /**
@@ -217,17 +218,14 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
         label: `Stan prawny (KW) — ${statusLabel(kwProv?.status ?? "none")}.`,
       });
     }
-    // Same shape as the kwLokalu/deweloperski branch below: the right says
-    // whether the księga macierzysta is even a thing for this lokal.
-    const { wymagaKwGruntu, wymagaKwLokalu } =
-      PROPERTY_RIGHT_DOC[input.propertyRight ?? "wlasnosc_lokalu"];
-    if (!input.kw.kwGruntu && wymagaKwGruntu) {
+    const required = kwRequirements(input.propertyRight, input.kw);
+    if (!input.kw.kwGruntu && required.kwGruntu) {
       blockers.push({
         path: "kw.kwGruntu",
         label: "Numer KW gruntu (księgi macierzystej) — brak.",
       });
     }
-    if (!input.kw.kwLokalu && !input.kw.deweloperski && wymagaKwLokalu) {
+    if (!input.kw.kwLokalu && required.kwLokalu) {
       blockers.push({
         path: "kw.kwLokalu",
         label:
