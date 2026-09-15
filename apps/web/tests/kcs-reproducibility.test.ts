@@ -13,6 +13,24 @@ const fixture = JSON.parse(
   readFileSync(fileURLToPath(new URL("./fixtures/koscielna.json", import.meta.url)), "utf8"),
 ) as { input: KcsInput };
 
+/**
+ * The golden snapshot carries ratings but no level descriptions — it predates
+ * ADR-016 and stays that way (it pins `computeKcs` itself). A draft PERSISTED
+ * today needs the described scale, or its rating has no position and the read
+ * drops the amount; all three levels described means key == position, so the
+ * golden's 1 044 400 zł is unchanged.
+ */
+const THREE_LEVELS = {
+  lepsza: "opis lepszej",
+  przecietna: "opis przeciętnej",
+  gorsza: "opis gorszej",
+};
+const storedInput = (over: Partial<KcsInput> = {}): KcsInput => ({
+  ...fixture.input,
+  features: fixture.input.features.map((f) => ({ ...f, definitions: THREE_LEVELS })),
+  ...over,
+});
+
 const owner: SessionUser = { id: "user-test-kcs-owner", role: "appraiser" };
 const adminUser: SessionUser = { id: "user-test-kcs-admin", role: "admin" };
 
@@ -34,14 +52,15 @@ afterAll(async () => {
 
 describe("F-3: stored inputs snapshot reproduces the stored WR", () => {
   it("create → read inputs → recompute === stored wr", async () => {
-    const wr = computeKcs(fixture.input).wr;
+    const wr = computeKcs(storedInput()).wr;
     const created = await repo.create({
       address: "ul. Kościelna 33A, Poznań",
       area: fixture.input.area,
       wr,
-      // Stored under the ADR-016 marker, so the draft read keeps its ratings
-      // and wr as written — what F-3 checks is the jsonb round trip.
-      inputs: { ...fixture.input, featureScaleRule: 2 },
+      // `wr` is exactly what the engine returns for these inputs, so the
+      // read-time check in `readFeatureScale` keeps it — what F-3 asserts here
+      // is the jsonb round trip.
+      inputs: storedInput(),
       amountInWords: null,
       docUrl: null,
       ownerId: owner.id,
@@ -112,7 +131,7 @@ describe("F-5: sample snapshot provenance round-trips (RCN comparables + sampleM
       ratings: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       geocode: { source: "geokoder" as const, status: "to_verify" as const },
     };
-    const input: KcsInput = { ...fixture.input, comparables, provenance, featureScaleRule: 2 };
+    const input: KcsInput = storedInput({ comparables, provenance });
 
     const created = await repo.create({
       address: "ul. Kościelna 33A, Poznań",

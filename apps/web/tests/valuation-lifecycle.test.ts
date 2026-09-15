@@ -78,7 +78,6 @@ function rcnInputs(): KcsInput {
         definitions: THREE_LEVEL_SCALE,
       },
     ],
-    featureScaleRule: 2,
     sampleMeta: {
       point: { x: 355300.15, y: 505330.31, source: "subject" as const },
       maxRadiusM: 3000,

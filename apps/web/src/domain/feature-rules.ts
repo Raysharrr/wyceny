@@ -8,13 +8,6 @@ import { computeKcs, type Feature, type FeatureRating, type KcsInput, type KcsRe
  * engine's key before calling it, always. Pure (F-10).
  */
 
-/**
- * `inputs.featureScaleRule` value stamped by the step-4 save. It records that
- * the ratings were picked under this rule — nothing is computed differently
- * without it; a draft that lacks it must be confirmed again (B-11).
- */
-export const FEATURE_SCALE_RULE = 2 as const;
-
 export type RatingPosition = "min" | "mid" | "max";
 
 /** Scale order, lowest first (ADR-016 reg. 1). */

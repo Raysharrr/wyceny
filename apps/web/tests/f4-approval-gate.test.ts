@@ -8,7 +8,6 @@ import {
 import { documentFieldBlockers } from "../src/domain/document-model";
 import type { KwSnapshot } from "../src/domain/kw-snapshot";
 import { currentSectionFactsHashes } from "../src/domain/prose-hash";
-import { FEATURE_SCALE_RULE } from "../src/domain/feature-rules";
 import type { Feature } from "../src/domain/kcs";
 import { approvalBlockers, applyFeaturesUpdate, readFeatureScale } from "../src/domain/valuation";
 import { stepForBlockerPath } from "../src/domain/wizard";
@@ -756,23 +755,25 @@ describe("R-1: approvalBlockers — pin kolejności i kształtów blokad", () =>
 });
 
 /**
- * B-08…B-11 (ADR-016 reg. 3–4, spec §4): the rating scale blocks approval —
- * a missing rating, a rating the scale does not describe, a weighted feature
- * with fewer than two described levels, and a draft whose ratings were
- * confirmed under the fixed-key rule. Every one links to step 4.
+ * B-08…B-10 (ADR-016 reg. 3–4, spec §4): the rating scale blocks approval —
+ * a missing rating, a rating the scale does not describe, and a weighted
+ * feature with fewer than two described levels. Every one links to step 4. A
+ * draft whose ratings predate the rule needs no blocker of its own: the read
+ * migration clears what is unusable (B-08) and drops an amount that no longer
+ * follows from the snapshot, which the gate already refuses as a missing `wr`.
  */
-describe("B-08…B-11: rating scale blockers (ADR-016)", () => {
+describe("B-08…B-10: rating scale blockers (ADR-016)", () => {
   const LEPSZA_GORSZA = { lepsza: "poniżej 47 m²", gorsza: "47 m² i więcej" };
   const THREE = { lepsza: "lepsza", przecietna: "przeciętna", gorsza: "gorsza" };
 
-  function draft(features: Feature[], featureScaleRule?: 2): Valuation {
+  function draft(features: Feature[]): Valuation {
     const input = approvableInput("test-user");
     return {
       id: "valuation-b08",
       address: input.address,
       area: input.area,
       wr: null,
-      inputs: { ...input.inputs!, features, featureScaleRule },
+      inputs: { ...input.inputs!, features },
       amountInWords: null,
       docUrl: null,
       docxUrl: null,
@@ -792,7 +793,7 @@ describe("B-08…B-11: rating scale blockers (ADR-016)", () => {
   }
 
   const featureBlockers = (v: Valuation) =>
-    approvalBlockers(v, {}).filter((b) => b.code != null && /^B-(08|09|10|11)$/.test(b.code));
+    approvalBlockers(v, {}).filter((b) => b.code != null && /^B-(08|09|10)$/.test(b.code));
 
   /** The 14.09 case: powierzchnia rated „przeciętna” on a lepsza/gorsza scale, saved before the rule. */
   const reported = () =>
@@ -806,7 +807,7 @@ describe("B-08…B-11: rating scale blockers (ADR-016)", () => {
       },
     ]);
 
-  it("as reported, straight from the snapshot: B-09 on powierzchnia and B-11", () => {
+  it("as reported, straight from the snapshot: B-09 on powierzchnia", () => {
     expect(featureBlockers(reported())).toEqual([
       {
         path: "features[1]",
@@ -814,33 +815,26 @@ describe("B-08…B-11: rating scale blockers (ADR-016)", () => {
         label:
           "Ocena „przeciętna” cechy „Powierzchnia użytkowa” nie ma opisu w skali — opisz ten poziom albo zmień ocenę.",
       },
-      {
-        path: "features",
-        code: "B-11",
-        label: "Potwierdź oceny cech — zmieniła się zasada liczenia skali dwupoziomowej.",
-      },
     ]);
   });
 
-  it("as reported, after the draft read migration: B-08 on powierzchnia and B-11", () => {
+  it("as reported, after the draft read migration: B-08 on powierzchnia", () => {
     expect(featureBlockers(readFeatureScale(reported())).map((b) => [b.path, b.code])).toEqual([
       ["features[1]", "B-08"],
-      ["features", "B-11"],
     ]);
   });
 
   it("B-08: a feature without a rating", () => {
-    const v = draft([{ name: "Standard", weight: 1, rating: null, definitions: THREE }], 2);
+    const v = draft([{ name: "Standard", weight: 1, rating: null, definitions: THREE }]);
     expect(featureBlockers(v)).toEqual([
       { path: "features[0]", code: "B-08", label: "Wybierz ocenę cechy „Standard”." },
     ]);
   });
 
   it("B-10: a weighted feature with fewer than two described levels", () => {
-    const v = draft(
-      [{ name: "Dodatkowe", weight: 1, rating: "lepsza", definitions: { lepsza: "ogródek" } }],
-      2,
-    );
+    const v = draft([
+      { name: "Dodatkowe", weight: 1, rating: "lepsza", definitions: { lepsza: "ogródek" } },
+    ]);
     expect(featureBlockers(v)).toEqual([
       {
         path: "features[0]",
@@ -867,7 +861,6 @@ describe("B-08…B-11: rating scale blockers (ADR-016)", () => {
         featureDefs: { source: "rzeczoznawca", status: "confirmed" },
       },
     });
-    expect(saved.inputs!.featureScaleRule).toBe(FEATURE_SCALE_RULE);
     expect(featureBlockers(saved)).toEqual([]);
   });
 
@@ -878,10 +871,10 @@ describe("B-08…B-11: rating scale blockers (ADR-016)", () => {
       inputs: { ...reported().inputs!, comparables: [] },
     };
     const codesAndPaths = approvalBlockers(v, {}).map((b) => b.code ?? b.path);
-    expect(codesAndPaths).toEqual(["comparables", "B-09", "B-11", "purpose", "wr"]);
+    expect(codesAndPaths).toEqual(["comparables", "B-09", "purpose", "wr"]);
   });
 
-  it("an approved valuation issued before the rule gets no B-11", () => {
+  it("an issued valuation is judged by the same rating rules", () => {
     expect(featureBlockers({ ...reported(), status: "approved" }).map((b) => b.code)).toEqual([
       "B-09",
     ]);

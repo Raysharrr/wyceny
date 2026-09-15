@@ -132,14 +132,6 @@ export type KcsInput = {
   /** Usable area of the subject property, m². */
   area: number;
   features: Feature[];
-  /**
-   * Marks that the step-4 ratings were confirmed under the ADR-016 scale rule
-   * (`domain/feature-rules.ts`), stamped by the step-4 save. It records a fact
-   * about the ratings, it does NOT switch how anything is computed — there is
-   * one calculation path. Absent on a draft means its ratings were picked
-   * before the rule and must be confirmed again (B-11).
-   */
-  featureScaleRule?: 2;
   /** RCN fetch provenance for the whole sample (F-5) — display/audit metadata only; computeKcs never reads this. */
   sampleMeta?: SampleMeta | null;
   /**

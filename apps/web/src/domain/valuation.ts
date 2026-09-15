@@ -1,12 +1,6 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
-import {
-  FEATURE_SCALE_RULE,
-  computeKcsOnScale,
-  describedLevels,
-  featureIssues,
-  kcsReady,
-} from "./feature-rules";
+import { computeKcsOnScale, describedLevels, featureIssues, kcsReady } from "./feature-rules";
 import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
@@ -650,40 +644,40 @@ export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation 
   return {
     ...v,
     wr: null,
-    // The save IS the confirmation under the current rule (ADR-016, B-11).
-    inputs: {
-      ...v.inputs,
-      features: u.features,
-      provenance,
-      featureScaleRule: FEATURE_SCALE_RULE,
-    },
+    inputs: { ...v.inputs, features: u.features, provenance },
   };
 }
 
 /**
- * A draft read after the ADR-016 change („Migracja danych”, no SQL): without
- * the rule marker its step-4 ratings were confirmed under the fixed-key rule,
- * and a chosen rating cannot be told from the old default. A rating on a
- * described level stays and waits for a new confirmation (B-11); one on an
- * undescribed level is cleared to an explicit `null` (B-08 — jsonb would drop
- * `undefined`); `wr` goes, since the number behind it may move. Approved and
- * signed valuations keep what they were issued with, and a draft with no
- * features has nothing to confirm. Pure and idempotent —
- * applied on every read until the step-4 save stamps the marker.
+ * A draft read after the ADR-016 change („Migracja danych”, no SQL). Two
+ * things can be wrong with a draft saved under the old rule, and both are read
+ * off the DATA — there is no rule marker to consult:
+ *
+ * - a rating that misses a scale which HAS described levels is not a rating any
+ *   more, so it is cleared to an explicit `null` (B-08; jsonb would drop
+ *   `undefined`). A feature with no described level at all keeps its rating:
+ *   there is nothing to choose between yet, and B-10 already says so;
+ * - `wr` that no longer follows from the snapshot is dropped. The step-5
+ *   confirm is the only writer of `wr` and writes exactly what the engine
+ *   returns, so on every correctly saved draft this is a no-op — it fires
+ *   precisely where the amount was computed under the old rule, and the
+ *   appraiser confirms the calculation again (F-3 enforced at read time).
+ *
+ * Approved and signed valuations keep what they were issued with, and a draft
+ * with no features has nothing to check. Pure and idempotent.
  */
 export function readFeatureScale(v: Valuation): Valuation {
-  if (
-    v.status !== "in_progress" ||
-    !v.inputs ||
-    v.inputs.features.length === 0 ||
-    v.inputs.featureScaleRule === FEATURE_SCALE_RULE
-  ) {
-    return v;
-  }
-  const features = v.inputs.features.map((f) =>
-    f.rating != null && !describedLevels(f).includes(f.rating) ? { ...f, rating: null } : f,
-  );
-  return { ...v, wr: null, inputs: { ...v.inputs, features } };
+  if (v.status !== "in_progress" || !v.inputs || v.inputs.features.length === 0) return v;
+  const features = v.inputs.features.map((f) => {
+    const levels = describedLevels(f);
+    return f.rating != null && levels.length > 0 && !levels.includes(f.rating)
+      ? { ...f, rating: null }
+      : f;
+  });
+  const inputs = { ...v.inputs, features };
+  const wr = v.wr != null && kcsReady(inputs) ? computeKcsOnScale(inputs).wr : null;
+  if (wr === v.wr && features.every((f, i) => f === v.inputs!.features[i])) return v;
+  return { ...v, wr: wr === v.wr ? v.wr : null, inputs };
 }
 
 export class CalculationNotReadyError extends Error {
@@ -731,27 +725,16 @@ export function approvalBlockers(v: Valuation, ctx: GateOptions): Blocker[] {
 }
 
 /**
- * B-08…B-11 (ADR-016 reg. 3–4, spec §4) — each feature's rating against its
- * described scale, then the draft whose ratings were confirmed under the
- * fixed-key rule and wait for the step-4 save to confirm them again.
+ * B-08…B-10 (ADR-016 reg. 3–4, spec §4) — each feature's rating against its
+ * described scale. A draft whose ratings predate the rule needs no blocker of
+ * its own: {@link readFeatureScale} drops the amount that no longer follows
+ * from the snapshot, and the missing `wr` is what the gate already refuses.
  */
 function featureScaleBlockers(v: Valuation): Blocker[] {
   if (!v.inputs) return [];
-  const blockers: Blocker[] = v.inputs.features.flatMap((f, i) =>
+  return v.inputs.features.flatMap((f, i) =>
     featureIssues(f).map((issue) => ({ path: `features[${i}]`, ...issue })),
   );
-  if (
-    v.status === "in_progress" &&
-    v.inputs.features.length > 0 &&
-    v.inputs.featureScaleRule !== FEATURE_SCALE_RULE
-  ) {
-    blockers.push({
-      path: "features",
-      code: "B-11",
-      label: "Potwierdź oceny cech — zmieniła się zasada liczenia skali dwupoziomowej.",
-    });
-  }
-  return blockers;
 }
 
 /**

@@ -3,7 +3,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { computeKcs, type Comparable, type Feature, type KcsInput } from "../src/domain/kcs";
 import {
-  FEATURE_SCALE_RULE,
   computeKcsOnScale,
   describedLevels,
   featureIssues,
@@ -245,26 +244,16 @@ describe("computeKcsOnScale — Ui from the position in the described scale (I-1
     expect(uis).toEqual([0.4, 0.346, 0.088, null, 0.088]);
   });
 
-  // The marker records WHEN the ratings were confirmed (B-11), it never
-  // changes a number — the same inputs give the same WR with and without it.
-  it("the rule marker does not change what the engine computes", () => {
+  it("a feature left unrated stops the engine", () => {
     const rated = inputs1409({
       name: "Powierzchnia",
       weight: 0.1,
       rating: "przecietna",
       definitions: THREE,
     });
-    expect(computeKcsOnScale({ ...rated, featureScaleRule: FEATURE_SCALE_RULE })).toEqual(
-      computeKcsOnScale(rated),
-    );
-    // And the marker never makes an unusable set usable. (`kcsReady` cannot
-    // even see it — its parameter type is `Pick<KcsInput, "features">`.)
-    const unrated: KcsInput = {
-      ...rated,
-      featureScaleRule: FEATURE_SCALE_RULE,
-      features: [feature({ weight: 1, definitions: THREE })],
-    };
+    const unrated: KcsInput = { ...rated, features: [feature({ weight: 1, definitions: THREE })] };
     expect(kcsReady(unrated)).toBe(false);
+    expect(() => computeKcsOnScale(unrated)).toThrow();
   });
 });
 
