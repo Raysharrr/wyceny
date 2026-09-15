@@ -315,51 +315,34 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
  * transcribed dzialy, or, on the manual path, the dział III/IV sentences, which
  * exist because `kwRequirements` refuses a book whose dzialy are unanswered.
  *
- * `zrodlo` is a PARAMETER, not the constant of the first cut. All 22 protocol
- * sentences in the office's operats do name the eKW browser — but none of those
- * operats could have gone the upload path, because the program had no such
- * path: the set simply contains no instance of the case in question. What we
- * know about an `odpis_kw` valuation is that the appraiser uploaded an odpis,
- * NOT where they obtained it (an odpis can be paper, from the court). Naming a
- * specific domain there would state something we do not know, in the most
- * credible-sounding form a falsehood can take (review PR #59).
+ * The source is the SAME on both book paths, and that rests on a fact the
+ * appraiser confirmed (15.09): she obtains odpisy from eKW, so an uploaded PDF
+ * is an eKW printout, not a paper odpis from the court. `odpis_kw` and
+ * `ekw_reczne` therefore differ in how the data reached this program, not in
+ * where it came from. The fact is an ASSUMPTION about how the office works, so
+ * it is pinned by a test asserting the two sentences are identical — the day
+ * paper odpisy appear, changing one path fails that test instead of passing
+ * unnoticed (review PR #59, decyzja usera).
  *
  * Returns "" when `zbadana` is false or a fact is missing. `zbadana` is the
  * whole point: number-and-date alone printed an examination protocol for a
  * valuation whose book was NEVER examined — an uploaded deed states the book's
  * number and gets a `dataBadania` from the developer checkbox, while
  * `kwRequirements` rightly refuses to call it examined (I-13, review PR #59).
+ * It is also the SOLE guard of that case: a second check on `source` here would
+ * make this one's mutation look covered when it is not.
  */
 function protokolBadania(
   zbadana: boolean,
   numer: string | null | undefined,
   dataBadania: string | null | undefined,
   rodzaj: string,
-  zrodlo: string,
 ): string {
   if (!zbadana || !numer || !dataBadania) return "";
   return (
     `W dniu ${formatDatePl(dataBadania)}r. dokonano badania księgi wieczystej ` +
-    `${rodzaj} nr ${numer} (źródło: ${zrodlo}):`
+    `${rodzaj} nr ${numer} (źródło: przegladarka-ekw.ms.gov.pl):`
   );
-}
-
-/** The eKW browser, spelled as the office's operats spell it — no diacritics. */
-const EKW_DOMENA = "przegladarka-ekw.ms.gov.pl";
-
-/**
- * What the protocol names as the source of the LOKAL book's reading. A deed
- * needs no entry: `kwRequirements` never calls such a valuation examined, so
- * `protokolBadania` returns "" for it and the phrase is never reached — which
- * is why this is a ternary and not a `Record` needing an `akt` key, and why the
- * `zbadana` gate stays the SOLE guard of that case (a second guard here would
- * make the gate's own mutation look covered when it is not).
- *
- * The `odpis_kw` phrasing has NO precedent in the office's operats — it mirrors
- * `KW_ZRODLO_TEXT.odpis_kw` and is flagged for the user in the PR.
- */
-function protokolZrodlo(source: keyof typeof KW_ZRODLO_TEXT | undefined): string {
-  return source === "odpis_kw" ? "odpis księgi wieczystej" : EKW_DOMENA;
 }
 
 /** §7's deed sentence (ADR-018 reg. 5): only the parts the book actually states. */
@@ -936,15 +919,12 @@ export function buildDocumentModel(
     kw?.kwLokalu,
     kw?.dataBadania,
     "nieruchomości lokalowej",
-    protokolZrodlo(kw?.source),
   );
-  // The grunt's book is manual-only in paczka 1, so its reading IS the browser.
   const protokolGruntu = protokolBadania(
     kwReq.gruntZbadana,
     kwGrunt?.nrKsiegi,
     kwGrunt?.dataBadania,
     "nieruchomości gruntowej",
-    EKW_DOMENA,
   );
   const encumbrance = inputs.encumbranceTreatment ?? null;
   // Only the LOKAL's dział III encumbers this lokal. An entry in the grunt's is

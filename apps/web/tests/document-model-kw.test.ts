@@ -242,23 +242,23 @@ describe("protokół badania — one dated sentence per book (D-21)", () => {
     expect(model.protokol_ksiegi_lokalu).toBe("");
   });
 
-  it("names the odpis, not a domain, when the book came from an uploaded odpis", () => {
-    // We know the appraiser uploaded an odpis; we do NOT know where they got it
-    // (an odpis can be paper, from the court). Naming the eKW domain here would
-    // state the unknown in the most credible-sounding form a falsehood takes.
+  /**
+   * THE ASSUMPTION, PINNED. The appraiser confirmed (15.09) that she obtains
+   * odpisy from eKW, so an uploaded PDF is an eKW printout and both book paths
+   * may name the same source. That is a fact about how the office works, not
+   * about the data — the day paper odpisy from the court appear, whoever gives
+   * one path its own wording fails HERE, instead of the operat quietly
+   * attributing a document to a website nobody visited.
+   */
+  it("names the same source on both book paths — odpisy come from eKW too", () => {
     const zOdpisu = modelOf({ kw: { ...EXAMINED_LOKAL, source: "odpis_kw" } });
-    expect(zOdpisu.protokol_ksiegi_lokalu).toContain("(źródło: odpis księgi wieczystej):");
-    expect(zOdpisu.protokol_ksiegi_lokalu).not.toContain("przegladarka-ekw");
-    // The manual path keeps the office's own wording…
-    expect(modelOf({ kw: EXAMINED_LOKAL }).protokol_ksiegi_lokalu).toContain(
-      "(źródło: przegladarka-ekw.ms.gov.pl):",
-    );
-    // …and so does the grunt's book, which is manual-only in paczka 1.
-    const obie = modelOf({
-      kw: { ...EXAMINED_LOKAL, source: "odpis_kw" },
-      kwGrunt: EXAMINED_GRUNT,
-    });
-    expect(obie.protokol_ksiegi_gruntu).toContain("(źródło: przegladarka-ekw.ms.gov.pl):");
+    const zRecznego = modelOf({ kw: EXAMINED_LOKAL });
+    expect(zOdpisu.protokol_ksiegi_lokalu).toBe(zRecznego.protokol_ksiegi_lokalu);
+    expect(zOdpisu.protokol_ksiegi_lokalu).toContain("(źródło: przegladarka-ekw.ms.gov.pl):");
+    // `kw_zrodlo` still answers the other question — WHICH document was in hand
+    // — so the two sentences differ without contradicting.
+    expect(zOdpisu.kw_zrodlo).toContain("odpis");
+    expect(zRecznego.kw_zrodlo).not.toContain("odpis");
   });
 });
 
