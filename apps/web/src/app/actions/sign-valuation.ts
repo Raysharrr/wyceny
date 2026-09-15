@@ -58,10 +58,14 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
     // ADR-016: signing RE-RENDERS the document, so it needs the engine. A
     // valuation approved before the scale rule may carry a rating with no place
     // in its described scale — say so here, not as a worker failure below.
+    // No "do X instead": a new version needs a SIGNED predecessor
+    // (`newVersionOf`), so until `b1-approval-reopen` (ADR-020) lands there is
+    // genuinely no self-service way out, and the message must not pretend
+    // otherwise.
     if (!kcsReady(valuation.inputs)) {
       return {
         error:
-          "Oceny cech tej wyceny pochodzą sprzed zmiany skali ocen — utwórz nową wersję i zatwierdź cechy ponownie, żeby podpisać operat.",
+          "Oceny cech tej wyceny pochodzą sprzed zmiany skali ocen — operatu nie można teraz podpisać. Zgłoś tę wycenę do ponownego wystawienia.",
       };
     }
 

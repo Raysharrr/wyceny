@@ -78,8 +78,8 @@ export function FlatView({
         ) : (
           <SectionCard icon={Scale} title="Rozbicie kalkulacji" sub="Tabele 2–4 operatu">
             <p className="text-sm text-muted-foreground">
-              Oceny cech tej wyceny pochodzą sprzed zmiany skali ocen — zatwierdź cechy ponownie w
-              kroku 4, żeby zobaczyć rozbicie kalkulacji. Zapisana wartość rynkowa się nie zmienia.
+              Oceny cech tej wyceny pochodzą sprzed zmiany skali ocen, więc rozbicia kalkulacji nie
+              da się przeliczyć. Zapisana wartość rynkowa i wydany operat pozostają bez zmian.
             </p>
           </SectionCard>
         )
