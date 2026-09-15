@@ -508,6 +508,22 @@ export function KwSection(props: KwSectionProps) {
                         // the coop right `b1-template` prints the encumbrance
                         // phrase on the cover, so a leftover here is a false
                         // legal claim in the operat, not just stale state.
+                        // The section key FIRST, the explicit clears after —
+                        // `onSourceChange` is `resetKwSection`, whose
+                        // `resetField` restores the form's DEFAULT (in edit
+                        // mode: the stored snapshot), so running it last would
+                        // undo the three clears below. Same order as the
+                        // developer checkbox, for the same reason.
+                        //
+                        // Clearing `kw` while leaving the key alone is how the
+                        // state I had argued was unreachable gets reached: tick
+                        // "deweloperski", switch right, switch back — the deed
+                        // card is gone (the record says so), but an untouched
+                        // key still selects "Wgraj PDF" nobody chose and hands
+                        // `extractKw` `expectedType: "akt"`, so uploading an
+                        // excerpt fails with a type-mismatch warning that
+                        // nothing on screen explains.
+                        onSourceChange("reczny");
                         setKw(null);
                         setKwGrunt(null);
                         setEncumbrance(null);

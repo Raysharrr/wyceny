@@ -946,6 +946,117 @@ describe("KwSection — full-form wiring", () => {
     expect(payload.encumbranceTreatment ?? null).toBeNull();
   });
 
+  /**
+   * BLOKER 9 — the state I had argued was unreachable, reached. My enumeration
+   * of `"akt"` emitters was right; what it missed is that the property-right
+   * radio cleared `kw` and left `source` alone, so the pair drifts apart from
+   * the other side. Going developer → coop → back leaves a section key nobody
+   * chose: "Wgraj PDF" selected, and `expectedType: "akt"`, so uploading an
+   * excerpt fails with a type-mismatch warning the screen cannot explain.
+   *
+   * Asserted through the CONSEQUENCE — what `extractKw` is actually asked for
+   * — because that is what the appraiser collides with, not the radio's
+   * internal state. (The derivation `kw?.deweloperski === true` behaves
+   * correctly here: the deed card is gone because the record says so.)
+   */
+  it("does not leave a section key nobody chose after developer → right switch → back (BLOKER 9)", async () => {
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+
+    await user.click(screen.getByRole("checkbox", { name: /zakup deweloperski/i }));
+    await user.click(
+      screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
+    );
+    await user.click(screen.getByRole("radio", { name: "Własność lokalu" }));
+
+    // The lokal's card is back, and its source switch shows what was chosen —
+    // nothing — rather than an upload mode inherited from the abandoned path.
+    const [sourceSwitch] = screen.getAllByRole("radiogroup", {
+      name: "Źródło danych księgi lokalu",
+    });
+    expect(
+      within(sourceSwitch)
+        .getByRole("radio", { name: "Wpisz ręcznie" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      within(sourceSwitch).getByRole("radio", { name: "Wgraj PDF" }).getAttribute("aria-checked"),
+    ).toBe("false");
+
+    // And the upload asks the worker for an excerpt, not a deed.
+    await user.click(within(sourceSwitch).getByRole("radio", { name: "Wgraj PDF" }));
+    await user.upload(
+      screen.getByTestId("kw-file-input") as HTMLInputElement,
+      new File(["%PDF-1.4 fake"], "odpis.pdf", { type: "application/pdf" }),
+    );
+    await waitFor(() => expect(extractKw).toHaveBeenCalled());
+    expect(vi.mocked(extractKw).mock.calls[0][0]).toMatchObject({ expectedType: "odpis_kw" });
+  });
+
+  /**
+   * The property-right clear, in EDIT mode. Three defects in this session lived
+   * only on this side, because `resetField` means "clear" on a fresh form and
+   * "restore what was saved" on a loaded one — and this handler now calls it.
+   * Ordering is the whole assertion: run `onSourceChange` after the explicit
+   * clears and the stored snapshot comes straight back.
+   */
+  it("clears a STORED examination when the property right changes in edit mode", async () => {
+    const user = userEvent.setup();
+    const stored = {
+      address: "ul. Kościelna 33, Poznań",
+      area: "69.56",
+      purpose: "sprzedaz" as never,
+      client: "Jan Kowalski",
+      inspectionDate: "2026-09-15",
+      kwNumber: "AB1C/1/9",
+      kw: {
+        source: "ekw_reczne",
+        kwLokalu: "AB1C/1/9",
+        kwGruntu: "AB1C/2/7",
+        kwInne: [],
+        deweloperski: false,
+        powUzytkowaKw: null,
+        udzial: null,
+        sad: null,
+        wydzial: null,
+        dataDokumentu: null,
+        dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu"] },
+        dzial4: { wpisy: false, tresc: [] },
+        dataBadania: "2026-09-15",
+      },
+      kwGrunt: {
+        source: "ekw_reczne",
+        nrKsiegi: "AB1C/2/7",
+        dataBadania: "2026-09-15",
+        dzial3: { wpisy: false, tresc: [] },
+        dzial4: { wpisy: false, tresc: [] },
+      },
+      encumbranceTreatment: {
+        wariant: "bez_uwzglednienia",
+        podstawa: "Zgodnie z poleceniem Zleceniodawcy.",
+      },
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+
+    render(<SubjectForm valuationId="val-right" defaults={stored} />);
+    expect(screen.getByTestId("kw-encumbrance")).toBeDefined();
+
+    await user.click(
+      screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
+    );
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
+    const [, payload] = vi.mocked(saveSubjectAction).mock.calls[0] as unknown as [
+      string,
+      { kw?: unknown; kwGrunt?: unknown; encumbranceTreatment?: unknown },
+    ];
+    expect(payload.kw ?? null).toBeNull();
+    expect(payload.kwGrunt ?? null).toBeNull();
+    expect(payload.encumbranceTreatment ?? null).toBeNull();
+  });
+
   // D9: non-PDF is rejected client-side, before any network call.
   it("rejects a non-PDF file with an inline error and no extraction (D9)", async () => {
     // applyAccept:false (a setup() option in user-event v14) — the input has
