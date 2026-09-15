@@ -15,7 +15,7 @@ export function goldenInputs(
   kw?: KwSnapshot,
   kwGrunt?: KwGruntSnapshot,
 ): KcsInput {
-  return {
+  const inputs: KcsInput = {
     area: 48.2,
     comparables: Array.from({ length: 12 }, (_, i) => ({
       pricePerM2: 10_000 + i * 50,
@@ -60,6 +60,13 @@ export function goldenInputs(
     kw,
     kwGrunt,
   };
+  // Bezargumentowo ta fabryka była czysta — i to była prawda tylko dla jednego
+  // z jej wywołań. Z argumentami wkłada do wyniku obiekty WOŁAJĄCEGO, którymi
+  // są stałe modułowe (`SUBJECT_WITH_MPZP`, `KW_STANDARD`), więc zapis do
+  // `subject`/`kw` wracał do stałej. Fabryka z parametrami jest tyloma
+  // fabrykami, ile ma sensownych zestawów argumentów — bramka przemiatu bada
+  // je osobno.
+  return structuredClone(inputs);
 }
 
 /**

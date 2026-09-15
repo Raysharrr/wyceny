@@ -8,7 +8,14 @@ import {
   partialDraftInputs,
   valuationInput,
 } from "./fixtures/valuation-inputs";
-import { goldenInputs, syntheticDocumentInput } from "./fixtures/document-model-fixture";
+import {
+  goldenInputs,
+  KW_AKT_NO_DZIAL,
+  KW_STANDARD,
+  SUBJECT_NO_MPZP,
+  SUBJECT_WITH_MPZP,
+  syntheticDocumentInput,
+} from "./fixtures/document-model-fixture";
 import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
 
 /**
@@ -22,6 +29,20 @@ import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
  * tego samego kodu dały kolejno 1, 3 i 5 przecieków (15.09). Rekurencyjne
  * porównanie dwóch wywołań odpowiada na pytanie „czy to już wszystkie" i
  * obejmuje pola, których dziś jeszcze nie ma.
+ *
+ * FABRYKA Z PARAMETRAMI JEST TYLOMA FABRYKAMI, ILE MA SENSOWNYCH ZESTAWÓW
+ * ARGUMENTÓW. `goldenInputs()` bez argumentów była czysta i dlatego została
+ * wpisana jako czysta — a z argumentami wkładała do wyniku obiekty wołającego
+ * (stałe `SUBJECT_WITH_MPZP`, `KW_STANDARD`) i przeciekała. Dopisując fabrykę
+ * do tablicy niżej, dopisz każdy zestaw argumentów, którym wołają ją testy.
+ *
+ * Znane ograniczenia samego przemiatu (dziś nic tego nie używa, więc zostają
+ * jako follow-up — ale obietnica „obejmuje pola, których jeszcze nie ma" ich
+ * NIE dotyczy):
+ * - `Map` i `Set` są niewidoczne, bo `Object.keys(new Map())` to `[]` — świeża
+ *   kolekcja wypełniona cudzymi obiektami przejdzie jako czysta;
+ * - graf z cyklem wywraca przemiat (`RangeError`), choć `structuredClone`
+ *   cykle obsługuje, więc taka fikstura jest legalna.
  */
 describe("izolacja fikstur — żadna fabryka nie wydaje cudzych obiektów", () => {
   const FABRYKI: Array<[string, () => unknown]> = [
@@ -37,8 +58,17 @@ describe("izolacja fikstur — żadna fabryka nie wydaje cudzych obiektów", () 
     ["confirmableInput", () => confirmableInput("o1")],
     ["partialDraftInputs", () => partialDraftInputs()],
     ["confirmedProse", () => confirmedProse()],
-    ["goldenInputs", () => goldenInputs()],
-    ["syntheticDocumentInput", () => syntheticDocumentInput()],
+    ["goldenInputs()", () => goldenInputs()],
+    // Zestawy argumentów żywe w `f12-document-sections` (`:54`, `:272`, `:336`,
+    // `:372`) — to one przeciekały, mimo że wywołanie bezargumentowe było czyste.
+    ["goldenInputs(subject, kw)", () => goldenInputs(SUBJECT_WITH_MPZP, KW_STANDARD)],
+    ["goldenInputs(subject, kw akt)", () => goldenInputs(SUBJECT_WITH_MPZP, KW_AKT_NO_DZIAL)],
+    ["goldenInputs(subject bez mpzp)", () => goldenInputs(SUBJECT_NO_MPZP)],
+    ["syntheticDocumentInput()", () => syntheticDocumentInput()],
+    [
+      "syntheticDocumentInput(subject, kw)",
+      () => syntheticDocumentInput(SUBJECT_WITH_MPZP, KW_STANDARD),
+    ],
   ];
 
   it.each(FABRYKI)("%s daje dwa niezależne obiekty", (_nazwa, fabryka) => {
