@@ -87,8 +87,23 @@ const BLOCKER_STEP: Record<string, number> = {
 export type WizardStep = { n: number; label: string };
 
 /**
- * The step where a blocker can actually be fixed — what step 7 links to since
- * T8 stopped confirming there.
+ * Where a blocker is fixed. Not every one is fixed in the wizard: the author's
+ * name, licence number, office block and OC policy (B-15, B-16) belong to the
+ * APPRAISER rather than to this valuation, and live on `/profile` — a
+ * destination with no step number, which is why this is a union instead of a
+ * widened `WizardStep`.
+ */
+export type BlockerTarget =
+  { kind: "step"; step: WizardStep } | { kind: "page"; href: string; label: string };
+
+/** Paths leading outside the wizard. `profile` also answers for `profile.polisa`. */
+const BLOCKER_PAGE: Record<string, { href: string; label: string }> = {
+  profile: { href: "/profile", label: "Profil rzeczoznawcy" },
+};
+
+/**
+ * Where a blocker can actually be fixed — what step 7 links to since T8
+ * stopped confirming there.
  *
  * An unmapped path returns `undefined` ON PURPOSE, and the caller then renders
  * the blocker with no link. `provenance.address` and a future
@@ -97,11 +112,23 @@ export type WizardStep = { n: number; label: string };
  * a wasted round trip, and one that teaches them not to trust the next link.
  * Silence is recoverable; a wrong destination is not.
  */
-export function stepForBlockerPath(path: string): WizardStep | undefined {
+export function blockerTarget(path: string): BlockerTarget | undefined {
   const segments = path.replace(/\[\d+\]/g, "").split(".");
   for (let i = segments.length; i > 0; i--) {
-    const n = BLOCKER_STEP[segments.slice(0, i).join(".")];
-    if (n != null) return WIZARD_STEPS.find((s) => s.n === n);
+    const key = segments.slice(0, i).join(".");
+    const n = BLOCKER_STEP[key];
+    if (n != null) {
+      const step = WIZARD_STEPS.find((s) => s.n === n);
+      if (step) return { kind: "step", step };
+    }
+    const page = BLOCKER_PAGE[key];
+    if (page) return { kind: "page", ...page };
   }
   return undefined;
+}
+
+/** The wizard-step half of {@link blockerTarget} — `undefined` for `/profile` too. */
+export function stepForBlockerPath(path: string): WizardStep | undefined {
+  const target = blockerTarget(path);
+  return target?.kind === "step" ? target.step : undefined;
 }

@@ -4,6 +4,7 @@ import type { BuildDocumentInput } from "../../src/domain/document-model";
 import type { KwSnapshot } from "../../src/domain/kw-snapshot";
 import type { Candidate } from "../../src/domain/sample-selection";
 import { FEATURE_PRESETS, powierzchniaDefinitions } from "../../src/domain/feature-presets";
+import { AUTOR_TESTOWY } from "./document-model-fixture";
 import { buildPhotoKey } from "../../src/domain/inspection";
 import { currentSectionFactsHash } from "../../src/domain/prose-hash";
 import {
@@ -314,6 +315,7 @@ export function wycena1409Anon(wariant: Wariant1409 = {}): BuildDocumentInput {
     inputs,
     kcs: computeKcs(inputs),
     amountInWords: "czterysta sześćdziesiąt sześć tysięcy trzysta złotych",
+    author: AUTOR_TESTOWY,
   };
 }
 

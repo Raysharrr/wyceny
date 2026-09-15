@@ -191,6 +191,33 @@ describe("signValuationAction", () => {
   });
 
   /**
+   * ADR-020 cz. 1: podpisywany dokument nosi dane osoby, która go podpisuje —
+   * profil czytany jest dla zalogowanego, a nie brany z wiersza wyceny (I-18;
+   * operat konta QA nosił nazwisko innej rzeczoznawczyni).
+   *
+   * Uwaga na przyszłość: to odczyt BIEŻĄCEGO profilu, więc zmiana danych biura
+   * między zatwierdzeniem a podpisem daje inny blok autora niż w zatwierdzonym
+   * pliku. Znika to dopiero z wariantem (a) części 2 ADR-020, gdzie podpis
+   * przestaje renderować operat od nowa i tylko wypełnia znacznik na zapisanym
+   * DOCX. Do tego czasu jest to znany, świadomy rozjazd.
+   */
+  it("czyta profil zalogowanego rzeczoznawcy przy podpisie", async () => {
+    getMock.mockResolvedValue(approvedValuation);
+    getSignatureMock.mockResolvedValue({
+      bytes: fs.readFileSync(path.join(__dirname, "fixtures", "signature-synthetic.png")),
+      mime: "image/png",
+    });
+    amountInWordsMock.mockResolvedValue("czterysta tysięcy złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    signMock.mockResolvedValue({ ...approvedValuation, status: "signed" });
+
+    await signValuationAction("v1");
+
+    expect(vi.mocked(profileRepository.get)).toHaveBeenCalledWith("u1");
+  });
+
+  /**
    * Task 11: the preview marks a section the appraiser has not written; the
    * SIGNED operat must stay silent about it. `approvedValuation.inputs` is
    * `approvableInput`, which carries no prose at all — the worst case there

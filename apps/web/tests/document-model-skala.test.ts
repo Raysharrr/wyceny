@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDocumentModel } from "../src/domain/document-model";
 import { computeKcs, type KcsInput } from "../src/domain/kcs";
+import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 
 function inputsWith(features: KcsInput["features"]): KcsInput {
   return {
@@ -30,6 +31,7 @@ function modelWith(features: KcsInput["features"]) {
     inputs,
     kcs: computeKcs(inputs),
     amountInWords: "testowa kwota słownie",
+    author: AUTOR_TESTOWY,
   });
 }
 

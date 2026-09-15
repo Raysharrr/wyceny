@@ -7,7 +7,7 @@ import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, profileRepository } from "@/app/valuations/_deps";
 import { NotSignableError } from "@/domain/valuation";
 import { buildDocumentModel } from "@/domain/document-model";
-import { documentInputFor } from "@/domain/document-input";
+import { authorFrom, documentInputFor } from "@/domain/document-input";
 import { computeKcsOnScale, kcsReady } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { StorageNotFoundError } from "@/ports/storage";
@@ -74,11 +74,20 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
       return { error: "Brak skanu podpisu — wgraj go w profilu, a potem podpisz operat." };
     }
 
+    // The author block is re-read here, not carried on the row: the signed
+    // document has to name the person actually signing it (ADR-020 cz. 1, I-18).
+    const author = authorFrom(await profileRepository.get(session.user.id));
+
     try {
       const kcs = computeKcsOnScale(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
       const model = buildDocumentModel(
-        documentInputFor(valuation, { approvedAt: valuation.approvedAt, kcs, amountInWords }),
+        documentInputFor(valuation, {
+          approvedAt: valuation.approvedAt,
+          kcs,
+          amountInWords,
+          author,
+        }),
       );
       // Slice 9: sign NEVER contacts WMS — it re-renders the maps frozen at
       // approve (spec decision 1). A StorageNotFoundError means "approved

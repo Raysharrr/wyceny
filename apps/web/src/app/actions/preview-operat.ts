@@ -3,10 +3,16 @@
 import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
+import {
+  storage,
+  worker,
+  valuationRepository,
+  mapImages,
+  profileRepository,
+} from "@/app/valuations/_deps";
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
 import { buildDocumentModel } from "@/domain/document-model";
-import { documentInputFor } from "@/domain/document-input";
+import { authorFrom, documentInputFor } from "@/domain/document-input";
 import { computeKcsOnScale, kcsReady } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -172,11 +178,15 @@ export async function previewOperat(
 
       const kcs = computeKcsOnScale(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
+      // The preview reads the CURRENT profile (ADR-020 cz. 1): the appraiser
+      // sees their own author block filling in as they complete /profile, and
+      // dashes until then — which is exactly what B-15 refuses to issue.
+      const author = authorFrom(await profileRepository.get(session.user.id));
       const model = buildDocumentModel(
         // The preview's "data sporządzenia" is TODAY; the issued operat gets
         // the date it was issued. That difference is why issuing re-renders
         // rather than promoting this file (spec §C).
-        documentInputFor(valuation, { approvedAt: new Date(), kcs, amountInWords }),
+        documentInputFor(valuation, { approvedAt: new Date(), kcs, amountInWords, author }),
         // ...and the second half of that same §C difference: a section the
         // appraiser has not written yet is MARKED here and passed over in
         // silence when the operat is issued. This is the only call site that

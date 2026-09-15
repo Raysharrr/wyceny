@@ -15,6 +15,7 @@ import { buildDocumentModel, formatNumber, formatPln } from "@/domain/document-m
 import { computeKcs, type KcsInput, type KcsResult } from "@/domain/kcs";
 import type { Candidate } from "@/domain/sample-selection";
 import { effectiveSelection, type SampleSelectionSnapshot } from "@/domain/sample-snapshot";
+import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 
 /**
  * Domain tests for the LLM prose proposal (ADR-014, T5).
@@ -146,6 +147,7 @@ describe("buildProseFacts", () => {
       inputs: INPUTS,
       kcs,
       amountInWords: "osiemset tysięcy złotych",
+      author: AUTOR_TESTOWY,
     });
 
     const facts = buildProseFacts({ address: ADDRESS, inputs: INPUTS });

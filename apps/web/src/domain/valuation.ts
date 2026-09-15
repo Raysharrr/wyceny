@@ -1,5 +1,5 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
-import { documentFieldBlockers } from "./document-model";
+import { documentFieldBlockers, formatDatePl } from "./document-model";
 import { computeKcsOnScale, describedLevels, featureIssues, kcsReady } from "./feature-rules";
 import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
 import type { PropertyRight } from "./property-right";
@@ -712,8 +712,9 @@ export function applyCalculationConfirm(v: Valuation): Valuation {
  * button disabled).
  *
  * `ctx` carries what only the app layer can know (`gateContextFor`): the
- * FR-6 kill switch and the per-section facts hashes — this module reads no
- * env (F-10).
+ * FR-6 kill switch, the per-section facts hashes, the appraiser's profile and
+ * the date the operat will carry — this module reads no env and no clock
+ * (F-10).
  */
 export function approvalBlockers(v: Valuation, ctx: GateOptions): Blocker[] {
   const gate = v.inputs ? approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, ctx) : null;
@@ -721,6 +722,10 @@ export function approvalBlockers(v: Valuation, ctx: GateOptions): Blocker[] {
     ...(gate && !gate.ok ? gate.blockers : []),
     ...featureScaleBlockers(v),
     ...documentFieldBlockers(v),
+    // Last, and outside the groups above, because these are the only blockers
+    // that are NOT about this valuation: they are about the person issuing it,
+    // and they are cleared on /profile once for every draft they will ever hold.
+    ...profileBlockers(ctx),
   ];
 }
 
@@ -735,6 +740,50 @@ function featureScaleBlockers(v: Valuation): Blocker[] {
   return v.inputs.features.flatMap((f, i) =>
     featureIssues(f).map((issue) => ({ path: `features[${i}]`, ...issue })),
   );
+}
+
+/**
+ * The operat's date as the document itself prints it (`data_sporzadzenia` in
+ * `document-model.ts`, same conversion) — B-16 has to measure the policy
+ * against the date the appraiser will read on the title page, not against a
+ * differently-derived one.
+ */
+function operatDay(today: Date): string {
+  return today.toISOString().slice(0, 10);
+}
+
+/**
+ * B-15 and B-16 (spec §4, ADR-020 reg. 3): the operat carries its author's
+ * name, licence number and office block, and may only be issued while the
+ * appraiser's OC policy still covers its date.
+ *
+ * `ctx.author === undefined` means the caller could not tell, and nothing is
+ * checked; `null` means there is no profile row, which raises both. The dates
+ * are compared as `YYYY-MM-DD` STRINGS on purpose: `insurance_valid_until` is
+ * a `date` column with no time, so `new Date("2026-09-15") < new Date()` would
+ * be true from one minute past midnight and would reject a policy that is
+ * valid for exactly as long as the operat needs it.
+ */
+function profileBlockers(ctx: GateOptions): Blocker[] {
+  if (ctx.author === undefined || ctx.today === undefined) return [];
+  const blockers: Blocker[] = [];
+  const author = ctx.author;
+  if (!author?.fullName?.trim() || !author.licenseNo?.trim() || !author.officeBlock?.trim()) {
+    blockers.push({
+      path: "profile.dane",
+      code: "B-15",
+      label: "Uzupełnij profil: imię i nazwisko, numer uprawnień, dane biura.",
+    });
+  }
+  const day = operatDay(ctx.today);
+  if (!author?.insuranceDocKey || !author.insuranceValidUntil || author.insuranceValidUntil < day) {
+    blockers.push({
+      path: "profile.polisa",
+      code: "B-16",
+      label: `Dodaj polisę OC ważną na dzień ${formatDatePl(day)}.`,
+    });
+  }
+  return blockers;
 }
 
 /**

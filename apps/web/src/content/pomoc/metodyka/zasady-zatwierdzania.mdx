@@ -58,6 +58,15 @@ Szkic rozpoczęty przed wprowadzeniem skali z opisanych poziomów nie ma osobnej
 
 Wyceny **już zatwierdzonej** przed tą zmianą, która ma ocenę na poziomie bez opisu, nie da się przeliczyć: karta z rozbiciem kalkulacji mówi, skąd to się bierze, a podpis operatu odmawia z tym samym wyjaśnieniem. Zapisana kwota i wydany dokument zostają nietknięte. Nowej wersji nie da się z niej utworzyć, bo tę robi się z wyceny podpisanej — taką wycenę trzeba wystawić na nowo.
 
+### Profil rzeczoznawcy
+
+Dwie blokady nie dotyczą wycenianej nieruchomości, tylko osoby wydającej operat, i zdejmuje się je raz — w profilu, nie w kroku kreatora. Odnośnik przy nich prowadzi więc do profilu, a nie do numeru kroku.
+
+- **B-15 — profil niekompletny.** Komunikat: _Uzupełnij profil: imię i nazwisko, numer uprawnień, dane biura._ Wszystkie trzy pola muszą być wypełnione; dokument bierze je z profilu zalogowanego rzeczoznawcy i bez nich wydrukowałby w tych miejscach kreski. Podgląd operatu działa mimo braku — blokada dotyczy wyłącznie wydania dokumentu.
+- **B-16 — polisa OC.** Komunikat: _Dodaj polisę OC ważną na dzień …_ Blokuje brak wgranego pliku oraz data ważności **wcześniejsza niż data operatu**; polisa ważna dokładnie do dnia zatwierdzenia przechodzi. Porównywana jest data dzienna, ta sama, którą operat nosi na stronie tytułowej — nie moment kliknięcia.
+
+Obie sprawdzane są tak samo w akcji zatwierdzenia i wewnątrz transakcji bazodanowej, jak wszystkie pozostałe.
+
 ### Sprawdzane warunkowo
 
 Pozostałe grupy **istnieją tylko wtedy, gdy do wyceny dołączono odpowiednią migawkę**. Nie jest to ustępstwo, tylko konsekwencja: nie ma czego potwierdzać w danych, których w wycenie nie ma.
