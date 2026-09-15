@@ -30,6 +30,7 @@ from app import photo as photo_core
 from app import prose as prose_core
 from app.amount_in_words import to_amount_in_words
 from app.convert import ConversionError, docx_to_pdf
+from app.llm import AnthropicAdapter, LlmClient
 from app.logging_setup import RequestIdMiddleware, configure_logging
 from app.logging_setup import log as logger
 
@@ -576,7 +577,7 @@ class KwExtractResponse(BaseModel):
     model: str
 
 
-KW_MODEL = "claude-sonnet-5"
+KW_MODEL = os.environ.get("LLM_KW_EXTRACT_MODEL", "claude-sonnet-5")
 
 
 def kw_max_bytes() -> int:
@@ -584,37 +585,25 @@ def kw_max_bytes() -> int:
     return kw_core.MAX_PDF_BYTES
 
 
-def _extract_kw_payload(pdf_b64: str) -> kw_core.KwExtractPayload:
-    """The ONLY anthropic touchpoint — monkeypatched in every CI test.
-    thinking disabled: spike showed identical quality, pure-JSON output."""
-    import anthropic
+def kw_llm() -> LlmClient:
+    # Seam for tests, like kw_max_bytes: the KW reads go through the port only.
+    return AnthropicAdapter()
 
-    client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from worker env (Railway secret)
-    response = client.messages.parse(
+
+def _extract_kw_payload(pdf_b64: str) -> kw_core.KwExtractPayload:
+    """Monkeypatched in every CI test.
+    thinking disabled: spike showed identical quality, pure-JSON output."""
+    result = kw_llm().parse_pdf(
         model=KW_MODEL,
+        pdf_b64=pdf_b64,
+        prompt=kw_core.EXTRACTION_PROMPT,
+        schema=kw_core.KwExtractPayload,
         max_tokens=4096,
         thinking={"type": "disabled"},
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": pdf_b64,
-                        },
-                    },
-                    {"type": "text", "text": kw_core.EXTRACTION_PROMPT},
-                ],
-            }
-        ],
-        output_format=kw_core.KwExtractPayload,
     )
-    if response.parsed_output is None:
-        raise RuntimeError(f"kw extraction returned no parsed output ({response.stop_reason})")
-    return response.parsed_output
+    if result.parsed is None:
+        raise RuntimeError(f"kw extraction returned no parsed output ({result.stop_reason})")
+    return result.parsed
 
 
 @app.post("/kw-extract")
