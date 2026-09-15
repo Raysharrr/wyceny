@@ -54,7 +54,7 @@ const appWeb = process.env.WYCENY_APP_WEB;
 if (!appWeb) {
   fail(
     "brak WYCENY_APP_WEB. Ustaw je na apps/web SWOJEGO worktree, " +
-      "np. export WYCENY_APP_WEB=\"$(pwd)\" z katalogu apps/web.",
+      'np. export WYCENY_APP_WEB="$(pwd)" z katalogu apps/web.',
   );
 }
 
@@ -101,4 +101,6 @@ const template = path.join(appWeb, "templates", "operat-szablon.docx");
 const sha = createHash("sha256").update(fs.readFileSync(template)).digest("hex");
 console.log(`\n${template}`);
 console.log(`SHA-256 = ${sha}`);
-console.log("Pin w tests/f12-template-integrity.test.ts przepina człowiek — ten skrypt go nie rusza.");
+console.log(
+  "Pin w tests/f12-template-integrity.test.ts przepina człowiek — ten skrypt go nie rusza.",
+);

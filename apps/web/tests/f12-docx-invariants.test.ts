@@ -459,6 +459,90 @@ describe("I-18: autor, biuro i polisa z profilu zalogowanego (TP.5, ADR-020 reg.
   });
 });
 
+/**
+ * TP.6: KAŻDY akapit dołożony w tej sesji ma jawny `pStyle` i wychodzi w Segoe UI.
+ *
+ * Predykat po sentinelach i po tabeli §8.2, nie globalnie: dokument jest pełen
+ * gołych `<w:p>` z wcześniejszych warstw (naprawa całego formatowania to P4),
+ * więc asercja bez zawężenia byłaby czerwona z cudzych powodów i nic by nie
+ * pilnowała. Kopie pola tekstowego okładki też zostają poza zakresem — niosą
+ * własne `rPr` z operatu źródłowego i ich formatowanie to również P4.
+ */
+describe("TP.6: styl i czcionka akapitów dołożonych w paczce 1", () => {
+  const SENTINELE = [
+    // TP.2 — §8.2, obie ścieżki działów
+    "dokonano badania księgi wieczystej",
+    "Dział III:",
+    "Dział IV:",
+    "Numer lokalu wg księgi wieczystej:",
+    "Uwaga: w dziale III księgi wieczystej lokalu",
+    // TP.3 — §10.1
+    "W dziale III księgi wieczystej lokalu ujawniono wpis",
+    // TP.5 — §4 i §15
+    "Biuro Wycen Testowe",
+    "Kopia polisy ubezpieczeniowej.",
+    "Załącznik nr 1",
+  ];
+
+  const zPolisa = (wariant: Parameters<typeof wycena1409Anon>[0]) => {
+    const input = wycena1409Anon(wariant);
+    input.author = { ...AUTOR_TESTOWY, policyPages: [JPG_1PX] };
+    return openDocx(renderOperatDocx(buildDocumentModel(input), { policyPages: [JPG_1PX] }));
+  };
+
+  /** Akapity dołożone w tej sesji: sentinele w body + komórki tabeli §8.2. */
+  const dolozoneW = (doc: DocxDoc) => {
+    const tabela82 = new Set(
+      sectionParagraphs(doc, "8.2.")
+        .filter((p) => p.container === "table")
+        .map((p) => p.index),
+    );
+    return doc.paragraphs.filter(
+      (p) =>
+        tabela82.has(p.index) ||
+        (p.container === "body" && SENTINELE.some((sentinel) => p.text.includes(sentinel))),
+    );
+  };
+
+  const zTabela = zPolisa({ kw: "pdf_lokalu_z_trescia" });
+  const zeZdaniami = zPolisa({ kw: "ekw_reczne_obie_ksiegi" });
+  const wszystkie = [...dolozoneW(zTabela), ...dolozoneW(zeZdaniami)];
+
+  it("wszystkie sentinele znalezione — predykat nie zwęził się do zera", () => {
+    for (const sentinel of SENTINELE) {
+      expect(
+        [zTabela, zeZdaniami].some((doc) =>
+          doc.paragraphs.some((p) => p.container === "body" && p.text.includes(sentinel)),
+        ),
+        `brak akapitu body z „${sentinel}”`,
+      ).toBe(true);
+    }
+    expect(dolozoneW(zTabela).filter((p) => p.container === "table").length).toBeGreaterThan(20);
+  });
+
+  it("paragraphsWithoutStyle = 0 dla akapitów dołożonych w TP.1–TP.5", () => {
+    expect(wszystkie.filter((p) => p.style == null).map((p) => p.text.slice(0, 60))).toEqual([]);
+  });
+
+  it("efektywna czcionka: Segoe UI 10 pt w tekście, 8 pt w tabeli działów", () => {
+    for (const paragraph of wszystkie) {
+      for (const run of paragraph.runs.filter((r) => r.text.trim() !== "")) {
+        const { font, sizePt } = effectiveRunFormat(
+          paragraph.container === "table" ? zTabela : zeZdaniami,
+          run,
+        );
+        expect(font, `krój w „${paragraph.text.slice(0, 40)}”`).toBe("Segoe UI");
+        // Rozmiar tekstu; nagłówki („Załącznik nr 1" w stylu Iza1) mają własny,
+        // taki jak reszta nagłówków operatu, i nie są tekstem sekcji.
+        if (paragraph.style === "Iza1" || paragraph.style === "iza2") continue;
+        expect(sizePt, `rozmiar w „${paragraph.text.slice(0, 40)}”`).toBe(
+          paragraph.container === "table" ? 8 : 10,
+        );
+      }
+    }
+  });
+});
+
 /** Sentinele akapitów, które w §8.2 dokłada etap 14 generatora. */
 const SENTINELS_82 = [
   "dokonano badania księgi wieczystej",
