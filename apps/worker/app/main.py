@@ -28,6 +28,7 @@ from app import coop_xls
 from app import kw as kw_core
 from app import kw_transcribe, kw_validate
 import app.maps as maps
+from app import pdf_pages as pdf_pages_core
 from app import photo as photo_core
 from app import prose as prose_core
 from app.amount_in_words import to_amount_in_words
@@ -1169,4 +1170,53 @@ def photo_process(
     # File bytes are never persisted or logged: `data` dies with this request (RODO).
     return PhotoProcessResponse(
         photo=base64.standard_b64encode(jpeg).decode(), width=width, height=height
+    )
+
+
+class PdfPage(BaseModel):
+    image: str  # base64 JPEG, ~150 DPI
+    width: int
+    height: int
+
+
+class PdfPagesResponse(BaseModel):
+    """Insurance policy pages for Załącznik nr 1, in document order. F-11: images only."""
+
+    pages: list[PdfPage]
+
+
+PDF_UNREADABLE_DETAIL = "Nie udało się odczytać pliku PDF polisy — wgraj plik PDF."
+
+
+@app.post("/pdf-pages")
+def pdf_pages(file: UploadFile = File(...), token: str = Form(...)) -> PdfPagesResponse:
+    _require_token(token)
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail=PDF_UNREADABLE_DETAIL)
+    data = file.file.read()
+    if len(data) > pdf_pages_core.MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="Plik jest za duży (limit 10 MB).")
+    started = time.monotonic()
+    try:
+        pages = pdf_pages_core.render_pages(data)
+    except pdf_pages_core.TooManyPages as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Plik polisy ma za dużo stron (limit {pdf_pages_core.MAX_PAGES}).",
+        ) from exc
+    except Exception as exc:  # unreadable / not a PDF — same user answer
+        logger.error("pdf_pages_failed", err_type=type(exc).__name__, bytes=len(data))
+        raise HTTPException(status_code=415, detail=PDF_UNREADABLE_DETAIL) from exc
+    # F-13: counters only; file bytes are never persisted or logged (RODO).
+    logger.info(
+        "pdf_pages_rendered",
+        pages=len(pages),
+        bytes=len(data),
+        ms=round((time.monotonic() - started) * 1000),
+    )
+    return PdfPagesResponse(
+        pages=[
+            PdfPage(image=base64.standard_b64encode(jpeg).decode(), width=width, height=height)
+            for jpeg, width, height in pages
+        ]
     )
