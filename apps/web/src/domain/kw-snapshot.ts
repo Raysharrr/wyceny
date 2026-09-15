@@ -62,7 +62,13 @@ export type KwGruntSnapshot = {
  * assumption behind the figure (§10.1).
  */
 export type EncumbranceTreatment = {
-  wariant: "bez_uwzglednienia" | "z_uwzglednieniem";
+  /**
+   * `null` = the appraiser has not chosen yet. Expressible on purpose: the
+   * form lets them type the basis first, and a shape that could not hold a
+   * half-made decision would reject the save on a path no field displays.
+   * B-07 keeps blocking until both halves are there.
+   */
+  wariant: "bez_uwzglednienia" | "z_uwzglednieniem" | null;
   podstawa: string;
 };
 

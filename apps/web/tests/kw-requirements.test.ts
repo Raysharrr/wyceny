@@ -253,6 +253,15 @@ describe("B-07 — wpis w dziale III księgi lokalu wymaga decyzji o obciążeni
     expect(kwBlockers(g)).toEqual([]);
   });
 
+  // The mirror of the case above, and the one the form actually produces: the
+  // appraiser types the Podstawa before clicking a tile. The snapshot is then
+  // half-made — and must stay SAVEABLE (so the draft keeps what was typed)
+  // while B-07 keeps the valuation shut.
+  it("podstawa wpisana, ale wariant niewybrany → nadal B-07", () => {
+    const g = withEntry({ wariant: null, podstawa: "Zgodnie z poleceniem Zleceniodawcy." });
+    expect(kwBlockers(g).map((b) => b.code)).toEqual(["B-07"]);
+  });
+
   it("`encumbranceDecisionNeeded` czyta tylko księgę lokalu — żadnej kopii reguły w bramce", () => {
     expect(encumbranceDecisionNeeded(zWpisem, null)).toBe(true);
     expect(encumbranceDecisionNeeded(lokalZbadana, null)).toBe(false);

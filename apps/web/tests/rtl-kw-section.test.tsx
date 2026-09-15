@@ -152,6 +152,34 @@ function Dzial3Harness() {
   );
 }
 
+/**
+ * Exposes the live `kwGrunt` snapshot — the grunt card DISPLAYS the lokal
+ * card's "Numer księgi gruntu" as a suggestion, and what matters is whether
+ * that suggestion is also what gets SAVED.
+ */
+function KwGruntHarness() {
+  const { control } = useForm<FormInput, unknown, FormOutput>({
+    defaultValues: { kw: { source: "ekw_reczne", deweloperski: false } } as FormInput,
+  });
+  const kwGrunt = useWatch({ control, name: "kwGrunt" });
+  return (
+    <>
+      <KwSection
+        control={control}
+        state={{ status: "idle" }}
+        source="reczny"
+        today="2026-09-15"
+        onSourceChange={() => {}}
+        onFileSelected={() => {}}
+        onRetry={() => {}}
+        onUseDocumentArea={() => {}}
+        areaMismatch={null}
+      />
+      <output data-testid="kwgrunt-json">{JSON.stringify(kwGrunt ?? null)}</output>
+    </>
+  );
+}
+
 describe("KwSection", () => {
   // The screen the mockup describes: one heading, a counter, two book cards.
   it("renders the examination heading, the counter banner and both book cards", () => {
@@ -390,6 +418,40 @@ describe("KwSection", () => {
     await waitFor(() =>
       expect(screen.getByTestId("dzial3-json").textContent).toBe(JSON.stringify(["nowy", "wpis"])),
     );
+  });
+
+  /**
+   * A filled screen over an empty save is the same class of defect as a field
+   * missing from `.pick()`: the operat would claim a book number the record
+   * never got. The suggestion must survive being typed AFTER the grunt card
+   * was first touched — the order an appraiser who starts at dział III uses.
+   */
+  it("saves the suggested grunt book number even when it is typed after the grunt card was touched", async () => {
+    const user = userEvent.setup();
+    render(<KwGruntHarness />);
+    const json = () => JSON.parse(screen.getByTestId("kwgrunt-json").textContent || "null");
+
+    // First touch of the grunt card while the lokal's "Numer księgi gruntu" is
+    // still blank: the snapshot is created with no number.
+    const [, gruntDzial3] = screen.getAllByRole("radiogroup", {
+      name: "Dział III — prawa, roszczenia i ograniczenia",
+    });
+    await user.click(within(gruntDzial3).getByRole("radio", { name: "Brak wpisów" }));
+    await waitFor(() => expect(json()).not.toBeNull());
+    expect(json().nrKsiegi).toBeNull();
+
+    // Now the number is typed on the LOKAL card…
+    await user.type(document.querySelector("#kw-gruntu") as HTMLInputElement, "AB1C/2/7");
+    // …the grunt card shows it…
+    await waitFor(() =>
+      expect((document.querySelector("#kwg-nr") as HTMLInputElement).value).toBe("AB1C/2/7"),
+    );
+    // …and the next edit of the grunt card persists it rather than freezing null.
+    const [, gruntDzial4] = screen.getAllByRole("radiogroup", {
+      name: "Dział IV — hipoteka",
+    });
+    await user.click(within(gruntDzial4).getByRole("radio", { name: "Brak wpisów" }));
+    await waitFor(() => expect(json().nrKsiegi).toBe("AB1C/2/7"));
   });
 
   /**

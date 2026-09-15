@@ -421,16 +421,23 @@ export function KwSection(props: KwSectionProps) {
   // schema's "no document, no number" issue (the W4 dead-end).
   const patchKw = (patch: Record<string, unknown>) =>
     setKw({ ...EMPTY_MANUAL_KW, dataBadania: today, ...(kw ?? {}), ...patch });
-  const patchKwGrunt = (patch: Record<string, unknown>) =>
-    setKwGrunt({
-      source: "ekw_reczne",
-      nrKsiegi: kw?.kwGruntu ?? null,
+  const patchKwGrunt = (patch: Record<string, unknown>) => {
+    const base = {
+      source: "ekw_reczne" as const,
+      nrKsiegi: null as string | null,
       dataBadania: today,
       dzial3: null,
       dzial4: null,
       ...(kwGrunt ?? {}),
-      ...patch,
-    });
+    };
+    // The suggestion is applied AFTER the existing snapshot, not before it:
+    // spread the other way round and the first patch to this card (say,
+    // answering dział III while the lokal's "Numer księgi gruntu" is still
+    // blank) freezes `nrKsiegi: null` for good, while the field goes on
+    // DISPLAYING the suggestion — a filled screen over an empty save, the
+    // same mismatch as the missing `.pick()` entry.
+    setKwGrunt({ ...base, nrKsiegi: base.nrKsiegi ?? kw?.kwGruntu ?? null, ...patch });
+  };
 
   return (
     <SectionCard

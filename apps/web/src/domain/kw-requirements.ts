@@ -113,5 +113,9 @@ export function encumbranceDecisionNeeded(
   encumbranceTreatment: EncumbranceTreatment | null | undefined,
 ): boolean {
   if (kw?.dzial3?.wpisy !== true) return false;
-  return !encumbranceTreatment || !encumbranceTreatment.podstawa.trim();
+  // Half a decision is no decision: a variant with no basis, or a basis with
+  // no variant, still leaves the operat unable to say what it assumed.
+  return (
+    !encumbranceTreatment || !encumbranceTreatment.wariant || !encumbranceTreatment.podstawa.trim()
+  );
 }

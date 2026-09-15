@@ -395,7 +395,7 @@ export const kwGruntSchema = z.object({
 
 /** Mirrors `EncumbranceTreatment` — the appraiser's call on a dział III entry (ADR-018 reg. 6). */
 export const encumbranceTreatmentSchema = z.object({
-  wariant: z.enum(["bez_uwzglednienia", "z_uwzglednieniem"]),
+  wariant: z.enum(["bez_uwzglednienia", "z_uwzglednieniem"]).nullable(),
   podstawa: z.string(),
 });
 
