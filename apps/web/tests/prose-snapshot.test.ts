@@ -551,6 +551,6 @@ describe("applyProseProposal / applyProseConfirmation (draft mutations)", () => 
 
   it("AUDIT_ACTIONS gained prose_confirmed (FR-12 closed list)", () => {
     expect(AUDIT_ACTIONS).toContain("prose_confirmed");
-    expect(AUDIT_ACTIONS).toHaveLength(15);
+    expect(AUDIT_ACTIONS).toHaveLength(16);
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import { approvableInput, confirmedProseFor } from "./fixtures/valuation-inputs";
@@ -12,7 +13,13 @@ import { approvableInput, confirmedProseFor } from "./fixtures/valuation-inputs"
  * Two properties, both checked below on one valuation walked through approve
  * → sign with the same mocked deps:
  *  1. neither path ever asks the worker for prose (no regeneration, no bill);
- *  2. the document build receives the identical prose in both.
+ *  2. the signed document carries the approved prose.
+ *
+ * Since ADR-020 wariant (a), (2) holds by construction rather than by
+ * agreement: signing renders nothing at all — it puts the scan on the DOCX the
+ * approval stored — so the build below runs exactly once, at approve. Storage
+ * here really remembers what approve wrote, so the handoff is exercised on the
+ * actual bytes rather than on a mock returning something plausible.
  *
  * `buildDocumentModel` is wrapped rather than replaced — the real one runs, we
  * only look at what it was handed. Today the model drops prose (T8 puts it in
@@ -106,10 +113,19 @@ describe("prose is frozen between approve and sign (Task 7)", () => {
     documentInputs.length = 0;
     vi.mocked(worker.amountInWords).mockResolvedValue("siedemset tysięcy złotych");
     vi.mocked(worker.convertToPdf).mockResolvedValue(Buffer.from("pdf-bytes"));
-    vi.mocked(storage.put).mockImplementation(async (key: string) => `/api/docs/${key}`);
+    // Storage that remembers: the DOCX approve writes is the one sign reads.
+    const blobs = new Map<string, Buffer>();
+    vi.mocked(storage.put).mockImplementation(async (key: string, bytes: string | Buffer) => {
+      blobs.set(key, bytes as Buffer);
+      return `/api/docs/${key}`;
+    });
     // No frozen maps for this valuation: "approved without maps" is the one
     // silent absence, and it keeps this test about the prose.
-    vi.mocked(storage.get).mockRejectedValue(new StorageNotFoundError("no maps"));
+    vi.mocked(storage.get).mockImplementation(async (key: string) => {
+      const bytes = blobs.get(key);
+      if (!bytes) throw new StorageNotFoundError(key);
+      return bytes;
+    });
     vi.mocked(mapImages!.fetchMaps).mockResolvedValue({
       kind: "ok",
       maps: { ewidencyjna: SIGNATURE_PNG, orto: SIGNATURE_PNG },
@@ -124,18 +140,38 @@ describe("prose is frozen between approve and sign (Task 7)", () => {
     }));
 
     getMock.mockResolvedValue(draft);
-    approveMock.mockResolvedValue(approved);
+    // The row as the adapter returns it: the approval's own issue date and the
+    // URLs of the files it just wrote — which is what sign reads them by.
+    approveMock.mockImplementation(async (_id, _user, urls, now) => ({
+      ...approved,
+      ...urls,
+      approvedAt: now ?? approved.approvedAt,
+    }));
     expect(await approveValuation(draft.id)).toBeUndefined();
 
-    getMock.mockResolvedValue(approved);
-    signMock.mockResolvedValue({ ...approved, status: "signed", signedAt: new Date() });
-    expect(await signValuationAction(approved.id)).toBeUndefined();
+    const approvedRow = await approveMock.mock.results[0].value;
+    getMock.mockResolvedValue(approvedRow);
+    signMock.mockResolvedValue({ ...approvedRow, status: "signed", signedAt: new Date() });
+    expect(await signValuationAction(approvedRow.id)).toBeUndefined();
 
-    expect(documentInputs).toHaveLength(2);
-    const [atApprove, atSign] = documentInputs;
-    expect(atApprove.inputs.prose).toEqual(PROSE);
-    // Byte-for-byte, not merely equivalent: this is a legal document.
-    expect(JSON.stringify(atSign.inputs.prose)).toBe(JSON.stringify(atApprove.inputs.prose));
+    // Once, at approve: signing renders nothing, so there is no second build
+    // that could be handed a different prose.
+    expect(documentInputs).toHaveLength(1);
+    expect(documentInputs[0].inputs.prose).toEqual(PROSE);
+
+    // And the signed DOCX is the approved one with a signature added: its
+    // paragraphs are the approved paragraphs, byte-for-byte where they were
+    // not touched. This is a legal document.
+    const signedDocx = vi
+      .mocked(storage.put)
+      .mock.calls.find(([key]) => key.endsWith("-signed.docx"))?.[1] as Buffer;
+    const approvedDocx = blobs.get(approvedRow.docxUrl!.replace("/api/docs/", "")) as Buffer;
+    const textOf = (buf: Buffer) =>
+      new PizZip(buf)
+        .file("word/document.xml")!
+        .asText()
+        .replace(/<[^>]+>/g, "");
+    expect(textOf(signedDocx)).toBe(textOf(approvedDocx));
 
     // The generator is never consulted on either path — the only prose in the
     // operat is the one the appraiser accepted on step 6.
