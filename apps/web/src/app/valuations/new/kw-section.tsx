@@ -396,15 +396,24 @@ export function KwSection(props: KwSectionProps) {
   // demanded at all. Absent (pre-block harness) reads as własność.
   const propertyRight = useWatch({ control, name: "propertyRight" }) ?? "wlasnosc_lokalu";
   const coop = propertyRight === "spoldzielcze_wlasnosciowe";
-  // ONE truth, and it is the snapshot — the thing the gate counts and the
-  // operat prints. `source` is only the bootstrap for a form that has no
-  // snapshot yet: a developer stub is saved as `ekw_reczne` (nothing was read
-  // from a document), so a section key derived from `kw.source` reopened the
-  // draft with this box UNTICKED over a snapshot that still said `true`, and
-  // §8.2 would have printed the developer variant behind the appraiser's back.
-  // Deriving instead of synchronising is deliberate: keeping two values in
-  // agreement is the same bug one step further out.
-  const deweloperski = kw?.deweloperski ?? source === "akt";
+  /**
+   * ONE carrier, and it is the record — the thing the gate counts and the
+   * operat prints. `source` keeps its other two jobs (the Wgraj PDF / Wpisz
+   * ręcznie choice for the lokal's book, and the section key `resetKwSection`
+   * resets on); it just stops being a second place where "developer purchase"
+   * is written down. That duplication is what broke: a developer stub is saved
+   * as `ekw_reczne` (nothing was read from a document), so the section key
+   * reopened the draft with the box UNTICKED over a record that still said
+   * `true`, and §8.2 would have printed the developer variant behind the
+   * appraiser's back.
+   *
+   * No `?? source === "akt"` fallback — that would COVER the duplication, not
+   * remove it, and it is unreachable anyway: the sole emitter of `"akt"` is
+   * this section's own checkbox (below), whose handler writes a non-null
+   * snapshot in the same call, and the mount initializer reaches `"akt"` only
+   * from `kw.source`, which means a record exists.
+   */
+  const deweloperski = kw?.deweloperski === true;
   // The one rule, asked once, for the banner's counter and both badges — the
   // same predicate the F-4 gate uses, so a card can never say "Zbadana" about a
   // book step 7 would block on (R-10).

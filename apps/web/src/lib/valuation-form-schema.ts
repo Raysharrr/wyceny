@@ -435,7 +435,14 @@ export const valuationFormObject = z.object({
   streetView: streetViewSchema.optional(),
   subject: subjectSchema.optional(),
   subjectMeta: subjectMetaSchema.optional(),
-  kw: kwSchema.optional(),
+  // `.nullish()`, not `.optional()`: retracting an examination is a real act —
+  // unticking "zakup deweloperski", or switching the property right — and the
+  // form has to be able to SAY "there is no snapshot" rather than merely omit
+  // the key. `setValue(…, undefined)` is not a reliable clear in RHF, so the
+  // retraction has to be a value, and a value the schema rejects would fail on
+  // a path no field renders (the W4 dead-end). `wizard.ts` already writes
+  // `parsed.kw ? normalizeKw(parsed.kw) : null`.
+  kw: kwSchema.nullish(),
   kwGrunt: kwGruntSchema.nullish(),
   encumbranceTreatment: encumbranceTreatmentSchema.nullish(),
   kwMeta: kwMetaSchema.optional(),

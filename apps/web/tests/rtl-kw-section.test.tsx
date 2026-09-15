@@ -826,18 +826,64 @@ describe("KwSection — full-form wiring", () => {
     expect(screen.getByTestId("kw-developer-banner")).toBeDefined();
     expect(screen.getByText(/Zbadane księgi:/).textContent).toContain("0 z 1");
 
-    // And unticking is a real retraction, saved as such.
+    // And unticking is a real retraction. Asserted through a CONSEQUENCE, not
+    // through `deweloperski === false`: a residual stub would satisfy that
+    // while still being wrong, because `numerKwWFormularzu` keys off
+    // `kw == null` — any leftover snapshot silently switches the "type a KW
+    // number" demand off. So submit with nothing typed and require the refusal.
     await user.click(screen.getByRole("checkbox", { name: /zakup deweloperski/i }));
     expect(screen.getByText(/Zbadane księgi:/).textContent).toContain("0 z 2");
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    expect((await screen.findByTestId("kw-upload-error")).textContent).toContain(
+      "Podaj numer księgi wieczystej",
+    );
+    expect(saveSubjectAction).not.toHaveBeenCalled();
+
     await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
 
     await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
     const [, payload] = vi.mocked(saveSubjectAction).mock.calls[0] as unknown as [
       string,
-      { kw?: { deweloperski?: boolean } },
+      { kw?: { deweloperski?: boolean; source?: string; kwLokalu?: string | null } },
     ];
     expect(payload.kw?.deweloperski).toBe(false);
+    expect(payload.kw?.source).toBe("ekw_reczne");
+    expect(payload.kw?.kwLokalu).toBe("AB1C/1/9");
+  });
+
+  /**
+   * The property-right switch clears `kw` too, and the isolated harness could
+   * only prove the value went away — it has no resolver, so it could not see
+   * that the CLEARED form still submits. `kw` is `.optional()`, so clearing it
+   * to `null` would fail validation on a path no field renders and the button
+   * would go dead silently. Submitting is the assertion that matters.
+   */
+  it("still submits after the property right is switched (the clear must be a valid value)", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+
+    await fillRequiredExceptKw(user);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
+    const [lokalDzial3] = screen.getAllByRole("radiogroup", {
+      name: "Dział III — prawa, roszczenia i ograniczenia",
+    });
+    await user.click(within(lokalDzial3).getByRole("radio", { name: "Są wpisy" }));
+
+    await user.click(
+      screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
+    );
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as {
+      propertyRight?: string;
+      kw?: unknown;
+      encumbranceTreatment?: unknown;
+    };
+    expect(submitted.propertyRight).toBe("spoldzielcze_wlasnosciowe");
+    expect(submitted.kw ?? null).toBeNull();
+    expect(submitted.encumbranceTreatment ?? null).toBeNull();
   });
 
   // D9: non-PDF is rejected client-side, before any network call.
