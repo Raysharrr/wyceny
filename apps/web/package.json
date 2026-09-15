@@ -15,6 +15,7 @@
     "pretest": "pnpm help-index",
     "test": "vitest run",
     "seed": "tsx scripts/seed.ts",
+    "template:build": "tsx scripts/template-build.mts",
     "trace": "tsx scripts/trace.mts",
     "e2e": "playwright test --project=smoke --project=spoldzielcze",
     "e2e:cleanup": "tsx scripts/e2e-cleanup.ts",
