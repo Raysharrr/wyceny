@@ -171,6 +171,23 @@ def test_rep_a_is_found_inside_the_document_line():
     assert klasy(doc) == set()
 
 
+@pytest.mark.parametrize("prefix", ["REP. A NR ", "REP. A ", "A NR ", "A "])
+def test_rep_a_written_with_a_prefix_is_still_found(prefix):
+    """The model returns Rep. A in several acceptable spellings (the synthetic book's
+    ground truth lists them as alternatives) — none may fail a correct reading."""
+    doc = sample()
+    pn = doc["polaDodatkowe"]["podstawaNabycia"]
+    pn["repA"] = prefix + pn["repA"]
+    assert klasy(doc) == set()
+
+
+def test_rep_a_matches_the_whole_number_not_its_tail():
+    doc = sample()
+    pn = doc["polaDodatkowe"]["podstawaNabycia"]
+    pn["repA"] = pn["repA"][1:]  # "497/2018" sits inside "6497/2018" but is another deed
+    assert klasy(doc) == {("pole_niezgodne:repA", "II")}
+
+
 def test_udzial_differs_from_i_sp():
     doc = sample()
     doc["polaDodatkowe"]["udzial"] += "0"

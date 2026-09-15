@@ -36,6 +36,7 @@ _KW_RE = re.compile(r"([A-Z0-9]{4})/(\d{8})/(\d)")
 
 _PESEL_WEIGHTS = (1, 3, 7, 9, 1, 3, 7, 9, 1, 3)
 _PESEL_RE = re.compile(r"\b\d{11}\b")
+_REP_CORE_RE = re.compile(r"\d+/\d+")
 
 
 def kw_check_digit_ok(number: str) -> bool:
@@ -123,9 +124,13 @@ def validate(tresc: KsiegaTresc) -> Walidacja:
         fail("pole_niezgodne:udzial", "I-Sp")
     rep_a = _loose(pola.podstawaNabycia.repA if pola.podstawaNabycia else None)
     if rep_a is not None:
+        # The model spells Rep. A with or without "REP. A NR" — compare the
+        # "number/year" core, as a whole number ("497/2018" is not "6497/2018").
+        core = _REP_CORE_RE.search(rep_a)
+        pattern = re.compile(rf"(?<!\d){re.escape(core.group() if core else rep_a)}(?!\d)")
         section_ii = _section(tresc, "II")
         documents = [_loose(d.dokument) for d in section_ii.dokumenty] if section_ii else []
-        if not any(rep_a in document for document in documents):
+        if not any(pattern.search(document) for document in documents):
             fail("pole_niezgodne:repA", "II")
 
     for section in tresc.dzialy:
