@@ -45,6 +45,7 @@ import { profileRepository, storage, valuationRepository, worker } from "@/app/v
 import { buildDocumentModel } from "@/domain/document-model";
 import { documentInputFor } from "@/domain/document-input";
 import { computeKcs } from "@/domain/kcs";
+import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 
 const ADDRESS = "Audit approvable";
 const APPROVED_AT = new Date("2026-07-19T10:00:00.000Z");
@@ -79,7 +80,12 @@ describe("documentInputFor — today's fields, verbatim", () => {
     const kcs = computeKcs(v.inputs!);
 
     expect(
-      documentInputFor(v, { approvedAt: APPROVED_AT, kcs, amountInWords: "słownie" }),
+      documentInputFor(v, {
+        approvedAt: APPROVED_AT,
+        kcs,
+        amountInWords: "słownie",
+        author: AUTOR_TESTOWY,
+      }),
     ).toStrictEqual({
       address: ADDRESS,
       area: 40,
@@ -92,6 +98,7 @@ describe("documentInputFor — today's fields, verbatim", () => {
       inputs: v.inputs,
       kcs,
       amountInWords: "słownie",
+      author: AUTOR_TESTOWY,
     });
   });
 
@@ -106,6 +113,7 @@ describe("documentInputFor — today's fields, verbatim", () => {
       approvedAt: APPROVED_AT,
       kcs: computeKcs(v.inputs!),
       amountInWords: "słownie",
+      author: AUTOR_TESTOWY,
     });
 
     expect(input.client).toBe("");

@@ -112,8 +112,23 @@ export const appraiserProfile = pgTable("appraiser_profile", {
   userId: text("user_id")
     .primaryKey()
     .references(() => user.id),
-  signatureBytes: bytea("signature_bytes").notNull(),
-  signatureMime: text("signature_mime").notNull(),
+  // Nullable since 0017 (ADR-020 reg. 1): the author data below can be filled
+  // in before any scan is uploaded, and the row has to exist to hold it. The
+  // scan stays required at SIGNING time (reg. 2) — that is the guard that
+  // matters; the column constraint only ever decided the order of two forms.
+  signatureBytes: bytea("signature_bytes"),
+  signatureMime: text("signature_mime"),
+  // Author of the operat, their licence number and the office block — the
+  // values the template used to carry as literals, which is how a QA account
+  // issued a document under another appraiser's name (ADR-020). Nullable:
+  // every existing row predates them, and B-15 (the approval gate) is what
+  // refuses an incomplete profile, not the schema.
+  fullName: text("full_name"),
+  licenseNo: text("license_no"),
+  officeBlock: text("office_block"),
+  /** Storage PREFIX of the policy pages (`<key>/page-001.jpg`, …), not one file. */
+  insuranceDocKey: text("insurance_doc_key"),
+  insuranceValidUntil: date("insurance_valid_until"),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 

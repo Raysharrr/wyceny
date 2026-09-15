@@ -48,10 +48,17 @@ vi.mock("next/navigation", () => ({
 
 import { approveValuation } from "../src/app/actions/approve-valuation";
 import { previewOperat } from "../src/app/actions/preview-operat";
-import { storage, valuationRepository, worker, mapImages } from "@/app/valuations/_deps";
+import {
+  storage,
+  valuationRepository,
+  worker,
+  mapImages,
+  profileRepository,
+} from "@/app/valuations/_deps";
 import { StorageNotFoundError } from "@/ports/storage";
 import { ApprovalBlockedError, InputsChangedError } from "@/domain/valuation";
 import { approvedOperatKeys } from "@/lib/operat-doc-keys";
+import { PROFIL_TESTOWY } from "./fixtures/document-model-fixture";
 
 const getMock = vi.mocked(valuationRepository.get);
 const approveMock = vi.mocked(valuationRepository.approve);
@@ -62,6 +69,7 @@ const storageDeleteMock = vi.mocked(storage.delete);
 const storageGetMock = vi.mocked(storage.get);
 const fetchMapsMock = vi.mocked(mapImages!.fetchMaps);
 const freezeMapsMock = vi.mocked(valuationRepository.freezeMaps);
+const profileGetMock = vi.mocked(profileRepository.get);
 
 // Synthetic 1x1 images (F-9: no real map data in fixtures) — same fixture
 // bytes as docx-render-maps.test.ts.
@@ -131,6 +139,11 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
     freezeMapsMock.mockReset();
+    // ADR-020 cz. 1: every approval reads the appraiser's profile. Complete by
+    // default here so these tests keep measuring what they were written for;
+    // the B-15/B-16 refusals have their own describe below.
+    profileGetMock.mockReset();
+    profileGetMock.mockResolvedValue(PROFIL_TESTOWY);
     // The adapter answers with the saved row; `undefined` from a bare vi.fn()
     // would read as "the freeze write did not happen", which approve refuses on.
     freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
@@ -201,7 +214,7 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
       expect.anything(),
       { mapsFrozenFor: draft.address },
       draft.inputs,
-      { requireProse: true },
+      expect.objectContaining({ requireProse: true }),
     );
 
     const docxCall = storagePutMock.mock.calls.find(([key]) => isOperatDocxKey(key, draft.id));
@@ -242,7 +255,7 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
       draft.inputs,
       // FR-6: the app layer's kill-switch answer travels into the transaction
       // so the in-tx gate (ADR-012) applies the same rule as the fail-fast one.
-      { requireProse: true },
+      expect.objectContaining({ requireProse: true }),
     );
     const mapaCalls = storagePutMock.mock.calls.filter(([key]) => key.startsWith("mapa-"));
     expect(mapaCalls).toHaveLength(0);
@@ -318,6 +331,11 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
     storageGetMock.mockReset();
     fetchMapsMock.mockReset();
     freezeMapsMock.mockReset();
+    // ADR-020 cz. 1: every approval reads the appraiser's profile. Complete by
+    // default here so these tests keep measuring what they were written for;
+    // the B-15/B-16 refusals have their own describe below.
+    profileGetMock.mockReset();
+    profileGetMock.mockResolvedValue(PROFIL_TESTOWY);
     // The adapter answers with the saved row; `undefined` from a bare vi.fn()
     // would read as "the freeze write did not happen", which approve refuses on.
     freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
@@ -495,6 +513,11 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
     freezeMapsMock.mockReset();
+    // ADR-020 cz. 1: every approval reads the appraiser's profile. Complete by
+    // default here so these tests keep measuring what they were written for;
+    // the B-15/B-16 refusals have their own describe below.
+    profileGetMock.mockReset();
+    profileGetMock.mockResolvedValue(PROFIL_TESTOWY);
     // The adapter answers with the saved row; `undefined` from a bare vi.fn()
     // would read as "the freeze write did not happen", which approve refuses on.
     freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
@@ -669,7 +692,7 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
       // address they came from (Slice 14) — this call carries no skip.
       { mapsFrozenFor: draftBase.address },
       draftBase.inputs,
-      { requireProse: true },
+      expect.objectContaining({ requireProse: true }),
     );
   });
 
@@ -685,7 +708,7 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
       expect.anything(),
       { mapsFrozenFor: draftBase.address },
       expect.anything(),
-      { requireProse: false },
+      expect.objectContaining({ requireProse: false }),
     );
     vi.unstubAllEnvs();
   });
@@ -760,6 +783,11 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
     storageDeleteMock.mockReset();
     fetchMapsMock.mockReset();
     freezeMapsMock.mockReset();
+    // ADR-020 cz. 1: every approval reads the appraiser's profile. Complete by
+    // default here so these tests keep measuring what they were written for;
+    // the B-15/B-16 refusals have their own describe below.
+    profileGetMock.mockReset();
+    profileGetMock.mockResolvedValue(PROFIL_TESTOWY);
     // The adapter answers with the saved row; `undefined` from a bare vi.fn()
     // would read as "the freeze write did not happen", which approve refuses on.
     freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
@@ -912,6 +940,11 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
     storageGetMock.mockReset();
     fetchMapsMock.mockReset();
     freezeMapsMock.mockReset();
+    // ADR-020 cz. 1: every approval reads the appraiser's profile. Complete by
+    // default here so these tests keep measuring what they were written for;
+    // the B-15/B-16 refusals have their own describe below.
+    profileGetMock.mockReset();
+    profileGetMock.mockResolvedValue(PROFIL_TESTOWY);
 
     current = { ...draftT12 };
     blobs.clear();
@@ -1024,7 +1057,7 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
       expect.anything(),
       { mapsFrozenFor: draftT12.address },
       draftT12.inputs,
-      { requireProse: true },
+      expect.objectContaining({ requireProse: true }),
     );
   });
 
@@ -1240,5 +1273,106 @@ describe("każde zatwierdzenie ma własne pliki (ADR-020, reguła 6)", () => {
     const keys = approvedOperatKeys("123e4567-e89b-12d3-a456-426614174000", new Date());
     expect(encodeURIComponent(keys.docx)).toBe(keys.docx);
     expect(encodeURIComponent(keys.pdf)).toBe(keys.pdf);
+  });
+});
+
+/**
+ * B-15/B-16 przez akcję zatwierdzenia (ADR-020 reg. 3). Poza samą odmową ta
+ * grupa pilnuje uwagi z review PR #50: bramka w TRANSAKCJI dostaje pełny
+ * kontekst. Gdyby akcja nadal przekazywała do repozytorium tylko
+ * `{ requireProse }`, blokady profilu zniknęłyby dokładnie w tym jednym
+ * miejscu, które jest rozstrzygające (ADR-012).
+ */
+describe("approveValuation — profil autora i polisa OC (B-15, B-16)", () => {
+  const draft: Valuation = {
+    id: "valuation-profil-1",
+    address: "ul. Opisowa 7, Poznań",
+    area: 55,
+    wr: 700_000,
+    inputs: {
+      ...approvableInput("test-user").inputs!,
+      prose: confirmedProseFor("ul. Opisowa 7, Poznań", approvableInput("test-user").inputs!),
+    },
+    amountInWords: null,
+    docUrl: null,
+    docxUrl: null,
+    purpose: "sprzedaz",
+    propertyRight: "wlasnosc_lokalu",
+    kwNumber: "KW-TEST-1",
+    client: "Jan Testowy",
+    inspectionDate: "2026-07-10",
+    ownerId: "test-user",
+    status: "in_progress",
+    approvedAt: null,
+    signedAt: null,
+    supersedesId: null,
+    mapsFrozenFor: null,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+
+  beforeEach(() => {
+    getMock.mockReset();
+    approveMock.mockReset();
+    amountInWordsMock.mockReset();
+    convertToPdfMock.mockReset();
+    storagePutMock.mockReset();
+    storageDeleteMock.mockReset();
+    fetchMapsMock.mockReset();
+    freezeMapsMock.mockReset();
+    profileGetMock.mockReset();
+    profileGetMock.mockResolvedValue(PROFIL_TESTOWY);
+    freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
+      ...draft,
+      mapsFrozenFor: address,
+    }));
+    amountInWordsMock.mockResolvedValue("siedemset tysięcy złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    approveMock.mockResolvedValue({ ...draft, status: "approved" });
+    getMock.mockResolvedValue(draft);
+  });
+
+  it("odmawia zatwierdzenia bez profilu i bez polisy, nie generując dokumentu", async () => {
+    profileGetMock.mockResolvedValue(null);
+
+    const result = await approveValuation(draft.id);
+
+    expect(result!.blockers!.map((b) => b.code)).toEqual(["B-15", "B-16"]);
+    expect(result!.blockers!.map((b) => b.path)).toEqual(["profile.dane", "profile.polisa"]);
+    expect(approveMock).not.toHaveBeenCalled();
+    expect(storagePutMock).not.toHaveBeenCalled();
+  });
+
+  it("odmawia przy polisie, która wygasła przed dniem zatwierdzenia", async () => {
+    profileGetMock.mockResolvedValue({ ...PROFIL_TESTOWY, insuranceValidUntil: "2000-01-01" });
+
+    const result = await approveValuation(draft.id);
+
+    expect(result!.blockers!.map((b) => b.code)).toEqual(["B-16"]);
+    expect(approveMock).not.toHaveBeenCalled();
+  });
+
+  it("przekazuje do repozytorium PEŁNY kontekst bramki — z profilem i datą operatu", async () => {
+    await approveValuation(draft.id);
+
+    const gate = approveMock.mock.calls[0][6]!;
+    expect(gate.author).toEqual(PROFIL_TESTOWY);
+    expect(gate.today).toBeInstanceOf(Date);
+    expect(gate.requireProse).toBe(true);
+  });
+
+  /**
+   * Profil czytany jest dla ZALOGOWANEGO, nie dla właściciela wiersza ani dla
+   * kogokolwiek zapisanego wcześniej — to cała odpowiedź na operat konta QA z
+   * nazwiskiem innej rzeczoznawczyni (I-18). Że model faktycznie niesie te
+   * pola, pilnuje `document-model-author.test.ts`; tagi w szablonie DOCX
+   * dokłada sesja szablonowa (plan §P1.9).
+   */
+  it("czyta profil zalogowanego rzeczoznawcy przy każdym zatwierdzeniu", async () => {
+    await approveValuation(draft.id);
+
+    expect(profileGetMock).toHaveBeenCalledWith("test-user");
+    expect(approveMock).toHaveBeenCalled();
   });
 });

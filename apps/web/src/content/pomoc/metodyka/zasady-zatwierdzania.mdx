@@ -42,6 +42,15 @@ Lista jest przy tym drobnoziarnista tam, gdzie ma to znaczenie: blokuje **każda
 - **Opisy sekcji** — każda z {PROSE_SECTIONS.length} sekcji opisowych [kroku 6](/pomoc/krok-6-opisy) musi mieć niepusty tekst przyjęty przez rzeczoznawcę. Wycena, przy której nie ma jeszcze żadnych opisów, dostaje jedną blokadę („Opisy sekcji nie zostały wygenerowane."); dalej blokuje osobno każda sekcja pusta („— brak tekstu.") oraz każda z tekstem, którego rzeczoznawca jeszcze nie przyjął („— do weryfikacji."). Propozycja modelu językowego nie przechodzi tej bramy nigdy: status „potwierdzona" nadaje wyłącznie zapis kroku 6.
 - **Aktualność opisów** — przy opisach zapisany jest odcisk danych, wobec których zostały przyjęte. Gdy dane wyceny zmienią się później, blokuje pozycja „Opisy sekcji opisują wcześniejszą wersję danych — wróć do kroku 6, przejrzyj je i zatwierdź ponownie.". Jest to prozatorski odpowiednik kasowania zatwierdzonej kwoty przy zmianie wejść silnika: tekst zatwierdzony wcześniej nie może opisywać próby, której już nie ma. Wyjściem jest ponowne przeczytanie i zatwierdzenie tekstów — bez nowej generacji.
 
+### Profil rzeczoznawcy
+
+Dwie blokady nie dotyczą wycenianej nieruchomości, tylko osoby wydającej operat, i zdejmuje się je raz — w profilu, nie w kroku kreatora. Odnośnik przy nich prowadzi więc do profilu, a nie do numeru kroku.
+
+- **B-15 — profil niekompletny.** Komunikat: _Uzupełnij profil: imię i nazwisko, numer uprawnień, dane biura._ Wszystkie trzy pola muszą być wypełnione; dokument bierze je z profilu zalogowanego rzeczoznawcy i bez nich wydrukowałby w tych miejscach kreski. Podgląd operatu działa mimo braku — blokada dotyczy wyłącznie wydania dokumentu.
+- **B-16 — polisa OC.** Komunikat: _Dodaj polisę OC ważną na dzień …_ Blokuje brak wgranego pliku oraz data ważności **wcześniejsza niż data operatu**; polisa ważna dokładnie do dnia zatwierdzenia przechodzi. Porównywana jest data dzienna, ta sama, którą operat nosi na stronie tytułowej — nie moment kliknięcia.
+
+Obie sprawdzane są tak samo w akcji zatwierdzenia i wewnątrz transakcji bazodanowej, jak wszystkie pozostałe.
+
 ### Sprawdzane warunkowo
 
 Pozostałe grupy **istnieją tylko wtedy, gdy do wyceny dołączono odpowiednią migawkę**. Nie jest to ustępstwo, tylko konsekwencja: nie ma czego potwierdzać w danych, których w wycenie nie ma.

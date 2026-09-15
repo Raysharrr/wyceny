@@ -15,6 +15,7 @@ import {
   KW_DEWELOPERSKI,
   KW_AKT_NO_DZIAL,
   KW_AKT_NULL_UDZIAL,
+  AUTOR_TESTOWY,
 } from "./fixtures/document-model-fixture";
 
 /**
@@ -78,6 +79,7 @@ function renderGoldenNoDefinitions(subject?: SubjectSnapshot, kw?: KwSnapshot): 
     inputs,
     kcs: computeKcs(inputs),
     amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+    author: AUTOR_TESTOWY,
   });
   const docx = renderOperatDocx(model);
   const zip = new PizZip(docx);
@@ -204,6 +206,7 @@ describe("F-12: rendered operat — legacy, no subject fetched", () => {
       inputs,
       kcs: computeKcs(inputs),
       amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+      author: AUTOR_TESTOWY,
     });
     expect(model.kw_badanie).toBe(false);
     expect(model.kw_standard).toBe(false);
@@ -264,6 +267,7 @@ describe("F-12: rendered operat — KW examination block (standard variant)", ()
       inputs,
       kcs: computeKcs(inputs),
       amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+      author: AUTOR_TESTOWY,
     });
     expect(model.kw_standard).toBe(true);
     expect(model.kw_deweloperski).toBe(false);
@@ -327,6 +331,7 @@ describe("F-12: rendered operat — akt notarialny with no dział III/IV info (d
       inputs,
       kcs: computeKcs(inputs),
       amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+      author: AUTOR_TESTOWY,
     });
     expect(model.dzial3_brak).toBe(false);
     expect(model.dzial3_wpisy).toEqual([]);
@@ -362,6 +367,7 @@ describe("F-12: rendered operat — KW examined but udział absent (akt, udzial 
       inputs,
       kcs: computeKcs(inputs),
       amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+      author: AUTOR_TESTOWY,
     });
     expect(model.udzial_kw).toBe("—");
   });

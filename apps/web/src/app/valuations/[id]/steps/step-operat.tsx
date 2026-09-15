@@ -3,6 +3,7 @@ import { BlockerList } from "@/components/wizard/blocker-list";
 import { SectionCard } from "@/components/wizard/section-card";
 import { approvalBlockers } from "@/domain/valuation";
 import { gateContextFor } from "@/lib/gate-context";
+import type { AppraiserProfile } from "@/ports/profile";
 import type { Valuation } from "@/ports/valuation";
 import { currencyFormatter } from "../cards";
 import { ValuationActions } from "../valuation-actions";
@@ -28,7 +29,14 @@ import { PreviewMapsProvider } from "./preview-maps-state";
  * An ISSUED operat is still not rendered here: `page.tsx` sends anything that
  * is no longer a draft to the flat view, which embeds `docUrl`.
  */
-export function StepOperat({ valuation }: { valuation: Valuation }) {
+export function StepOperat({
+  valuation,
+  profile,
+}: {
+  valuation: Valuation;
+  /** Read once by the page (ADR-020 cz. 1) — `null` when the appraiser has no profile row. */
+  profile: AppraiserProfile | null;
+}) {
   // Same kill-switch answer the approve action computes (FR-6): the list
   // below must name every blocker that action would refuse on, or the
   // refusal arrives out of nowhere on a button that looked enabled.
@@ -37,7 +45,7 @@ export function StepOperat({ valuation }: { valuation: Valuation }) {
   // to sit under this card asked the appraiser to vouch for data the card
   // never displayed; confirming moved to steps 1/3/4 in T7, where it IS
   // displayed, and what is left here is a report with a link per blocker.
-  const allBlockers = approvalBlockers(valuation, gateContextFor(valuation));
+  const allBlockers = approvalBlockers(valuation, gateContextFor(valuation, profile));
   // A draft without an inputs snapshot can never be approved, even with an
   // empty list (only its document fields are checkable).
   const gateOk = valuation.inputs != null && allBlockers.length === 0;

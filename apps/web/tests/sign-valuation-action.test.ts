@@ -10,6 +10,7 @@ import { buildDocumentModel } from "../src/domain/document-model";
 import { documentInputFor } from "../src/domain/document-input";
 import { computeKcs } from "../src/domain/kcs";
 import { withCode } from "./fixtures/with-code";
+import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 
 // Synthetic 1x1 images (F-9: no real map data in fixtures) — same constants
 // as docx-render-maps.test.ts (repo convention: duplicate small fixture
@@ -165,6 +166,10 @@ describe("signValuationAction", () => {
           approvedAt: approvedValuation.approvedAt!,
           kcs: computeKcs(approvedValuation.inputs!),
           amountInWords: "czterysta tysięcy złotych",
+          // The author block is baked in at APPROVAL (ADR-020 cz. 1 + wariant
+          // (a) cz. 2): this fixture stands in for the approval that produced
+          // the stored DOCX, so the name in it is the one signing carries.
+          author: AUTOR_TESTOWY,
         }),
       ),
       {
@@ -230,6 +235,29 @@ describe("signValuationAction", () => {
 
   const LEGACY_REFUSAL =
     "Tego operatu nie można podpisać — zatwierdzono go przed aktualizacją programu. Użyj „Cofnij zatwierdzenie i popraw”, popraw operat i zatwierdź go ponownie.";
+
+  /**
+   * ADR-020 cz. 1 (I-18) po wariancie (a) cz. 2 — odwrotnie niż przed merge'em
+   * z #57. Tamten test pilnował, że podpis czyta profil ZALOGOWANEGO, bo podpis
+   * renderował operat od nowa i blok autora powstawał w tym momencie; jego
+   * własny komentarz zapowiadał, że „znika to dopiero z wariantem (a)".
+   *
+   * Teraz podpis nie renderuje nic, więc nie ma czego wypełniać danymi autora:
+   * blok w pliku pochodzi z zatwierdzenia, które czyta profil WŁAŚCICIELA
+   * (`approve-valuation.ts`), a podpisać może wyłącznie właściciel — więc
+   * dokument nadal nosi dane osoby, która go podpisuje. Zmiana danych biura
+   * między zatwierdzeniem a podpisem nie rozjeżdża już obu plików: podpisany
+   * jest zatwierdzonym, co do bajta poza znacznikiem.
+   */
+  it("nie czyta profilu przy podpisie — blok autora pochodzi z zatwierdzonego pliku", async () => {
+    setUpSign(storedApprovedDocx());
+
+    expect(await signValuationAction("v1")).toBeUndefined();
+
+    expect(vi.mocked(profileRepository.get)).not.toHaveBeenCalled();
+    // Skan podpisu to jedyny odczyt profilu, jaki tu zostaje.
+    expect(getSignatureMock).toHaveBeenCalledWith("u1");
+  });
 
   it("refuses a DOCX approved before the update (no file under the approval's key) — pointing at the reopen button", async () => {
     setUpSign(storedApprovedDocx());

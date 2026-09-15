@@ -65,6 +65,14 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
       return { error: "Brak skanu podpisu — wgraj go w profilu, a potem podpisz operat." };
     }
 
+    // ADR-020 cz. 1 (I-18) — the signed document names the person signing it —
+    // is satisfied WITHOUT a profile read here. Under cz. 2 wariant (a) signing
+    // renders nothing, so there is no author block to fill: the one in the file
+    // was written at approval, from the owner's profile, and only the owner may
+    // sign. A read here would have nowhere to go, and re-rendering to use it is
+    // exactly what this variant removes. The #57 test that pinned the read says
+    // the same thing in its own comment.
+
     try {
       let approvedDocx: Buffer;
       try {

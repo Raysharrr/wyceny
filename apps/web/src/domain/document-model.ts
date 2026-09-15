@@ -247,6 +247,22 @@ export type DocumentModel = {
   data_sporzadzenia: string;
   /** §8.1 map block caption ("dane pobrane {mapy_data}") — same source date as data_sporzadzenia. */
   mapy_data: string;
+  // Author block (ADR-020 cz. 1). The title page, the two body paragraphs and
+  // the signature block carried these as template LITERALS, which is how the
+  // QA account issued an operat under another appraiser's name. They now come
+  // from the profile of whoever is logged in; an em dash marks an incomplete
+  // profile, which only the step-7 PREVIEW can reach — B-15 refuses to ISSUE
+  // a document with a dash where its author should be.
+  autor_imie_nazwisko: string;
+  autor_uprawnienia: string;
+  biuro: string;
+  /**
+   * "Załącznik nr 1" — one entry per rasterised page of the OC policy, in
+   * document order (D-60). String markers, exactly like the inspection photo
+   * loops: image bytes never travel inside the model, they are dispatched by
+   * marker in `docx-render.ts`.
+   */
+  polisa_strony: Array<{ img: string }>;
   // EGiB/building facts (section 8.2) — from the auto-fetched subject snapshot;
   // dashes when no subject was fetched (legacy manual-entry inputs).
   obreb: string;
@@ -424,6 +440,32 @@ export type BuildDocumentInput = {
   inputs: KcsInput;
   kcs: KcsResult;
   amountInWords: string;
+  /** Who is issuing this operat (ADR-020 cz. 1) — the appraiser's own profile, never the template. */
+  author: OperatAuthor;
+};
+
+/**
+ * The author of the operat as the document prints them, assembled from
+ * `appraiser_profile` by the app layer. Separate from `AppraiserProfile`
+ * (the port's row shape): the document needs the policy PAGES, not the
+ * storage prefix they live under, and it needs no validity date — B-16 has
+ * already refused the issue if the policy does not cover it.
+ */
+export type OperatAuthor = {
+  /** Empty string = an incomplete profile, reachable in the preview only (B-15). */
+  fullName: string;
+  licenseNo: string;
+  officeBlock: string;
+  /**
+   * Rasterised policy pages in document order, as JPEG.
+   *
+   * ALWAYS EMPTY as of this session: the model turns the list into markers,
+   * but nothing reads the pages back out of storage yet and `docx-render.ts`
+   * has no "Załącznik nr 1" tag to dispatch them to — both belong to the
+   * template session (plan §P1.9). Filling this array is the whole change on
+   * this side when that lands.
+   */
+  policyPages: Buffer[];
 };
 
 /**
@@ -507,6 +549,10 @@ export function buildDocumentModel(
     data_ogledzin: formatDatePl(input.inspectionDate),
     data_sporzadzenia: formatDatePl(input.approvedAt.toISOString()),
     mapy_data: formatDatePl(input.approvedAt.toISOString()),
+    autor_imie_nazwisko: input.author.fullName || DASH,
+    autor_uprawnienia: input.author.licenseNo || DASH,
+    biuro: input.author.officeBlock || DASH,
+    polisa_strony: input.author.policyPages.map((_, i) => ({ img: `polisa-${i}` })),
     obreb: subject?.obreb || DASH,
     arkusz: subject?.arkusz || DASH,
     nr_dzialki: subject?.nrDzialki || DASH,

@@ -1,5 +1,6 @@
 import { computeKcs, type KcsInput } from "../../src/domain/kcs";
-import type { BuildDocumentInput } from "../../src/domain/document-model";
+import type { BuildDocumentInput, OperatAuthor } from "../../src/domain/document-model";
+import type { AppraiserProfile } from "../../src/ports/profile";
 import type { SubjectSnapshot } from "../../src/domain/subject-snapshot";
 import type { KwSnapshot } from "../../src/domain/kw-snapshot";
 
@@ -142,6 +143,31 @@ export const SUBJECT_NO_MPZP: SubjectSnapshot = {
 };
 
 /**
+ * Autor operatu dla testów — dane CAŁKOWICIE FIKCYJNE (F-9, ryzyko R10 specu):
+ * nazwisko, numer uprawnień i adres biura nie należą do nikogo. Jedna stała dla
+ * całego zestawu testów, żeby zmiana kształtu `OperatAuthor` miała jedno miejsce.
+ */
+export const AUTOR_TESTOWY: OperatAuthor = {
+  fullName: "Jan Testowy",
+  licenseNo: "0000",
+  officeBlock: "Biuro Wycen Testowe\nul. Przykładowa 1\n60-000 Poznań",
+  policyPages: [],
+};
+
+/**
+ * Ten sam autor jako wiersz profilu — kompletny, z polisą ważną tak długo, że
+ * upływ czasu nie zazieleni ani nie zaczerwieni żadnego testu (bramka porównuje
+ * `insuranceValidUntil` z DZISIEJSZĄ datą, więc realistyczny rok wygasłby).
+ */
+export const PROFIL_TESTOWY: AppraiserProfile = {
+  fullName: AUTOR_TESTOWY.fullName,
+  licenseNo: AUTOR_TESTOWY.licenseNo,
+  officeBlock: AUTOR_TESTOWY.officeBlock,
+  insuranceDocKey: "polisa/test-user/fikcyjna",
+  insuranceValidUntil: "2099-12-31",
+};
+
+/**
  * Complete `buildDocumentModel()` input — the shared baseline for the F-12
  * render-completeness suite and the F-7 signature render tests. No subject
  * and no kw (both optional and undefined by default) reproduces the legacy
@@ -164,5 +190,6 @@ export function syntheticDocumentInput(
     inputs,
     kcs: computeKcs(inputs),
     amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+    author: AUTOR_TESTOWY,
   };
 }
