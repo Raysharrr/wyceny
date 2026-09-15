@@ -197,17 +197,16 @@ export function measureIssues(measure: FeatureMeasure): string[] {
   if (issues.length > 0) return issues;
 
   // Last, because it is about WORDING rather than about the bands being a
-  // scale: a closed piętro band wider than the enumeration has no sentence in
-  // the operats, so the generator writes none and the row says why.
-  if (measure.kind === "floor") {
-    for (const { level, bound } of bands) {
-      const from = bound.od ?? 0;
-      if (bound.do == null || bound.do - from + 1 <= MAX_FLOOR_ENUMERATION) continue;
-      if (definitionsFromMeasure(measure)[level]) continue;
-      issues.push(
-        `Przedział poziomu „${LEVEL_LABEL[level]}” obejmuje więcej niż ${MAX_FLOOR_ENUMERATION} piętra i jest domknięty z góry — operaty nie mają na to zapisu. Zwęź go albo opisz poziom pośredni.`,
-      );
-    }
+  // scale: a band the generator cannot phrase from the operats' vocabulary.
+  // Today only one shape reaches this — a closed piętro band wider than the
+  // enumeration — so the message names that case; every area band has a
+  // sentence whatever its width ("od N m² do M m²").
+  const texts = definitionsFromMeasure(measure);
+  for (const { level } of bands) {
+    if (texts[level]) continue;
+    issues.push(
+      `Przedział poziomu „${LEVEL_LABEL[level]}” obejmuje więcej niż ${MAX_FLOOR_ENUMERATION} piętra i jest domknięty z góry — operaty nie mają na to zapisu. Zwęź go albo opisz poziom pośredni.`,
+    );
   }
   return issues;
 }
