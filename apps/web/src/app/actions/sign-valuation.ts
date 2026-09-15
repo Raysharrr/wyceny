@@ -70,8 +70,10 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
     // renders nothing, so there is no author block to fill: the one in the file
     // was written at approval, from the owner's profile, and only the owner may
     // sign. A read here would have nowhere to go, and re-rendering to use it is
-    // exactly what this variant removes. The #57 test that pinned the read says
-    // the same thing in its own comment.
+    // exactly what this variant removes. This also closes the drift ADR-020
+    // cz. 1 accepted on purpose — a profile edited between approval and
+    // signature used to give the signed file a different author block than the
+    // approved one; it now cannot, because there is only one file.
 
     try {
       let approvedDocx: Buffer;
