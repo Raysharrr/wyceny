@@ -127,11 +127,19 @@ function coerceLegacyKw(kw: Partial<KwSnapshot>): KwSnapshot {
     dzial4: kw.dzial4 ?? null,
     // ADR-018: every field this function forgets is a field that survives the
     // save and then vanishes on the way back in — the appraiser re-opens step 1
-    // and the examination they recorded is gone. Enumerated here, so a new
-    // `KwSnapshot` field is a compile error rather than silent data loss.
+    // and the examination they recorded is gone.
+    //
+    // The enumeration does NOT make that a compile error, contrary to what this
+    // comment claimed when the three fields below were added: they are optional
+    // on `KwSnapshot`, so leaving one out still satisfies the return type. It is
+    // a checklist and has to be read as one — `tresc` was already missing from
+    // it when the round-trip was first measured (b1-kw-read).
     dataBadania: kw.dataBadania ?? null,
     nrLokalu: kw.nrLokalu ?? null,
     akt: kw.akt ?? null,
+    // The transcribed dzialy. Losing these on re-entry would not blank a field
+    // the appraiser can see — it would silently stop §8.2 quoting the book.
+    tresc: kw.tresc ?? null,
   };
 }
 

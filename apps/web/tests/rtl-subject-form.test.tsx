@@ -289,10 +289,18 @@ describe("step1DefaultsFromInputs", () => {
     expect(defaults.subject?.kondygnacjeNadziemne).toBe("4");
     expect(defaults.subject?.kondygnacjePodziemne).toBe("1");
     expect(defaults.subject?.rokBudowy).toBe("1965");
-    // A pre-ADR-018 snapshot comes back with the three new fields materialised
-    // as nulls — `coerceLegacyKw`'s whole job. "Nobody recorded a date" and
-    // "the field did not exist yet" have to look the same to the form.
-    expect(defaults.kw).toEqual({ ...inputs.kw, dataBadania: null, nrLokalu: null, akt: null });
+    // A pre-ADR-018 snapshot comes back with the newer fields materialised as
+    // nulls — `coerceLegacyKw`'s whole job. "Nobody recorded a date" and "the
+    // field did not exist yet" have to look the same to the form. `tresc`
+    // joined them in b1-kw-read: a snapshot read from a document, with no
+    // transcription behind it, quotes no dzialy.
+    expect(defaults.kw).toEqual({
+      ...inputs.kw,
+      dataBadania: null,
+      nrLokalu: null,
+      akt: null,
+      tresc: null,
+    });
     expect(defaults.kwMeta).toEqual(inputs.kwMeta);
   });
 

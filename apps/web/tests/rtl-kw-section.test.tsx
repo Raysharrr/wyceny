@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -6,7 +8,12 @@ import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
-import { KwSection, type KwFetchState, type KwSource } from "@/app/valuations/new/kw-section";
+import {
+  KwSection,
+  type KwFetchState,
+  type KwSource,
+  type KwTranscribeState,
+} from "@/app/valuations/new/kw-section";
 import { encumbranceDecisionNeeded } from "@/domain/kw-requirements";
 import type { EncumbranceTreatment } from "@/domain/kw-snapshot";
 
@@ -50,10 +57,34 @@ vi.mock("@/app/actions/mint-kw-token", () => ({
   mintKwUploadToken: vi.fn(async () => ({ token: "exp.nonce.sig" })),
 }));
 vi.mock("@/lib/kw-extract-client", () => ({ extractKw: vi.fn() }));
+vi.mock("@/lib/kw-transcribe-client", () => ({ transcribeKw: vi.fn() }));
 
 import { SubjectForm } from "@/app/valuations/new/subject-form";
 import { createDraft, saveSubjectAction } from "@/app/actions/wizard";
 import { extractKw, type KwExtractResult } from "@/lib/kw-extract-client";
+import { transcribeKw } from "@/lib/kw-transcribe-client";
+import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
+import { step1DefaultsFromInputs } from "@/lib/subject-form";
+import { ksiegaTrescSchema, type KsiegaTresc } from "@/domain/kw-tresc";
+
+/**
+ * The worker's own transcription fixture — the synthetic book with fictional
+ * persons and correct check digits — read IN PLACE. Never copy its values into
+ * this file: KW-shaped literals in a tracked `.ts` stop F-9
+ * (`scripts/check-no-pii.sh`), which does not care that they are invented.
+ */
+function transcribedBook(): KsiegaTresc {
+  const wire = JSON.parse(
+    readFileSync(
+      path.join(process.cwd(), "..", "worker", "tests", "fixtures", "kw_transcribe_sample.json"),
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
+  // The verdict travels beside the content on the wire; `inputs.kw.tresc` is
+  // the content alone, so the fixture is stripped the same way the client is.
+  delete wire.walidacja;
+  return ksiegaTrescSchema.parse(wire);
+}
 
 const OK_EXTRACT = {
   kind: "ok" as const,
@@ -106,6 +137,7 @@ const OK_ODPIS: KwExtractResult = {
 // ---------------------------------------------------------------------------
 function Harness(props: {
   state?: KwFetchState;
+  transcribe?: KwTranscribeState;
   source?: KwSource;
   today?: string;
   areaMismatch?: { form: number; doc: number } | null;
@@ -131,6 +163,7 @@ function Harness(props: {
     <KwSection
       control={control}
       state={props.state ?? { status: "idle" }}
+      transcribe={props.transcribe ?? { status: "idle" }}
       source={props.source ?? "reczny"}
       today={props.today ?? "2026-09-15"}
       onSourceChange={props.onSourceChange ?? (() => {})}
@@ -160,6 +193,7 @@ function Dzial3Harness() {
       <KwSection
         control={control}
         state={{ status: "idle" }}
+        transcribe={{ status: "idle" }}
         source="reczny"
         today="2026-09-15"
         onSourceChange={() => {}}
@@ -210,6 +244,7 @@ function StateHarness(props: {
       <KwSection
         control={control}
         state={{ status: "idle" }}
+        transcribe={{ status: "idle" }}
         source={source}
         today="2026-09-15"
         onSourceChange={onSourceChange}
@@ -364,6 +399,7 @@ describe("KwSection", () => {
           <KwSection
             control={control}
             state={{ status: "idle" }}
+            transcribe={{ status: "idle" }}
             source="reczny"
             onSourceChange={() => {}}
             onFileSelected={() => {}}
@@ -622,6 +658,11 @@ describe("KwSection — full-form wiring", () => {
     vi.mocked(createDraft).mockClear();
     vi.mocked(saveSubjectAction).mockClear();
     vi.mocked(extractKw).mockReset();
+    vi.mocked(transcribeKw).mockReset();
+    vi.mocked(mintKwUploadToken).mockClear();
+    // Default for the tests that predate the transcription: the second read
+    // simply fails, so they keep measuring exactly what they measured before.
+    vi.mocked(transcribeKw).mockResolvedValue({ kind: "error", code: "kw_transkrypcja_blad" });
   });
 
   // W4: upload mode + no file + submit must surface a visible section error
@@ -666,6 +707,291 @@ describe("KwSection — full-form wiring", () => {
       kw?: { dataBadania?: string | null };
     };
     expect(submitted.kw?.dataBadania).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  // -------------------------------------------------------------------------
+  // KR.1 — the second read of the same PDF: the full content of the dzialy.
+  // -------------------------------------------------------------------------
+
+  /** Uploads a KW excerpt in "Wgraj PDF" mode and waits for both reads to settle. */
+  async function uploadOdpis(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("radio", { name: "Wgraj PDF" }));
+    await user.upload(
+      screen.getByTestId("kw-file-input") as HTMLInputElement,
+      new File(["%PDF-1.4 fake"], "ksiega-lokalu.pdf", { type: "application/pdf" }),
+    );
+    await screen.findByText(/Odczytano/);
+  }
+
+  /**
+   * The happy path. The transcription is the higher-fidelity read (the spike
+   * put claude-opus-5 at 57/57 cells against the field extract's 94-98%), so
+   * where it states one of the card's fields it WINS over the extract — and it
+   * is the only source for the two the extract never had: the unit number and
+   * dział II's deed.
+   */
+  it("fills the card from the transcription and stores tresc when the verdict passes (KR.1)", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await uploadOdpis(user);
+
+    const pola = tresc.polaDodatkowe;
+    const podstawa = pola.podstawaNabycia!;
+    await waitFor(() =>
+      expect((screen.getByLabelText("Numer lokalu") as HTMLInputElement).value).toBe(
+        pola.numerLokalu,
+      ),
+    );
+    expect(
+      (screen.getByLabelText("Udział w nieruchomości wspólnej") as HTMLInputElement).value,
+    ).toBe(pola.udzial);
+    // Both cards carry a "Numer księgi gruntu" — the lokal's book STATES it and
+    // the grunt's card is seeded from it — so this targets the lokal's field by
+    // id, and asserts the mirror separately.
+    expect((document.getElementById("kw-gruntu") as HTMLInputElement).value).toBe(pola.kwGruntu);
+    expect((document.getElementById("kwg-nr") as HTMLInputElement).value).toBe(pola.kwGruntu);
+    expect((screen.getByLabelText("Tytuł aktu") as HTMLInputElement).value).toBe(
+      podstawa.tytulAktu,
+    );
+    expect((screen.getByLabelText("Rep. A") as HTMLInputElement).value).toBe(podstawa.repA);
+    expect((screen.getByLabelText("Data") as HTMLInputElement).value).toBe(podstawa.dataAktu);
+    // Neither banner: nothing went wrong and nothing needs the appraiser's eye
+    // here — the review of the content itself happens in the step-7 preview.
+    expect(screen.queryByTestId("kw-transcribe-warn")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as { kw?: { tresc?: unknown } };
+    expect(submitted.kw?.tresc).toEqual(tresc);
+  });
+
+  /**
+   * The verdict is the worker's deterministic check (check digits, PESEL
+   * checksums, fields against the transcribed rubrics). A failed one does NOT
+   * mean the read is worthless — it means a human has to look — so the fields
+   * stay on screen to be checked, and only `tresc` is withheld: the operat may
+   * not print five dzialy nobody vouched for.
+   */
+  it("keeps the read fields but withholds tresc when the verdict fails, and warns (KR.1)", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: {
+        ok: false,
+        bledy: [{ klasa: "pole_niezgodne:udzial", dzial: "I-Sp" }, { klasa: "pesel_suma" }],
+      },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await uploadOdpis(user);
+
+    const warn = await screen.findByTestId("kw-transcribe-warn");
+    // Classes, never values (F-13) — and the PDF WAS read, so this is not the
+    // mockup's "nie udało się odczytać pliku" error.
+    expect(warn.textContent).toContain("pole_niezgodne:udzial");
+    expect(warn.textContent).not.toContain(tresc.polaDodatkowe.udzial!);
+    expect(screen.queryByTestId("kw-fetch-status")?.textContent).not.toContain(
+      "Nie udało się odczytać pliku PDF",
+    );
+    await waitFor(() =>
+      expect((screen.getByLabelText("Numer lokalu") as HTMLInputElement).value).toBe(
+        tresc.polaDodatkowe.numerLokalu,
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as { kw?: { tresc?: unknown } };
+    expect(submitted.kw?.tresc ?? null).toBeNull();
+  });
+
+  /**
+   * The transcription failed on its own while the field read succeeded. The
+   * file WAS read, so the mockup's error banner ("Nie udało się odczytać pliku
+   * PDF księgi") would be a false statement; the consequence is the manual
+   * path's consequence — an operat without the dzialy — so it gets the manual
+   * path's warning weight.
+   */
+  it("warns, without claiming the PDF was unreadable, when only the transcription fails (KR.1)", async () => {
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    vi.mocked(transcribeKw).mockResolvedValue({ kind: "error", code: "kw_transkrypcja_ucieta" });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await uploadOdpis(user);
+
+    const warn = await screen.findByTestId("kw-transcribe-warn");
+    expect(warn.textContent).toContain("zbyt obszerna");
+    expect(screen.queryByText(/Nie udało się odczytać pliku PDF księgi/)).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as { kw?: { tresc?: unknown } };
+    expect(submitted.kw?.tresc ?? null).toBeNull();
+  });
+
+  /**
+   * Nothing was read at all. Now the mockup's error banner IS true, and it is
+   * the only thing on screen — a second warning about the dzialy would be
+   * noise about a document that never arrived.
+   */
+  it("shows the mockup's error banner alone when neither read succeeds (KR.1)", async () => {
+    vi.mocked(extractKw).mockResolvedValue({
+      kind: "error",
+      message: "Nie udało się odczytać dokumentu — spróbuj ponownie.",
+      retryable: true,
+    });
+    vi.mocked(transcribeKw).mockResolvedValue({ kind: "error", code: "kw_transkrypcja_blad" });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.click(screen.getByRole("radio", { name: "Wgraj PDF" }));
+    await user.upload(
+      screen.getByTestId("kw-file-input") as HTMLInputElement,
+      new File(["%PDF-1.4 fake"], "ksiega-lokalu.pdf", { type: "application/pdf" }),
+    );
+
+    await screen.findByText(/Nie udało się odczytać pliku PDF księgi/);
+    expect(screen.queryByTestId("kw-transcribe-warn")).toBeNull();
+  });
+
+  /**
+   * The sixth carrier, withdrawn. `kwTranscribe` is section state like
+   * `kwState`, so it is cleared by `resetKwSection` — which only
+   * `retractExamination` may call.
+   *
+   * The switch goes away AND BACK on purpose. Measured first with the switch
+   * alone, this test passed with the clear removed: "Wpisz ręcznie" swaps the
+   * whole upload branch for the manual warning, so the banner vanished because
+   * nothing rendered it, not because anything was withdrawn. Returning to
+   * "Wgraj PDF" re-mounts that branch and asks the state itself — with the
+   * clear gone, a warning about a book the form no longer holds comes back.
+   */
+  it("drops the transcription warning when the examination is withdrawn (KR.0/KR.1)", async () => {
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    vi.mocked(transcribeKw).mockResolvedValue({ kind: "error", code: "kw_transkrypcja_ucieta" });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await uploadOdpis(user);
+    await screen.findByTestId("kw-transcribe-warn");
+
+    await user.click(screen.getByRole("radio", { name: "Wpisz ręcznie" }));
+    expect(screen.queryByTestId("kw-transcribe-warn")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "Wgraj PDF" }));
+    expect(screen.queryByTestId("kw-transcribe-warn")).toBeNull();
+  });
+
+  /**
+   * A deed is not a book: /kw-transcribe expects the five dzialy of an eKW
+   * printout, and an akt has none. Firing it there would spend a minute and a
+   * model call to be told so.
+   */
+  it("does not transcribe on the developer (akt) path (KR.1)", async () => {
+    vi.mocked(extractKw).mockResolvedValue(OK_EXTRACT);
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.click(screen.getByLabelText(/zakup deweloperski/i));
+    await user.upload(
+      screen.getByTestId("kw-file-input") as HTMLInputElement,
+      new File(["%PDF-1.4 fake"], "akt.pdf", { type: "application/pdf" }),
+    );
+    await screen.findByText(/Odczytano/);
+    expect(transcribeKw).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Both reads ride on ONE minted token and ONE write of `kw`. Two writes
+   * would race: the later one would overwrite the other's fields, and a
+   * source switch mid-flight would have two stale results to fend off instead
+   * of one.
+   */
+  it("mints one token for both reads and writes the snapshot once (KR.1)", async () => {
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc: transcribedBook(),
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await uploadOdpis(user);
+
+    expect(vi.mocked(mintKwUploadToken)).toHaveBeenCalledTimes(1);
+    const extractToken = vi.mocked(extractKw).mock.calls[0][0].token;
+    expect(vi.mocked(transcribeKw).mock.calls[0][0].token).toBe(extractToken);
+  });
+
+  /**
+   * A stored transcription survives re-entering step 1. `coerceLegacyKw`
+   * (lib/subject-form.ts) rebuilds the snapshot field by field on the way back
+   * in, and `tresc` is OPTIONAL on `KwSnapshot` — so a field forgotten there is
+   * not a compile error, it is silent data loss: the appraiser re-opens step 1,
+   * saves anything at all, and §8.2 quietly stops quoting the book.
+   *
+   * The defaults are built through `step1DefaultsFromInputs` — the function the
+   * edit page actually calls — rather than handed to the form ready-made.
+   * Written the short way first, this test passed with `tresc` missing from
+   * `coerceLegacyKw`: it never reached the projection that drops it.
+   */
+  it("keeps a stored tresc across a step-1 edit that never touches the KW card (KR.1)", async () => {
+    const tresc = transcribedBook();
+    const stored = {
+      ...step1DefaultsFromInputs({
+        address: "ul. Kościelna 33, Poznań",
+        area: 69.56,
+        purpose: "sprzedaz",
+        propertyRight: "wlasnosc_lokalu",
+        kwNumber: tresc.polaDodatkowe.kwLokalu,
+        client: "Jan Kowalski",
+        inputs: {
+          kw: {
+            source: "odpis_kw",
+            kwLokalu: tresc.polaDodatkowe.kwLokalu,
+            kwGruntu: tresc.polaDodatkowe.kwGruntu,
+            kwInne: [],
+            deweloperski: false,
+            powUzytkowaKw: 44.23,
+            udzial: tresc.polaDodatkowe.udzial,
+            sad: tresc.naglowek.sad,
+            wydzial: tresc.naglowek.wydzial,
+            dataDokumentu: null,
+            dzial3: { wpisy: false, tresc: [] },
+            dzial4: { wpisy: false, tresc: [] },
+            dataBadania: "2026-09-15",
+            nrLokalu: tresc.polaDodatkowe.numerLokalu,
+            akt: { rodzaj: "UMOWA SPRZEDAŻY", rep: "6497/2018", data: "2018-06-21" },
+            tresc,
+          },
+        },
+      } as unknown as Parameters<typeof step1DefaultsFromInputs>[0]),
+      inspectionDate: "2026-09-15",
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+
+    const user = userEvent.setup();
+    render(<SubjectForm valuationId="val-tresc" defaults={stored} />);
+    // An edit somewhere else entirely — the client's name.
+    await user.clear(screen.getByLabelText("Zamawiający wycenę"));
+    await user.type(screen.getByLabelText("Zamawiający wycenę"), "Anna Fikcyjna");
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
+    const [, payload] = vi.mocked(saveSubjectAction).mock.calls[0] as unknown as [
+      string,
+      { kw?: { tresc?: unknown } },
+    ];
+    expect(payload.kw?.tresc).toEqual(tresc);
   });
 
   /**
