@@ -158,7 +158,10 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
     // a `po-zatwierdzeniu` i `operat-i-niezmiennosc` cytuja „Cofnij zatwierdzenie
     // i popraw" po dwa razy (w tym raz w alt zrzutu); do tego jedno cytowanie
     // „Utworz nowa wersje" i jedno „Podpisz operat (nieodwracalne)" wiecej.
-    expect(cytaty.length).toBe(47);
+    // 48 od ADR-016 (feature-scales): `zasady-zatwierdzania` kieruje do „Cofnij
+    // zatwierdzenie i popraw" operat, ktorego kwoty nie da sie dzis odtworzyc
+    // z jego danych (I-21). Etykieta byla juz cytowana, wiec unikalnych nadal 21.
+    expect(cytaty.length).toBe(48);
     expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(21);
   });
 
