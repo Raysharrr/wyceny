@@ -66,9 +66,17 @@ def test_kw_check_digit_accepts_the_synthetic_numbers_and_rejects_a_changed_digi
         assert not kw_check_digit_ok(swapped)
 
 
-@pytest.mark.parametrize("malformed", ["", "PO1P/0027183/3", "PO1P-00271836-3", "PQ1P/00271836/3"])
-def test_kw_check_digit_rejects_malformed_numbers(malformed):
-    assert not kw_check_digit_ok(malformed)
+def test_kw_check_digit_rejects_malformed_numbers():
+    # Built from the fixture at runtime: a well-formed literal would trip check-no-pii.sh.
+    number = sample()["naglowek"]["numerKsiegi"]
+    court, digits, check = number.split("/")
+    for malformed in (
+        "",
+        f"{court}/{digits[1:]}/{check}",  # 7 digits
+        number.replace("/", "-"),
+        f"{court[0]}Q{court[2:]}/{digits}/{check}",  # Q is not in the character table
+    ):
+        assert not kw_check_digit_ok(malformed)
 
 
 def test_wrong_check_digit_of_the_book_number():
