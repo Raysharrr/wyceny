@@ -361,16 +361,62 @@ describe("definitionsFromMeasure — brzmienia wprost z czterech operatów KCŚ"
     expect(
       definitionsFromMeasure({
         kind: "floor",
-        bounds: { gorsza: { od: 0, do: 3 }, lepsza: { od: 4 } },
+        bounds: { gorsza: { od: 0, do: 1 }, lepsza: { od: 2 } },
       }),
-    ).toEqual({ gorsza: "parter, 1 piętro, 2 piętro, 3 piętro", lepsza: "4 piętro i powyżej" });
+    ).toEqual({ gorsza: "parter, 1 piętro", lepsza: "2 piętro i powyżej" });
     // Najniższy przedział, który nie zaczyna się od parteru, wylicza od swojego „od”.
     expect(
       definitionsFromMeasure({
         kind: "floor",
-        bounds: { gorsza: { od: 2, do: 3 }, lepsza: { od: 4 } },
+        bounds: { gorsza: { od: 4, do: 5 }, lepsza: { od: 6 } },
       }),
-    ).toEqual({ gorsza: "2 piętro, 3 piętro", lepsza: "4 piętro i powyżej" });
+    ).toEqual({ gorsza: "4 piętro, 5 piętro", lepsza: "6 piętro i powyżej" });
+  });
+
+  /**
+   * W ośmiu operatach nie ma ANI JEDNEGO wyliczenia trzech lub więcej pięter
+   * (decyzja usera 15.09). Szerszy przedział domknięty nie ma tam zapisu, a
+   * „N piętro i powyżej” obejmowałoby piętra spoza przedziału — więc generator
+   * nie pisze nic i mówi o tym w wierszu, zamiast wymyślać zdanie do operatu.
+   */
+  it("przedział domknięty szerszy niż dwa piętra nie dostaje wymyślonego zdania", () => {
+    const szeroki: FeatureMeasure = {
+      kind: "floor",
+      bounds: { gorsza: { od: 0, do: 3 }, lepsza: { od: 4 } },
+    };
+    expect(definitionsFromMeasure(szeroki)).toEqual({ gorsza: "", lepsza: "4 piętro i powyżej" });
+    expect(measureIssues(szeroki)).toEqual([
+      "Przedział poziomu „gorsza” obejmuje więcej niż 2 piętra i jest domknięty z góry — operaty nie mają na to zapisu. Zwęź go albo opisz poziom pośredni.",
+    ]);
+
+    // Ten sam zakres opisany trzema poziomami ma już brzmienie z operatów.
+    const trzypoziomowa: FeatureMeasure = {
+      kind: "floor",
+      bounds: { gorsza: { od: 0, do: 1 }, przecietna: { od: 2, do: 3 }, lepsza: { od: 4 } },
+    };
+    expect(measureIssues(trzypoziomowa)).toEqual([]);
+    expect(definitionsFromMeasure(trzypoziomowa)).toEqual({
+      gorsza: "parter, 1 piętro",
+      przecietna: "piętra pośrednie",
+      lepsza: "4 piętro i powyżej",
+    });
+
+    // Środek może być dowolnie szeroki — „piętra pośrednie” nie wylicza pięter.
+    expect(
+      measureIssues({
+        kind: "floor",
+        bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 9 }, lepsza: { od: 10 } },
+      }),
+    ).toEqual([]);
+
+    // Powierzchni reguła nie dotyczy: „od N m² do M m²” to zapis z operatu
+    // dla przedziału dowolnej szerokości.
+    expect(
+      measureIssues({
+        kind: "area",
+        bounds: { lepsza: { do: 40 }, przecietna: { od: 41, do: 45 }, gorsza: { od: 46 } },
+      }),
+    ).toEqual([]);
   });
 
   it("każde wygenerowane zdanie jest prawdziwe na obu krańcach swojego przedziału", () => {

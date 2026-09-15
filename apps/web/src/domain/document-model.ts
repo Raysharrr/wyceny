@@ -1,11 +1,6 @@
 import type { Comparable, Feature, KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { LEVEL_LABEL } from "./feature-presets";
-import {
-  describedLevels,
-  levelForValue,
-  ratingPosition,
-  type RatingPosition,
-} from "./feature-rules";
+import { levelForValue, ratingPosition, type RatingPosition } from "./feature-rules";
 import { kwRequirements } from "./kw-requirements";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
@@ -851,7 +846,7 @@ export function buildDocumentModel(
         };
       });
     })(),
-    cechy: active.map(({ ui, feature }) => ({
+    cechy: active.map(({ ui }) => ({
       nazwa: ui.name,
       waga_pct: formatNumber(ui.weight * 100, 0),
       ui_min: formatNumber(ui.weight * kcs.vmin, 3),

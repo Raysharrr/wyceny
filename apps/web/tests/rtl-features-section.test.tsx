@@ -604,13 +604,15 @@ describe("StepFeatures — progi liczbowe i podpowiedź (FH.1, FH.2)", () => {
     );
     await openScale(user, "polozenie-na-pietrze");
     await user.clear(bound("polozenie-na-pietrze", "gorsza", "do"));
-    await user.type(bound("polozenie-na-pietrze", "gorsza", "do"), "3");
+    await user.type(bound("polozenie-na-pietrze", "gorsza", "do"), "1");
+    await user.clear(bound("polozenie-na-pietrze", "lepsza", "od"));
+    await user.type(bound("polozenie-na-pietrze", "lepsza", "od"), "2");
     await user.clear(bound("polozenie-na-pietrze", "przecietna", "od"));
     await user.clear(bound("polozenie-na-pietrze", "przecietna", "do"));
 
     expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
-      "gorszaparter, 1 piętro, 2 piętro, 3 piętro",
-      "lepsza4 piętro i powyżej",
+      "gorszaparter, 1 piętro",
+      "lepsza2 piętro i powyżej",
     ]);
     expect(within(row("polozenie-na-pietrze")).queryByRole("alert")).toBeNull();
 
@@ -621,13 +623,32 @@ describe("StepFeatures — progi liczbowe i podpowiedź (FH.1, FH.2)", () => {
       saveFeaturesAction.mock.calls[0][1] as { features: Array<Record<string, unknown>> }
     ).features.find((f) => f.key === "polozenie-na-pietrze");
     expect(zapisana).toMatchObject({
-      definitions: {
-        gorsza: "parter, 1 piętro, 2 piętro, 3 piętro",
-        przecietna: "",
-        lepsza: "4 piętro i powyżej",
-      },
-      measure: { kind: "floor", bounds: { gorsza: { od: 0, do: 3 }, lepsza: { od: 4 } } },
+      definitions: { gorsza: "parter, 1 piętro", przecietna: "", lepsza: "2 piętro i powyżej" },
+      measure: { kind: "floor", bounds: { gorsza: { od: 0, do: 1 }, lepsza: { od: 2 } } },
     });
+  });
+
+  it("przedział szerszy niż dwa piętra mówi o braku zapisu, zamiast wyliczać listę", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
+    await openScale(user, "polozenie-na-pietrze");
+    // Poszerzenie dolnego przedziału na parter–3 zamiast dopisania środka.
+    await user.clear(bound("polozenie-na-pietrze", "gorsza", "do"));
+    await user.type(bound("polozenie-na-pietrze", "gorsza", "do"), "3");
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "od"));
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "do"));
+
+    // Wiersz mówi o PRZEDZIALE, a nie „opisz co najmniej dwa poziomy” (B-10) —
+    // to byłby objaw, nie przyczyna, i wysłałby rzeczoznawcę gdzie indziej.
+    const komunikat = within(row("polozenie-na-pietrze")).getByRole("alert").textContent;
+    expect(komunikat).toContain("Przedział poziomu „gorsza” obejmuje więcej niż 2 piętra");
+    expect(komunikat).not.toContain("co najmniej dwa poziomy");
+    // Karta zostaje bez zdania — nic wymyślonego nie trafia do operatu.
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "lepsza4 piętro i powyżej",
+    ]);
   });
 
   it("luka między progami mówi o tym w wierszu, przed zapisem (D-46)", async () => {
