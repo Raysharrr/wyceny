@@ -1,0 +1,144 @@
+"""Deterministic checks of a KW transcription (spike KW report: "Mitygacja" and
+"Rekomendacja wdrożeniowa"). With no acceptance gate before deployment (plan
+§P1.8 pt 9) these are the only automatic guard of fidelity before the operat:
+web stores the content only when `ok`.
+
+The verdict judges and never corrects. Error classes carry NO values (F-13) —
+they end up in logs and in the answer — only a class and, where the rule points
+at one section, its code.
+
+Pure — no I/O.
+"""
+
+import re
+
+from pydantic import BaseModel
+
+from app.kw_transcribe import Dzial, KsiegaTresc
+
+
+class Walidacja(BaseModel):
+    ok: bool
+    # {"klasa": str, "dzial"?: str} — `dzial` absent (not null) when the rule
+    # spans sections; the web contract types it as `dzial?: string`.
+    bledy: list[dict[str, str]]
+
+
+# Check digit of a KW number: court code (4 chars) + 8 digits, weights 1, 3, 7
+# repeated, sum mod 10. Character values from the Ministry of Justice table
+# (Q and V are not used), described at
+# http://www.algorytm.org/numery-identyfikacyjne/numer-ksiegi-wieczystej.html
+_KW_CHAR_VALUES = {
+    **{str(d): d for d in range(10)},
+    **dict(zip("XABCDEFGHIJKLMNOPRSTUWYZ", range(10, 34))),
+}
+_KW_RE = re.compile(r"([A-Z0-9]{4})/(\d{8})/(\d)")
+
+_PESEL_WEIGHTS = (1, 3, 7, 9, 1, 3, 7, 9, 1, 3)
+_PESEL_RE = re.compile(r"\b\d{11}\b")
+_REP_CORE_RE = re.compile(r"\d+/\d+")
+
+
+def kw_check_digit_ok(number: str) -> bool:
+    match = _KW_RE.fullmatch(re.sub(r"\s+", "", number))
+    if not match or any(c not in _KW_CHAR_VALUES for c in match.group(1)):
+        return False
+    chars = match.group(1) + match.group(2)
+    total = sum(_KW_CHAR_VALUES[c] * (1, 3, 7)[i % 3] for i, c in enumerate(chars))
+    return total % 10 == int(match.group(3))
+
+
+def pesel_ok(pesel: str) -> bool:
+    total = sum(int(d) * w for d, w in zip(pesel, _PESEL_WEIGHTS))
+    return (10 - total % 10) % 10 == int(pesel[10])
+
+
+def _loose(value: str | None) -> str | None:
+    """KW numbers, shares: eKW writes spaces around "/" — they carry no meaning."""
+    return None if value is None else re.sub(r"\s+", "", value)
+
+
+def _collapsed(value: str | None) -> str | None:
+    """Unit number ("NN BUD NN"): spaces are meaningful, only their amount is not."""
+    return None if value is None else re.sub(r"\s+", " ", value).strip()
+
+
+def _label(nazwa: str) -> str:
+    return re.sub(r"\([^)]*\)", " ", nazwa).strip().lower()
+
+
+def _section(tresc: KsiegaTresc, kod: str) -> Dzial | None:
+    return next((d for d in tresc.dzialy if d.kod == kod), None)
+
+
+def _rubric_value(tresc: KsiegaTresc, kod: str, label_prefix: str) -> str | None:
+    """Value of the first rubric in section `kod` whose label (without the
+    parenthesised field description) starts with `label_prefix`."""
+    section = _section(tresc, kod)
+    if section is None:
+        return None
+    for tabela in section.tabele:
+        for wpis in tabela.wpisy:
+            for rubryka in wpis.rubryki:
+                if _label(rubryka.nazwa).startswith(label_prefix):
+                    return " ".join(rubryka.wartosci)
+    return None
+
+
+def validate(tresc: KsiegaTresc) -> Walidacja:
+    bledy: list[dict[str, str]] = []
+
+    def fail(klasa: str, dzial: str | None = None) -> None:
+        blad = {"klasa": klasa} if dzial is None else {"klasa": klasa, "dzial": dzial}
+        if blad not in bledy:
+            bledy.append(blad)
+
+    pola = tresc.polaDodatkowe
+
+    for field, number in (
+        ("numerKsiegi", tresc.naglowek.numerKsiegi),
+        ("kwLokalu", pola.kwLokalu),
+        ("kwGruntu", pola.kwGruntu),
+    ):
+        if number is not None and not kw_check_digit_ok(number):
+            fail(f"kw_cyfra_kontrolna:{field}")
+
+    for kod in ("II", "III"):
+        section = _section(tresc, kod)
+        for tabela in section.tabele if section else []:
+            for wpis in tabela.wpisy:
+                for rubryka in wpis.rubryki:
+                    for value in rubryka.wartosci:
+                        if any(not pesel_ok(p) for p in _PESEL_RE.findall(value)):
+                            fail("pesel_suma", kod)
+
+    kw_gruntu_i_o = _loose(_rubric_value(tresc, "I-O", "przyłączenie"))
+    kw_gruntu_i_sp = _loose(_rubric_value(tresc, "I-Sp", "numer księgi wieczystej"))
+    if not (_loose(pola.kwGruntu) == kw_gruntu_i_o == kw_gruntu_i_sp):
+        fail("pole_niezgodne:kwGruntu")
+    if _loose(pola.kwLokalu) != _loose(tresc.naglowek.numerKsiegi):
+        fail("pole_niezgodne:kwLokalu")
+    if _collapsed(pola.numerLokalu) != _collapsed(_rubric_value(tresc, "I-O", "numer lokalu")):
+        fail("pole_niezgodne:numerLokalu", "I-O")
+    if _loose(pola.udzial) != _loose(_rubric_value(tresc, "I-Sp", "wielkość udziału")):
+        fail("pole_niezgodne:udzial", "I-Sp")
+    rep_a = _loose(pola.podstawaNabycia.repA if pola.podstawaNabycia else None)
+    if rep_a is not None:
+        # The model spells Rep. A with or without "REP. A NR" — compare the
+        # "number/year" core, as a whole number ("497/2018" is not "6497/2018").
+        core = _REP_CORE_RE.search(rep_a)
+        pattern = re.compile(rf"(?<!\d){re.escape(core.group() if core else rep_a)}(?!\d)")
+        section_ii = _section(tresc, "II")
+        documents = [_loose(d.dokument) for d in section_ii.dokumenty] if section_ii else []
+        if not any(pattern.search(document) for document in documents):
+            fail("pole_niezgodne:repA", "II")
+
+    for section in tresc.dzialy:
+        if section.brakWpisow != (section.tabele == []):
+            fail("brak_wpisow_niespojny", section.kod)
+        for tabela in section.tabele:
+            for wpis in tabela.wpisy:
+                if any([v.strip() for v in r.wartosci] == ["---"] for r in wpis.rubryki):
+                    fail("rubryka_separator", section.kod)
+
+    return Walidacja(ok=not bledy, bledy=bledy)

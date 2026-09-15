@@ -25,6 +25,10 @@ EXCLUDE_PATHSPECS=(
   ':(exclude)apps/worker/uv.lock'
   ':(exclude)apps/web/drizzle/meta/*.json'
   ':(exclude).superpowers/**'
+  # Synthetic land-register book (fictional people and numbers): its KW numbers
+  # and PESELs carry VALID check digits on purpose — the KW transcription
+  # validators need them as the positive case, so they cannot be broken here.
+  ':(exclude)apps/worker/tests/fixtures/kw_transcribe_sample.json'
 )
 
 fail=0
