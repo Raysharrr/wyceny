@@ -25,7 +25,6 @@
     { "name": "położenie na piętrze", "weight": 0.3, "rating": "lepsza" },
     { "name": "lokalizacja szczegółowa", "weight": 0.1, "rating": "lepsza" }
   ],
-  "expected": { "csr": 9905.47, "sumUi": 1.041, "unitValue": 10311.59, "wr": 446900 },
-  "expectedOnScale": { "csr": 9905.47, "sumUi": 1.042, "unitValue": 10321.5, "wr": 447300 },
+  "expected": { "csr": 9905.47, "sumUi": 1.042, "unitValue": 10321.5, "wr": 447300 },
   "operatWr": 447300
 }

@@ -14,8 +14,6 @@
     { "name": "powierzchnia użytkowa", "weight": 0.1, "rating": "przecietna" },
     { "name": "pomieszczenia przynależne", "weight": 0.1, "rating": "gorsza" }
   ],
-  "expectedOnScale": { "csr": 10337.1, "sumUi": 1.022, "unitValue": 10564.52, "wr": 467300 },
-  "legacyWr": 466800,
-  "legacySumUi": 1.021,
+  "expected": { "csr": 10337.1, "sumUi": 1.022, "unitValue": 10564.52, "wr": 467300 },
   "operatWr": 467300
 }

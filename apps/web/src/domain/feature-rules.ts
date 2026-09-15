@@ -1,23 +1,19 @@
 import { LEVEL_LABEL } from "./feature-presets";
-import {
-  FEATURE_SCALE_RULE,
-  computeKcs,
-  type Feature,
-  type FeatureRating,
-  type KcsInput,
-  type KcsResult,
-} from "./kcs";
+import { computeKcs, type Feature, type FeatureRating, type KcsInput, type KcsResult } from "./kcs";
 
 /**
  * Rating scale of a feature (ADR-016, P5). The scale is the levels the
  * appraiser DESCRIBED — any two, or all three — and Ui follows the rating's
- * position in that scale. The engine's formula is unchanged: this module maps
- * the position onto the engine's key before calling it (the marker also turns
- * on the engine's per-row Ui rounding). Pure (F-10).
+ * position in that scale. One path: this module maps the position onto the
+ * engine's key before calling it, always. Pure (F-10).
  */
 
-/** `inputs.featureScaleRule` value stamped by the step-4 save under this rule. */
-export { FEATURE_SCALE_RULE };
+/**
+ * `inputs.featureScaleRule` value stamped by the step-4 save. It records that
+ * the ratings were picked under this rule — nothing is computed differently
+ * without it; a draft that lacks it must be confirmed again (B-11).
+ */
+export const FEATURE_SCALE_RULE = 2 as const;
 
 export type RatingPosition = "min" | "mid" | "max";
 
@@ -78,45 +74,36 @@ export function featureIssues(
   return issues;
 }
 
-/**
- * The features as the engine reads them, or null when any cannot be placed
- * (no WR). A snapshot without the rule marker keeps its fixed keys — it was
- * calculated, and maybe issued, under them. A weight-0 feature adds 0 to ΣUi
- * whatever its key, so only its missing rating stops the engine.
- */
-function engineFeatures(input: Pick<KcsInput, "features" | "featureScaleRule">): Feature[] | null {
-  if (input.featureScaleRule !== FEATURE_SCALE_RULE) {
-    return input.features.every((f) => f.rating != null) ? input.features : null;
-  }
-  const mapped: Feature[] = [];
-  for (const f of input.features) {
-    const position = ratingPosition(f);
-    if (position) mapped.push({ ...f, rating: ENGINE_RATING[position] });
-    else if (f.weight === 0 && f.rating != null) mapped.push(f);
-    else return null;
-  }
-  return mapped;
+/** The feature as the engine reads it, or null when its rating has no position. */
+function placed(feature: Feature): Feature | null {
+  const position = ratingPosition(feature);
+  if (position) return { ...feature, rating: ENGINE_RATING[position] };
+  // A weight-0 feature adds 0 to ΣUi whatever its key, so only a missing
+  // rating stops it — its scale can stay unfinished (B-10 spares it too).
+  return feature.weight === 0 && feature.rating != null ? feature : null;
+}
+
+/** The features as the engine reads them, or null when any cannot be placed (no WR). */
+function engineFeatures(input: Pick<KcsInput, "features">): Feature[] | null {
+  const mapped = input.features.map(placed);
+  return mapped.every((f) => f != null) ? mapped : null;
 }
 
 /**
  * Ui per feature for the step-4 rows while the set is still incomplete: the
  * engine runs on the placeable features only (same formula, and the same
  * per-row rounding, so the printed rows add up to ΣUi — I-11), `null` marks a
- * feature without a position. Reads the ADR-016 rule — it serves the form,
- * whose save stamps it. Throws like the engine on an unusable sample.
+ * feature without a position. Throws like the engine on an unusable sample.
  */
 export function featureUis(input: KcsInput): Array<number | null> {
-  const placed = input.features.map((f) => {
-    const position = ratingPosition(f);
-    return position ? { ...f, rating: ENGINE_RATING[position] } : null;
-  });
-  const { ui } = computeKcs({ ...input, features: placed.filter((f) => f != null) });
+  const mapped = input.features.map(placed);
+  const { ui } = computeKcs({ ...input, features: mapped.filter((f) => f != null) });
   let next = 0;
-  return placed.map((f) => (f ? ui[next++].value : null));
+  return mapped.map((f) => (f ? ui[next++].value : null));
 }
 
 /** Whether every feature can feed the engine — the step-5 and prose guard. */
-export function kcsReady(input: Pick<KcsInput, "features" | "featureScaleRule">): boolean {
+export function kcsReady(input: Pick<KcsInput, "features">): boolean {
   return engineFeatures(input) != null;
 }
 

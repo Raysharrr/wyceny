@@ -178,7 +178,6 @@ function inputs1409(powierzchnia: Feature, over: Partial<KcsInput> = {}): KcsInp
     comparables: COMPARABLES_1409,
     area: 44.23,
     features: features1409(powierzchnia),
-    featureScaleRule: FEATURE_SCALE_RULE,
     ...over,
   };
 }
@@ -210,11 +209,12 @@ describe("computeKcsOnScale — Ui from the position in the described scale (I-1
     // 0,1 × 0,875 = 0,0875, printed and summed as 0,088 (ROUNDING.ui).
     expect(onScale.ui[2].value).toBe(0.088);
 
-    // The fixed-key rule the draft was computed with: lokalizacja przeciętna → Ui śr.
+    // What the draft was computed with before ADR-016: the engine read the
+    // rating KEY, so lokalizacja „przeciętna” took Ui śr and ΣUi was 1,034.
     const fixedKey = computeKcs(corrected);
     expect(fixedKey.sumUi).toBe(1.034);
-    // ΣUi drops by Ui śr − Ui min of lokalizacja, and the rounded rows add up
-    // to what the operat prints: 1,022 / 467 300 zł (golden-wycena-1409).
+    // Position mapping drops it by Ui śr − Ui min of lokalizacja, and the
+    // rounded rows add up to the operat's 1,022 / 467 300 zł.
     expect(onScale.sumUi).toBe(1.022);
     expect(onScale.wr).toBe(467300);
   });
@@ -245,26 +245,38 @@ describe("computeKcsOnScale — Ui from the position in the described scale (I-1
     expect(uis).toEqual([0.4, 0.346, 0.088, null, 0.088]);
   });
 
-  it("a snapshot saved before the rule (no featureScaleRule) keeps the fixed-key mapping", () => {
-    const legacy = inputs1409(
-      { name: "Powierzchnia", weight: 0.1, rating: "przecietna", definitions: THREE },
-      { featureScaleRule: undefined },
+  // The marker records WHEN the ratings were confirmed (B-11), it never
+  // changes a number — the same inputs give the same WR with and without it.
+  it("the rule marker does not change what the engine computes", () => {
+    const rated = inputs1409({
+      name: "Powierzchnia",
+      weight: 0.1,
+      rating: "przecietna",
+      definitions: THREE,
+    });
+    expect(computeKcsOnScale({ ...rated, featureScaleRule: FEATURE_SCALE_RULE })).toEqual(
+      computeKcsOnScale(rated),
     );
-    expect(computeKcsOnScale(legacy).sumUi).toBe(computeKcs(legacy).sumUi);
-    expect(kcsReady({ ...legacy, features: [feature({ weight: 1 })] })).toBe(false);
+    // And the marker never makes an unusable set usable. (`kcsReady` cannot
+    // even see it — its parameter type is `Pick<KcsInput, "features">`.)
+    const unrated: KcsInput = {
+      ...rated,
+      featureScaleRule: FEATURE_SCALE_RULE,
+      features: [feature({ weight: 1, definitions: THREE })],
+    };
+    expect(kcsReady(unrated)).toBe(false);
   });
 });
 
 describe("computeKcsOnScale on the anonymised 14.09 fixture (b1-test-foundation)", () => {
   it("matches OCZEKIWANE_PO_ADR016 — the rule computed independently of the engine", () => {
     const { inputs } = wycena1409Anon({ skalaPowierzchni: "poprawiona" });
-    const onScale = computeKcsOnScale({ ...inputs, featureScaleRule: FEATURE_SCALE_RULE });
+    const onScale = computeKcsOnScale(inputs);
     expect({ sumUi: onScale.sumUi, wr: onScale.wr }).toEqual(OCZEKIWANE_PO_ADR016);
   });
 
   it("as reported (powierzchnia rated off its scale) there is no WR", () => {
-    const { inputs } = wycena1409Anon();
-    expect(kcsReady({ ...inputs, featureScaleRule: FEATURE_SCALE_RULE })).toBe(false);
+    expect(kcsReady(wycena1409Anon().inputs)).toBe(false);
   });
 });
 

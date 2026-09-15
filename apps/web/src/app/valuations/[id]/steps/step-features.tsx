@@ -20,7 +20,6 @@ import {
   type LokalFeatureKey,
 } from "@/domain/feature-presets";
 import {
-  FEATURE_SCALE_RULE,
   computeKcsOnScale,
   describedLevels,
   featureIssues,
@@ -331,13 +330,11 @@ export function StepFeatures({
   // `computeKcsOnScale` throws on empty comparables / non-positive price or
   // area, and on a rating it cannot place in the described scale — any such
   // state collapses to `null`, rendered as "—" everywhere below instead of
-  // crashing the step. The form state is what the save stamps with the
-  // current rule, so the preview reads it under that rule (ADR-016).
+  // crashing the step.
   const { live, uis } = useMemo(() => {
     const input: KcsInput = {
       comparables,
       area,
-      featureScaleRule: FEATURE_SCALE_RULE,
       features: (features ?? []).map((f) => ({
         name: f?.name ?? "",
         weight: (Number(f?.weightPct) || 0) / 100,

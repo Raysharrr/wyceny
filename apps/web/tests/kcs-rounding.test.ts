@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeKcs, FEATURE_SCALE_RULE, ROUNDING, type KcsInput } from "../src/domain/kcs";
+import { computeKcs, ROUNDING, type KcsInput } from "../src/domain/kcs";
 
 // Half-up helper mirroring the engine's own — the tests below recompute each
 // stage FROM the engine's own outputs using ROUNDING, so a constant that drifts
@@ -11,8 +11,8 @@ const roundTo = (value: number, dp: number): number => {
 
 // Crafted so every stage lands on a different value one decimal place over:
 // csr 10741.33 (2dp) vs 10741.333 (3dp), vmin 0.919 vs 0.9194, vmax 1.149 vs
-// 1.1495, sumUi 1.05 vs 1.0502, unitValue 11278.4 vs 11278.397, wr 807 900
-// (nearest 100) vs 807 870 (nearest 10).
+// 1.1495, sumUi 1.051 vs 1.0510 (rows 0.276 + 0.2 + 0.575), unitValue 11289.14
+// vs 11289.138, wr 808 600 (nearest 100) vs 808 640 (nearest 10).
 const input: KcsInput = {
   area: 71.63,
   comparables: [{ pricePerM2: 9876 }, { pricePerM2: 10001 }, { pricePerM2: 12347 }],
@@ -62,24 +62,17 @@ describe("ROUNDING", () => {
     );
   });
 
-  // ROUNDING.ui applies ONLY under the ADR-016 marker: Tabela 3 prints every Ui
-  // at 3 dp and the appraiser adds up the printed column. Without the marker the
-  // engine sums full-precision Ui, so an issued operat keeps its own amount.
-  it("rounds each Ui only under featureScaleRule", () => {
-    const perRow = computeKcs({ ...input, featureScaleRule: FEATURE_SCALE_RULE });
-    expect(perRow.ui.map((share) => share.value)).toEqual(
-      perRow.ui.map((share) => roundTo(share.value, ROUNDING.ui)),
-    );
-    expect(perRow.sumUi).toBe(
+  // Tabela 3 prints every Ui at 3 dp and the appraiser adds up the printed
+  // column, so the engine rounds each row before summing. Literal values, not
+  // a re-derivation: 0,3 × vmin 0,919 = 0,2757 would otherwise sum unrounded.
+  it("rounds each Ui before the sum", () => {
+    const { ui, sumUi } = computeKcs(input);
+    expect(ui.map((share) => share.value)).toEqual([0.276, 0.2, 0.575]);
+    expect(sumUi).toBe(
       roundTo(
-        perRow.ui.reduce((sum, share) => sum + share.value, 0),
+        ui.reduce((sum, share) => sum + share.value, 0),
         ROUNDING.sumUi,
       ),
     );
-
-    // Same input, no marker: at least one Ui keeps more than 3 dp here
-    // (0,3 × vmin 0,919 = 0,2757).
-    const legacy = computeKcs(input);
-    expect(legacy.ui.some((share) => share.value !== roundTo(share.value, ROUNDING.ui))).toBe(true);
   });
 });

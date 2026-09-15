@@ -15,10 +15,8 @@
  * would yield 1 043 900 for Kościelna instead of the operat's 1 044 400.
  *
  * Tabela 3 prints EVERY Ui at 3 dp and the appraiser adds up the printed
- * column, so under `featureScaleRule` each Ui is rounded before the sum
- * (`ROUNDING.ui`) — that is what makes Piastowskie print 447 300 zł instead
- * of 446 900 zł. A snapshot without the marker keeps the old sum-only
- * rounding, so an issued operat still reads the amount it was issued with.
+ * column, so each Ui is rounded before the sum (`ROUNDING.ui`) — that is what
+ * makes Piastowskie print the operat's 447 300 zł instead of 446 900 zł.
  */
 
 import type { ProvenanceStatus } from "@wyceny/shared";
@@ -42,13 +40,6 @@ import type { StreetViewSnapshot } from "./street-view-snapshot";
 export type SampleMeta = Omit<CandidatePool, "candidates">;
 
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
-
-/**
- * `inputs.featureScaleRule` value of the ADR-016 rules — declared here because
- * the engine itself reads it (per-row Ui rounding); `domain/feature-rules.ts`
- * re-exports it as the scale module's own constant.
- */
-export const FEATURE_SCALE_RULE = 2 as const;
 
 /**
  * Where a comparable came from (B1, S1 of the "Prawo spółdzielcze" block).
@@ -142,14 +133,13 @@ export type KcsInput = {
   area: number;
   features: Feature[];
   /**
-   * Which rule the step-4 ratings were confirmed under (ADR-016), stamped by
-   * the step-4 save. {@link FEATURE_SCALE_RULE} covers BOTH new rules at once:
-   * Ui from the rating's position in the described scale (mapping, done by
-   * `computeKcsOnScale`) and Ui rounded per row before the sum (this engine).
-   * Absent = the old rule in full — an issued operat keeps reading the amount
-   * it was issued with, and a draft must confirm its ratings again (B-11).
+   * Marks that the step-4 ratings were confirmed under the ADR-016 scale rule
+   * (`domain/feature-rules.ts`), stamped by the step-4 save. It records a fact
+   * about the ratings, it does NOT switch how anything is computed — there is
+   * one calculation path. Absent on a draft means its ratings were picked
+   * before the rule and must be confirmed again (B-11).
    */
-  featureScaleRule?: typeof FEATURE_SCALE_RULE;
+  featureScaleRule?: 2;
   /** RCN fetch provenance for the whole sample (F-5) — display/audit metadata only; computeKcs never reads this. */
   sampleMeta?: SampleMeta | null;
   /**
@@ -208,7 +198,7 @@ export const ROUNDING = {
   csr: 2,
   vmin: 3,
   vmax: 3,
-  /** Each Ui of Tabela 3, rounded before the sum — under `featureScaleRule` only. */
+  /** Each Ui of Tabela 3, rounded before the sum. */
   ui: 3,
   sumUi: 3,
   unitValue: 2,
@@ -244,12 +234,13 @@ export function computeKcs(input: KcsInput): KcsResult {
   const vmin = roundTo(cmin / csr, ROUNDING.vmin);
   const vmax = roundTo(cmax / csr, ROUNDING.vmax);
 
-  const uiPerRow = input.featureScaleRule === FEATURE_SCALE_RULE;
-  const ui: FeatureShare[] = input.features.map((f) => {
-    const value =
-      f.rating === "lepsza" ? f.weight * vmax : f.rating === "gorsza" ? f.weight * vmin : f.weight;
-    return { ...f, value: uiPerRow ? roundTo(value, ROUNDING.ui) : value };
-  });
+  const ui: FeatureShare[] = input.features.map((f) => ({
+    ...f,
+    value: roundTo(
+      f.rating === "lepsza" ? f.weight * vmax : f.rating === "gorsza" ? f.weight * vmin : f.weight,
+      ROUNDING.ui,
+    ),
+  }));
   const sumUi = roundTo(
     ui.reduce((sum, share) => sum + share.value, 0),
     ROUNDING.sumUi,

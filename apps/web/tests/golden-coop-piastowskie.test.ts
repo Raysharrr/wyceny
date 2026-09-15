@@ -1,26 +1,18 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import {
-  FEATURE_SCALE_RULE,
-  computeKcs,
-  type FeatureRating,
-  type KcsInput,
-} from "../src/domain/kcs";
+import { computeKcs, type FeatureRating, type KcsInput } from "../src/domain/kcs";
 
 /**
  * Golden "Piastowskie" (T-12, S4; spec 2026-09-12 §7.1) — the only end-to-end
  * reference for a spółdzielcze własnościowe prawo do lokalu, and the proof of
- * the ADR-016 rounding convention. The same 15-row sample, two rules:
+ * the operat's Ui rounding: the document prints every Ui of Tabela 3 at 3 dp
+ * and the appraiser adds up the printed column, so the engine does the same and
+ * reproduces her 447 300 zł TO THE ZŁOTY (ΣUi 1,042 · 10 321,50 zł/m²).
  *
- *   without the marker (as issued)  ΣUi 1,041 → 10 311,59 → 446 900
- *   with `featureScaleRule` (T-26)  ΣUi 1,042 → 10 321,50 → 447 300 = operat
- *
- * The operat prints every Ui of Tabela 3 at 3 dp and adds up the printed
- * column, so rounding each Ui before the sum reproduces it TO THE ZŁOTY. The
- * legacy test below stays: a snapshot saved before the rule must keep printing
- * the amount it was issued with (Kościelna gives 1 044 400 under both rules —
- * no feature there lands on a third decimal).
+ * Until 2026-09-15 the engine summed unrounded Ui and gave 446 900 zł; that
+ * −429,50 zł gap was follow-up T-26, now closed. Kościelna is unaffected — no
+ * Ui there lands on a fourth decimal that would move the sum.
  *
  * ⚠ DEDUP vs GOLDEN: rows 3 and 4 of the fixture are the registry duplicate
  * (Lp. 194/197 — identical down to the flat number). `coopDedupeKey` merges
@@ -35,7 +27,6 @@ const fixture = JSON.parse(
   rows: { date: string; area: number; priceTotal: number }[];
   features: { name: string; weight: number; rating: FeatureRating }[];
   expected: { csr: number; sumUi: number; unitValue: number; wr: number };
-  expectedOnScale: { csr: number; sumUi: number; unitValue: number; wr: number };
   operatWr: number;
 };
 
@@ -60,30 +51,20 @@ describe("KCS engine — Piastowskie coop reference operat (T-12)", () => {
     expect(fixture.rows[2]).toEqual(fixture.rows[3]);
   });
 
-  it("without the marker keeps the amount it was issued with: WR = 446 900 zł", () => {
+  // F-1 (T-26 closed): reproduces the operat Aneta issued, to the złoty.
+  it("reproduces the operat's printed 447 300 zł", () => {
     const result = computeKcs(piastowskieInput());
     expect(result.csr).toBe(fixture.expected.csr);
     expect(result.sumUi).toBe(fixture.expected.sumUi);
     expect(result.unitValue).toBe(fixture.expected.unitValue);
     expect(result.wr).toBe(fixture.expected.wr);
-  });
-
-  // F-1 under the ADR-016 rule (T-26 closed): Ui rounded per row reproduces the
-  // operat Aneta issued, to the złoty. The features carry no `definitions` —
-  // the marker turns on the ROUNDING.ui step in the engine, the position
-  // mapping lives one level up in `computeKcsOnScale`.
-  it("reproduces the operat's printed 447 300 zł under featureScaleRule", () => {
-    const result = computeKcs({ ...piastowskieInput(), featureScaleRule: FEATURE_SCALE_RULE });
-    expect(result.csr).toBe(fixture.expectedOnScale.csr);
-    expect(result.sumUi).toBe(fixture.expectedOnScale.sumUi);
-    expect(result.unitValue).toBe(fixture.expectedOnScale.unitValue);
-    expect(result.wr).toBe(fixture.expectedOnScale.wr);
     expect(result.wr).toBe(fixture.operatWr);
   });
 
   // I-11: what Tabela 3 prints is what ΣUi is made of.
   it("sums the printed Ui rows into ΣUi", () => {
-    const result = computeKcs({ ...piastowskieInput(), featureScaleRule: FEATURE_SCALE_RULE });
+    const result = computeKcs(piastowskieInput());
+    expect(result.ui.map((share) => share.value)).toEqual([0.4, 0.214, 0.321, 0.107]);
     const printed = result.ui.reduce((sum, share) => sum + share.value, 0);
     expect(Math.round(printed * 1000) / 1000).toBe(result.sumUi);
   });

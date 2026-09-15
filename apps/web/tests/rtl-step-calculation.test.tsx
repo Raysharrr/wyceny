@@ -38,7 +38,19 @@ function readyComparables(): Comparable[] {
 }
 
 function readyFeatures(): Feature[] {
-  return [{ name: "standard", weight: 1, rating: "przecietna" }];
+  // ADR-016: the rating must sit on a DESCRIBED level to reach the engine.
+  return [
+    {
+      name: "standard",
+      weight: 1,
+      rating: "przecietna",
+      definitions: {
+        lepsza: "opis lepszej",
+        przecietna: "opis przeciętnej",
+        gorsza: "opis gorszej",
+      },
+    },
+  ];
 }
 
 function baseValuation(overrides: Partial<Valuation> = {}): Valuation {
