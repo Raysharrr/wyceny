@@ -6,7 +6,7 @@ import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
 import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
-import { computeKcs } from "@/domain/kcs";
+import { computeKcsOnScale } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
@@ -161,7 +161,7 @@ export async function previewOperat(
         };
       }
 
-      const kcs = computeKcs(valuation.inputs);
+      const kcs = computeKcsOnScale(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
       const model = buildDocumentModel(
         {

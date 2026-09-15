@@ -25,7 +25,8 @@ import {
   powierzchniaDefinitions,
   type LokalFeatureKey,
 } from "@/domain/feature-presets";
-import { computeKcs, type Comparable, type KcsInput } from "@/domain/kcs";
+import { FEATURE_SCALE_RULE, computeKcsOnScale } from "@/domain/feature-rules";
+import type { Comparable, KcsInput } from "@/domain/kcs";
 import { DEFAULT_FEATURES } from "@/lib/valuation-form-schema";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { SectionCard } from "@/components/wizard/section-card";
@@ -160,18 +161,26 @@ export function StepFeatures({
   // Live KCS preview (Task 9) — mirrors the confirm-path engine call
   // (`cards.tsx`'s `KcsBreakdown` / `applyCalculationConfirm`) against the
   // CURRENT form state; never persisted, purely a render-time preview.
-  // `computeKcs` throws on empty comparables / non-positive price or area
-  // (`kcs.ts:104-116`) — any such state collapses to `null`, rendered as
-  // "—" everywhere below instead of crashing the step.
+  // `computeKcsOnScale` throws on empty comparables / non-positive price or
+  // area, and on a rating it cannot place in the described scale — any such
+  // state collapses to `null`, rendered as "—" everywhere below instead of
+  // crashing the step. The form state is what the save stamps with the
+  // current rule, so the preview reads it under that rule (ADR-016).
   const live = useMemo(() => {
     try {
       const liveFeatures: KcsInput["features"] = (features ?? []).map((f) => ({
         name: f?.name ?? "",
         weight: (Number(f?.weightPct) || 0) / 100,
-        rating: (f?.rating ?? "przecietna") as Rating,
+        rating: f?.rating ?? null,
         key: f?.key,
+        definitions: f?.definitions,
       }));
-      return computeKcs({ comparables, area, features: liveFeatures });
+      return computeKcsOnScale({
+        comparables,
+        area,
+        features: liveFeatures,
+        featureScaleRule: FEATURE_SCALE_RULE,
+      });
     } catch {
       return null;
     }

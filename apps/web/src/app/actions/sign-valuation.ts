@@ -7,7 +7,7 @@ import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, profileRepository } from "@/app/valuations/_deps";
 import { NotSignableError } from "@/domain/valuation";
 import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
-import { computeKcs } from "@/domain/kcs";
+import { computeKcsOnScale } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { StorageNotFoundError } from "@/ports/storage";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -61,7 +61,7 @@ export async function signValuationAction(id: string): Promise<SignValuationResu
     }
 
     try {
-      const kcs = computeKcs(valuation.inputs);
+      const kcs = computeKcsOnScale(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
       const model = buildDocumentModel({
         address: valuation.address,

@@ -16,6 +16,16 @@ import type { FeatureRating } from "./kcs";
 /** Document/display order of rating levels. */
 export const FEATURE_LEVELS = ["lepsza", "przecietna", "gorsza"] as const;
 
+/**
+ * Label per rating level — the internal enum stays diacritic-free. One map for
+ * the §12.1 scale block, the prose facts and the ADR-016 blockers.
+ */
+export const LEVEL_LABEL: Record<FeatureRating, string> = {
+  lepsza: "lepsza",
+  przecietna: "przeciętna",
+  gorsza: "gorsza",
+};
+
 export type FeatureDefinitions = Partial<Record<FeatureRating, string>>;
 
 export type FeaturePresetEntry = {

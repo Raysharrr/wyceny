@@ -1,3 +1,4 @@
+import { kcsReady } from "./feature-rules";
 import type { KcsInput } from "./kcs";
 import type { Valuation } from "../ports/valuation";
 
@@ -35,7 +36,12 @@ export function resolveStep(param: string | undefined, max: number): number {
 }
 
 export function calculationReady(inputs: KcsInput | null): boolean {
-  return inputs != null && inputs.comparables.length >= 3 && inputs.features.length > 0;
+  return (
+    inputs != null &&
+    inputs.comparables.length >= 3 &&
+    inputs.features.length > 0 &&
+    kcsReady(inputs)
+  );
 }
 
 /**

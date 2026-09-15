@@ -1,6 +1,7 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
-import { computeKcs, isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
+import { computeKcsOnScale, kcsReady } from "./feature-rules";
+import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
@@ -651,14 +652,15 @@ export class CalculationNotReadyError extends Error {
 }
 
 /** Step-5 confirm: the ONLY place the wizard writes wr. Same engine call the
- * legacy create action used (F-1: computeKcs itself untouched). */
+ * legacy create action used (F-1: computeKcs itself untouched), fed the rating
+ * positions (ADR-016). */
 export function applyCalculationConfirm(v: Valuation): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to confirm`);
-  if (v.inputs.comparables.length < 3 || v.inputs.features.length === 0) {
+  if (v.inputs.comparables.length < 3 || v.inputs.features.length === 0 || !kcsReady(v.inputs)) {
     throw new CalculationNotReadyError();
   }
-  return { ...v, wr: computeKcs(v.inputs).wr };
+  return { ...v, wr: computeKcsOnScale(v.inputs).wr };
 }
 
 /**

@@ -73,7 +73,7 @@ describe("valuationFormSchema", () => {
 
   it("accepts optional per-level definitions and DEFAULT_FEATURES parses", () => {
     const values = validPayload();
-    values.features = DEFAULT_FEATURES.map((f) => ({ ...f }));
+    values.features = DEFAULT_FEATURES.map((f) => ({ ...f })) as typeof values.features;
     expect(valuationFormSchema.safeParse(values).success).toBe(true);
   });
 

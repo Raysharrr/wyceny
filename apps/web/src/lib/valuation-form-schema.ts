@@ -43,7 +43,8 @@ export const featureSchema = z.object({
   key: z.enum(LOKAL_FEATURE_KEYS, { message: "Nieznana cecha — wybierz z puli." }),
   name: z.string().trim().min(1, "Podaj nazwę cechy."),
   weightPct: z.coerce.number().min(0, "Waga nie może być ujemna."),
-  rating: z.enum(["gorsza", "przecietna", "lepsza"]),
+  // ADR-016 reg. 3: no default rating — null until the appraiser picks a level.
+  rating: z.enum(["gorsza", "przecietna", "lepsza"]).nullable(),
   definitions: featureDefinitionsSchema.optional(),
 });
 

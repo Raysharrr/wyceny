@@ -19,7 +19,7 @@ import {
   documentFieldBlockers,
   type OperatPurpose,
 } from "@/domain/document-model";
-import { computeKcs } from "@/domain/kcs";
+import { computeKcsOnScale } from "@/domain/feature-rules";
 import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -120,7 +120,7 @@ export async function approveValuation(
         return { error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu." };
       }
       const now = new Date();
-      const kcs = computeKcs(valuation.inputs);
+      const kcs = computeKcsOnScale(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
 
       // Slice 14 (Task 12): issuing REUSES the maps the appraiser just read.

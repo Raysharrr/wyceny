@@ -26,7 +26,7 @@ vi.mock("@/app/actions/wizard", () => ({
 
 import { StepFeatures } from "@/app/valuations/[id]/steps/step-features";
 import { FEATURE_PRESETS } from "@/domain/feature-presets";
-import type { Comparable } from "@/domain/kcs";
+import type { Comparable, KcsInput } from "@/domain/kcs";
 
 const VID = "v1";
 
@@ -253,18 +253,42 @@ describe("StepFeatures — live ΣUi/WR sidebar (Task 9)", () => {
   ];
   const SUBJECT_AREA = 71.63;
 
+  // Two features on three described levels, both "przecietna" (ADR-016: Ui
+  // follows the position in the described scale, so all three must be there).
+  const THREE_LEVELS = {
+    lepsza: "opis lepszej",
+    przecietna: "opis przeciętnej",
+    gorsza: "opis gorszej",
+  };
+  const RATED_FEATURES: KcsInput["features"] = [
+    {
+      key: "standard-wykonczenia",
+      name: "standard wykończenia",
+      weight: 0.4,
+      rating: "przecietna",
+      definitions: THREE_LEVELS,
+    },
+    {
+      key: "polozenie-na-pietrze",
+      name: "położenie na piętrze",
+      weight: 0.6,
+      rating: "przecietna",
+      definitions: THREE_LEVELS,
+    },
+  ];
+
   it("shows the live ΣUi/WR preview and recomputes it when a rating changes", async () => {
     const user = userEvent.setup();
     render(
       <StepFeatures
         valuationId={VID}
-        features={[]}
+        features={RATED_FEATURES}
         comparables={PRICED_COMPARABLES}
         area={SUBJECT_AREA}
       />,
     );
 
-    // DEFAULT_FEATURES starts all "przecietna" — weights sum to 100%, so ΣUi
+    // Both features "przecietna" at mid — weights sum to 100%, so ΣUi
     // starts at exactly 1,000 (the rangebar's own "average" midpoint label).
     expect(screen.getByTestId("sidebar-sum-ui").textContent).toBe("1,000");
     expect(screen.getByTestId("sidebar-wr-preview").textContent).toMatch(/zł$/);

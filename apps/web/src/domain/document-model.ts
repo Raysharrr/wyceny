@@ -1,4 +1,5 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
+import { LEVEL_LABEL } from "./feature-presets";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
@@ -38,16 +39,9 @@ const RATING_TEXT: Record<FeatureRating, string> = {
   gorsza: "wartość najniższa cechy",
 };
 
-/**
- * Document label per rating level — the internal enum stays diacritic-free.
- * Exported so the prose facts (`domain/prose.ts`) name the levels exactly as
- * the §12.1 scale block does, instead of keeping a second diacritic map.
- */
-export const LEVEL_LABEL: Record<FeatureRating, string> = {
-  lepsza: "lepsza",
-  przecietna: "przeciętna",
-  gorsza: "gorsza",
-};
+// Re-exported so the prose facts (`domain/prose.ts`) keep naming the levels
+// from here; defined beside the levels themselves (the ADR-016 blockers use it too).
+export { LEVEL_LABEL };
 
 /** Document order of rating levels in the §12.1 scale block. */
 const LEVEL_ORDER: FeatureRating[] = ["lepsza", "przecietna", "gorsza"];
@@ -662,7 +656,9 @@ export function buildDocumentModel(
     // worst, cmax = all at best; the subject follows its actual ratings.
     opis_cmin: activeFeatures.map((f) => `${f.name} – wartość najniższa cechy,`),
     opis_cmax: activeFeatures.map((f) => `${f.name} – wartość najwyższa cechy,`),
-    opis_przedmiot: activeFeatures.map((f) => `${f.name} – ${RATING_TEXT[f.rating]},`),
+    opis_przedmiot: activeFeatures.map(
+      (f) => `${f.name} – ${f.rating ? RATING_TEXT[f.rating] : DASH},`,
+    ),
     skala_ocen: skalaOcen,
     cechy_lista: polishFeatureList(activeFeatures.map((f) => f.name)),
     cechy_lista_wg_wag: polishFeatureList(

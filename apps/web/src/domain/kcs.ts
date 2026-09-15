@@ -111,10 +111,15 @@ export type Feature = {
   name: string;
   /** Weight as a fraction (Σ over features = 1.0). UI works in %, converts before calling. */
   weight: number;
-  rating: FeatureRating;
+  /** Null until the appraiser picks a level — there is no default rating (ADR-016 reg. 3). */
+  rating: FeatureRating | null;
   /** Preset pool key (Slice 7, F-6) — display/audit metadata only; the engine never reads it. */
   key?: string;
-  /** Per-level rating-scale definitions (Slice 7) — operat content only; the engine never reads them. */
+  /**
+   * Per-level rating-scale definitions (Slice 7). The engine never reads them;
+   * `computeKcsOnScale` (domain/feature-rules.ts) turns them into the rating's
+   * position before calling it (ADR-016 reg. 2).
+   */
   definitions?: Partial<Record<FeatureRating, string>> | null;
 };
 
@@ -123,6 +128,13 @@ export type KcsInput = {
   /** Usable area of the subject property, m². */
   area: number;
   features: Feature[];
+  /**
+   * Which rule the step-4 ratings were confirmed under (ADR-016). `2` = Ui from
+   * the rating's position in the described scale, stamped by the step-4 save.
+   * Absent = saved under the fixed-key rule: an issued operat keeps reading the
+   * amount it was issued with, and a draft must confirm its ratings again (B-11).
+   */
+  featureScaleRule?: 2;
   /** RCN fetch provenance for the whole sample (F-5) — display/audit metadata only; computeKcs never reads this. */
   sampleMeta?: SampleMeta | null;
   /**
@@ -205,6 +217,9 @@ export function computeKcs(input: KcsInput): KcsResult {
     }
     return c.pricePerM2;
   });
+  if (input.features.some((f) => f.rating == null)) {
+    throw new Error("KCS engine: every feature must be rated");
+  }
 
   const cmin = Math.min(...prices);
   const cmax = Math.max(...prices);

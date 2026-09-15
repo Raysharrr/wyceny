@@ -2,8 +2,8 @@ import { Building2, Calculator, FileText, Scale, SlidersHorizontal, Table2 } fro
 import { Badge } from "@/components/ui/badge";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
+import { computeKcsOnScale } from "@/domain/feature-rules";
 import {
-  computeKcs,
   isRegistrySourced,
   REGISTRY_LABEL,
   type ComparableSource,
@@ -39,7 +39,7 @@ function provenanceStatusText(status?: string): string {
 }
 
 export function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
-  const r = computeKcs(inputs);
+  const r = computeKcsOnScale(inputs);
   return (
     <>
       {/* T2 — ceny jednostkowe */}
@@ -93,7 +93,7 @@ export function KcsBreakdown({ inputs }: { inputs: KcsInput }) {
               <tr key={u.name} className="border-t border-border">
                 <td className="py-1">{u.name}</td>
                 <td className="py-1 num">{Math.round(u.weight * 100)}%</td>
-                <td className="py-1">{RATING_LABEL[u.rating]}</td>
+                <td className="py-1">{u.rating ? RATING_LABEL[u.rating] : "—"}</td>
                 <td className="py-1 text-right num">
                   {u.value.toLocaleString("pl-PL", {
                     minimumFractionDigits: 4,
