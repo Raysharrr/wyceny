@@ -1058,6 +1058,69 @@ describe("KwSection — full-form wiring", () => {
   });
 
   /**
+   * `kwMeta` is the extraction's provenance — WHICH model read the book and
+   * WHEN. Until now nothing rendered it, so an orphan survived a retraction
+   * harmlessly: `resetKwSection`'s `resetField("kwMeta")` restores the
+   * DEFAULT, which in edit mode is the STORED meta, so a withdrawn
+   * examination left the form with `kw: null` beside a full `kwMeta`.
+   *
+   * `b1-kw-read` ends that grace period: §7's examination protocol is made of
+   * exactly those two facts, so a leftover would print "book examined with
+   * model X on day Y" for a valuation that has no book (ADR-018 reg. 4, I-19).
+   * Hence the sixth carrier joins `retractExamination` — the one place — and
+   * the assertion is on the SUBMITTED payload, never on form state.
+   */
+  it("clears a STORED kwMeta when the property right changes in edit mode (KR.0)", async () => {
+    const user = userEvent.setup();
+    const stored = {
+      address: "ul. Kościelna 33, Poznań",
+      area: "69.56",
+      purpose: "sprzedaz" as never,
+      client: "Jan Kowalski",
+      inspectionDate: "2026-09-15",
+      kwNumber: "AB1C/1/9",
+      kw: {
+        source: "odpis_kw",
+        kwLokalu: "AB1C/1/9",
+        kwGruntu: "AB1C/2/7",
+        kwInne: [],
+        deweloperski: false,
+        powUzytkowaKw: 69.56,
+        udzial: "1234/56789",
+        sad: null,
+        wydzial: null,
+        dataDokumentu: null,
+        dzial3: { wpisy: false, tresc: [] },
+        dzial4: { wpisy: false, tresc: [] },
+        dataBadania: "2026-09-15",
+      },
+      kwMeta: {
+        model: "claude-opus-5",
+        extractedAt: "2026-09-15T08:00:00.000Z",
+        docTypeDetected: "odpis_kw",
+        docTypeDeclared: "odpis_kw",
+      },
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+
+    render(<SubjectForm valuationId="val-meta" defaults={stored} />);
+
+    await user.click(
+      screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
+    );
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
+    const [, payload] = vi.mocked(saveSubjectAction).mock.calls[0] as unknown as [
+      string,
+      { kw?: unknown; kwMeta?: unknown },
+    ];
+    expect(payload.kw ?? null).toBeNull();
+    // The point: the provenance of an examination that no longer exists must
+    // not outlive it.
+    expect(payload.kwMeta ?? null).toBeNull();
+  });
+
+  /**
    * The source switch, in EDIT mode — the gap the create-mode version of this
    * test could not see. `resetKwSection`'s `resetField` puts the STORED
    * decision back, so only the explicit retraction removes it.

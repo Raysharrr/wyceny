@@ -459,7 +459,12 @@ export const valuationFormObject = z.object({
   kw: kwSchema.nullish(),
   kwGrunt: kwGruntSchema.nullish(),
   encumbranceTreatment: encumbranceTreatmentSchema.nullish(),
-  kwMeta: kwMetaSchema.optional(),
+  // `.nullish()` for the same reason as the three above, and since `b1-kw-read`
+  // for a sharper one: `retractExamination` now withdraws this too, and a
+  // withdrawal has to be a VALUE the schema accepts. `.optional()` would have
+  // made `setValue("kwMeta", null)` fail on a path no field renders — the W4
+  // dead-end, with the save button silently refusing.
+  kwMeta: kwMetaSchema.nullish(),
   purpose: z.enum(["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"], {
     message: "Wybierz cel wyceny.",
   }),

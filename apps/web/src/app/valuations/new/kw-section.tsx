@@ -436,6 +436,11 @@ export function KwSection(props: KwSectionProps) {
   const setKwNumber = kwNumberField.field.onChange;
   const setEncumbrance = useController({ control, name: "encumbranceTreatment" }).field
     .onChange as (value: { wariant: string | null; podstawa: string } | null) => void;
+  // Only the setter, and only for the retraction: `kwMeta` is written by the
+  // parent's extraction, never edited here.
+  const setKwMeta = useController({ control, name: "kwMeta" }).field.onChange as (
+    value: null,
+  ) => void;
 
   // Every edit writes the whole snapshot back, so the manual path builds one
   // object rather than registering a Controller per field — mounting those
@@ -491,6 +496,14 @@ export function KwSection(props: KwSectionProps) {
    * `kwGrunt` is opt-in: only a change of property right invalidates the
    * mother book. Switching the lokal's source, or declaring a developer
    * purchase, leaves it standing — it is still required and still true.
+   *
+   * `kwMeta` is NOT opt-in: it is the provenance OF the lokal's examination
+   * (which model read the document, and when), so it goes wherever `kw` goes.
+   * It used to be left to `resetKwSection`'s `resetField`, which in edit mode
+   * means "put the STORED meta back" — an orphan that was harmless only while
+   * nothing rendered it. `b1-kw-read` renders it, in §7's examination
+   * protocol, so a leftover would date and attribute an examination that does
+   * not exist (ADR-018 reg. 4, I-19).
    */
   const retractExamination = (next: {
     source: KwSource;
@@ -499,6 +512,7 @@ export function KwSection(props: KwSectionProps) {
   }) => {
     props.onSourceChange(next.source);
     setKw(next.kw ?? null);
+    setKwMeta(null);
     setEncumbrance(null);
     if (next.grunt) setKwGrunt(null);
   };
