@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { Client } from "pg";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
@@ -484,30 +485,50 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(reapproved!.amountInWords).toBeNull();
   });
 
-  it("a lost CAS is a status refusal, not a missing valuation (two clicks at once)", async () => {
+  it("a lost CAS is a status refusal, not a missing valuation", async () => {
     const { id } = await approvedFixture("ul. Cofnieta 7");
 
-    // A real race: both transactions read an approved row, one commits, the
-    // other's `WHERE status = 'approved'` then matches nothing. The loser must
-    // not tell the owner „nie znaleziono wyceny albo nie masz do niej dostępu”
-    // about a valuation open in front of them.
-    const results = await Promise.allSettled([
-      repo.reopen(id, appraiserA),
-      repo.reopen(id, appraiserA),
-    ]);
+    // The CAS branch needs an INTERLEAVING, not merely two callers. Running
+    // `reopen` twice at once does not produce one: the second SELECT lands
+    // after the first transaction has committed, so it reads `in_progress` and
+    // the DOMAIN refuses before any UPDATE is attempted. Both refusals are
+    // `NotReopenableError`, so a test asserting only the type passed with the
+    // CAS branch deleted — which is what round 2 measured (review PR #56).
+    //
+    // So the interleaving is built by hand: a second connection takes the row
+    // and flips it WITHOUT committing. `reopen` then reads the still-committed
+    // `approved` (READ COMMITTED), passes the domain, and its UPDATE blocks on
+    // the row lock. Releasing the blocker makes Postgres re-evaluate the
+    // predicate against the new row version — `status = 'approved'` no longer
+    // matches, zero rows come back, and the branch under test runs.
+    const blocker = new Client({ connectionString: process.env.DATABASE_URL });
+    await blocker.connect();
+    let racing: Promise<Valuation | null> | undefined;
+    try {
+      await blocker.query("begin");
+      await blocker.query("update valuation set status = 'in_progress' where id = $1", [id]);
 
-    const fulfilled = results.filter((r) => r.status === "fulfilled");
-    const rejected = results.filter((r) => r.status === "rejected");
-    expect(fulfilled).toHaveLength(1);
-    expect((fulfilled[0] as PromiseFulfilledResult<Valuation | null>).value!.status).toBe(
-      "in_progress",
-    );
-    expect(rejected).toHaveLength(1);
-    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(NotReopenableError);
+      racing = repo.reopen(id, appraiserA);
+      // Long enough for the UPDATE inside `reopen` to reach the lock; the
+      // assertions below fail loudly if it has not.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await blocker.query("commit");
+    } finally {
+      // Caught ONCE: a second `await` on a rejected promise reports an
+      // unhandled rejection even though the test itself passes.
+      const error = await racing!.catch((e: unknown) => e);
+      await blocker.end();
 
-    // Exactly one withdrawal happened — the loser wrote no audit row.
+      expect(error).toBeInstanceOf(NotReopenableError);
+      // The message is what separates this branch from the domain's refusal —
+      // the two throw the same type, and only the wording says which ran.
+      expect((error as Error).message).toMatch(/mid-reopen/);
+    }
+
+    // The refusal wrote nothing: the withdrawal that did happen was the
+    // blocker's raw UPDATE, which leaves no audit row of its own.
     const rows = await auditRowsFor(id);
-    expect(rows.filter((r) => r.action === "reopened")).toHaveLength(1);
+    expect(rows.filter((r) => r.action === "reopened")).toHaveLength(0);
   });
 
   it("reopen refuses a draft, and answers null for someone else's valuation", async () => {
