@@ -138,12 +138,12 @@ describe("F-12: professional-secrecy masking in the document model", () => {
       "standard wykończenia – wartość najwyższa cechy,",
       "lokalizacja – wartość najniższa cechy,",
     ]);
-    expect(model.opis_cmin).toHaveLength(2);
+    expect(model.lokale_cmin[0].cechy).toHaveLength(2);
     // FH.3 (D-52): żadna z tych cech nie ma progów liczbowych, a rejestr nie
     // niesie standardu ani lokalizacji — operat mówi to wprost, zamiast
     // przypisywać lokalowi Cmin same wartości najniższe.
-    expect(model.opis_cmin[0]).toContain(OCENA_SPOZA_REJESTRU);
-    expect(model.opis_cmax[0]).toContain(OCENA_SPOZA_REJESTRU);
+    expect(model.lokale_cmin[0].cechy[0].opis).toContain(OCENA_SPOZA_REJESTRU);
+    expect(model.lokale_cmax[0].cechy[0].opis).toContain(OCENA_SPOZA_REJESTRU);
   });
 });
 

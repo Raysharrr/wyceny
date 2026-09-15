@@ -167,9 +167,21 @@ const REQUIRED_PLACEHOLDERS = [
   "{/transakcje}",
   "{#cechy}",
   "{/cechy}",
-  "{#opis_cmin}",
-  "{#opis_cmax}",
   "{#opis_przedmiot}",
+  "{/opis_przedmiot}",
+  // Paczka 1 (TP.4): §12.2 opisuje KAŻDY lokal o cenie skrajnej (remis, D-53)
+  // jego własnymi danymi (D-52) i nazywa ulicę zamiast „analizowanego obszaru
+  // rynku" (D-51). Płaskie `opis_cmin`/`opis_cmax` niosły tylko pierwszy lokal.
+  "{#lokale_cmin}",
+  "{/lokale_cmin}",
+  "{#lokale_cmax}",
+  "{/lokale_cmax}",
+  "{#lokalizacja}",
+  "{/lokalizacja}",
+  "{lokalizacja}",
+  "{nazwa} – {opis},",
+  // Ui śr kolumny SUMA w Tabeli 3 — dotąd literał „1,000" z operatu źródłowego.
+  "{suma_ui_sr}",
   "{#kredyt}",
   "{/kredyt}",
   // Task 7: EGiB facts block (8.2) + MPZP variants (9). Slice 3 (Task 10)

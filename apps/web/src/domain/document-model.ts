@@ -403,7 +403,14 @@ export type FeatureRow = {
   nazwa: string;
   waga_pct: string;
   ui_min: string;
-  /** "—" when the feature's described scale has two levels — it has no middle (ADR-016 reg. 6). */
+  /**
+   * ZAWSZE wypełnione, także przy skali dwustopniowej. Ui min/śr/max wynikają z
+   * wagi cechy i przedziału Cmin–Cmax, nie z liczby opisanych poziomów — przy
+   * dwóch poziomach rzeczoznawca po prostu nigdy na Ui śr nie wyląduje.
+   * Rozstrzyga operat wzorcowy (Kościelna, Tabela 3): powierzchnia ma tam skalę
+   * dwustopniową, jej Ui śr to 0,100, a SUMA 1,000. Dawne D-47 o kresce w tym
+   * miejscu jest unieważnione.
+   */
   ui_sr: string;
   ui_max: string;
   ui_przedmiot: string;
@@ -626,8 +633,9 @@ export type DocumentModel = {
    * each (a price tie describes every flat at it, D-53). `lokalizacja` is the
    * street without a house number, empty when the register has none; `cechy`
    * carries one line per active feature, derived from that flat's own data
-   * (D-52). `b1-template` prints these; the flat `opis_cmin`/`opis_cmax`
-   * below are the first flat's lines, the shape the template renders today.
+   * (D-52). §12.2 loops over these, so a price tie describes every flat at it —
+   * the flat `opis_cmin`/`opis_cmax` that carried only the FIRST flat's lines
+   * went out with the loop that read them (b1-template, TP.4).
    *
    * The piętro behind these lines is normalised per source
    * (`pietroOfCandidate`): RCN's kondygnacja loses one, the cooperative
@@ -640,8 +648,6 @@ export type DocumentModel = {
   /** §12.2 street of the first flat at that price; "" when unknown — the template owns the sentence. */
   lokalizacja_cmin: string;
   lokalizacja_cmax: string;
-  opis_cmin: string[];
-  opis_cmax: string[];
   opis_przedmiot: string[];
   /** §12.1 rating-scale definitions — one row per active feature; only non-empty levels print. */
   skala_ocen: Array<{ cecha: string; poziomy: Array<{ poziom: string; def: string }> }>;
@@ -1006,9 +1012,6 @@ export function buildDocumentModel(
   const prices = inputs.comparables.map((c) => c.pricePerM2);
   const lokaleCmin = lokaleAtPrice(Math.min(...prices));
   const lokaleCmax = lokaleAtPrice(Math.max(...prices));
-  const opisOf = (lokale: typeof lokaleCmin) =>
-    (lokale[0]?.cechy ?? []).map((c) => `${c.nazwa} – ${c.opis},`);
-
   return {
     adres: input.address,
     powierzchnia: formatNumber(input.area, 2),
@@ -1155,8 +1158,6 @@ export function buildDocumentModel(
     lokale_cmax: lokaleCmax,
     lokalizacja_cmin: lokaleCmin[0]?.lokalizacja ?? "",
     lokalizacja_cmax: lokaleCmax[0]?.lokalizacja ?? "",
-    opis_cmin: opisOf(lokaleCmin),
-    opis_cmax: opisOf(lokaleCmax),
     opis_przedmiot: activeFeatures.map((f) => {
       const position = ratingPosition(f);
       return `${f.name} – ${position ? POSITION_TEXT[position] : DASH},`;

@@ -95,8 +95,8 @@ describe("document model — skala ocen (Slice 7)", () => {
     ]);
     expect(m.cechy.map((c) => c.nazwa)).toEqual(["lokalizacja"]);
     expect(m.opis_przedmiot).toHaveLength(1);
-    expect(m.opis_cmin).toHaveLength(1);
-    expect(m.opis_cmax).toHaveLength(1);
+    expect(m.lokale_cmin[0].cechy).toHaveLength(1);
+    expect(m.lokale_cmax[0].cechy).toHaveLength(1);
     expect(m.skala_ocen.map((r) => r.cecha)).toEqual(["lokalizacja"]);
   });
 
@@ -404,10 +404,16 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
     });
   });
 
-  it("`opis_cmin`/`opis_cmax` to zdania pierwszego lokalu o tej cenie", () => {
+  // USUNIĘTE przez b1-template (TP.4): płaskie `opis_cmin`/`opis_cmax` niosły
+  // zdania TYLKO pierwszego lokalu o danej cenie, więc przy remisie operat
+  // opisywał jeden lokal i milczał o pozostałych (D-53). §12.2 pętli teraz po
+  // `lokale_cmin`/`lokale_cmax`, a te dwa pola nie miały już czytelnika.
+  it("przy remisie ceny opisane są WSZYSTKIE lokale o tej cenie, każdy swoimi danymi", () => {
     const m = reported();
-    expect(m.opis_cmin).toEqual(m.lokale_cmin[0].cechy.map((c) => `${c.nazwa} – ${c.opis},`));
-    expect(m.opis_cmax).toEqual(m.lokale_cmax[0].cechy.map((c) => `${c.nazwa} – ${c.opis},`));
+    expect(m.lokale_cmin.length).toBeGreaterThan(0);
+    for (const lokal of [...m.lokale_cmin, ...m.lokale_cmax]) {
+      expect(lokal.cechy.length).toBeGreaterThan(0);
+    }
   });
 });
 

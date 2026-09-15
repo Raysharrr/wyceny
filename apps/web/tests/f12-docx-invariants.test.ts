@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDocumentModel } from "../src/domain/document-model";
+import { computeKcs } from "../src/domain/kcs";
 import { renderOperatDocx } from "../src/adapters/docx-render";
 import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
 import {
@@ -291,6 +292,104 @@ describe("I-14: fraza o obciążeniu w siedmiu miejscach i nigdzie indziej (TP.3
     expectNoText(bezObciazenia, FRAZA);
     expectNoText(bezObciazenia, "W dziale III księgi wieczystej lokalu ujawniono wpis");
     expectNoText(bezObciazenia, "Uwaga: w dziale III księgi wieczystej lokalu");
+  });
+});
+
+describe("I-11 G / I-12 G: Tabela 3 i opisy §12.2 (TP.4, D-47 unieważnione / D-51…D-54)", () => {
+  const doc = render({ skalaPowierzchni: "poprawiona" });
+  const model = buildDocumentModel(wycena1409Anon({ skalaPowierzchni: "poprawiona" }));
+
+  /**
+   * Powierzchnia w wariancie `jak_zgloszono` ma skalę DWUSTOPNIOWĄ. Dawne D-47
+   * kazało w takim wierszu drukować kreskę w kolumnie Ui śr; operat wzorcowy
+   * (Kościelna, Tabela 3) pokazuje tam 0,100 przy SUMIE 1,000, bo Ui min/śr/max
+   * wynikają z wagi i przedziału Cmin–Cmax, a nie z liczby opisanych poziomów.
+   */
+  it("I-11 G: Ui śr wypełnione także przy skali dwustopniowej", () => {
+    const dwustopniowa = buildDocumentModel(wycena1409Anon({ skalaPowierzchni: "jak_zgloszono" }));
+    const powierzchnia = dwustopniowa.cechy.find((c) => c.nazwa === "Powierzchnia użytkowa");
+    expect(powierzchnia).toBeDefined();
+    expect(powierzchnia!.ui_sr).not.toBe("—");
+    expect(powierzchnia!.ui_sr).toMatch(/^\d+,\d{3}$/);
+
+    const tabela3 = render({ skalaPowierzchni: "jak_zgloszono" });
+    const komorki = sectionParagraphs(tabela3, "12.3.")
+      .filter((p) => p.container === "table")
+      .map((p) => p.text);
+    for (const cecha of dwustopniowa.cechy) expect(komorki).toContain(cecha.ui_sr);
+  });
+
+  it("I-11 G: SUMA kolumny Ui śr przychodzi z modelu, nie jest literałem", () => {
+    const komorki = sectionParagraphs(doc, "12.3.")
+      .filter((p) => p.container === "table")
+      .map((p) => p.text);
+    expect(komorki).toContain(model.suma_ui_sr);
+    // Σ kolumny Ui śr = Σ wag, więc przy wagach sumujących się do 100 % to
+    // „1,000" — ta sama liczba, którą operat źródłowy miał tu wpisaną na
+    // sztywno. Dlatego asercją jest RÓWNOŚĆ Z KOLUMNĄ, nie sam literał: on
+    // przechodziłby także po cofnięciu poprawki.
+    const suma = model.cechy.reduce((s, c) => s + Number(c.ui_sr.replace(",", ".")), 0);
+    expect(model.suma_ui_sr).toBe((Math.round(suma * 1000) / 1000).toFixed(3).replace(".", ","));
+    // ΣUi kolumny przedmiotu (Tabela 3) = ΣUi, którym Tabela 4 mnoży cenę.
+    expect(komorki).toContain(model.suma_ui);
+    expect(sectionText(doc, "12.3.")).toContain(model.suma_ui);
+  });
+
+  /**
+   * Nośnik mutacji dla komórki SUMA. Na fiksturze bazowej Σ wag wynosi dokładnie
+   * 1,000 — czyli TYLE SAMO, co literał operatu źródłowego, który tu stał — więc
+   * cofnięcie poprawki przechodziłoby niezauważone (zmierzone). Wycena, w której
+   * jedna cecha nie liczy się do wyniku, daje 0,940 i rozstrzyga, skąd ta komórka
+   * bierze liczbę.
+   */
+  it("I-11 G: SUMA Ui śr przy niepełnym zestawie cech pokazuje 0,940, nie 1,000", () => {
+    const input = wycena1409Anon({ skalaPowierzchni: "poprawiona" });
+    input.inputs.features = input.inputs.features.filter((f) => f.key !== "dodatkowe");
+    input.kcs = computeKcs(input.inputs);
+    const m = buildDocumentModel(input);
+    expect(m.suma_ui_sr).toBe("0,940");
+
+    const komorki = sectionParagraphs(openDocx(renderOperatDocx(m)), "12.3.")
+      .filter((p) => p.container === "table")
+      .map((p) => p.text);
+    expect(komorki).toContain("0,940");
+    expect(komorki).not.toContain("1,000");
+  });
+
+  it("I-12 G: §12.2 nazywa ulicę lokalu Cmin/Cmax, nie „analizowany obszar rynku”", () => {
+    expectNoText(doc, "w analizowanym obszarze rynku");
+    const sec = sectionText(doc, "12.2.");
+    expect(model.lokalizacja_cmin).not.toBe("");
+    expect(sec).toContain(`Lokal mieszkalny położony jest przy ${model.lokalizacja_cmin}.`);
+    expect(sec).toContain(`Lokal mieszkalny położony jest przy ${model.lokalizacja_cmax}.`);
+    expect(sec).toContain("Lokal mieszkalny położony jest pod adresem: ul. Testowa 7/12, Poznań.");
+  });
+
+  /**
+   * D-53: dwie transakcje fikstury mają tę samą najniższą cenę jednostkową.
+   * Opis musi objąć OBIE, każdą jej własnymi danymi — dawna płaska lista brała
+   * tylko pierwszy lokal.
+   */
+  it("I-12 G: remis ceny opisuje wszystkie lokale, każdy swoimi cechami (D-52, D-53)", () => {
+    expect(model.lokale_cmin).toHaveLength(2);
+    const sec = sectionText(doc, "12.2.");
+    for (const lokal of model.lokale_cmin) {
+      expect(sec).toContain(`Lokal mieszkalny położony jest przy ${lokal.lokalizacja}.`);
+      for (const cecha of lokal.cechy) expect(sec).toContain(`${cecha.nazwa} – ${cecha.opis},`);
+    }
+    // Dwa lokale o różnych ulicach -> dwa różne zdania o położeniu w Cmin.
+    expect(new Set(model.lokale_cmin.map((l) => l.lokalizacja)).size).toBe(2);
+  });
+
+  it("D-51: bez ulicy w rejestrze zdanie o położeniu znika, a opis cech zostaje", () => {
+    const input = wycena1409Anon({ skalaPowierzchni: "poprawiona" });
+    for (const c of input.inputs.sampleSelection!.proposed) c.street = null;
+    const m = buildDocumentModel(input);
+    expect(m.lokalizacja_cmin).toBe("");
+    const d = openDocx(renderOperatDocx(m));
+    expectNoText(d, "Lokal mieszkalny położony jest przy .");
+    expectNoText(d, "położony jest przy {lokalizacja}");
+    expect(sectionText(d, "12.2.")).toContain(`${m.lokale_cmin[0].cechy[0].nazwa} – `);
   });
 });
 
