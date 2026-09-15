@@ -20,6 +20,10 @@ export type KwRequirements = {
   ksiegaLokalu: boolean;
   /** The grunt's (mother) book must be examined. */
   ksiegaGruntu: boolean;
+  /** …and is it? Step 1's per-card "Zbadana"/"Do zbadania" badge reads these, so
+   * a card can never claim an examination the F-4 gate would refuse. */
+  lokalZbadana: boolean;
+  gruntZbadana: boolean;
   /** How many books this valuation needs examined — step 1's "Zbadane księgi: N z {wymagane}". */
   wymagane: number;
   /** How many of the required ones actually are. */
@@ -78,15 +82,17 @@ export function kwRequirements(
   // whole legal picture, and the deed stands in for the rest (as it does today).
   const ksiegaLokalu = doc.wymagaKwLokalu && !kw?.deweloperski;
   const ksiegaGruntu = doc.wymagaKwGruntu;
-  const zbadane =
-    (ksiegaLokalu && ksiegaLokaluZbadana(kw) ? 1 : 0) +
-    (ksiegaGruntu && ksiegaGruntuZbadana(kwGrunt) ? 1 : 0);
+  const lokalZbadana = ksiegaLokaluZbadana(kw);
+  const gruntZbadana = ksiegaGruntuZbadana(kwGrunt);
+  const zbadane = (ksiegaLokalu && lokalZbadana ? 1 : 0) + (ksiegaGruntu && gruntZbadana ? 1 : 0);
   const wymagane = (ksiegaLokalu ? 1 : 0) + (ksiegaGruntu ? 1 : 0);
   return {
     numerKwWFormularzu: numberRequired && kw == null,
     numerKwWDokumencie: numberRequired,
     ksiegaLokalu,
     ksiegaGruntu,
+    lokalZbadana,
+    gruntZbadana,
     wymagane,
     zbadane,
     // Asked WITHOUT a `kw != null` guard — that guard was the bug: on the

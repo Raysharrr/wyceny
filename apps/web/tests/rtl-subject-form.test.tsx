@@ -58,7 +58,7 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("Adres"), "ul. Testowa 1, Poznań");
   await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
   await user.selectOptions(screen.getByLabelText(/cel wyceny/i), "sprzedaz");
-  await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "AB1C/1/1");
+  await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/1");
   await user.type(screen.getByLabelText(/zamawiający wycenę/i), "p. Test Testowy");
 }
 
@@ -121,7 +121,7 @@ describe("SubjectForm — validation", () => {
     await user.type(screen.getByLabelText("Adres"), "ul. Testowa 1, Poznań");
     await user.type(screen.getByLabelText(/powierzchnia \(m²\)/i), "54.3");
     await user.selectOptions(screen.getByLabelText(/cel wyceny/i), "sprzedaz");
-    await user.type(screen.getByLabelText(/numer księgi wieczystej/i), "AB1C/1/1");
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/1");
     // client left empty
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
 

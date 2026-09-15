@@ -52,7 +52,7 @@ Po udanym pobraniu w panelu obok formularza pojawia się mapa ewidencyjna dział
 
 Na górze karty „Księga wieczysta” wybierasz, jakie prawo do lokalu wyceniasz: **Własność lokalu** (domyślnie — tak działały wszystkie dotychczasowe wyceny) albo **Spółdzielcze własnościowe prawo do lokalu**. Wybór zmienia trzy rzeczy:
 
-- **Księga wieczysta nie jest wymagana.** Spółdzielcze prawo zwykle nie ma własnej księgi, więc numer KW przy „Wpisz ręcznie” możesz zostawić pusty, a przy dokumencie — pusty numer KW gruntu (księgi macierzystej). Jeśli księga jest założona, wpisz ją jak dotąd; aplikacja niczego nie wpisze za Ciebie. Krok 7 nie zablokuje zatwierdzenia z powodu brakującej KW gruntu.
+- **Księga wieczysta nie jest wymagana.** Spółdzielcze prawo zwykle nie ma własnej księgi, więc sekcja badania ksiąg w ogóle się nie pojawia — zostaje jedno opcjonalne pole „Numer księgi wieczystej”. Jeśli księga jest założona, wpisz ją; aplikacja niczego nie wpisze za Ciebie. Krok 7 nie zablokuje zatwierdzenia z powodu braku badania ani KW gruntu.
 - **Piwnica.** Zaznaczenie „Lokal ma przynależną piwnicę” dodaje do operatu klauzulę o pomieszczeniu przynależnym (właściciele spółdzielczego prawa mogą korzystać z piwnicy, ale nie jest ona objęta tym prawem).
 - **Próba porównawcza z rejestru biura.** Transakcje spółdzielcze nie występują w RCN, więc w kroku 3 próbę dla tego prawa pobierzemy z rejestru prowadzonego przez biuro (zakładka „Rejestr spółdzielczy”). Jak go zasilić, opisuje [Rejestr spółdzielczy](/pomoc/rejestr-spoldzielczy); w kroku 3 przycisk „Pobierz próbę z rejestru” dobiera próbę z tego rejestru, a gdy jest w nim za mało transakcji, dopisujesz je tam ręcznie.
 
@@ -69,13 +69,32 @@ Na górze karty „Księga wieczysta” wybierasz, jakie prawo do lokalu wycenia
 
 Rodzaj prawa jest zapisywany z wyceną i można go zmienić przy każdej edycji kroku 1. Sam wybór nie kasuje ani kwoty, ani opisów.
 
-### Księga wieczysta
+### Badanie ksiąg wieczystych
 
-Wybierasz jedno z trzech źródeł: „Wgraj akt notarialny”, „Wgraj odpis KW” albo „Wpisz ręcznie”.
+Wycena własności lokalu opiera się na **dwóch** księgach: księdze lokalu i księdze gruntu (macierzystej). Obie trzeba zbadać, a operat opisuje wyłącznie to, co faktycznie zbadałeś — nigdy księgi, której nikt nie otworzył. Nad kartami widzisz licznik „Zbadane księgi: N z 2”, a każda karta ma odznakę **Zbadana** albo **Do zbadania**.
 
-Z wgranego pliku PDF aplikacja odczytuje numer KW lokalu i gruntu, pozostałe numery ksiąg wymienione w dokumencie, udział w nieruchomości wspólnej, sąd i wydział ksiąg wieczystych, datę dokumentu, treść działu III i IV oraz powierzchnię użytkową. Odczyt trwa do około pół minuty, a wynik pojawia się jako „Odczytano: … — do potwierdzenia” w edytowalnych polach. Nie wszystko dostaje jednak własne pole: pozostałych numerów ksiąg i daty dokumentu formularz nie pokazuje, a data dokumentu wchodzi do operatu — nie ma jej więc gdzie sprawdzić ani poprawić. Co dokładnie czytamy z takiego dokumentu, a czego świadomie nie czytamy, opisuje [Ekstrakcja z odpisu KW i aktu notarialnego](/pomoc/ekstrakcja-kw-akt).
+Księgę uznajemy za zbadaną, gdy ma numer, datę badania i **rozstrzygnięte oba działy** — III i IV. „Brak wpisów” to odpowiedź; brak odpowiedzi to nie to samo i operat nie napisze wtedy nic o tym dziale.
 
-Jeśli dokument okaże się innego typu niż wybrany, zobaczysz ostrzeżenie — dane zostaną wypełnione według typu wykrytego. Jeśli natomiast plik nie jest ani aktem notarialnym, ani odpisem księgi, dostajesz komunikat informacyjny („To nie wygląda na akt notarialny ani odpis księgi wieczystej.”), bez przycisku ponowienia i bez żadnego wypełnionego pola — wgraj właściwy dokument albo przełącz się na wpis ręczny.
+**Księga lokalu** ma dwie ścieżki, przełącznik „Wgraj PDF” / „Wpisz ręcznie”:
+
+- **Wgraj PDF** — aplikacja odczytuje numer KW lokalu i gruntu, udział w nieruchomości wspólnej, sąd i wydział, datę dokumentu, treść działu III i IV oraz powierzchnię użytkową. Odczyt trwa do około pół minuty, a wynik pojawia się jako „Odczytano: … — do potwierdzenia” w edytowalnych polach. Co dokładnie czytamy, a czego świadomie nie czytamy, opisuje [Ekstrakcja z odpisu KW i aktu notarialnego](/pomoc/ekstrakcja-kw-akt).
+- **Wpisz ręcznie** — dane przepisujesz z przeglądarki eKW. Ścieżka jest równorzędna: pozwala zatwierdzić operat. Karta uprzedza jednak, czym się to różni: „Dane wpisane ręcznie trafią do operatu jako opis — bez pełnej treści działów księgi. Aby operat zawierał treść księgi, wgraj PDF.”.
+
+**Księga gruntu** jest na razie wyłącznie ręczna — odczyt jej PDF-a dojdzie później. Numer podpowiadamy z księgi lokalu; datę badania i oba działy uzupełniasz sam.
+
+**Data badania** to dzień, w którym przeglądałeś księgę. Księga nigdy jej nie zawiera, więc pochodzi wyłącznie od Ciebie — podpowiadamy dzisiejszą i możesz ją zmienić w obu kartach.
+
+**Podstawa nabycia — dział II** to trzy pola w jednym wierszu: tytuł aktu, Rep. A i data. Operat drukuje je osobno, więc osobno je wpisujesz.
+
+**Lokal bez własnej KW (zakup deweloperski).** Zaznaczenie tego pola zdejmuje kartę księgi lokalu — takiego lokalu jeszcze nie ma w księgach — i w jej miejsce prosi o akt notarialny. Zostaje sama księga gruntu i to ona musi być zbadana.
+
+Jeśli dokument okaże się innego typu niż wybrany, zobaczysz ostrzeżenie — dane zostaną wypełnione według typu wykrytego. Jeśli plik nie jest ani aktem notarialnym, ani odpisem księgi, dostajesz komunikat informacyjny („To nie wygląda na akt notarialny ani odpis księgi wieczystej.”), bez przycisku ponowienia i bez wypełnionego pola. Gdy odczytu nie da się wykonać, karta pokazuje czerwony baner „Nie udało się odczytać pliku PDF księgi — wgraj inny plik albo wpisz dane ręcznie.” wraz z przyczyną i przyciskiem „Spróbuj ponownie”.
+
+### Wpis w dziale III — obciążenie
+
+Gdy w **dziale III księgi lokalu** zaznaczysz „Są wpisy”, pojawia się pytanie, na które musisz odpowiedzieć przed zatwierdzeniem: czy wartość uwzględnia to obciążenie. Wybierasz „Wartość z uwzględnieniem obciążenia” albo „Wartość bez uwzględnienia obciążenia” i **podajesz podstawę** — to ona wchodzi do operatu jako założenie (np. polecenie zleceniodawcy i jego powód). Podstawa jest wymagana przy obu wariantach.
+
+Wpisy w dziale III **księgi gruntu** opisujemy w operacie, ale tego pytania nie wywołują — nie obciążają wycenianego lokalu.
 
 Powierzchnię z dokumentu aplikacja wpisze tylko wtedy, gdy pole powierzchni jest puste. Gdy wpisałeś własną wartość i różni się ona od dokumentu, pojawi się ostrzeżenie z przyciskiem „Użyj wartości z dokumentu” — decyzja należy do Ciebie, nic nie jest tu blokowane.
 
@@ -99,7 +118,9 @@ Przycisk „Dane się zgadzają — dalej” zapisuje krok. Zapis nie przejdzie 
 
 Zapis kroku kasuje zatwierdzoną wartość rynkową **tylko wtedy, gdy zmieniłeś powierzchnię**. Powierzchnia to jedyne pole tego kroku, które wchodzi do wzoru (`WR = Cśr × ΣUi × P`), więc tylko jej zmiana każe wrócić do kroku 5 — a do tego czasu kroki 6 i 7 są z powrotem niedostępne. Poprawka adresu, zamawiającego, celu wyceny, numeru księgi albo danych przedmiotu zostawia kwotę nietkniętą.
 
-Numer księgi wieczystej jest wymagany tylko wtedy, gdy nie wgrałeś dokumentu i wyceniasz własność lokalu — przy spółdzielczym własnościowym prawie pole może zostać puste. W trybie wgrywania pusty formularz kończy się komunikatem „Wgraj dokument albo przełącz na wpis ręczny”.
+Numer księgi lokalu jest wymagany przy własności lokalu — przy spółdzielczym własnościowym prawie pole numeru może zostać puste. Pusty formularz w trybie „Wgraj PDF” kończy się komunikatem przy polu „Numer księgi lokalu”.
+
+Samego kroku 1 nie blokuje natomiast **niedokończone badanie ksiąg** — możesz zapisać krok i wrócić. Zatrzyma Cię dopiero krok 7: brak badania to blokada „Uzupełnij badanie księgi wieczystej: KW lokalu, KW gruntu i datę badania.”, a wpis w dziale III bez wybranego wariantu — „Księga zawiera ograniczone prawo rzeczowe — wskaż, czy wartość je uwzględnia, i podaj podstawę.”. Obie odsyłają tutaj. Pełny katalog opisują [Zasady zatwierdzania](/pomoc/zasady-zatwierdzania).
 
 Plik inny niż PDF albo większy niż 32 MB jest odrzucany od razu, bez wysyłania.
 
