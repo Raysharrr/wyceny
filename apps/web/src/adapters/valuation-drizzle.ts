@@ -653,7 +653,14 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         }
         // Re-runs the full gate (F-4 + document fields) in the domain — this is
         // the atomic status flip; a caller that stored files first but fails
-        // here leaves harmless orphan files (same keys, overwritten on retry).
+        // here leaves orphan files behind. They used to be transient: the key
+        // was fixed per valuation, so the retry overwrote them. Since ADR-020
+        // wariant (a) the key carries the approval's `now` (`approvedOperatKeys`
+        // — one file set per approval, so a withdrawn one is not overwritten by
+        // the next), which means the retry writes NEW keys and each failed
+        // attempt leaves a permanent orphan nothing points at. Harmless but no
+        // longer self-cleaning; documented in `pomoc/metodyka/operat-i-
+        // niezmiennosc.mdx` and carried as a follow-up.
         //
         // BOTH prose options are derived HERE and REPLACE whatever the caller
         // passed (ADR-012). `gate` is still accepted so the call sites read
