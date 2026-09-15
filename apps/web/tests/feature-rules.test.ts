@@ -348,6 +348,17 @@ describe("levelForValue — poziom z wartości przedmiotu lub transakcji (ADR-01
     expect(levelForValue(POWIERZCHNIA, 80)).toBe("gorsza");
   });
 
+  it("granica `do` powierzchni jest wyłączna także bez sąsiedniego przedziału", () => {
+    // Bez tego przypadku „47 należy do gorsza” przechodzi przez sam porządek
+    // skali, a nie przez wyłączność granicy — mutant `value > do` przeżywa.
+    const zLuka: FeatureMeasure = {
+      kind: "area",
+      bounds: { lepsza: { do: 47 }, gorsza: { od: 100 } },
+    };
+    expect(levelForValue(zLuka, 46.99)).toBe("lepsza");
+    expect(levelForValue(zLuka, 47)).toBeNull();
+  });
+
   it("wartość poza wszystkimi przedziałami nie daje poziomu", () => {
     // Kondygnacja podziemna (rejestr zna −1) leży poniżej parteru.
     expect(levelForValue(PIETRO, -1)).toBeNull();

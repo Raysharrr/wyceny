@@ -201,12 +201,6 @@ export function presetDefinitionsFor(key: string, medianM2: number | null): Feat
   return FEATURE_PRESETS.lokal.find((e) => e.key === key)?.defaultDefinitions ?? {};
 }
 
-/** Expected preset thresholds for a key; null for every non-measurable feature. */
-export function presetMeasureFor(key: string, medianM2: number | null): FeatureMeasure | null {
-  if (key === "powierzchnia-uzytkowa") return powierzchniaMeasure(medianM2);
-  return FEATURE_PRESETS.lokal.find((e) => e.key === key)?.defaultMeasure ?? null;
-}
-
 /** Trim + collapse inner whitespace — deterministic preset comparison (spec: Ryzyka). */
 export function normalizeDefText(s: string | undefined): string {
   return (s ?? "").trim().replace(/\s+/g, " ");

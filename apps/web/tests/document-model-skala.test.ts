@@ -8,6 +8,7 @@ import {
 } from "../src/domain/document-model";
 import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
 import { computeKcs, type KcsInput } from "../src/domain/kcs";
+import { computeKcsOnScale } from "../src/domain/feature-rules";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 
 function inputsWith(features: KcsInput["features"]): KcsInput {
@@ -364,11 +365,36 @@ describe("document model — opis przedmiotu i Tabela 3 (FH.3, D-54, I-11 U)", (
     expect(m.ma_skale_dwustopniowe).toBe(false);
   });
 
-  it("ΣUi Tabeli 3 = ΣUi wskaźnika WR (I-11 U)", () => {
-    for (const wariant of [{}, { skalaPowierzchni: "poprawiona" as const }]) {
-      const m = buildDocumentModel(wycena1409Anon(wariant));
+  it("ΣUi Tabeli 3 = ΣUi wskaźnika WR, także na silniku ze skalą (I-11 U)", () => {
+    // Wariant „poprawiona” policzony tak, jak liczy aplikacja — przez
+    // `computeKcsOnScale` (jedyne wejście do silnika, pilnowane osobnym testem
+    // w `feature-rules.test.ts`).
+    const v = wycena1409Anon({ skalaPowierzchni: "poprawiona" });
+    for (const m of [
+      buildDocumentModel(wycena1409Anon()),
+      buildDocumentModel({ ...v, kcs: computeKcsOnScale(v.inputs) }),
+    ]) {
       const suma = m.cechy.reduce((acc, c) => acc + Number(c.ui_przedmiot.replace(",", ".")), 0);
       expect(formatNumber(Math.round(suma * 1000) / 1000, 3)).toBe(m.suma_ui);
     }
+  });
+
+  it("wiersz Tabeli 3 niesie Ui swojej cechy — „—” nie wędruje między wierszami", () => {
+    const v = wycena1409Anon();
+    const m = buildDocumentModel(v);
+    // Gdyby zipowanie cech z Ui się rozjechało, kreska usiadłaby na cesze
+    // trzypoziomowej, a każdy wiersz dalej drukowałby jakąś liczbę.
+    expect(m.cechy.map((c) => c.nazwa)).toEqual(v.inputs.features.map((f) => f.name));
+    expect(m.cechy.map((c) => c.ui_przedmiot)).toEqual(
+      v.kcs.ui.map((u) => formatNumber(u.value, 3)),
+    );
+  });
+
+  it("lokal opisany w §12.2 ma cenę, którą drukuje §12 (jedno źródło ceny)", () => {
+    const v = wycena1409Anon();
+    const m = buildDocumentModel(v);
+    const prices = v.inputs.comparables.map((c) => c.pricePerM2);
+    expect(m.cena_min).toBe(formatPln(Math.min(...prices)));
+    expect(m.cena_max).toBe(formatPln(Math.max(...prices)));
   });
 });

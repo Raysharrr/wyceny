@@ -655,8 +655,15 @@ export function buildDocumentModel(
 
   // Weight-0 features stay out of the legal document entirely (workshop
   // decision: "pancerz obronny" — a zero-weight row invites challenge).
-  const activeFeatures = inputs.features.filter((f) => f.weight > 0);
-  const activeUi = kcs.ui.filter((f) => f.weight > 0);
+  // Ui rows zipped with the feature they were computed from BEFORE filtering,
+  // so the two lists cannot drift apart. Tabela 3's dash (ADR-016 reg. 6) is a
+  // property of the feature's SCALE, and a row carrying another feature's dash
+  // would be invisible — every row still prints something, just the wrong
+  // thing. (`computeKcs` returns one `ui` per input feature, in order.)
+  const active = inputs.features
+    .map((feature, i) => ({ feature, ui: kcs.ui[i] }))
+    .filter(({ feature }) => feature.weight > 0);
+  const activeFeatures = active.map((a) => a.feature);
   const skalaOcen = activeFeatures
     .map((f) => ({
       cecha: f.name,
@@ -810,13 +817,13 @@ export function buildDocumentModel(
         };
       });
     })(),
-    cechy: activeUi.map((f, i) => ({
-      nazwa: f.name,
-      waga_pct: formatNumber(f.weight * 100, 0),
-      ui_min: formatNumber(f.weight * kcs.vmin, 3),
-      ui_sr: twoLevel(activeFeatures[i]) ? DASH : formatNumber(f.weight, 3),
-      ui_max: formatNumber(f.weight * kcs.vmax, 3),
-      ui_przedmiot: formatNumber(f.value, 3),
+    cechy: active.map(({ ui, feature }) => ({
+      nazwa: ui.name,
+      waga_pct: formatNumber(ui.weight * 100, 0),
+      ui_min: formatNumber(ui.weight * kcs.vmin, 3),
+      ui_sr: twoLevel(feature) ? DASH : formatNumber(ui.weight, 3),
+      ui_max: formatNumber(ui.weight * kcs.vmax, 3),
+      ui_przedmiot: formatNumber(ui.value, 3),
     })),
     // Σ of the Ui śr column. With a two-level feature in the table the column
     // has a dash in it, so its total is a dash too — a partial sum printed as
@@ -824,7 +831,7 @@ export function buildDocumentModel(
     suma_ui_sr: maSkaleDwustopniowe
       ? DASH
       : formatNumber(
-          activeUi.reduce((sum, f) => sum + f.weight, 0),
+          active.reduce((sum, { ui }) => sum + ui.weight, 0),
           3,
         ),
     ma_skale_dwustopniowe: maSkaleDwustopniowe,
