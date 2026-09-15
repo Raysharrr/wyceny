@@ -13,6 +13,11 @@ import type { FeatureMeasure, FeatureRating } from "./kcs";
  * — Aneta verifies them during app testing (user decision 2026-07-15); names
  * and texts corrected after her 14.09 operat (D-43, D-45, D-46, D-49). The
  * MODEL (per-valuation, editable) is confirmed. Pure module: zero I/O (F-10).
+ *
+ * The two MEASURABLE features are the exception to "texts": piętro and
+ * powierzchnia carry numeric thresholds (`defaultMeasure`), and their texts are
+ * GENERATED from them (`definitionsFromMeasure`, FH.1) — editing a threshold
+ * rewrites the text, so the two can never state different scales.
  */
 
 /** Document/display order of rating levels. */

@@ -261,7 +261,7 @@ function BoundInput({
 }) {
   const id = `feature-bound-${featureKey}-${level}-${edge}`;
   return (
-    <Field className="gap-1">
+    <Field className="w-32 gap-1">
       <FieldLabel htmlFor={id} className="text-xs font-normal text-muted-foreground">
         {BOUND_LABEL[kind][edge]}
       </FieldLabel>
@@ -271,7 +271,6 @@ function BoundInput({
         type="number"
         step={kind === "floor" ? "1" : "0.01"}
         inputMode="decimal"
-        className="w-28"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
       />
@@ -382,20 +381,25 @@ function measureValueText(kind: FeatureMeasure["kind"], value: number): string {
     : `${measureValueFormatter.format(value)} m²`;
 }
 
-/** The suggested level's own band, in the words the hint uses after „próg”. */
-function boundText(kind: FeatureMeasure["kind"], bound: MeasureBound): string {
+/**
+ * The suggested level's own band, split the way the mockup sets it: the
+ * preposition stays in the running text, the numbers are the bold part.
+ */
+function boundText(
+  kind: FeatureMeasure["kind"],
+  bound: MeasureBound,
+): { slowo: string; liczba: string } {
   const unit = (n: number) =>
     kind === "floor" ? String(n) : `${measureValueFormatter.format(n)} m²`;
-  if (kind === "floor" && bound.od === 0 && bound.do === 0) return "parter";
+  if (kind === "floor" && bound.od === 0 && bound.do === 0) return { slowo: "", liczba: "parter" };
   if (bound.od != null && bound.do != null) {
-    return kind === "floor"
-      ? `od ${unit(bound.od)} do ${unit(bound.do)}`
-      : `od ${unit(bound.od)} poniżej ${unit(bound.do)}`;
+    return { slowo: "od", liczba: `${unit(bound.od)} do ${unit(bound.do)}` };
   }
-  if (bound.od != null) return `od ${unit(bound.od)}`;
-  if (bound.do != null)
-    return kind === "floor" ? `do ${unit(bound.do)}` : `poniżej ${unit(bound.do)}`;
-  return "";
+  if (bound.od != null) return { slowo: "od", liczba: unit(bound.od) };
+  if (bound.do != null) {
+    return { slowo: kind === "floor" ? "do" : "poniżej", liczba: unit(bound.do) };
+  }
+  return { slowo: "", liczba: "" };
 }
 
 const MEASURE_NOUN: Record<FeatureMeasure["kind"], string> = {
@@ -423,6 +427,7 @@ function ThresholdHint({
   level: FeatureRating;
   onAccept: () => void;
 }) {
+  const prog = boundText(measure.kind, measure.bounds[level]!);
   return (
     <div
       data-testid={`threshold-hint-${featureKey}`}
@@ -430,10 +435,8 @@ function ThresholdHint({
     >
       <span>
         Podpowiedź: {MEASURE_NOUN[measure.kind]} przedmiotu{" "}
-        <b className="num">{measureValueText(measure.kind, value)}</b> (krok 1) · próg „
-        {LEVEL_LABEL[level]}”{" "}
-        <b className="num">{boundText(measure.kind, measure.bounds[level]!)}</b> →{" "}
-        <b>{LEVEL_LABEL[level]}</b>
+        <b>{measureValueText(measure.kind, value)}</b> (krok 1) · próg „{LEVEL_LABEL[level]}”
+        {prog.slowo ? ` ${prog.slowo}` : ""} <b>{prog.liczba}</b> → <b>{LEVEL_LABEL[level]}</b>
       </span>
       <Button type="button" variant="outline" size="xs" onClick={onAccept}>
         Przyjmij
