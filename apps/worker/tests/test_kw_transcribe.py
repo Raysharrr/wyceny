@@ -17,6 +17,7 @@ from app.kw_transcribe import KsiegaTresc
 from app.llm import INVALID_OUTPUT, AnthropicAdapter, LlmResult
 from tests.fake_llm import FakeLlmClient
 from tests.test_llm import anthropic_imports, message, sdk_answering
+from tests.test_pdf_pages import record_upload_reads
 
 SECRET = "test-secret"
 FIXTURE = Path(__file__).parent / "fixtures" / "kw_transcribe_sample.json"
@@ -184,6 +185,15 @@ def test_oversize_413_same_limit_as_kw_extract(monkeypatch):
     fake = use_llm(monkeypatch, ok_result())
     monkeypatch.setattr(main, "kw_max_bytes", lambda: 10)
     assert post(mint(), b"%PDF" + b"x" * 20).status_code == 413
+    assert fake.calls == []
+
+
+def test_an_oversize_upload_is_read_only_up_to_the_limit(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    monkeypatch.setattr(main, "kw_max_bytes", lambda: 10)
+    sizes = record_upload_reads(monkeypatch)
+    assert post(mint(), b"%PDF" + b"x" * 20).status_code == 413
+    assert sizes == [11]
     assert fake.calls == []
 
 

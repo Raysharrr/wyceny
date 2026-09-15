@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import subprocess
 import sys
+import tempfile
 import time
 from io import BytesIO
 from pathlib import Path
@@ -40,6 +41,20 @@ def pdf(*pages: tuple[tuple[int, int], tuple[int, int, int]]) -> bytes:
     out = BytesIO()
     images[0].save(out, format="PDF", save_all=True, append_images=images[1:], resolution=72)
     return out.getvalue()
+
+
+def record_upload_reads(monkeypatch) -> list:
+    """Sizes the endpoint asks for when reading the uploaded file (Starlette spools
+    uploads into a SpooledTemporaryFile). A bare `read()` shows up as -1."""
+    sizes: list = []
+    original = tempfile.SpooledTemporaryFile.read
+
+    def read(self, size=-1):
+        sizes.append(size)
+        return original(self, size)
+
+    monkeypatch.setattr(tempfile.SpooledTemporaryFile, "read", read)
+    return sizes
 
 
 RED = (220, 20, 20)
@@ -103,6 +118,14 @@ def test_too_large_file_is_413(monkeypatch):
     resp = post(pdf(((200, 100), RED)), mint())
     assert resp.status_code == 413
     assert "10 MB" in resp.json()["detail"]
+
+
+def test_an_oversize_upload_is_read_only_up_to_the_limit(monkeypatch):
+    """413 must not cost reading the whole upload into memory first."""
+    monkeypatch.setattr(pdf_pages_core, "MAX_PDF_BYTES", 100)
+    sizes = record_upload_reads(monkeypatch)
+    assert post(pdf(((200, 100), RED)), mint()).status_code == 413
+    assert sizes == [101]
 
 
 def test_too_many_pages_is_413(monkeypatch):

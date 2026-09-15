@@ -694,7 +694,8 @@ def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
     _require_token(token)
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=415, detail="Obsługiwane są wyłącznie pliki PDF.")
-    data = file.file.read()
+    # One byte past the limit is enough to know it is too large — never the whole upload.
+    data = file.file.read(kw_max_bytes() + 1)
     if len(data) > kw_max_bytes():
         raise HTTPException(status_code=413, detail="Plik jest za duży (limit 32 MB).")
 
@@ -1193,7 +1194,8 @@ def pdf_pages(file: UploadFile = File(...), token: str = Form(...)) -> PdfPagesR
     _require_token(token)
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=415, detail=PDF_UNREADABLE_DETAIL)
-    data = file.file.read()
+    # One byte past the limit is enough to know it is too large — never the whole upload.
+    data = file.file.read(pdf_pages_core.MAX_PDF_BYTES + 1)
     if len(data) > pdf_pages_core.MAX_PDF_BYTES:
         raise HTTPException(status_code=413, detail="Plik jest za duży (limit 10 MB).")
     started = time.monotonic()
