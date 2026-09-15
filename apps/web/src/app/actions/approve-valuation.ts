@@ -354,12 +354,16 @@ export async function approveValuation(
     } catch (error) {
       // I-21 (`documentInputFor`): the render would print an amount other than
       // the one this valuation carries. NO live path reaches this today —
-      // `reopenApproved` clears `wr`, and every read goes through
-      // `readFeatureScale`, so a draft arrives here either without an amount or
-      // with the one its snapshot produces. It is caught anyway because the
-      // throw would otherwise surface as "nie udało się wygenerować operatu",
-      // blaming the generator for a data problem, and because the guard exists
-      // for the path that does not exist YET.
+      // `reopenApproved` clears `wr`, and a draft's read through
+      // `readFeatureScale` drops an amount its snapshot no longer produces.
+      // That read has one gap — it returns early on a draft with NO features,
+      // which keeps its amount — and two other locks close it: the schema
+      // refuses to save such a snapshot (`valuation-form-schema.ts`, features
+      // `.min(1)`), and `approvalBlockers` above runs before this render.
+      // It is caught anyway because the throw would otherwise surface as "nie
+      // udało się wygenerować operatu", blaming the generator for a data
+      // problem, and because the guard exists for the path that does not
+      // exist YET.
       if (error instanceof AmountMismatchError) {
         return {
           error:

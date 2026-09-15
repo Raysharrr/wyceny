@@ -654,24 +654,6 @@ export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation 
 }
 
 /**
- * A draft read after the ADR-016 change („Migracja danych”, no SQL). Two
- * things can be wrong with a draft saved under the old rule, and both are read
- * off the DATA — there is no rule marker to consult:
- *
- * - a rating that misses a scale which HAS described levels is not a rating any
- *   more, so it is cleared to an explicit `null` (B-08; jsonb would drop
- *   `undefined`). A feature with no described level at all keeps its rating:
- *   there is nothing to choose between yet, and B-10 already says so;
- * - `wr` that no longer follows from the snapshot is dropped. The step-5
- *   confirm is the only writer of `wr` and writes exactly what the engine
- *   returns, so on every correctly saved draft this is a no-op — it fires
- *   precisely where the amount was computed under the old rule, and the
- *   appraiser confirms the calculation again (F-3 enforced at read time).
- *
- * Approved and signed valuations keep what they were issued with, and a draft
- * with no features has nothing to check. Pure and idempotent.
- */
-/**
  * Does the amount this valuation carries still follow from its own snapshot?
  * The step-5 confirm writes exactly what the engine returns, so this is true
  * for everything saved under the current rules and false for an amount
@@ -690,6 +672,24 @@ export function amountMatchesSnapshot(v: Valuation): boolean {
   return computeKcsOnScale(v.inputs).wr === v.wr;
 }
 
+/**
+ * A draft read after the ADR-016 change („Migracja danych”, no SQL). Two
+ * things can be wrong with a draft saved under the old rule, and both are read
+ * off the DATA — there is no rule marker to consult:
+ *
+ * - a rating that misses a scale which HAS described levels is not a rating any
+ *   more, so it is cleared to an explicit `null` (B-08; jsonb would drop
+ *   `undefined`). A feature with no described level at all keeps its rating:
+ *   there is nothing to choose between yet, and B-10 already says so;
+ * - `wr` that no longer follows from the snapshot is dropped. The step-5
+ *   confirm is the only writer of `wr` and writes exactly what the engine
+ *   returns, so on every correctly saved draft this is a no-op — it fires
+ *   precisely where the amount was computed under the old rule, and the
+ *   appraiser confirms the calculation again (F-3 enforced at read time).
+ *
+ * Approved and signed valuations keep what they were issued with, and a draft
+ * with no features has nothing to check. Pure and idempotent.
+ */
 export function readFeatureScale(v: Valuation): Valuation {
   if (v.status !== "in_progress" || !v.inputs || v.inputs.features.length === 0) return v;
   const features = v.inputs.features.map((f) => {

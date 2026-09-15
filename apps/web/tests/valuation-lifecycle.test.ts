@@ -76,7 +76,7 @@ function rcnInputs(): KcsInput {
       transactionId: `tx-${i}`,
       status: "to_verify" as const,
     })),
-    // A rating on its described scale, saved under the ADR-016 rule (B-08…B-11 clear).
+    // A rating on its described scale, so the ADR-016 blockers (B-08…B-10) clear.
     features: [
       {
         name: "standard",

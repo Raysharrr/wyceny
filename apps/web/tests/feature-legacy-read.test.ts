@@ -5,11 +5,11 @@ import { applyFeaturesUpdate, readFeatureScale } from "../src/domain/valuation";
 import type { Valuation } from "../src/ports/valuation";
 
 /**
- * ADR-016 „Migracja danych” (spec §12a runda 2): a draft saved before the
- * rule has no marker. On read its ratings on a DESCRIBED level stay (they wait
- * for a new confirmation, B-11), ratings on an undescribed level are cleared
- * (B-08) and `wr` is dropped. Approved and signed valuations are left alone.
- * No SQL — `inputs` is jsonb.
+ * ADR-016 „Migracja danych” (spec §12a runda 2), read off the data — there is
+ * no rule marker. On read a rating on a DESCRIBED level stays, one that misses
+ * a described scale is cleared (B-08), and an amount that no longer follows
+ * from the snapshot is dropped, which sends the appraiser back to step 5.
+ * Approved and signed valuations are left alone. No SQL — `inputs` is jsonb.
  */
 
 const TWO_LEVELS = { lepsza: "opis lepszej", przecietna: "opis przeciętnej" };

@@ -80,8 +80,7 @@ const BLOCKER_STEP: Record<string, number> = {
   "provenance.weights": 4,
   "provenance.ratings": 4,
   "provenance.featureDefs": 4,
-  // ADR-016: each feature's rating against its scale (B-08…B-10), and the
-  // ratings to confirm again under the rule (B-11).
+  // ADR-016: each feature's rating against its scale (B-08…B-10).
   features: 4,
   // Step 5 (Kalkulacja).
   wr: 5,
