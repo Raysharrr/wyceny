@@ -444,7 +444,12 @@ describe("effectiveRunFormat — krój i rozmiar (wersja minimalna)", () => {
     const tpl = openDocx(TEMPLATE);
     const tp22 = tpl.paragraphs.filter((p) => p.style === "Tekstpodstawowy22");
 
-    it("styl Tekstpodstawowy22 bez rPr runu daje Times New Roman 12", () => {
+    // ZMIENIONE przez b1-template (TP.0): do 15.09 sam łańcuch stylów dawał tu
+    // Times New Roman 12, a Segoe UI 10 pochodziło wyłącznie z `rPr` runów
+    // operatu źródłowego — więc każdy akapit dokładany przez generator wychodził
+    // inną czcionką (M-6). Etap 10c generatora ustawia krój i rozmiar w czterech
+    // stylach bazowych, więc dziś łańcuch daje to samo co runy.
+    it("styl Tekstpodstawowy22 bez rPr runu daje Segoe UI 10", () => {
       // Binarka nie ma runu bez rPr w tym stylu — bierzemy prawdziwy run i zdejmujemy
       // mu formatowanie bezpośrednie, żeby zmierzyć sam łańcuch stylów.
       const bare = {
@@ -452,10 +457,10 @@ describe("effectiveRunFormat — krój i rozmiar (wersja minimalna)", () => {
         rStyle: null,
         props: { ascii: null, asciiTheme: null, szHalfPt: null },
       };
-      expect(effectiveRunFormat(tpl, bare)).toEqual({ font: "Times New Roman", sizePt: 12 });
+      expect(effectiveRunFormat(tpl, bare)).toEqual({ font: "Segoe UI", sizePt: 10 });
     });
 
-    it("każdy run z tekstem w Tekstpodstawowy22 wychodzi w Segoe UI 10 tylko dzięki rPr", () => {
+    it("każdy run z tekstem w Tekstpodstawowy22 wychodzi w Segoe UI 10 — i niesie to w rPr", () => {
       const runs = tp22.flatMap((p) => p.runs).filter((r) => r.text.trim() !== "");
       expect(runs.length).toBeGreaterThan(0);
       expect(new Set(runs.map((r) => JSON.stringify(effectiveRunFormat(tpl, r))))).toEqual(

@@ -176,12 +176,33 @@ describe("F-12: rendered operat — legacy, no subject fetched", () => {
     expect(text).not.toContain("brak obowiązującego miejscowego planu");
   });
 
-  it("still renders the odpis stub sentence (kw_stub_odpis true for legacy/manual)", () => {
-    // Legacy inputs never examined a KW/deed (kw == null); the {nr_kw} line keeps
-    // its second sentence exactly as before — this is the byte-identical guarantee.
-    expect(text).toContain(
-      "Pełna treść odpisu KW pozostaje w dokumentacji źródłowej rzeczoznawcy.",
-    );
+  /**
+   * ODWRÓCONE przez b1-template (D-21). Do 15.09 operat pisał czytelnikowi, że
+   * pełna treść odpisu „pozostaje w dokumentacji źródłowej rzeczoznawcy" —
+   * powoływał się więc na dokument, którego adresat operatu nie zobaczy, a przy
+   * `kw == null` na dokument, którego nikt nie otwierał. Zdania nie ma już w
+   * szablonie na ŻADNEJ ścieżce; §8.2 drukuje zamiast niego protokół badania.
+   */
+  it("D-21: brak zdania o odpisie pozostającym w dokumentacji (kw == null)", () => {
+    expect(text).not.toContain("Pełna treść odpisu KW");
+    // Sam wiersz {nr_kw} zostaje — to on niesie numer księgi.
+    expect(text).toContain("Oznaczenie księgi wieczystej:");
+  });
+
+  /**
+   * TP.1 (D-03/D-07, I-13 G): §2 mówiło „Dla nieruchomości gruntowej właściwy sąd
+   * rejonowy prowadzi odrębną księgę wieczystą" w KAŻDYM operacie — twierdzenie o
+   * księdze, której nikt nie musiał otwierać, w dodatku bez numeru. Przy `kw == null`
+   * zdania nie ma wcale; wariant pozytywny sprawdza `renderRight` niżej.
+   *
+   * Tak samo §7: pozycje „Badanie ksiąg wieczystych" i „Wypis aktu notarialnego"
+   * były literałami operatu źródłowego, a druga nazywała akt INNEJ nieruchomości.
+   */
+  it("I-13 G: bez badania księgi §2 i §7 milczą o księdze gruntu i o akcie (kw == null)", () => {
+    expect(text).not.toContain("Dla nieruchomości gruntowej");
+    expect(text).not.toContain("Badanie ksiąg wieczystych –");
+    expect(text).not.toContain("Wypis aktu notarialnego");
+    expect(text).not.toContain("umowa ustanowienia odrębnej własności lokalu i sprzedaży");
   });
 
   /**
@@ -250,10 +271,12 @@ describe("F-12: rendered operat — KW examination block (standard variant)", ()
     expect(text).not.toContain("księgę macierzystą gruntu");
   });
 
-  it("keeps the odpis stub sentence (source odpis_kw — the KW excerpt is accurate)", () => {
-    expect(text).toContain(
-      "Pełna treść odpisu KW pozostaje w dokumentacji źródłowej rzeczoznawcy.",
-    );
+  // ODWRÓCONE przez b1-template (D-21): zdanie o odpisie w dokumentacji
+  // rzeczoznawcy nie wraca nawet wtedy, gdy odpis naprawdę istnieje — operat
+  // opisuje badanie, nie miejsce przechowywania dowodu.
+  it("D-21: brak zdania o odpisie pozostającym w dokumentacji (źródło odpis_kw)", () => {
+    expect(text).not.toContain("Pełna treść odpisu KW");
+    expect(text).toContain("Oznaczenie księgi wieczystej:");
   });
 
   it("renders both dział III and dział IV entries from the two-entry fixture (T9 loop-shaping)", () => {
@@ -323,10 +346,12 @@ describe("F-12: rendered operat — akt notarialny with no dział III/IV info (d
     expect(text).not.toContain("Dział IV — wpis:");
   });
 
-  it("hides the odpis stub sentence (source akt — the operat must not imply a KW excerpt it may not hold)", () => {
-    // Fix #5b: the {nr_kw} line's "Pełna treść odpisu KW…" sentence would render
-    // directly above the badanie block's "…na podstawie: akt notarialny…", falsely
-    // implying possession of a KW excerpt. Under a deed source it must disappear.
+  // Fix #5b bronił się tu przed zdaniem o odpisie nad „…na podstawie: akt
+  // notarialny…". Po D-21 zdania nie ma w szablonie w ogóle, więc ten przypadek
+  // jest pokryty tą samą asercją co dwa pozostałe źródła — trzy razy to samo
+  // zdanie po trzech ścieżkach, żeby usunięcie go z szablonu miało nośnik na
+  // każdej z nich.
+  it("D-21: brak zdania o odpisie pozostającym w dokumentacji (źródło akt)", () => {
     expect(text).not.toContain("Pełna treść odpisu KW");
     // The {nr_kw} line itself (its stable prefix) still renders.
     expect(text).toContain("Oznaczenie księgi wieczystej:");
@@ -547,13 +572,10 @@ describe("F-12 / T-12: operat per property right", () => {
       "8. Opis stanu nieruchomości",
       "12. Określenie wartości rynkowej prawa własności nieruchomości lokalowej, wg stanu",
       "Ustawa z dnia 24 czerwca 1994r. o własności lokali (Dz. U. 2026r., poz. 39),",
-      "Badanie ksiąg wieczystych – nieruchomości lokalowej o funkcji mieszkalnej oraz nieruchomości gruntowej,",
-      "Wypis aktu notarialnego – umowa ustanowienia odrębnej własności lokalu i sprzedaży,",
       "GEOPOZ w Poznaniu",
       "Własność",
       "p. Anna Przykładowa",
       "wraz z udziałem w nieruchomości wspólnej",
-      "Dla nieruchomości gruntowej właściwy sąd rejonowy prowadzi odrębną księgę wieczystą.",
       "Oznaczenie księgi wieczystej: KW-TEST-9.",
       "Udział w nieruchomości wspólnej:",
     ]) {
@@ -562,6 +584,19 @@ describe("F-12 / T-12: operat per property right", () => {
     expect(own.text).not.toContain("spółdzielcz");
     expect(own.text).not.toContain("nie założono księgi wieczystej");
     expect(own.text).not.toContain("przedmiotu wyceny, wg stanu");
+  });
+
+  /**
+   * TP.1: trzy zdania, które własność drukowała ZAWSZE, bo były literałami
+   * operatu źródłowego. Ta fikstura nie ma zbadanej księgi (`kw == null`), więc
+   * ich brak jest tu sprawdzianem faktu, a nie rodzaju prawa — wariant pozytywny
+   * (z danymi z fikstury) stoi w `f12-docx-invariants.test.ts` (I-13 G).
+   */
+  it("własność bez zbadanej księgi: §2 i §7 nie twierdzą nic o księdze gruntu ani o akcie (D-03, D-12, D-13)", () => {
+    expect(own.text).not.toContain("Dla nieruchomości gruntowej");
+    expect(own.text).not.toContain("Badanie ksiąg wieczystych –");
+    expect(own.text).not.toContain("Wypis aktu notarialnego");
+    expect(own.text).not.toContain("umowa ustanowienia odrębnej własności lokalu i sprzedaży");
   });
 
   it("własność + hasBasement: true (stale checkbox) → not a single 'piwnic'", () => {

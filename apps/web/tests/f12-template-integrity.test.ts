@@ -132,6 +132,11 @@ const FORBIDDEN_LITERALS = [
   "W toku analizy odrzucono", // §11 rejected-transactions paragraph
   "odbywa się komunikacją miejską", // §8.1 — the source flat's own transit fact
   "mieści się w zbiorze", // §13 justification paragraph
+  // Paczka 1 (TP.1) — trzy zdania, które szablon wypowiadał o KAŻDEJ wycenie,
+  // prawdziwe tylko o operacie źródłowym:
+  "Pełna treść odpisu KW", // D-21 — dowód, którego czytelnik operatu nie zobaczy
+  "właściwy sąd rejonowy", // D-03/D-07 — §2 twierdziło o księdze gruntu bez numeru
+  "umowa ustanowienia odrębnej własności lokalu i sprzedaży", // D-12 — akt INNEJ nieruchomości
   // Slice 3 (Task 10) forbade {miasto}/{ulica} here, because back then they were filled
   // from the SUBJECT's address (the bug Łukasz reported: every row said "Heweliusza 3").
   // Slice 3d brings both back — fed from the transaction's own record in the GEOPOZ
@@ -212,11 +217,21 @@ const REQUIRED_PLACEHOLDERS = [
   "{/dzial4_brak}",
   "{#dzial4_wpisy}",
   "{/dzial4_wpisy}",
-  // Task 12: the {nr_kw} stub paragraph's second sentence ("Pełna treść odpisu
-  // KW…") is wrapped in an inline section, hidden when the examination source is
-  // a deed (akt) so the operat never implies a KW excerpt it may not hold.
-  "{#kw_stub_odpis}",
-  "{/kw_stub_odpis}",
+  // Paczka 1 (TP.1): §2's land-register sentence and §7's two source bullets
+  // stopped being literals of the source operat. Each prints only under its own
+  // fact — an examined ground book (with its court, when the book carries one)
+  // and a deed read from dział II. `{#kw_stub_odpis}` left with the sentence it
+  // gated ("Pełna treść odpisu KW…", D-21), and so did the model flag.
+  "{#ma_ksiege_gruntu}",
+  "{/ma_ksiege_gruntu}",
+  "{#sad_ksiegi_gruntu}",
+  "{^sad_ksiegi_gruntu}",
+  "{/sad_ksiegi_gruntu}",
+  "{nr_ksiegi_gruntu}",
+  "{sad_ksiegi_gruntu}",
+  "{#ma_akt}",
+  "{/ma_akt}",
+  "{akt_opis}",
   // T-12 (S4): property-right switches. The sentences themselves live in
   // domain/property-right.ts — the template carries only these tags.
   "{przedmiot_m}",

@@ -77,11 +77,10 @@ const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
  * `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych
  * na podstawie: …"). `ekw_reczne` names what the appraiser actually did — read
  * the book in the eKW browser — because the operat may never describe a
- * document nobody held (ADR-018 reg. 4). Note `kw_stub_odpis` below already
- * excludes this source from the "pełna treść odpisu pozostaje w dokumentacji"
- * sentence, which is the whole point. The §7 wording of the examination
- * protocol belongs to `b1-template`; this phrase is the honest minimum until
- * it lands.
+ * document nobody held (ADR-018 reg. 4). Since b1-template §8.2 prints the
+ * examination protocol itself, so this phrase names only HOW the book was
+ * read — the sentence about an odpis staying in the appraiser's files is gone
+ * from the template (D-21).
  */
 const KW_ZRODLO_TEXT = {
   akt: "akt notarialny",
@@ -481,12 +480,6 @@ export type DocumentModel = {
   kw_sad: string;
   kw_wydzial: string;
   kw_data_dok: string;
-  // STUB_KW paragraph (the {nr_kw} line): its second sentence ("Pełna treść
-  // odpisu KW pozostaje…") renders ONLY when the title info could come from a KW
-  // excerpt — legacy/manual (kw == null) and the "odpis_kw" source. Under an
-  // "akt" (deed) source it is hidden, so the operat never implies possession of a
-  // KW excerpt it may not hold (final-review #5b).
-  kw_stub_odpis: boolean;
   /**
    * §8.2's examination protocol, one dated sentence per book (D-21) — what the
    * 14.09 operat said instead of "Pełna treść odpisu KW pozostaje w
@@ -1039,9 +1032,6 @@ export function buildDocumentModel(
     kw_sad: kw?.sad ?? DASH,
     kw_wydzial: kw?.wydzial ?? DASH,
     kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : DASH,
-    // Legacy/manual (kw == null) and odpis_kw source keep the sentence (accurate);
-    // an akt (deed) source hides it — no false claim of holding a KW excerpt.
-    kw_stub_odpis: kw == null || kw.source === "odpis_kw",
     protokol_ksiegi_lokalu: protokolLokalu,
     ma_protokol_ksiegi_lokalu: protokolLokalu !== "",
     protokol_ksiegi_gruntu: protokolGruntu,
