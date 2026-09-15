@@ -338,6 +338,10 @@ export async function saveFeaturesAction(
       rating: f.rating,
       key: f.key,
       definitions: normalizeDefinitions(f.definitions),
+      // FH.1: the thresholds travel with the definitions they generated — a
+      // feature that lost them (a hand-retyped text) persists that loss, so
+      // the suggestion stays gone after a reload.
+      measure: f.measure ?? null,
     }));
 
     try {

@@ -237,6 +237,7 @@ describe("step1DefaultsFromInputs", () => {
         kondygnacjeNadziemne: 4,
         kondygnacjePodziemne: 1,
         rokBudowy: 1965,
+        pietro: 6,
       },
       subjectMeta: {
         x: 1,
@@ -289,6 +290,9 @@ describe("step1DefaultsFromInputs", () => {
     expect(defaults.subject?.kondygnacjeNadziemne).toBe("4");
     expect(defaults.subject?.kondygnacjePodziemne).toBe("1");
     expect(defaults.subject?.rokBudowy).toBe("1965");
+    // FH.2: piętro przedmiotu jest polem ręcznym kroku 1, jak rok budowy —
+    // bez niego krok 4 nie ma czego porównać z progami skali (ADR-016 reg. 5).
+    expect(defaults.subject?.pietro).toBe("6");
     // A pre-ADR-018 snapshot comes back with the newer fields materialised as
     // nulls — `coerceLegacyKw`'s whole job. "Nobody recorded a date" and "the
     // field did not exist yet" have to look the same to the form. `tresc`
@@ -405,5 +409,43 @@ describe("SubjectForm — summary tile: rodzaj prawa (S3)", () => {
 
     await user.click(screen.getByRole("radio", { name: "Własność lokalu" }));
     expect(screen.queryByText(/Co się zmieni dalej/)).toBeNull();
+  });
+});
+
+/**
+ * FH.2 — pole „Piętro” w karcie „Dane przedmiotu” (ADR-016 reg. 5). Bez niego
+ * krok 4 nie ma czego porównać z progami skali piętra.
+ */
+describe("SubjectForm — piętro przedmiotu (FH.2)", () => {
+  beforeEach(() => {
+    vi.mocked(createDraft).mockClear();
+  });
+
+  it("zapisuje wpisane piętro w migawce przedmiotu", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequired(user);
+    await user.type(screen.getByLabelText("Piętro"), "6");
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const payload = vi.mocked(createDraft).mock.calls.at(-1)?.[0] as {
+      subject?: { pietro?: number | null };
+    };
+    expect(payload.subject?.pietro).toBe(6);
+  });
+
+  it("parter (0) zapisuje się jako 0, nie jako brak", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequired(user);
+    await user.type(screen.getByLabelText("Piętro"), "0");
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const payload = vi.mocked(createDraft).mock.calls.at(-1)?.[0] as {
+      subject?: { pietro?: number | null };
+    };
+    expect(payload.subject?.pietro).toBe(0);
   });
 });

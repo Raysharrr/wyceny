@@ -301,7 +301,7 @@ describe("StepFeatures — level cards and ratings (ADR-016, P5)", () => {
             name: "Powierzchnia użytkowa",
             weight: 0.5,
             rating: null,
-            definitions: { lepsza: "poniżej 47 m²", gorsza: "47 m² i więcej" },
+            definitions: { lepsza: "do 46 m²", gorsza: "od 47 m²" },
           },
         ]}
         comparables={PRICED_COMPARABLES}
@@ -340,7 +340,7 @@ describe("StepFeatures — rating-scale definitions (Slice 7, migrated Task 10)"
     const lepsza = screen.getByTestId(
       "feature-def-powierzchnia-uzytkowa-lepsza",
     ) as HTMLInputElement;
-    expect(lepsza.value).toContain("60");
+    expect(lepsza.value).toBe("do 59 m²");
   });
 
   it("a different comparableAreas median seeds a different powierzchnia definition", async () => {
@@ -356,7 +356,7 @@ describe("StepFeatures — rating-scale definitions (Slice 7, migrated Task 10)"
     const lepsza = screen.getByTestId(
       "feature-def-powierzchnia-uzytkowa-lepsza",
     ) as HTMLInputElement;
-    expect(lepsza.value).toContain("80");
+    expect(lepsza.value).toBe("do 79 m²");
   });
 
   it("an already-filled powierzchnia definition is not overwritten by the median", async () => {
@@ -543,5 +543,250 @@ describe("StepFeatures — live ΣUi/WR sidebar (Task 9)", () => {
     expect(screen.getByTestId("sidebar-sum-ui").textContent).toBe("—");
     expect(screen.getByTestId("sidebar-wr-preview").textContent).toBe("—");
     expect(screen.getByTestId("footnav-kcs-mid").textContent).toBe("—");
+  });
+});
+
+/**
+ * FH.1/FH.2 — progi liczbowe cech mierzalnych i podpowiedź z danych kroku 1
+ * (ADR-016 reg. 5, D-46, D-48, makieta `p5-propozycja-krok4`).
+ */
+describe("StepFeatures — progi liczbowe i podpowiedź (FH.1, FH.2)", () => {
+  const bound = (key: string, level: string, edge: "od" | "do") =>
+    screen.getByTestId(`feature-bound-${key}-${level}-${edge}`) as HTMLInputElement;
+
+  async function openScale(user: ReturnType<typeof userEvent.setup>, key: string) {
+    await user.click(within(row(key)).getByRole("button", { name: "Edytuj skalę" }));
+  }
+
+  it("edytor progów pod „Edytuj skalę” przepisuje tekst definicji na karcie poziomu", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "gorszaparter",
+      "przeciętnapiętra pośrednie",
+      "lepsza4 piętro i powyżej",
+    ]);
+
+    await openScale(user, "polozenie-na-pietrze");
+    expect(bound("polozenie-na-pietrze", "lepsza", "od").value).toBe("4");
+
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "do"));
+    await user.type(bound("polozenie-na-pietrze", "przecietna", "do"), "5");
+    await user.clear(bound("polozenie-na-pietrze", "lepsza", "od"));
+    await user.type(bound("polozenie-na-pietrze", "lepsza", "od"), "6");
+
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "gorszaparter",
+      "przeciętnapiętra pośrednie",
+      "lepsza6 piętro i powyżej",
+    ]);
+    expect(
+      (screen.getByTestId("feature-def-polozenie-na-pietrze-lepsza") as HTMLInputElement).value,
+    ).toBe("6 piętro i powyżej");
+  });
+
+  it("wyczyszczenie obu progów kasuje poziom ze skali, a reszta zostaje policzalna", async () => {
+    // Zejście z trzech poziomów na dwa to normalna edycja (Kościelna i
+    // Meissnera mają przy powierzchni dwa) — nie może kończyć się martwym
+    // przyciskiem zapisu ani komunikatem bez powodu.
+    const user = userEvent.setup();
+    saveFeaturesAction.mockClear();
+    saveFeaturesAction.mockResolvedValue({ ok: true });
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={placeholderComparables([40, 47, 60])}
+        area={PLACEHOLDER_AREA}
+      />,
+    );
+    await openScale(user, "polozenie-na-pietrze");
+    await user.clear(bound("polozenie-na-pietrze", "gorsza", "do"));
+    await user.type(bound("polozenie-na-pietrze", "gorsza", "do"), "3");
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "od"));
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "do"));
+
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "gorszaparter, 1 piętro, 2 piętro, 3 piętro",
+      "lepsza4 piętro i powyżej",
+    ]);
+    expect(within(row("polozenie-na-pietrze")).queryByRole("alert")).toBeNull();
+
+    await rateEvery(user);
+    await user.click(screen.getByRole("button", { name: "Zatwierdź cechy i dalej" }));
+    await waitFor(() => expect(saveFeaturesAction).toHaveBeenCalled());
+    const zapisana = (
+      saveFeaturesAction.mock.calls[0][1] as { features: Array<Record<string, unknown>> }
+    ).features.find((f) => f.key === "polozenie-na-pietrze");
+    expect(zapisana).toMatchObject({
+      definitions: {
+        gorsza: "parter, 1 piętro, 2 piętro, 3 piętro",
+        przecietna: "",
+        lepsza: "4 piętro i powyżej",
+      },
+      measure: { kind: "floor", bounds: { gorsza: { od: 0, do: 3 }, lepsza: { od: 4 } } },
+    });
+  });
+
+  it("luka między progami mówi o tym w wierszu, przed zapisem (D-46)", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
+    await openScale(user, "polozenie-na-pietrze");
+    await user.clear(bound("polozenie-na-pietrze", "lepsza", "od"));
+    await user.type(bound("polozenie-na-pietrze", "lepsza", "od"), "6");
+
+    expect(within(row("polozenie-na-pietrze")).getByRole("alert").textContent).toBe(
+      "Między przedziałami poziomów „przeciętna” i „lepsza” jest luka.",
+    );
+  });
+
+  it("ręczna edycja tekstu definicji usuwa progi — edytor progów znika (FH.1)", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={[]}
+        area={PLACEHOLDER_AREA}
+        pietro={6}
+      />,
+    );
+    await openScale(user, "polozenie-na-pietrze");
+    expect(screen.queryByTestId("feature-bound-polozenie-na-pietrze-lepsza-od")).toBeTruthy();
+    expect(screen.queryByTestId("threshold-hint-polozenie-na-pietrze")).toBeTruthy();
+
+    await user.type(screen.getByTestId("feature-def-polozenie-na-pietrze-gorsza"), " i suterena");
+
+    expect(screen.queryByTestId("feature-bound-polozenie-na-pietrze-lepsza-od")).toBeNull();
+    expect(screen.queryByTestId("threshold-hint-polozenie-na-pietrze")).toBeNull();
+  });
+
+  it("podpowiedź z piętra przedmiotu i progu, przyjmowana przyciskiem (ADR-016 reg. 5)", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={[]}
+        area={PLACEHOLDER_AREA}
+        pietro={6}
+      />,
+    );
+    const hint = screen.getByTestId("threshold-hint-polozenie-na-pietrze");
+    expect(hint.textContent).toContain(
+      "Podpowiedź: piętro przedmiotu 6 (krok 1) · próg „lepsza” od 4 → lepsza",
+    );
+    // Nic nie zapisuje się samo: ocena czeka na kliknięcie.
+    expect(
+      cards("polozenie-na-pietrze").some((c) => c.getAttribute("aria-checked") === "true"),
+    ).toBe(false);
+
+    await user.click(within(hint).getByRole("button", { name: "Przyjmij" }));
+
+    expect(cards("polozenie-na-pietrze").map((c) => c.getAttribute("aria-checked"))).toEqual([
+      "false",
+      "false",
+      "true",
+    ]);
+    expect(screen.queryByTestId("threshold-hint-polozenie-na-pietrze")).toBeNull();
+  });
+
+  it("podpowiedź powierzchni bierze próg z mediany próby i powierzchnię z kroku 1", async () => {
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={placeholderComparables([40, 47, 60])}
+        area={44.23}
+      />,
+    );
+    expect(screen.getByTestId("threshold-hint-powierzchnia-uzytkowa").textContent).toContain(
+      "Podpowiedź: powierzchnia przedmiotu 44,23 m² ≈ 44 m² (krok 1) · próg „lepsza” do 46 m² → lepsza",
+    );
+  });
+
+  it("podpowiedź liczy według progów rzeczoznawcy, nie według presetu (skala z operatu 14.09)", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={[]}
+        area={PLACEHOLDER_AREA}
+        pietro={5}
+      />,
+    );
+    // Preset (parter / 1–3 / od 4) stawia 5 piętro w „lepsza”.
+    expect(screen.getByTestId("threshold-hint-polozenie-na-pietrze").textContent).toContain(
+      "próg „lepsza” od 4 → lepsza",
+    );
+
+    // Skala Anety z Bohaterów II: budynek ma 11 kondygnacji nadziemnych, więc
+    // „lepsza” zaczyna się dopiero na szóstym piętrze.
+    await openScale(user, "polozenie-na-pietrze");
+    for (const [level, edge, value] of [
+      ["gorsza", "do", "1"],
+      ["przecietna", "od", "2"],
+      ["przecietna", "do", "5"],
+      ["lepsza", "od", "6"],
+    ] as const) {
+      await user.clear(bound("polozenie-na-pietrze", level, edge));
+      await user.type(bound("polozenie-na-pietrze", level, edge), value);
+    }
+
+    // To samo 5 piętro, inna skala — inna podpowiedź.
+    expect(screen.getByTestId("threshold-hint-polozenie-na-pietrze").textContent).toContain(
+      "Podpowiedź: piętro przedmiotu 5 (krok 1) · próg „przeciętna” od 2 do 5 → przeciętna",
+    );
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "gorszaparter, 1 piętro",
+      "przeciętnapiętra pośrednie",
+      "lepsza6 piętro i powyżej",
+    ]);
+  });
+
+  it("podpowiedź zostaje, gdy ocena różni się od podpowiedzianej, i znika, gdy jest zgodna", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={[]}
+        area={PLACEHOLDER_AREA}
+        pietro={6}
+      />,
+    );
+    await user.click(cards("polozenie-na-pietrze")[0]); // gorsza — wbrew podpowiedzi
+    expect(screen.queryByTestId("threshold-hint-polozenie-na-pietrze")).toBeTruthy();
+
+    await user.click(cards("polozenie-na-pietrze")[2]); // lepsza — zgodnie z podpowiedzią
+    expect(screen.queryByTestId("threshold-hint-polozenie-na-pietrze")).toBeNull();
+  });
+
+  it("bez piętra przedmiotu i bez progów nie ma podpowiedzi", async () => {
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
+    // Brak `pietro` (krok 1 go nie wypełnił) — cecha mierzalna, ale nie ma co mierzyć.
+    expect(screen.queryByTestId("threshold-hint-polozenie-na-pietrze")).toBeNull();
+    // Standard wykończenia nie jest cechą mierzalną — nigdy nie dostaje podpowiedzi.
+    expect(screen.queryByTestId("threshold-hint-standard-wykonczenia")).toBeNull();
+  });
+
+  it("piętro poniżej parteru nie trafia w żaden przedział — brak podpowiedzi", async () => {
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={[]}
+        area={PLACEHOLDER_AREA}
+        pietro={-1}
+      />,
+    );
+    expect(screen.queryByTestId("threshold-hint-polozenie-na-pietrze")).toBeNull();
   });
 });

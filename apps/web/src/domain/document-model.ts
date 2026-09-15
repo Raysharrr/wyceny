@@ -1,5 +1,11 @@
-import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
+import type { Comparable, Feature, KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { LEVEL_LABEL } from "./feature-presets";
+import {
+  describedLevels,
+  levelForValue,
+  ratingPosition,
+  type RatingPosition,
+} from "./feature-rules";
 import { kwRequirements } from "./kw-requirements";
 import type { KwAkt, KwDzialSnapshot } from "./kw-snapshot";
 import type { KsiegaTresc } from "./kw-tresc";
@@ -8,7 +14,7 @@ import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
 import { DASH, operatStreet } from "./street-name";
-import { candidateKey } from "./sample-selection";
+import { candidateKey, type Candidate } from "./sample-selection";
 
 /**
  * Operat document model + professional-secrecy masking (F-12).
@@ -36,11 +42,30 @@ export const PURPOSE_LABEL: Record<OperatPurpose, string> = {
   informacyjny: "Informacyjny",
 };
 
-const RATING_TEXT: Record<FeatureRating, string> = {
-  lepsza: "wartość najwyższa cechy",
-  przecietna: "wartość pośrednia cechy",
-  gorsza: "wartość najniższa cechy",
+/**
+ * §12.2 wording for a rating's POSITION in the described scale (ADR-016 reg. 6,
+ * D-54) — not for the level's own key. With lepsza/przeciętna described and
+ * „przeciętna” chosen, the operat says „wartość najniższa cechy”, because that
+ * is what the appraiser's own two-level scale makes it. The 14.09 operat said
+ * „pośrednia” and the appraiser corrected it by hand.
+ */
+const POSITION_TEXT: Record<RatingPosition, string> = {
+  min: "wartość najniższa cechy",
+  mid: "wartość pośrednia cechy",
+  max: "wartość najwyższa cechy",
 };
+
+/**
+ * §12.2 wording for a feature whose rating CANNOT come from the register: it
+ * has no numeric thresholds (standard, pomieszczenia przynależne…), or the
+ * transaction carries no value to place in them. The 14.09 operat printed
+ * „wartość najwyższa cechy” for every such feature of the Cmax flat — a claim
+ * about data nobody had (D-52).
+ *
+ * Wording awaits the user's acceptance (HANDOFF §FH.3) — one constant, so
+ * changing it costs a line.
+ */
+export const OCENA_SPOZA_REJESTRU = "brak danych w rejestrze do oceny tej cechy";
 
 // Re-exported so the prose facts (`domain/prose.ts`) keep naming the levels
 // from here; defined beside the levels themselves (the ADR-016 blockers use it too).
@@ -403,9 +428,16 @@ export type FeatureRow = {
   nazwa: string;
   waga_pct: string;
   ui_min: string;
+  /** "—" when the feature's described scale has two levels — it has no middle (ADR-016 reg. 6). */
   ui_sr: string;
   ui_max: string;
   ui_przedmiot: string;
+};
+
+/** §12.2 — one comparable flat described feature by feature from its own data (D-52). */
+export type ComparableDescription = {
+  lokalizacja: string;
+  cechy: Array<{ nazwa: string; opis: string }>;
 };
 
 /** Section 9 MPZP block (§`{#mpzp}`) — only present when a plan resolved. */
@@ -594,10 +626,40 @@ export type DocumentModel = {
   vmin: string;
   vmax: string;
   suma_ui: string;
+  /**
+   * Σ of Tabela 3's Ui śr column — always the plain sum, so with weights adding
+   * to 100 % it is "1,000".
+   *
+   * Ui min/śr/max come from the feature's WEIGHT and the Cmin–Cmax band, not
+   * from how many levels its scale describes, so a two-level feature has a Ui
+   * śr like any other — the appraiser simply can never land on it. The
+   * reference operat (Kościelna) settles it: powierzchnia there has a
+   * two-level scale, its Ui śr cell reads 0,100 and the SUMA row reads 1,000.
+   */
+  suma_ui_sr: string;
   cena_1m2: string;
   kredyt: boolean;
   transakcje: TransactionRow[];
   cechy: FeatureRow[];
+  /**
+   * §12.2 — the flats at the sample's lowest / highest unit price, one entry
+   * each (a price tie describes every flat at it, D-53). `lokalizacja` is the
+   * street without a house number, empty when the register has none; `cechy`
+   * carries one line per active feature, derived from that flat's own data
+   * (D-52). `b1-template` prints these; the flat `opis_cmin`/`opis_cmax`
+   * below are the first flat's lines, the shape the template renders today.
+   *
+   * The piętro behind these lines is normalised per source
+   * (`pietroOfCandidate`): RCN's kondygnacja loses one, the cooperative
+   * register's hand-typed "Piętro" does not. Step 3's table still LABELS the
+   * raw RCN kondygnacja "Piętro", so it shows one more than these sentences do
+   * — the label fix is a follow-up of PR #58, not a defect of this value.
+   */
+  lokale_cmin: ComparableDescription[];
+  lokale_cmax: ComparableDescription[];
+  /** §12.2 street of the first flat at that price; "" when unknown — the template owns the sentence. */
+  lokalizacja_cmin: string;
+  lokalizacja_cmax: string;
   opis_cmin: string[];
   opis_cmax: string[];
   opis_przedmiot: string[];
@@ -723,6 +785,105 @@ export type OperatAuthor = {
 };
 
 /**
+ * The sample candidate a comparable row came from, and whether the join is
+ * EXACT (R-7). Extracted from Table 1's own join so §12.2 reads the Cmin/Cmax
+ * flats' floor, area and street from the same place the table does — one join,
+ * one set of rules, no second chance to disagree with it.
+ *
+ * Primary key: transactionId + lokalId (`candidateKey`) — one notarial act can
+ * carry SEVERAL lokale (runtime bug, team-lead 2026-08-21, Heweliusza 3/43: a
+ * transactionId-only join printed the SAME obręb/distance for every lokal of
+ * one act). A comparable saved before `lokalId` existed falls back to matching
+ * by transactionId alone, first candidate found — the only information those
+ * legacy rows carry — but comes back `matched: false`, so the document prints
+ * a dash rather than a guess about which lokal of the act it was.
+ *
+ * A coop-register row (S5, defekt D-3) has `lokalId: ""` (one lokal per row)
+ * and `transactionId` = `coopTxId`, so the transactionId-only join IS exact for
+ * it — that is what `matched` recognises.
+ */
+export function candidateOf(
+  comparable: Pick<Comparable, "transactionId" | "lokalId" | "coopTxId">,
+  selection: KcsInput["sampleSelection"],
+): { candidate: Candidate; matched: boolean } | null {
+  // Manual inclusions too (final wave, I1): a row the appraiser added that
+  // later fell out of BOTH `proposed` and `alternates` after a radius change
+  // exists only in `manualInclusions[].candidate` — omitting it made the join
+  // miss it and print dashes for a row that IS in the sample.
+  const candidates = selection
+    ? [
+        ...selection.proposed,
+        ...selection.alternates,
+        ...(selection.manualInclusions ?? []).map((i) => i.candidate),
+      ]
+    : [];
+  const { transactionId, lokalId, coopTxId } = comparable;
+  if (!transactionId) return null;
+  const candidate = lokalId
+    ? candidates.find((c) => candidateKey(c) === candidateKey({ transactionId, lokalId }))
+    : candidates.find((c) => c.transactionId === transactionId);
+  if (!candidate) return null;
+  const matched = Boolean(lokalId) || (Boolean(coopTxId) && candidate.transactionId === coopTxId);
+  return { candidate, matched };
+}
+
+/**
+ * The transaction's PIĘTRO (parter = 0) — the unit the scale's bands and the
+ * subject's own `pietro` are in, which is not the unit either register stores.
+ *
+ * RCN's `floor` is `lok_nr_kond`, a kondygnacja numbered from 1, so it loses
+ * one. Measured, not assumed: across the 8 snapshot fixtures (80 000 rows)
+ * `handlowoUslugowa` sits at 1 (839 of 976) and `garaz` at −1 (10 117 of
+ * 11 779) — retail on the ground floor and garages one level below only line up
+ * if parter is 1. Underground rows then come out negative and no band covers
+ * them, which is the honest answer for a garage.
+ *
+ * The cooperative register's `floor` is hand-typed by the office under a
+ * "Piętro" label, so it is taken as a piętro and NOT converted. That is a
+ * reading of the label, not a measurement: every floor-bearing row in the
+ * database belongs to our own E2E fixtures, so there is nothing to measure
+ * (PR #58). An absent `source` is not treated as RCN — rows saved before the
+ * field existed must not be silently shifted.
+ */
+function pietroOfCandidate(
+  source: Comparable["source"],
+  candidate: Candidate | null,
+): number | null {
+  const floor = candidate?.floor;
+  if (floor == null) return null;
+  return source === "rcn" ? floor - 1 : floor;
+}
+
+/**
+ * §12.2 wording of ONE feature for ONE comparable flat (D-52). A measurable
+ * feature is placed by the SAME thresholds the subject is placed by, reading
+ * the transaction's own piętro or powierzchnia; everything else says outright
+ * that the register does not carry the answer.
+ *
+ * The piętro comes from `pietroOfCandidate`, which converts the RCN
+ * kondygnacja; the area comes from the row itself, falling back to the
+ * candidate.
+ */
+function comparableFeatureText(
+  feature: Feature,
+  comparable: Pick<Comparable, "area" | "source">,
+  candidate: Candidate | null,
+): string {
+  const measure = feature.measure;
+  if (!measure) return OCENA_SPOZA_REJESTRU;
+  const value =
+    measure.kind === "floor"
+      ? pietroOfCandidate(comparable.source, candidate)
+      : (comparable.area ?? candidate?.area ?? null);
+  const level = levelForValue(measure, value);
+  if (!level) return OCENA_SPOZA_REJESTRU;
+  // The wording follows the level's POSITION in the described scale, exactly
+  // as the subject's own does (ADR-016 reg. 6).
+  const position = ratingPosition({ rating: level, definitions: feature.definitions });
+  return position ? POSITION_TEXT[position] : OCENA_SPOZA_REJESTRU;
+}
+
+/**
  * `opts.preview` builds the STEP-7 PREVIEW rather than the document that gets
  * issued: every prose section the appraiser has not written yet is marked
  * (`previewMarker`) instead of being passed over in silence. That, plus the
@@ -824,8 +985,15 @@ export function buildDocumentModel(
 
   // Weight-0 features stay out of the legal document entirely (workshop
   // decision: "pancerz obronny" — a zero-weight row invites challenge).
-  const activeFeatures = inputs.features.filter((f) => f.weight > 0);
-  const activeUi = kcs.ui.filter((f) => f.weight > 0);
+  // Ui rows zipped with the feature they were computed from BEFORE filtering,
+  // so the two lists cannot drift apart. Tabela 3's dash (ADR-016 reg. 6) is a
+  // property of the feature's SCALE, and a row carrying another feature's dash
+  // would be invisible — every row still prints something, just the wrong
+  // thing. (`computeKcs` returns one `ui` per input feature, in order.)
+  const active = inputs.features
+    .map((feature, i) => ({ feature, ui: kcs.ui[i] }))
+    .filter(({ feature }) => feature.weight > 0);
+  const activeFeatures = active.map((a) => a.feature);
   const skalaOcen = activeFeatures
     .map((f) => ({
       cecha: f.name,
@@ -835,6 +1003,34 @@ export function buildDocumentModel(
       })),
     }))
     .filter((row) => row.poziomy.length > 0);
+
+  /**
+   * §12.2 — the flats at the sample's lowest and highest unit price, each
+   * described from ITS OWN data (D-51…D-53). A tie describes every flat at
+   * that price; the 14.09 operat described one and dropped the other.
+   */
+  const lokaleAtPrice = (price: number) =>
+    inputs.comparables
+      .filter((c) => c.pricePerM2 === price)
+      .map((row) => {
+        const join = candidateOf(row, inputs.sampleSelection);
+        const candidate = join?.matched ? join.candidate : null;
+        return {
+          // Street only, never the house number — professional secrecy (F-12,
+          // D-51). Empty when the register has none: the template owns the
+          // sentence, and an absent street must not become a dash mid-sentence.
+          lokalizacja: candidate?.street ? operatStreet(candidate.street) : "",
+          cechy: activeFeatures.map((f) => ({
+            nazwa: f.name,
+            opis: comparableFeatureText(f, row, candidate),
+          })),
+        };
+      });
+  const prices = inputs.comparables.map((c) => c.pricePerM2);
+  const lokaleCmin = lokaleAtPrice(Math.min(...prices));
+  const lokaleCmax = lokaleAtPrice(Math.max(...prices));
+  const opisOf = (lokale: typeof lokaleCmin) =>
+    (lokale[0]?.cechy ?? []).map((c) => `${c.nazwa} – ${c.opis},`);
 
   return {
     adres: input.address,
@@ -953,56 +1149,10 @@ export function buildDocumentModel(
     cena_1m2: formatPln(kcs.unitValue),
     kredyt: input.purpose === "zabezpieczenie_kredytu",
     transakcje: (() => {
-      const sel = inputs.sampleSelection;
-      // Manual inclusions too (final wave, I1): a row the appraiser added
-      // that later fell out of BOTH `proposed` and `alternates` after a
-      // radius change exists only in `manualInclusions[].candidate` —
-      // omitting it here made the join below miss it and print dashes for
-      // a row that IS in the sample.
-      const candidates = sel
-        ? [
-            ...sel.proposed,
-            ...sel.alternates,
-            ...(sel.manualInclusions ?? []).map((i) => i.candidate),
-          ]
-        : [];
-      // Primary key: transactionId+lokalId (candidateKey) — one notarial
-      // act can carry SEVERAL lokale (runtime bug, team-lead 2026-08-21,
-      // Heweliusza 3/43: a transactionId-only join printed the SAME
-      // obręb/distance for every lokal of one act). A comparable saved
-      // before `lokalId` existed on the row falls back to matching by
-      // transactionId alone, first candidate found — the only information
-      // those legacy rows carry.
-      const byCandidateKey = new Map(candidates.map((c) => [candidateKey(c), c] as const));
-      const byFirstTransactionId = new Map<string, (typeof candidates)[number]>();
-      for (const c of candidates) {
-        if (!byFirstTransactionId.has(c.transactionId))
-          byFirstTransactionId.set(c.transactionId, c);
-      }
       return inputs.comparables.map((c) => {
-        const candidate =
-          c.transactionId && c.lokalId
-            ? byCandidateKey.get(
-                candidateKey({ transactionId: c.transactionId, lokalId: c.lokalId }),
-              )
-            : c.transactionId
-              ? byFirstTransactionId.get(c.transactionId)
-              : undefined;
-        // A row matched only by `transactionId` (no `lokalId`) comes from
-        // `byFirstTransactionId` — SOME lokal of that act, not necessarily this one. For
-        // obręb that was nearly invisible; a street name in an operat is a factual claim
-        // about a comparable, so an unmatched row prints a dash rather than a guess
-        // (Heweliusza 3/43 is exactly this shape: 16 lokale under one act).
-        const matchedByLokal = Boolean(c.transactionId && c.lokalId && candidate);
-        // S5 (Task 4d, defekt D-3): a coop-register row has `lokalId: ""` (one lokal
-        // per row) and `transactionId` = `coopTxId`, so the transactionId-only join
-        // above IS exact for it — not "some lokal of that act". Street comes from the
-        // register record; city stays a dash, because the register does not store it
-        // (ADR-010, coordinator decision 12.09 — variant a; column `city` is a follow-up).
-        const matchedCoop = Boolean(
-          c.coopTxId && candidate && candidate.transactionId === c.coopTxId,
-        );
-        const matched = matchedByLokal || matchedCoop;
+        const join = candidateOf(c, inputs.sampleSelection);
+        const candidate = join?.candidate;
+        const matched = join?.matched ?? false;
         return {
           data_msc: maskMonth(c.date),
           // Slice 3d: city and street from the transaction's OWN record (the GEOPOZ
@@ -1020,21 +1170,28 @@ export function buildDocumentModel(
         };
       });
     })(),
-    cechy: activeUi.map((f) => ({
-      nazwa: f.name,
-      waga_pct: formatNumber(f.weight * 100, 0),
-      ui_min: formatNumber(f.weight * kcs.vmin, 3),
-      ui_sr: formatNumber(f.weight, 3),
-      ui_max: formatNumber(f.weight * kcs.vmax, 3),
-      ui_przedmiot: formatNumber(f.value, 3),
+    cechy: active.map(({ ui, feature }) => ({
+      nazwa: ui.name,
+      waga_pct: formatNumber(ui.weight * 100, 0),
+      ui_min: formatNumber(ui.weight * kcs.vmin, 3),
+      ui_sr: formatNumber(ui.weight, 3),
+      ui_max: formatNumber(ui.weight * kcs.vmax, 3),
+      ui_przedmiot: formatNumber(ui.value, 3),
     })),
-    // ponytail: canonical KCS simplification — cmin lokal = all features at
-    // worst, cmax = all at best; the subject follows its actual ratings.
-    opis_cmin: activeFeatures.map((f) => `${f.name} – wartość najniższa cechy,`),
-    opis_cmax: activeFeatures.map((f) => `${f.name} – wartość najwyższa cechy,`),
-    opis_przedmiot: activeFeatures.map(
-      (f) => `${f.name} – ${f.rating ? RATING_TEXT[f.rating] : DASH},`,
+    suma_ui_sr: formatNumber(
+      active.reduce((sum, { ui }) => sum + ui.weight, 0),
+      3,
     ),
+    lokale_cmin: lokaleCmin,
+    lokale_cmax: lokaleCmax,
+    lokalizacja_cmin: lokaleCmin[0]?.lokalizacja ?? "",
+    lokalizacja_cmax: lokaleCmax[0]?.lokalizacja ?? "",
+    opis_cmin: opisOf(lokaleCmin),
+    opis_cmax: opisOf(lokaleCmax),
+    opis_przedmiot: activeFeatures.map((f) => {
+      const position = ratingPosition(f);
+      return `${f.name} – ${position ? POSITION_TEXT[position] : DASH},`;
+    }),
     skala_ocen: skalaOcen,
     cechy_lista: polishFeatureList(activeFeatures.map((f) => f.name)),
     cechy_lista_wg_wag: polishFeatureList(

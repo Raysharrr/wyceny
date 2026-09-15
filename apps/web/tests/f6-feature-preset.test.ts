@@ -64,10 +64,11 @@ describe("F-6: lokal feature preset", () => {
     expect(defs("standard-wykonczenia").przecietna).toBe(
       "standard przeciętny, wykończenie materiałami przeciętnej jakości, widoczne zużycia elementów wykończenia",
     );
-    // D-46: closed, disjoint floor ranges (numbers stay those of the preset; thresholds: b1-feature-hints).
+    // D-46: closed, disjoint floor bands; the texts are generated from them in
+    // the wording three KCŚ operats use (Kościelna, Meissnera, Starołęcka).
     expect(defs("polozenie-na-pietrze")).toEqual({
-      lepsza: "od 4 piętra",
-      przecietna: "piętra od 1 do 3",
+      lepsza: "4 piętro i powyżej",
+      przecietna: "piętra pośrednie",
       gorsza: "parter",
     });
     expect(defs("pomieszczenia-przynalezne").lepsza).toBe(
@@ -104,10 +105,9 @@ describe("F-6: lokal feature preset", () => {
     expect(medianAreaM2([50, 61])).toBe(56); // 55.5 → half-up
     expect(medianAreaM2([undefined, null, 70])).toBe(70);
     expect(powierzchniaDefinitions(null)).toEqual({});
-    const defs = powierzchniaDefinitions(65);
-    expect(defs.lepsza).toContain("65");
-    expect(defs.gorsza).toContain("65");
-    expect(defs.przecietna).toBeUndefined();
+    // Bands touch one m² apart, both edges inclusive — a flat of exactly the
+    // median area stays in the larger band.
+    expect(powierzchniaDefinitions(65)).toEqual({ lepsza: "do 64 m²", gorsza: "od 65 m²" });
   });
 
   it("defaultFeatureFormValues() = active basic bag, NO default rating (ADR-016 reg. 3), static definitions copied", () => {

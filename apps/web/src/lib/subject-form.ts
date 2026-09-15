@@ -31,6 +31,7 @@ export const EMPTY_SUBJECT: SubjectFormValues = {
   kondygnacjeNadziemne: undefined,
   kondygnacjePodziemne: undefined,
   rokBudowy: undefined,
+  pietro: undefined,
   mpzpAbsent: undefined,
   mpzpSymbol: "",
   mpzpNazwa: "",
@@ -98,6 +99,8 @@ function subjectSnapshotToForm(snapshot: SubjectSnapshot): Partial<SubjectFormVa
     kondygnacjePodziemne:
       snapshot.kondygnacjePodziemne != null ? String(snapshot.kondygnacjePodziemne) : undefined,
     rokBudowy: snapshot.rokBudowy != null ? String(snapshot.rokBudowy) : undefined,
+    // `!= null`, not truthiness: parter is 0 and must come back as "0".
+    pietro: snapshot.pietro != null ? String(snapshot.pietro) : undefined,
   };
 }
 
