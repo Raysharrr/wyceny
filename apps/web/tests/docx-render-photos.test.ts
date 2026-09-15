@@ -5,6 +5,7 @@ import PizZip from "pizzip";
 import {
   PHOTO_BOX,
   renderOperatDocx,
+  signOperatDocx,
   type RenderMaps,
   type RenderPhotos,
 } from "../src/adapters/docx-render";
@@ -79,7 +80,7 @@ describe("renderOperatDocx photos (Slice 10, F-12 media leg)", () => {
   });
   it("keeps approve/sign text identical with photos and adds exactly one medium on sign", () => {
     const approved = renderOperatDocx(model, { maps: MAPS, photos: PHOTOS });
-    const signed = renderOperatDocx(model, { maps: MAPS, photos: PHOTOS, signature: PNG_1PX });
+    const signed = signOperatDocx(approved, PNG_1PX);
     expect(textOf(signed)).toBe(textOf(approved));
     expect(generatedMedia(signed).length).toBe(9);
   });

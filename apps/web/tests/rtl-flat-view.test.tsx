@@ -17,16 +17,20 @@ globalThis.ResizeObserver ??= class {
 vi.mock("@/app/actions/approve-valuation", () => ({ approveValuation: vi.fn() }));
 vi.mock("@/app/actions/sign-valuation", () => ({ signValuationAction: vi.fn() }));
 vi.mock("@/app/actions/create-new-version", () => ({ createNewVersionAction: vi.fn() }));
+vi.mock("@/app/actions/reopen-valuation", () => ({ reopenValuationAction: vi.fn() }));
 
 import { FlatView } from "@/app/valuations/[id]/flat-view";
 import type { Valuation } from "@/ports/valuation";
+import { computeKcsOnScale } from "@/domain/feature-rules";
 import { approvableInputs } from "./fixtures/valuation-inputs";
 
 const baseValuation: Valuation = {
   id: "11111111-1111-1111-1111-111111111111",
   address: "Kościelna 33/36, Poznań",
   area: 33.3,
-  wr: 333000,
+  // I-21: the amount a valuation carries must be the one its snapshot gives —
+  // the flat view refuses to recompute the tables beside any other number.
+  wr: computeKcsOnScale(approvableInputs()).wr,
   inputs: approvableInputs(),
   amountInWords: "trzysta trzydzieści trzy tysiące złotych",
   docUrl: "https://example.test/operat.pdf",
@@ -50,6 +54,7 @@ const baseProps = {
   isOwner: true,
   isDraft: false,
   canSign: true,
+  canReopen: false,
   successor: undefined,
   allBlockers: [],
   gateOk: true,
@@ -97,6 +102,10 @@ describe("FlatView — approved valuation, PDF variant (Task 13)", () => {
     const explainer = screen.getByTestId("sign-explainer");
     expect(explainer).toHaveTextContent("Podpisanie jest ostateczne.");
     expect(explainer).toHaveTextContent("Utwórz nową wersję");
+    // ADR-020 wariant (a): the text must not promise a second composition —
+    // the scan goes onto the approved file, which is exactly why its content
+    // cannot drift. The old copy described the mechanism this session removed.
+    expect(explainer).toHaveTextContent("nie jest składany drugi raz");
 
     // Gone with the button: a valuation nobody may sign must not carry a
     // warning about signing it.
@@ -110,6 +119,24 @@ describe("FlatView — approved valuation, PDF variant (Task 13)", () => {
 // draft: no document exists yet, so the data cards ARE the page. They used to
 // live in the left column of the two-column grid; with that grid gone they
 // have to keep rendering from their new place.
+describe("FlatView — cofnięcie zatwierdzenia (ADR-020 reguła 6)", () => {
+  it("offers the withdrawal in the actions card when the page says it may be reopened", () => {
+    render(<FlatView {...baseProps} canReopen />);
+
+    expect(
+      screen.getByRole("button", { name: /cofnij zatwierdzenie i popraw/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not offer it otherwise — an admin's view of someone else's approval", () => {
+    render(<FlatView {...baseProps} canReopen={false} />);
+
+    expect(
+      screen.queryByRole("button", { name: /cofnij zatwierdzenie i popraw/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("FlatView — draft seen by a non-owner admin (no document)", () => {
   const draftProps = {
     ...baseProps,
@@ -137,7 +164,7 @@ describe("FlatView — draft seen by a non-owner admin (no document)", () => {
 // ADR-016: an approved valuation from before the rule may carry a rating on a
 // level its scale never described. `computeKcsOnScale` refuses such inputs, and
 // this view is a server component — without a guard the whole page would throw.
-describe("FlatView — approved before the scale rule (ADR-016)", () => {
+describe("FlatView — approved before the scale rule (ADR-016, I-21)", () => {
   const offScale = {
     ...baseValuation,
     inputs: {
@@ -158,10 +185,26 @@ describe("FlatView — approved before the scale rule (ADR-016)", () => {
     render(<FlatView {...baseProps} valuation={offScale} />);
 
     expect(screen.getByRole("heading", { name: /Rozbicie kalkulacji/ })).toBeInTheDocument();
-    expect(
-      screen.getByText(/Oceny cech tej wyceny pochodzą sprzed zmiany skali ocen/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/zatwierdzono przed aktualizacją programu/)).toBeInTheDocument();
     // The amount that was issued is still on screen.
     expect(screen.getByRole("heading", { name: "Wynik" })).toBeInTheDocument();
+  });
+
+  // The nastier half of the same problem: the engine HAPPILY computes this
+  // snapshot, it just lands on a different number than the one the operat was
+  // issued with. Showing the recomputed Tabele 2–4 beside the stored amount
+  // would put two contradictory numbers on one screen (I-21).
+  it("hides the tables when the snapshot now yields a different amount", () => {
+    const drifted = { ...baseValuation, wr: baseValuation.wr! - 400 };
+    render(<FlatView {...baseProps} valuation={drifted} />);
+
+    expect(screen.getByText(/zatwierdzono przed aktualizacją programu/)).toBeInTheDocument();
+    expect(screen.queryByText("Tabela 2 operatu")).not.toBeInTheDocument();
+  });
+
+  it("shows the tables when the snapshot still yields the stored amount", () => {
+    render(<FlatView {...baseProps} />);
+
+    expect(screen.queryByText(/zatwierdzono przed aktualizacją programu/)).not.toBeInTheDocument();
   });
 });

@@ -20,11 +20,14 @@ type FrozenMaps = { ewidencyjna: Buffer; orto: Buffer };
 /**
  * The two storage keys the §8.1 maps live under, for one valuation.
  *
- * They are spelled once here because four call sites now depend on them
- * agreeing exactly — the preview freezes, the issue reuses, the mapless arm
- * of the issue deletes, and `signValuationAction` re-renders from them and
- * reads their absence as "approved without maps". A typo in any one of those
- * is a signed operat that silently differs from the approved one.
+ * They are spelled once here because three call sites depend on them agreeing
+ * exactly — the preview freezes, the issue reuses, and the mapless arm of the
+ * issue deletes. A typo in any one of those is an approved operat whose §8.1
+ * maps are not the ones the appraiser saw in the preview.
+ *
+ * Signing used to be a fourth reader (it re-rendered from these keys and read
+ * their absence as "approved without maps"); since ADR-020 wariant (a) it
+ * reads only the stored approved DOCX, which already carries the images.
  */
 export const frozenMapKeys = (id: string) => ({
   ewidencyjna: `mapa-ewidencyjna-${id}.png`,
@@ -82,10 +85,9 @@ export async function readFrozenMaps(
  *     must GO.
  *  2. **no longer a draft** — someone else's approve committed while this
  *     call was inside its multi-second WMS fetch. The bytes under those keys
- *     are now the ISSUE's: `signValuationAction` re-renders from exactly them
- *     and reads their absence as "approved without maps", silently. These
- *     bytes must STAY — deleting them would put an illustrated operat in the
- *     record and an unillustrated one under the signature.
+ *     are now the ISSUE's — the bytes that approval embedded and that its
+ *     preview may still reuse. These bytes must STAY; deleting another call's
+ *     frozen maps is never this call's business.
  *  3. **the row is gone** — or the read that would tell us fails. Unknowable,
  *     and it is the case where a stale answer is most likely.
  *

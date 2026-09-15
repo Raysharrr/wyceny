@@ -85,7 +85,10 @@ export async function previewOperat(
       return { error: "Brak danych wejściowych operatu — nie ma czego pokazać." };
     }
     // ADR-016: a draft whose ratings predate the scale rule has no WR to print.
-    // Said here, where it is true, instead of as the worker error below.
+    // Said here, where it is true, instead of as the worker error below. (The
+    // preview only ever runs on a draft, whose stored `wr` the read migration
+    // has already dropped if it stopped following from the snapshot — so the
+    // I-21 guard inside `documentInputFor` has nothing left to catch here.)
     if (!kcsReady(valuation.inputs)) {
       return {
         error:

@@ -666,6 +666,19 @@ export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation 
  * Approved and signed valuations keep what they were issued with, and a draft
  * with no features has nothing to check. Pure and idempotent.
  */
+/**
+ * Does the amount this valuation carries still follow from its own snapshot?
+ * The step-5 confirm writes exactly what the engine returns, so this is true
+ * for everything saved under the current rules and false for an amount
+ * computed under an earlier one. Two callers, one question: the draft read
+ * below drops such an amount, and the views refuse to show recomputed tables
+ * beside it (I-21).
+ */
+export function amountMatchesSnapshot(v: Valuation): boolean {
+  if (v.wr == null || !v.inputs || !kcsReady(v.inputs)) return false;
+  return computeKcsOnScale(v.inputs).wr === v.wr;
+}
+
 export function readFeatureScale(v: Valuation): Valuation {
   if (v.status !== "in_progress" || !v.inputs || v.inputs.features.length === 0) return v;
   const features = v.inputs.features.map((f) => {
@@ -675,9 +688,11 @@ export function readFeatureScale(v: Valuation): Valuation {
       : f;
   });
   const inputs = { ...v.inputs, features };
-  const wr = v.wr != null && kcsReady(inputs) ? computeKcsOnScale(inputs).wr : null;
-  if (wr === v.wr && features.every((f, i) => f === v.inputs!.features[i])) return v;
-  return { ...v, wr: wr === v.wr ? v.wr : null, inputs };
+  // A draft with no amount has none to lose; one with an amount keeps it only
+  // while the snapshot still produces it.
+  const keepsAmount = v.wr == null || amountMatchesSnapshot({ ...v, inputs });
+  if (keepsAmount && features.every((f, i) => f === v.inputs!.features[i])) return v;
+  return { ...v, wr: keepsAmount ? v.wr : null, inputs };
 }
 
 export class CalculationNotReadyError extends Error {
@@ -846,6 +861,7 @@ export const AUDIT_ACTIONS = [
   "approved",
   "signed",
   "version_created",
+  "reopened",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -871,6 +887,51 @@ export function signValuation(v: Valuation, now: Date): Valuation {
     throw new NotSignableError(`Valuation ${v.id} is a legacy row — not signable`);
   }
   return { ...v, status: "signed", signedAt: now };
+}
+
+export class NotReopenableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotReopenableError";
+  }
+}
+
+/**
+ * „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6): approved → in_progress,
+ * for an operat nobody has signed. The opposite of `signValuation`, and only
+ * as far as the signature: once a document is signed it is write-once at the
+ * database level (F-7) and the way back is „Utwórz nową wersję”.
+ *
+ * Everything the approval PRODUCED is cleared — issue date, both document
+ * URLs, the amount in words, the market value — so the next approval computes
+ * them again. Carrying `amountInWords` over would print the old amount beside
+ * a corrected Tabela 4 (D-57); carrying `wr` over would leave the calculation
+ * confirmed while the numbers behind it changed.
+ *
+ * What the appraiser ENTERED is untouched: `inputs` (the corrections are made
+ * on them), the frozen maps, and the prose stamps. Reopening is a step back,
+ * not a reset — and re-fetching maps would silently change a document nobody
+ * asked to change.
+ *
+ * The already-issued DOCX and PDF stay in storage under their own keys
+ * (`approvedOperatKeys`); the `reopened` audit row is what names them, since
+ * with `approvedAt` cleared nothing else could.
+ */
+export function reopenApproved(v: Valuation): Valuation {
+  if (v.status !== "approved" || v.signedAt !== null) {
+    throw new NotReopenableError(
+      `Valuation ${v.id} is not an unsigned approval (status: ${v.status}) — cannot reopen`,
+    );
+  }
+  return {
+    ...v,
+    status: "in_progress",
+    approvedAt: null,
+    docUrl: null,
+    docxUrl: null,
+    amountInWords: null,
+    wr: null,
+  };
 }
 
 /**

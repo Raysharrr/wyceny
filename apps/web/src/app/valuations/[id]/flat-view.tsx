@@ -4,8 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/wizard/section-card";
 import { PURPOSE_LABEL } from "@/domain/document-model";
-import { kcsReady } from "@/domain/feature-rules";
 import type { Blocker } from "@/domain/provenance";
+import { amountMatchesSnapshot } from "@/domain/valuation";
 import type { Valuation } from "@/ports/valuation";
 import {
   ComparablesProvenance,
@@ -44,6 +44,7 @@ export function FlatView({
   isOwner,
   isDraft,
   canSign,
+  canReopen,
   successor,
   allBlockers,
   gateOk,
@@ -54,6 +55,7 @@ export function FlatView({
   isOwner: boolean;
   isDraft: boolean;
   canSign: boolean;
+  canReopen: boolean;
   successor: Valuation | undefined;
   allBlockers: Blocker[];
   gateOk: boolean;
@@ -69,17 +71,22 @@ export function FlatView({
   // left column (brief: repositioning only, no new information).
   const dataCards = (
     <>
-      {/* ADR-016: a valuation approved before the scale rule can carry a rating
-          with no place in its described scale — the engine refuses it, so the
-          KCS tables say why instead of taking the page down with them. */}
+      {/* I-21: the tables are recomputed from the snapshot, so they are shown
+          only when that recomputation still yields the amount this valuation
+          was issued with. A valuation approved under an earlier rule fails on
+          one of the two counts — either the engine refuses its ratings (and a
+          server component would turn that throw into a dead page), or it
+          returns a different number — and then the card says so instead. */}
       {valuation.wr != null && valuation.inputs ? (
-        kcsReady(valuation.inputs) ? (
+        amountMatchesSnapshot(valuation) ? (
           <KcsBreakdown inputs={valuation.inputs} />
         ) : (
           <SectionCard icon={Scale} title="Rozbicie kalkulacji" sub="Tabele 2–4 operatu">
             <p className="text-sm text-muted-foreground">
-              Oceny cech tej wyceny pochodzą sprzed zmiany skali ocen, więc rozbicia kalkulacji nie
-              da się przeliczyć. Zapisana wartość rynkowa i wydany operat pozostają bez zmian.
+              Ten operat zatwierdzono przed aktualizacją programu, więc rozbicia kalkulacji nie da
+              się dziś odtworzyć z jego danych. Zapisana wartość rynkowa i wydany dokument pozostają
+              bez zmian; żeby zobaczyć tabele, użyj „Cofnij zatwierdzenie i popraw”, przelicz wycenę
+              i zatwierdź ją ponownie.
             </p>
           </SectionCard>
         )
@@ -248,6 +255,7 @@ export function FlatView({
               gateOk={gateOk}
               canApprove={valuation.status === "in_progress"}
               canSign={canSign}
+              canReopen={canReopen}
               canCreateNewVersion={canCreateNewVersion}
             />
           </SectionCard>

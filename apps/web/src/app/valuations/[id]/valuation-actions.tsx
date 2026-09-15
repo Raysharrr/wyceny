@@ -4,9 +4,20 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { BlockerList } from "@/components/wizard/blocker-list";
 import { FootNav } from "@/components/wizard/foot-nav";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { approveValuation, type ApproveValuationResult } from "@/app/actions/approve-valuation";
 import { signValuationAction } from "@/app/actions/sign-valuation";
 import { createNewVersionAction } from "@/app/actions/create-new-version";
+import { reopenValuationAction } from "@/app/actions/reopen-valuation";
 import { usePreviewMaps } from "./steps/preview-maps-state";
 import { currencyFormatter } from "./cards";
 
@@ -36,6 +47,7 @@ export function ValuationActions({
   gateOk,
   canApprove,
   canSign,
+  canReopen = false,
   canCreateNewVersion,
   wr,
 }: {
@@ -43,6 +55,12 @@ export function ValuationActions({
   gateOk: boolean;
   canApprove: boolean;
   canSign: boolean;
+  /**
+   * The owner's approved, unsigned operat may go back to editing (ADR-020
+   * reguła 6). Defaults to false so the call sites that never offer it — the
+   * step-7 preview — stay as they are.
+   */
+  canReopen?: boolean;
   canCreateNewVersion: boolean;
   /** Optional: ValuationActions also mounts on the flat view
    * (page.tsx), whose call site doesn't pass it — `undefined` and `null`
@@ -104,6 +122,41 @@ export function ValuationActions({
             {isPending ? "Podpisywanie…" : "Podpisz operat (nieodwracalne)"}
           </Button>
         ) : null}
+        {canReopen ? (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="reopen-button"
+                disabled={isPending}
+              >
+                {isPending ? "Cofanie…" : "Cofnij zatwierdzenie i popraw"}
+              </Button>
+            </AlertDialogTrigger>
+            {/* Texts verbatim from spec §4 (wiersz „Krok 7”), with the last
+                sentence changed by the coordinator's decision (review PR #56):
+                the spec promised the current file would stay „w historii
+                wyceny”, and there is no such history — `/api/docs/[key]`
+                authorises through the valuation's `doc_url`/`docx_url`, which
+                reopening clears, so the file becomes unreachable. The window
+                now says what actually happens. Restoring access to earlier
+                versions is a follow-up, not a thing to promise here. */}
+            <AlertDialogContent>
+              <AlertDialogTitle>Cofnąć zatwierdzenie?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Operat wróci do edycji. Po poprawkach zatwierdzisz go ponownie i powstanie nowa
+                wersja dokumentu. Obecny plik przestanie być dostępny do pobrania.
+              </AlertDialogDescription>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Anuluj</AlertDialogCancel>
+                <AlertDialogAction onClick={() => run(reopenValuationAction)}>
+                  Cofnij zatwierdzenie
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        ) : null}
         {canCreateNewVersion ? (
           <Button
             type="button"
@@ -124,11 +177,12 @@ export function ValuationActions({
        * long as the button does. */}
       {canSign ? (
         <p data-testid="sign-explainer" className="max-w-[70ch] text-sm text-muted-foreground">
-          <strong className="font-medium text-foreground">Podpisanie jest ostateczne.</strong>{" "}
-          Operat zostanie złożony jeszcze raz — z Twoim skanem podpisu, z tą samą datą sporządzenia
-          i z mapami zamrożonymi przy zatwierdzeniu. Po podpisaniu żadnej danej tej wyceny nie da
-          się już zmienić, a w dzienniku zapisze się odcisk SHA-256 podpisanych plików. Poprawka
-          jest możliwa wyłącznie przez „Utwórz nową wersję”. Podpisać może tylko właściciel wyceny.
+          <strong className="font-medium text-foreground">Podpisanie jest ostateczne.</strong> Twój
+          skan podpisu trafi na ten sam dokument, który zatwierdziłeś — operat nie jest składany
+          drugi raz, więc jego treść nie może się już od zatwierdzonej różnić. Po podpisaniu żadnej
+          danej tej wyceny nie da się już zmienić, a w dzienniku zapisze się odcisk SHA-256
+          podpisanych plików. Poprawka jest możliwa wyłącznie przez „Utwórz nową wersję”. Podpisać
+          może tylko właściciel wyceny.
         </p>
       ) : null}
       {approveResult?.blockers?.length ? (

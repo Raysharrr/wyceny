@@ -21,6 +21,21 @@ export function authorFrom(profile: AppraiserProfile | null): OperatAuthor {
 }
 
 /**
+ * The render would print an amount other than the one the valuation carries
+ * (I-21). Raised only by {@link documentInputFor}; the actions turn it into a
+ * refusal that names the two numbers, never into a document.
+ */
+export class AmountMismatchError extends Error {
+  constructor(
+    readonly stored: number,
+    readonly rendered: number,
+  ) {
+    super(`Document would print ${rendered} for a valuation issued at ${stored}`);
+    this.name = "AmountMismatchError";
+  }
+}
+
+/**
  * The operat's `BuildDocumentInput` for a valuation (R-2) — the ONE place it
  * is assembled, for approve, sign and the step-7 preview alike. A field
  * spelled out in each action separately could reach the approved document and
@@ -41,6 +56,15 @@ export function documentInputFor(
 ): BuildDocumentInput {
   if (!valuation.inputs) {
     throw new Error(`Valuation ${valuation.id} has no inputs snapshot — no document to build`);
+  }
+  // I-21: the document may not print an amount other than the one the valuation
+  // carries. Being ABLE to compute a result is not the same as computing the
+  // SAME result — a valuation approved under an earlier rule still holds the
+  // amount it was issued with, while a render from its own snapshot can now
+  // land elsewhere. Checked here because every render path is assembled through
+  // this one function (R-2), so no future one can skip it.
+  if (valuation.wr != null && render.kcs.wr !== valuation.wr) {
+    throw new AmountMismatchError(valuation.wr, render.kcs.wr);
   }
   return {
     address: valuation.address,
