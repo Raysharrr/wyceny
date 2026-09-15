@@ -329,3 +329,17 @@ describe("StepOperat — what is on screen is the current render (fix round 1)",
     expect(screen.queryByTitle("Podgląd operatu (PDF)")).toBeNull();
   });
 });
+
+describe("StepOperat — a draft without an inputs snapshot (R-1 equivalence)", () => {
+  // Pre-wizard legacy shape: every document field filled, `wr` set, no
+  // snapshot. There is nothing the gate can check, so the button must stay
+  // disabled even though the blocker list (document fields only) is empty —
+  // `approveValuation` refuses this draft outright.
+  it("keeps the approve button disabled with an empty blocker list", async () => {
+    render(<StepOperat valuation={{ ...draft(currentProse()), inputs: null }} />);
+
+    expect(screen.queryByTestId("gate-blockers")).toBeNull();
+    expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeDisabled();
+    await screen.findByTitle("Podgląd operatu (PDF)");
+  });
+});

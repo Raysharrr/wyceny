@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
 import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
-import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
+import { buildDocumentModel } from "@/domain/document-model";
+import { documentInputFor } from "@/domain/document-input";
 import { computeKcsOnScale } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -164,22 +165,10 @@ export async function previewOperat(
       const kcs = computeKcsOnScale(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
       const model = buildDocumentModel(
-        {
-          address: valuation.address,
-          area: valuation.area,
-          purpose: valuation.purpose as OperatPurpose,
-          kwNumber: valuation.kwNumber,
-          propertyRight: valuation.propertyRight,
-          client: valuation.client ?? "",
-          inspectionDate: valuation.inspectionDate ?? "",
-          // The preview's "data sporządzenia" is TODAY; the issued operat gets
-          // the date it was issued. That difference is why issuing re-renders
-          // rather than promoting this file (spec §C).
-          approvedAt: new Date(),
-          inputs: valuation.inputs,
-          kcs,
-          amountInWords,
-        },
+        // The preview's "data sporządzenia" is TODAY; the issued operat gets
+        // the date it was issued. That difference is why issuing re-renders
+        // rather than promoting this file (spec §C).
+        documentInputFor(valuation, { approvedAt: new Date(), kcs, amountInWords }),
         // ...and the second half of that same §C difference: a section the
         // appraiser has not written yet is MARKED here and passed over in
         // silence when the operat is issued. This is the only call site that

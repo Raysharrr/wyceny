@@ -700,6 +700,27 @@ export function applyCalculationConfirm(v: Valuation): Valuation {
 }
 
 /**
+ * Everything that stands between a draft and approval (R-1) — the ONE
+ * composition of the F-4 gate with the document-field blockers (spec §4),
+ * gate first. Step 7, the flat view, the approve action and `approveValuation`
+ * all read this list, so a blocker added here reaches the screen and both
+ * refusals at once.
+ *
+ * A draft with no inputs snapshot has nothing for the gate to check and gets
+ * only its document-field blockers; approval of such a draft is refused by
+ * the callers themselves (`approveValuation` throws, the screens keep the
+ * button disabled).
+ *
+ * `ctx` carries what only the app layer can know (`gateContextFor`): the
+ * FR-6 kill switch and the per-section facts hashes — this module reads no
+ * env (F-10).
+ */
+export function approvalBlockers(v: Valuation, ctx: GateOptions): Blocker[] {
+  const gate = v.inputs ? approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, ctx) : null;
+  return [...(gate && !gate.ok ? gate.blockers : []), ...documentFieldBlockers(v)];
+}
+
+/**
  * The approve mutation — F-4 gate as aggregate invariant (ADR-012). A draft
  * without a snapshot can never pass (default-deny). The gate is merged with
  * the document-field blockers (spec §4): approval also requires the four
@@ -722,8 +743,7 @@ export function approveValuation(
   if (!v.inputs) {
     throw new ApprovalBlockedError([{ path: "inputs", label: "Brak danych wejściowych operatu." }]);
   }
-  const gate = approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, gateOptions);
-  const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(v)];
+  const blockers = approvalBlockers(v, gateOptions ?? {});
   if (blockers.length > 0) {
     throw new ApprovalBlockedError(blockers);
   }
