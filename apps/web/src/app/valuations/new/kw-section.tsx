@@ -624,6 +624,15 @@ export function KwSection(props: KwSectionProps) {
                       ? { ...EMPTY_MANUAL_KW, deweloperski: true, dataBadania: today }
                       : null,
                   );
+                  // The encumbrance question hangs off `kw.dzial3`, and either
+                  // direction of this checkbox leaves that null — so the block
+                  // disappears while its answer would ride on into the record.
+                  // ADR-018 reg. 6 puts that answer on the operat's COVER, so
+                  // an orphan here is a false sentence on page one. `null`, not
+                  // `undefined`: the retraction has to be a value the schema
+                  // accepts (`.nullish()`), or it fails on a path no field
+                  // renders. Same clear the property-right radio already does.
+                  setEncumbrance(null);
                 }}
               />
               <label htmlFor="kw-deweloperski" className="text-sm">

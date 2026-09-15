@@ -886,6 +886,66 @@ describe("KwSection — full-form wiring", () => {
     expect(submitted.encumbranceTreatment ?? null).toBeNull();
   });
 
+  /**
+   * BLOKER 8, the last orphan of this shape: ticking "zakup deweloperski"
+   * replaces the lokal's card, so `kw.dzial3` is null and the encumbrance
+   * block leaves the screen — but its answer was still reaching the record,
+   * and ADR-018 reg. 6 prints that answer on the operat's COVER.
+   *
+   * EDIT mode, deliberately. In create mode `resetKwSection`'s
+   * `resetField("encumbranceTreatment")` already clears it, so a create-mode
+   * test passes with or without the fix (measured: the mutation stayed green).
+   * `resetField` resets to the form's DEFAULT — which here is the STORED
+   * decision — so only an explicit retraction clears it. Same trap as `kw`.
+   */
+  it("clears a STORED encumbrance decision when the developer checkbox is ticked (BLOKER 8)", async () => {
+    const user = userEvent.setup();
+    const draftWithEncumbrance = {
+      address: "ul. Kościelna 33, Poznań",
+      area: "69.56",
+      purpose: "sprzedaz" as never,
+      client: "Jan Kowalski",
+      inspectionDate: "2026-09-15",
+      kwNumber: "AB1C/1/9",
+      kw: {
+        source: "ekw_reczne",
+        kwLokalu: "AB1C/1/9",
+        kwGruntu: null,
+        kwInne: [],
+        deweloperski: false,
+        powUzytkowaKw: null,
+        udzial: null,
+        sad: null,
+        wydzial: null,
+        dataDokumentu: null,
+        dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu"] },
+        dzial4: { wpisy: false, tresc: [] },
+        dataBadania: "2026-09-15",
+      },
+      encumbranceTreatment: {
+        wariant: "bez_uwzglednienia",
+        podstawa: "Zgodnie z poleceniem Zleceniodawcy.",
+      },
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+
+    render(<SubjectForm valuationId="val-enc" defaults={draftWithEncumbrance} />);
+    expect(screen.getByTestId("kw-encumbrance")).toBeDefined();
+
+    await user.click(screen.getByRole("checkbox", { name: /zakup deweloperski/i }));
+    // The question is gone from the screen…
+    expect(screen.queryByTestId("kw-encumbrance")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
+    const [, payload] = vi.mocked(saveSubjectAction).mock.calls[0] as unknown as [
+      string,
+      { kw?: { deweloperski?: boolean }; encumbranceTreatment?: unknown },
+    ];
+    expect(payload.kw?.deweloperski).toBe(true);
+    // …and so is the answer, rather than riding on to the operat's cover.
+    expect(payload.encumbranceTreatment ?? null).toBeNull();
+  });
+
   // D9: non-PDF is rejected client-side, before any network call.
   it("rejects a non-PDF file with an inline error and no extraction (D9)", async () => {
     // applyAccept:false (a setup() option in user-event v14) — the input has
