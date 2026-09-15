@@ -1,15 +1,23 @@
 import { LEVEL_LABEL } from "./feature-presets";
-import { computeKcs, type Feature, type FeatureRating, type KcsInput, type KcsResult } from "./kcs";
+import {
+  FEATURE_SCALE_RULE,
+  computeKcs,
+  type Feature,
+  type FeatureRating,
+  type KcsInput,
+  type KcsResult,
+} from "./kcs";
 
 /**
  * Rating scale of a feature (ADR-016, P5). The scale is the levels the
  * appraiser DESCRIBED — any two, or all three — and Ui follows the rating's
- * position in that scale. `computeKcs` itself is unchanged: this module maps
- * the position onto the engine's key before calling it. Pure (F-10).
+ * position in that scale. The engine's formula is unchanged: this module maps
+ * the position onto the engine's key before calling it (the marker also turns
+ * on the engine's per-row Ui rounding). Pure (F-10).
  */
 
 /** `inputs.featureScaleRule` value stamped by the step-4 save under this rule. */
-export const FEATURE_SCALE_RULE = 2 as const;
+export { FEATURE_SCALE_RULE };
 
 export type RatingPosition = "min" | "mid" | "max";
 
@@ -92,7 +100,8 @@ function engineFeatures(input: Pick<KcsInput, "features" | "featureScaleRule">):
 
 /**
  * Ui per feature for the step-4 rows while the set is still incomplete: the
- * engine runs on the placeable features only (same formula), `null` marks a
+ * engine runs on the placeable features only (same formula, and the same
+ * per-row rounding, so the printed rows add up to ΣUi — I-11), `null` marks a
  * feature without a position. Reads the ADR-016 rule — it serves the form,
  * whose save stamps it. Throws like the engine on an unusable sample.
  */

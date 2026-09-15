@@ -206,17 +206,16 @@ describe("computeKcsOnScale — Ui from the position in the described scale (I-1
     expect(onScale.csr).toBe(10337.1);
     expect(onScale.vmin).toBe(0.875);
     expect(onScale.vmax).toBe(1.154);
-    expect(onScale.ui[2].value).toBeCloseTo(0.1 * 0.875, 10);
+    // 0,1 × 0,875 = 0,0875, printed and summed as 0,088 (ROUNDING.ui).
+    expect(onScale.ui[2].value).toBe(0.088);
 
     // The fixed-key rule the draft was computed with: lokalizacja przeciętna → Ui śr.
     const fixedKey = computeKcs(corrected);
     expect(fixedKey.sumUi).toBe(1.034);
-    // ΣUi drops by exactly Ui śr − Ui min of lokalizacja (0,1 − 0,0875). The
-    // engine rounds ΣUi, not each Ui, so 1,0212 prints 1,021; the operat
-    // Aneta sent rounds every Ui to 3 dp first (0,088) and prints 1,022 —
-    // the same convention gap as the Piastowskie golden (follow-up T-26).
-    expect(onScale.sumUi).toBe(1.021);
-    expect(onScale.wr).toBe(466800);
+    // ΣUi drops by Ui śr − Ui min of lokalizacja, and the rounded rows add up
+    // to what the operat prints: 1,022 / 467 300 zł (golden-wycena-1409).
+    expect(onScale.sumUi).toBe(1.022);
+    expect(onScale.wr).toBe(467300);
   });
 
   it("Ui rows keep the appraiser's own rating, not the engine key of its position", () => {
@@ -239,12 +238,10 @@ describe("computeKcsOnScale — Ui from the position in the described scale (I-1
       rating: null,
       definitions: THREE,
     });
+    // Rounded exactly like the engine's own rows, so the step-4 rows add up to
+    // the ΣUi of the sidebar once every feature is rated (I-11).
     const uis = featureUis(partial);
-    expect(uis[0]).toBeCloseTo(0.4, 10);
-    expect(uis[1]).toBeCloseTo(0.3 * 1.154, 10);
-    expect(uis[2]).toBeCloseTo(0.1 * 0.875, 10);
-    expect(uis[3]).toBeNull();
-    expect(uis[4]).toBeCloseTo(0.1 * 0.875, 10);
+    expect(uis).toEqual([0.4, 0.346, 0.088, null, 0.088]);
   });
 
   it("a snapshot saved before the rule (no featureScaleRule) keeps the fixed-key mapping", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeKcs, ROUNDING, type KcsInput } from "../src/domain/kcs";
+import { computeKcs, FEATURE_SCALE_RULE, ROUNDING, type KcsInput } from "../src/domain/kcs";
 
 // Half-up helper mirroring the engine's own — the tests below recompute each
 // stage FROM the engine's own outputs using ROUNDING, so a constant that drifts
@@ -31,6 +31,7 @@ describe("ROUNDING", () => {
       csr: 2,
       vmin: 3,
       vmax: 3,
+      ui: 3,
       sumUi: 3,
       unitValue: 2,
       wrNearest: 100,
@@ -59,5 +60,26 @@ describe("ROUNDING", () => {
     expect(result.wr).toBe(
       Math.round(result.wrUnrounded / ROUNDING.wrNearest) * ROUNDING.wrNearest,
     );
+  });
+
+  // ROUNDING.ui applies ONLY under the ADR-016 marker: Tabela 3 prints every Ui
+  // at 3 dp and the appraiser adds up the printed column. Without the marker the
+  // engine sums full-precision Ui, so an issued operat keeps its own amount.
+  it("rounds each Ui only under featureScaleRule", () => {
+    const perRow = computeKcs({ ...input, featureScaleRule: FEATURE_SCALE_RULE });
+    expect(perRow.ui.map((share) => share.value)).toEqual(
+      perRow.ui.map((share) => roundTo(share.value, ROUNDING.ui)),
+    );
+    expect(perRow.sumUi).toBe(
+      roundTo(
+        perRow.ui.reduce((sum, share) => sum + share.value, 0),
+        ROUNDING.sumUi,
+      ),
+    );
+
+    // Same input, no marker: at least one Ui keeps more than 3 dp here
+    // (0,3 × vmin 0,919 = 0,2757).
+    const legacy = computeKcs(input);
+    expect(legacy.ui.some((share) => share.value !== roundTo(share.value, ROUNDING.ui))).toBe(true);
   });
 });

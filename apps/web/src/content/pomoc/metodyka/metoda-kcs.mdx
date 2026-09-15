@@ -53,12 +53,17 @@ Silnik nie liczy w pełnej precyzji. Odwzorowuje operat: dokument drukuje wielko
 
 1. **Cśr** — do {ROUNDING.csr} miejsc po przecinku.
 2. **Vmin i Vmax** — liczone z już zaokrąglonej Cśr, każdy do {ROUNDING.vmin} miejsc po przecinku.
-3. **ΣUi** — liczona z już zaokrąglonych Vmin i Vmax, do {ROUNDING.sumUi} miejsc po przecinku.
-4. **Wartość jednostkowa** — iloczyn zaokrąglonej Cśr i zaokrąglonej ΣUi, do {ROUNDING.unitValue} miejsc po przecinku.
-5. **Wartość dokładna** — iloczyn zaokrąglonej wartości jednostkowej i powierzchni, do pełnych groszy.
-6. **Wartość rynkowa** — do pełnych {ROUNDING.wrNearest} zł.
+3. **Ui każdej cechy** — liczone z już zaokrąglonych Vmin i Vmax, do {ROUNDING.ui} miejsc po przecinku.
+4. **ΣUi** — suma zaokrąglonych Ui, do {ROUNDING.sumUi} miejsc po przecinku.
+5. **Wartość jednostkowa** — iloczyn zaokrąglonej Cśr i zaokrąglonej ΣUi, do {ROUNDING.unitValue} miejsc po przecinku.
+6. **Wartość dokładna** — iloczyn zaokrąglonej wartości jednostkowej i powierzchni, do pełnych groszy.
+7. **Wartość rynkowa** — do pełnych {ROUNDING.wrNearest} zł.
 
-Krok piąty łatwo przeoczyć, a bez niego rachunek się rozjeżdża: zanim wynik trafi na pełne {ROUNDING.wrNearest} zł, jest najpierw zaokrąglany do groszy. Nie jest to wielkość rachunkowo pomocnicza, ukryta wewnątrz kalkulacji — to właśnie ta kwota trafia do Tabeli 4 operatu i na kartę wyniku, więc rzeczoznawca ma ją przed oczami i musi umieć powiedzieć, czym różni się od wartości rynkowej. W kodzie sześć pozostałych kroków jest nazwaną stałą konwencji operatu (`ROUNDING`), a krok groszowy stoi obok niej jako zwykła precyzja walutowa — ta strona renderuje liczby wprost z tej stałej, więc jeśli kiedykolwiek się zmieni, zmieni się też ten opis.
+Krok trzeci wynika wprost z tego, co drukuje Tabela 3: skoro kolumna Ui jest podana do {ROUNDING.ui} miejsc po przecinku, to sumą ma być suma liczb wydrukowanych, a nie ich dokładniejszych odpowiedników z pamięci. Na jednej cesze potrafi to zmienić wynik o kilkaset złotych — na operacie z 14 września przesuwa ΣUi z 1,021 na 1,022 i wartość rynkową z 466 800 zł na 467 300 zł, czyli dokładnie na kwotę z dokumentu.
+
+Krok szósty łatwo przeoczyć, a bez niego rachunek się rozjeżdża: zanim wynik trafi na pełne {ROUNDING.wrNearest} zł, jest najpierw zaokrąglany do groszy. Nie jest to wielkość rachunkowo pomocnicza, ukryta wewnątrz kalkulacji — to właśnie ta kwota trafia do Tabeli 4 operatu i na kartę wyniku, więc rzeczoznawca ma ją przed oczami i musi umieć powiedzieć, czym różni się od wartości rynkowej. W kodzie sześć pozostałych kroków (siedem pozycji stałej — Vmin i Vmax mają własne wpisy) jest nazwaną stałą konwencji operatu (`ROUNDING`), a krok groszowy stoi obok niej jako zwykła precyzja walutowa — ta strona renderuje liczby wprost z tej stałej, więc jeśli kiedykolwiek się zmieni, zmieni się też ten opis.
+
+Zaokrąglanie Ui obowiązuje dla ocen potwierdzonych po wprowadzeniu skali z opisanych poziomów. Wyceny zatwierdzone wcześniej liczą się po staremu — sumą Ui w pełnej precyzji — żeby wydany operat pokazywał tę samą kwotę, z którą wyszedł.
 
 ## Dlaczego operat pokazuje 1 044 400 zł, a nie 1 043 900 zł
 

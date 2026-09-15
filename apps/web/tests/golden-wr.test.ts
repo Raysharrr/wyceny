@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { computeKcs, type KcsInput } from "../src/domain/kcs";
+import { FEATURE_SCALE_RULE, computeKcs, type KcsInput } from "../src/domain/kcs";
 
 // F-3 (reproducibility): the reference inputs live in a committed snapshot
 // file — this test reads it from disk and must pass with no network and no DB.
@@ -23,6 +23,17 @@ describe("KCS engine — Kościelna reference operat", () => {
     expect(result.sumUi).toBe(fixture.expected.sumUi);
     expect(result.unitValue).toBe(fixture.expected.unitValue);
     expect(result.wr).toBe(fixture.expected.wr);
+  });
+
+  // F-1 under the ADR-016 rule: rounding each Ui before the sum (ROUNDING.ui)
+  // changes nothing here — no Ui of this operat lands on a fourth decimal that
+  // would move ΣUi. The golden holds under BOTH rules (Piastowskie is where the
+  // two differ: 446 900 vs the operat's 447 300).
+  it("F-1: gives the same 1 044 400 zł under featureScaleRule", () => {
+    const onScale = computeKcs({ ...fixture.input, featureScaleRule: FEATURE_SCALE_RULE });
+    expect(onScale.sumUi).toBe(fixture.expected.sumUi);
+    expect(onScale.unitValue).toBe(fixture.expected.unitValue);
+    expect(onScale.wr).toBe(fixture.expected.wr);
   });
 
   // F-2: determinism — same input, same output, every time. The engine has

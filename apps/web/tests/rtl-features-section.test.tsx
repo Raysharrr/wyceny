@@ -237,6 +237,42 @@ describe("StepFeatures — level cards and ratings (ADR-016, P5)", () => {
     expect(within(standard).getByText("Wybierz ocenę")).toBeTruthy();
   });
 
+  it("a scale left with fewer than two levels says so in the row, before any submit (B-10)", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
+    const lokalizacja = row("lokalizacja");
+    await user.click(within(lokalizacja).getByRole("button", { name: "Edytuj skalę" }));
+    await user.clear(screen.getByTestId("feature-def-lokalizacja-lepsza"));
+    await user.clear(screen.getByTestId("feature-def-lokalizacja-przecietna"));
+
+    expect(cards("lokalizacja")).toHaveLength(0);
+    expect(within(lokalizacja).getByRole("alert").textContent).toBe(
+      "Cecha „Lokalizacja szczegółowa” musi mieć opisane co najmniej dwa poziomy.",
+    );
+  });
+
+  it("the level cards follow the ARIA radio-group pattern (one tab stop, arrows, End)", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
+    const radios = cards("standard-wykonczenia") as HTMLElement[];
+    expect(radios.map((r) => r.tabIndex)).toEqual([0, -1, -1]);
+
+    radios[0].focus();
+    await user.keyboard("{ArrowRight}");
+    expect(radios[1].getAttribute("aria-checked")).toBe("true");
+    expect(radios.map((r) => r.tabIndex)).toEqual([-1, 0, -1]);
+
+    await user.keyboard("{End}");
+    expect(radios[2].getAttribute("aria-checked")).toBe("true");
+    // The group wraps, like the ARIA pattern.
+    await user.keyboard("{ArrowRight}");
+    expect(radios[0].getAttribute("aria-checked")).toBe("true");
+  });
+
   it("describing a missing level under „Edytuj skalę” adds its card", async () => {
     const user = userEvent.setup();
     render(

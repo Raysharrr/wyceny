@@ -23,6 +23,7 @@ import {
   FEATURE_SCALE_RULE,
   computeKcsOnScale,
   describedLevels,
+  featureIssues,
   featureUis,
 } from "@/domain/feature-rules";
 import type { Comparable, FeatureRating, KcsInput } from "@/domain/kcs";
@@ -40,19 +41,16 @@ const SCALE_LEVELS: FeatureRating[] = ["gorsza", "przecietna", "lepsza"];
 // Level cards mirror the option tiles of `new/kw-section.tsx` (TILE, TILE_SELECTED).
 const TILE = "h-auto flex-col items-start gap-0.5 whitespace-normal rounded-lg px-4 py-3 text-left";
 const TILE_SELECTED = "border-primary bg-[var(--accent-050)]";
-const TILE_IDLE = "border-border bg-background";
+const TILE_IDLE = "border-border";
 
 const numberFormatter = new Intl.NumberFormat("pl-PL", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
-// Sidebar/FootNav formatters (Task 9 — live KCS preview).
+// Sidebar/FootNav formatters (Task 9 — live KCS preview). Ui, ΣUi and the V
+// ratios all print at three decimals, the precision the engine rounds them to.
 const sumUiFormatter = new Intl.NumberFormat("pl-PL", {
-  minimumFractionDigits: 3,
-  maximumFractionDigits: 3,
-});
-const ratioFormatter = new Intl.NumberFormat("pl-PL", {
   minimumFractionDigits: 3,
   maximumFractionDigits: 3,
 });
@@ -105,7 +103,7 @@ function buildDefaultFeatures(
 
 /** Mockup `FeatureRatingList` — the rows span the whole card, edge to edge. */
 function FeatureRatingList({ children }: { children: React.ReactNode }) {
-  return <div className="-mx-5 -mt-5 flex flex-col">{children}</div>;
+  return <div className="-mx-5 -mb-5 -mt-5 flex flex-col">{children}</div>;
 }
 
 /** Mockup `FeatureRatingRow` — one feature; amber until it has a rating. */
@@ -142,42 +140,83 @@ function FeatureRatingRow({
   );
 }
 
-/** Mockup `FeatureLevelCard` — a described level as a radio tile with its definition. */
-function FeatureLevelCard({
-  level,
-  definition,
-  selected,
-  onRowWithoutRating,
+/**
+ * Mockup `FeatureRatingGroup` — the described levels as one radio group.
+ * Follows the ARIA radio-group pattern: one tab stop (the selected tile, or the
+ * first one while nothing is selected) and arrows/Home/End move the selection.
+ */
+function FeatureRatingGroup({
+  label,
+  levels,
+  definitions,
+  rating,
   onSelect,
 }: {
-  level: FeatureRating;
-  definition: string;
-  selected: boolean;
-  onRowWithoutRating: boolean;
-  onSelect: () => void;
+  label: string;
+  levels: FeatureRating[];
+  definitions: Partial<Record<FeatureRating, string>> | undefined;
+  rating: FeatureRating | null;
+  onSelect: (level: FeatureRating) => void;
 }) {
+  const selectedIndex = rating ? levels.indexOf(rating) : -1;
+  const focusedIndex = selectedIndex < 0 ? 0 : selectedIndex;
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const last = levels.length - 1;
+    if (last < 0) return;
+    const tiles = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+    const from = Math.max(tiles.indexOf(document.activeElement as HTMLElement), focusedIndex);
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+    // Arrows wrap around the group, Home/End jump to its ends (ARIA pattern).
+    const next =
+      step !== undefined
+        ? (from + step + levels.length) % levels.length
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? last
+            : null;
+    if (next === null) return;
+    event.preventDefault();
+    onSelect(levels[next]);
+    tiles[next]?.focus();
+  }
+
   return (
-    <Button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      variant="outline"
-      onClick={onSelect}
-      className={cn(
-        TILE,
-        "flex-[1_1_13rem]",
-        selected ? TILE_SELECTED : TILE_IDLE,
-        onRowWithoutRating && "bg-card",
-      )}
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="flex flex-wrap gap-2"
+      onKeyDown={onKeyDown}
     >
-      <span className="text-sm font-medium text-foreground">
-        {LEVEL_LABEL[level]}
-        {selected ? (
-          <Check className="ml-1 inline-block size-3.5 align-[-2px] text-primary" />
-        ) : null}
-      </span>
-      <span className="text-xs font-normal text-muted-foreground">{definition}</span>
-    </Button>
+      {levels.map((level, index) => (
+        <Button
+          key={level}
+          type="button"
+          role="radio"
+          aria-checked={level === rating}
+          tabIndex={index === focusedIndex ? 0 : -1}
+          variant="outline"
+          onClick={() => onSelect(level)}
+          className={cn(
+            TILE,
+            "flex-[1_1_13rem]",
+            level === rating ? TILE_SELECTED : TILE_IDLE,
+            rating == null && "bg-card",
+          )}
+        >
+          <span className="text-sm font-medium text-foreground">
+            {LEVEL_LABEL[level]}
+            {level === rating ? (
+              <Check className="ml-1 inline-block size-3.5 align-[-2px] text-primary" />
+            ) : null}
+          </span>
+          <span className="text-xs font-normal text-muted-foreground">
+            {definitions?.[level] ?? ""}
+          </span>
+        </Button>
+      ))}
+    </div>
   );
 }
 
@@ -350,8 +389,15 @@ export function StepFeatures({
                 const definitions = current?.definitions ?? field.definitions;
                 const isRated = rating != null;
                 const ui = uis[index];
-                // I-10 refusals of the save schema, e.g. fewer than two described levels.
-                const rowError = errors.features?.[index]?.message;
+                // I-10 live, not on submit: a scale the save would refuse (B-09,
+                // B-10) says so in the row while the appraiser is editing it.
+                // B-08 is skipped — the „Wybierz ocenę” badge already says it.
+                const rowIssue = featureIssues({
+                  name: field.name,
+                  weight: (Number(current?.weightPct) || 0) / 100,
+                  rating,
+                  definitions,
+                }).find((issue) => issue.code !== "B-08");
                 return (
                   <FeatureRatingRow
                     key={field.id}
@@ -421,23 +467,18 @@ export function StepFeatures({
                     }
                   >
                     <FieldError errors={[errors.features?.[index]?.weightPct]} />
-                    <div role="radiogroup" aria-label={field.name} className="flex flex-wrap gap-2">
-                      {describedLevels({ definitions }).map((level) => (
-                        <FeatureLevelCard
-                          key={level}
-                          level={level}
-                          definition={definitions?.[level] ?? ""}
-                          selected={rating === level}
-                          onRowWithoutRating={!isRated}
-                          onSelect={() =>
-                            setValue(`features.${index}.rating`, level, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            })
-                          }
-                        />
-                      ))}
-                    </div>
+                    <FeatureRatingGroup
+                      label={field.name}
+                      levels={describedLevels({ definitions })}
+                      definitions={definitions}
+                      rating={rating}
+                      onSelect={(level) =>
+                        setValue(`features.${index}.rating`, level, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    />
                     {editingScale[field.id] ? (
                       <ScaleEditor
                         control={control}
@@ -449,9 +490,9 @@ export function StepFeatures({
                         }
                       />
                     ) : null}
-                    {rowError ? (
+                    {rowIssue ? (
                       <p role="alert" className="text-sm text-destructive">
-                        {rowError}
+                        {rowIssue.label}
                       </p>
                     ) : null}
                   </FeatureRatingRow>
@@ -531,9 +572,9 @@ export function StepFeatures({
                   ) : null}
                 </div>
                 <p className="mt-2 flex justify-between text-[12.5px] text-muted-foreground">
-                  <span className="num">{ratioFormatter.format(live.vmin)}</span>
+                  <span className="num">{sumUiFormatter.format(live.vmin)}</span>
                   <span className="num">1,000</span>
-                  <span className="num">{ratioFormatter.format(live.vmax)}</span>
+                  <span className="num">{sumUiFormatter.format(live.vmax)}</span>
                 </p>
               </div>
             ) : null}
