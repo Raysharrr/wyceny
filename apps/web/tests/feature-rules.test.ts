@@ -7,6 +7,7 @@ import {
   computeKcsOnScale,
   describedLevels,
   featureIssues,
+  featureUis,
   kcsReady,
   ratingPosition,
 } from "../src/domain/feature-rules";
@@ -229,6 +230,21 @@ describe("computeKcsOnScale — Ui from the position in the described scale (I-1
       "przecietna",
       "gorsza",
     ]);
+  });
+
+  it("featureUis: Ui of every placeable feature while others still wait for a rating", () => {
+    const partial = inputs1409({
+      name: "Powierzchnia użytkowa",
+      weight: 0.1,
+      rating: null,
+      definitions: THREE,
+    });
+    const uis = featureUis(partial);
+    expect(uis[0]).toBeCloseTo(0.4, 10);
+    expect(uis[1]).toBeCloseTo(0.3 * 1.154, 10);
+    expect(uis[2]).toBeCloseTo(0.1 * 0.875, 10);
+    expect(uis[3]).toBeNull();
+    expect(uis[4]).toBeCloseTo(0.1 * 0.875, 10);
   });
 
   it("a snapshot saved before the rule (no featureScaleRule) keeps the fixed-key mapping", () => {

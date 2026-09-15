@@ -90,6 +90,22 @@ function engineFeatures(input: Pick<KcsInput, "features" | "featureScaleRule">):
   return mapped;
 }
 
+/**
+ * Ui per feature for the step-4 rows while the set is still incomplete: the
+ * engine runs on the placeable features only (same formula), `null` marks a
+ * feature without a position. Reads the ADR-016 rule — it serves the form,
+ * whose save stamps it. Throws like the engine on an unusable sample.
+ */
+export function featureUis(input: KcsInput): Array<number | null> {
+  const placed = input.features.map((f) => {
+    const position = ratingPosition(f);
+    return position ? { ...f, rating: ENGINE_RATING[position] } : null;
+  });
+  const { ui } = computeKcs({ ...input, features: placed.filter((f) => f != null) });
+  let next = 0;
+  return placed.map((f) => (f ? ui[next++].value : null));
+}
+
 /** Whether every feature can feed the engine — the step-5 and prose guard. */
 export function kcsReady(input: Pick<KcsInput, "features" | "featureScaleRule">): boolean {
   return engineFeatures(input) != null;

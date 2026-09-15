@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { rateAllFeatures } from "./pages/wizard";
 
 // Offline smoke: manual-entry paths only (the RCN fetch needs live GUGiK).
 // The admin password is read from the SAME variable the seed script uses
@@ -53,7 +54,8 @@ async function walkToOperat(page: import("@playwright/test").Page, prices: strin
     await page.locator(`#comparable-price-${i}`).fill(price);
   await page.getByRole("button", { name: "Zatwierdź próbę i dalej" }).click();
   await page.waitForURL(/step=4/);
-  // step 4: preset cech
+  // step 4: preset cech — każda cecha dostaje ocenę (brak oceny domyślnej, ADR-016)
+  await rateAllFeatures(page);
   await page.getByRole("button", { name: "Zatwierdź cechy i dalej" }).click();
   await page.waitForURL(/step=5/);
   // step 5: kalkulacja
