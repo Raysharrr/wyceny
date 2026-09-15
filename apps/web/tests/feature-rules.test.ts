@@ -11,6 +11,7 @@ import {
   kcsReady,
   ratingPosition,
 } from "../src/domain/feature-rules";
+import { OCZEKIWANE_PO_ADR016, wycena1409Anon } from "./fixtures/wycena-1409-anon";
 
 /**
  * ADR-016 — the scale of a feature is the levels the appraiser DESCRIBED; Ui
@@ -251,6 +252,19 @@ describe("computeKcsOnScale — Ui from the position in the described scale (I-1
     );
     expect(computeKcsOnScale(legacy).sumUi).toBe(computeKcs(legacy).sumUi);
     expect(kcsReady({ ...legacy, features: [feature({ weight: 1 })] })).toBe(false);
+  });
+});
+
+describe("computeKcsOnScale on the anonymised 14.09 fixture (b1-test-foundation)", () => {
+  it("matches OCZEKIWANE_PO_ADR016 — the rule computed independently of the engine", () => {
+    const { inputs } = wycena1409Anon({ skalaPowierzchni: "poprawiona" });
+    const onScale = computeKcsOnScale({ ...inputs, featureScaleRule: FEATURE_SCALE_RULE });
+    expect({ sumUi: onScale.sumUi, wr: onScale.wr }).toEqual(OCZEKIWANE_PO_ADR016);
+  });
+
+  it("as reported (powierzchnia rated off its scale) there is no WR", () => {
+    const { inputs } = wycena1409Anon();
+    expect(kcsReady({ ...inputs, featureScaleRule: FEATURE_SCALE_RULE })).toBe(false);
   });
 });
 
