@@ -176,3 +176,28 @@ describe("document model — feature intro fields (Task 9)", () => {
     expect(whitespaceOnly.ma_skale).toBe(false);
   });
 });
+
+// I-11 at the document level: Tabela 3 prints a Ui per feature and a ΣUi under
+// it, and the reader adds the column up. The engine rounds each Ui before
+// summing, so those printed numbers must add up to the printed ΣUi — this is
+// what the operat from 14.09 got wrong (1,021 printed under rows summing 1,022).
+describe("document model — Tabela 3 sums to the printed ΣUi (I-11)", () => {
+  it("the printed Ui column adds up to suma_ui", () => {
+    const THREE = {
+      lepsza: "opis lepszej",
+      przecietna: "opis przeciętnej",
+      gorsza: "opis gorszej",
+    };
+    const m = modelWith([
+      { name: "standard", weight: 0.4, rating: "przecietna", definitions: THREE },
+      { name: "piętro", weight: 0.3, rating: "lepsza", definitions: THREE },
+      { name: "lokalizacja", weight: 0.1, rating: "gorsza", definitions: THREE },
+      { name: "powierzchnia", weight: 0.1, rating: "przecietna", definitions: THREE },
+      { name: "pomieszczenia", weight: 0.1, rating: "gorsza", definitions: THREE },
+    ]);
+
+    const parse = (s: string) => Number(s.replace(",", "."));
+    const printed = m.cechy.reduce((sum, row) => sum + parse(row.ui_przedmiot), 0);
+    expect(Math.round(printed * 1000) / 1000).toBe(parse(m.suma_ui));
+  });
+});
