@@ -28,8 +28,16 @@ async function createDraftStep1(page: import("@playwright/test").Page) {
   await page.locator("#address").fill("ul. Testowa 1, Poznań");
   await page.locator("#area").fill("54.3");
   await page.locator("#purpose").selectOption("sprzedaz");
-  await page.locator("#kwNumber").fill("KW-TEST-1");
   await page.locator("#client").fill("p. Test Testowy");
+  // ADR-018: both books examined, manually — without it step 7 blocks on B-06
+  // no matter how complete the rest of the draft is.
+  await page.locator("#kw-lokalu").fill("KW-TEST-1");
+  await page.locator("#kw-gruntu").fill("KW-TEST-2");
+  await page.locator("#kwg-nr").fill("KW-TEST-2");
+  for (const group of await page.getByRole("radiogroup", { name: /^Dział I(II|V)/ }).all()) {
+    await group.getByRole("radio", { name: "Brak wpisów" }).click();
+  }
+  await expect(page.getByText(/Zbadane księgi: 2 z 2/)).toBeVisible();
   await page.getByRole("button", { name: "Dane się zgadzają — dalej" }).click();
   await page.waitForURL(/\/valuations\/[0-9a-f-]{36}\?step=2/);
   // Regression net for the RSC-boundary 500 (server render of an existing

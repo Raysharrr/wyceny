@@ -17,7 +17,12 @@
 
 import type { ProvenanceStatus } from "@wyceny/shared";
 import type { CandidatePool } from "../ports/sample";
-import type { KwMetaSnapshot, KwSnapshot } from "./kw-snapshot";
+import type {
+  EncumbranceTreatment,
+  KwGruntSnapshot,
+  KwMetaSnapshot,
+  KwSnapshot,
+} from "./kw-snapshot";
 import type { InputsProvenance } from "./provenance";
 import type { SubjectMetaSnapshot, SubjectSnapshot } from "./subject-snapshot";
 import type { InspectionSnapshot } from "./inspection";
@@ -141,8 +146,12 @@ export type KcsInput = {
   subject?: SubjectSnapshot | null;
   /** Fetch provenance for the subject snapshot (F-5) — display/audit metadata only. */
   subjectMeta?: SubjectMetaSnapshot | null;
-  /** KW extract snapshot (Slice 6) — document-sourced only; display/audit metadata only; computeKcs never reads this. */
+  /** Examination of the lokal's KW (Slice 6, ADR-018) — from a PDF or typed by hand; display/render only, computeKcs never reads this. */
   kw?: KwSnapshot | null;
+  /** Examination of the grunt's KW (ADR-018) — manual-only in paczka 1; display/render only. Absent on drafts saved before the block. */
+  kwGrunt?: KwGruntSnapshot | null;
+  /** The appraiser's call on a dział III entry in the lokal's book (ADR-018 reg. 6) — render only; drives §2/§3/§8.2/§10.1 wording, never the figure. */
+  encumbranceTreatment?: EncumbranceTreatment | null;
   /** Extraction provenance for the kw snapshot (F-5) — display/audit metadata only. */
   kwMeta?: KwMetaSnapshot | null;
   /** Step 1 "Lokal ma przynależną piwnicę" (T-12) — render only (basement clause, S4); computeKcs never reads this. Absent on drafts saved before S1. */

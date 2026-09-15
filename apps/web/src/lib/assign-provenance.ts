@@ -4,6 +4,7 @@ import {
   matchesPresetWeights,
   medianAreaM2,
 } from "@/domain/feature-presets";
+import { kwProvenanceSource } from "@/domain/kw-snapshot";
 import type { InputsProvenance } from "@/domain/provenance";
 import type { ValuationFormValues } from "@/lib/valuation-form-schema";
 
@@ -23,13 +24,19 @@ export function assignSubjectProvenance(
   // The area field is doc-sourced (to_verify) only when a kw extract is
   // attached AND its powUzytkowaKw exactly matches the submitted area — i.e.
   // the appraiser accepted the document's value rather than typing their own.
+  // A manual eKW examination (`ekw_reczne`) is not a document source here:
+  // the appraiser read that number off the screen and typed it, so it enters
+  // confirmed like every other hand-entered value (ADR-018 reg. 1).
   const areaFromDocument =
     values.kw != null &&
+    values.kw.source !== "ekw_reczne" &&
     values.kw.powUzytkowaKw != null &&
     Number(values.area) === values.kw.powUzytkowaKw;
   return {
     address: confirmed,
-    area: areaFromDocument ? { source: values.kw!.source, status: "to_verify" } : confirmed,
+    area: areaFromDocument
+      ? { source: kwProvenanceSource(values.kw!.source), status: "to_verify" }
+      : confirmed,
     ...(values.subject
       ? {
           ewidencja: values.subjectMeta
@@ -38,7 +45,16 @@ export function assignSubjectProvenance(
           mpzp: values.subjectMeta ? ({ source: "mpzp", status: "to_verify" } as const) : confirmed,
         }
       : {}),
-    ...(values.kw ? { kw: { source: values.kw.source, status: "to_verify" } as const } : {}),
+    // A hand-typed examination is the appraiser's own work — confirmed, not
+    // "to_verify against a document that does not exist".
+    ...(values.kw
+      ? {
+          kw:
+            values.kw.source === "ekw_reczne"
+              ? confirmed
+              : ({ source: kwProvenanceSource(values.kw.source), status: "to_verify" } as const),
+        }
+      : {}),
   };
 }
 

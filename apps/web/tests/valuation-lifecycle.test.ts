@@ -22,7 +22,7 @@ import type { Valuation } from "../src/ports/valuation";
 import type { Comparable, KcsInput } from "../src/domain/kcs";
 import { approvalGate, type InputsProvenance } from "../src/domain/provenance";
 import { confirmProseSnapshot, PROSE_SECTIONS } from "../src/domain/prose-snapshot";
-import { confirmedProse } from "./fixtures/valuation-inputs";
+import { confirmedProse, EXAMINED_BOOKS } from "./fixtures/valuation-inputs";
 import { assignSampleProvenance } from "../src/lib/assign-provenance";
 
 const confirmedScalars: InputsProvenance = {
@@ -30,6 +30,9 @@ const confirmedScalars: InputsProvenance = {
   area: { source: "rzeczoznawca", status: "confirmed" },
   weights: { source: "rzeczoznawca", status: "confirmed" },
   ratings: { source: "rzeczoznawca", status: "confirmed" },
+  // The examination in EXAMINED_BOOKS is the appraiser's own work, so it
+  // enters confirmed (ADR-018 reg. 1).
+  kw: { source: "rzeczoznawca", status: "confirmed" },
 };
 
 function draftWith(inputs: KcsInput | null, overrides: Partial<Valuation> = {}): Valuation {
@@ -63,6 +66,8 @@ function draftWith(inputs: KcsInput | null, overrides: Partial<Valuation> = {}):
 
 function rcnInputs(): KcsInput {
   return {
+    // ADR-018: a draft that can be approved is one whose books were examined.
+    ...EXAMINED_BOOKS,
     area: 50,
     comparables: Array.from({ length: 12 }, (_, i) => ({
       pricePerM2: 10_000 + i,

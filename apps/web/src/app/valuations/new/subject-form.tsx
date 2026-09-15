@@ -24,7 +24,7 @@ import { extractKw } from "@/lib/kw-extract-client";
 import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
 import { cn } from "@/lib/utils";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
-import { KwSection, type KwFetchState, type KwSource } from "./kw-section";
+import { KwSection, localToday, type KwFetchState, type KwSource } from "./kw-section";
 import { PROPERTY_RIGHT_LABEL } from "@/domain/property-right";
 import {
   MapPreview,
@@ -106,10 +106,13 @@ export function SubjectForm({
   // is fetched independently at approve (spec decision 1).
   const [mapPreview, setMapPreview] = useState<MapPreviewState>({ status: "idle" });
   // KW "Stan prawny" section. The UI `kwSource` (akt|odpis_kw|reczny) is the
-  // section key — distinct from the extract's own `kw.source` (akt|odpis_kw).
-  // Edit mode seeds both from `defaults.kw` when a document-sourced extract
-  // was already saved on the draft.
-  const [kwSource, setKwSource] = useState<KwSource>(defaults?.kw?.source ?? "reczny");
+  // section key — distinct from the snapshot's own `kw.source`. A snapshot
+  // saved from a manual eKW examination (`ekw_reczne`) reopens on the manual
+  // path, which is where its data was typed.
+  const [kwSource, setKwSource] = useState<KwSource>(() => {
+    const saved = defaults?.kw?.source;
+    return saved == null || saved === "ekw_reczne" ? "reczny" : saved;
+  });
   const [kwState, setKwState] = useState<KwFetchState>(() => {
     if (!defaults?.kw) return { status: "idle" };
     const kwCount = [defaults.kw.kwLokalu, defaults.kw.kwGruntu, ...defaults.kw.kwInne].filter(
@@ -249,6 +252,10 @@ export function SubjectForm({
     lastKwFile.current = null;
     resetField("kw");
     resetField("kwMeta");
+    // NOTE: the encumbrance decision is NOT cleared here. It is withdrawn by
+    // `retractExamination` in kw-section.tsx, the one place that decides what
+    // disappears — and it has to be, because `resetField` restores the DEFAULT,
+    // which on a loaded draft is the stored decision rather than nothing.
     // Hard-reset the flat manual number too: a kwNumber typed in "reczny" must
     // not silently become `{nr_kw}` in the operat next to a DIFFERENT set of
     // extracted numbers after switching to an upload source. Switching back to
@@ -291,7 +298,12 @@ export function SubjectForm({
       setKwState({ status: "error", message: result.message });
       return;
     }
-    setValue("kw", result.extract, { shouldDirty: true });
+    // A successful read of a KW excerpt IS the examination, and it happened
+    // today — the worker cannot supply the date because no book prints it.
+    // Without this the card sat at "Do zbadania" after a perfectly good PDF and
+    // step 7 blocked on B-06 with nothing left to fill in (a deed is not a
+    // book, so `akt` stays unexamined either way).
+    setValue("kw", { ...result.extract, dataBadania: localToday() }, { shouldDirty: true });
     setValue("kwMeta", result.meta, { shouldDirty: true });
     // Clear a stale kwNumber error left over from a prior empty upload-mode
     // submit (W4) — now that an extract exists, the manual number isn't

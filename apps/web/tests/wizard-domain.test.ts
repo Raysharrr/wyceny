@@ -607,14 +607,25 @@ describe("stepForBlockerPath", () => {
         { ...maximallyBlockedInput(), prose: { sections: {}, factsHashes: {} } },
         { requireProse: true },
       ),
+      // B-07 fires only on a dział III entry, so the enumeration above never
+      // reaches it — an unmapped `encumbranceTreatment` would strand the
+      // appraiser on step 7 with nowhere to go (ADR-018 reg. 6).
+      ...blockerPaths({
+        ...maximallyBlockedInput(),
+        kw: {
+          ...maximallyBlockedInput().kw!,
+          dzial3: { wpisy: true, tresc: ["Służebność osobista mieszkania"] },
+        },
+      }),
       ...documentFieldBlockers(emptyDocument).map((b) => b.path),
     ]);
 
     // Sanity: the enumeration really did reach every group — sample size + one
     // transaction (2), the four scalars + featureDefs + geocode + EGiB + MPZP +
-    // KW (9), the two KW numbers (2), the prose snapshot + its six sections
-    // (7), the five document fields (5). A drop here means a group stopped
-    // being exercised, and the loop below would then pass vacuously.
+    // KW (9), the KW examination and the encumbrance decision (2), the prose
+    // snapshot + its six sections (7), the five document fields (5). A drop
+    // here means a group stopped being exercised, and the loop below would
+    // then pass vacuously.
     expect(paths.size).toBe(25);
     for (const path of paths) {
       expect(stepForBlockerPath(path), `no step for blocker path "${path}"`).toBeDefined();
