@@ -23,7 +23,10 @@ import {
  * `golden-wr` and `golden-coop-piastowskie`.
  */
 const fixture = JSON.parse(
-  readFileSync(fileURLToPath(new URL("./fixtures/wycena-1409.json", import.meta.url)), "utf8"),
+  readFileSync(
+    fileURLToPath(new URL("./fixtures/wycena-1409-agregaty.json", import.meta.url)),
+    "utf8",
+  ),
 ) as {
   subjectArea: number;
   pricesPerM2: number[];
