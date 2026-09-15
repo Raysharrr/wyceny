@@ -6,10 +6,11 @@ import {
   formatPln,
   OCENA_SPOZA_REJESTRU,
 } from "../src/domain/document-model";
-import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
+import { PIETRO_PRZEDMIOTU, wycena1409Anon } from "./fixtures/wycena-1409-anon";
 import { computeKcs, type KcsInput } from "../src/domain/kcs";
 import { computeKcsOnScale } from "../src/domain/feature-rules";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
+import { FEATURE_PRESETS } from "../src/domain/feature-presets";
 
 function inputsWith(features: KcsInput["features"]): KcsInput {
   return {
@@ -217,6 +218,53 @@ describe("document model — Tabela 3 sums to the printed ΣUi (I-11)", () => {
  * Operat z 14.09 opisywał Cmin i Cmax szablonowo („wartość najwyższa” przy
  * każdej cesze) i pomijał remis Cmin. Po tej sesji opis wynika z danych.
  */
+/**
+ * Fikstura 14.09 karmi testy modelu dokumentu, goldeny i opisy Cmin/Cmax w całej
+ * paczce, a część testów musi ją PRZESTAWIĆ (inna kondygnacja, inne źródło
+ * wiersza). Dopóki zwracała stałe modułowe przez referencję, taki zapis
+ * wychodził poza swój test i o wyniku decydowała kolejność przebiegu — w stronę,
+ * która potrafi zamaskować prawdziwy błąd, bo następny test dostaje dane
+ * spreparowane przez poprzednika. Asercja przez KONSEKWENCJĘ: zapis w jednej
+ * instancji, odczyt w drugiej.
+ */
+describe("izolacja fikstury wycena1409Anon", () => {
+  it("każde wywołanie fikstury dostaje własne dane — zapis nie wychodzi poza instancję", () => {
+    const a = wycena1409Anon();
+    const cmax = a.inputs.sampleSelection!.proposed.at(-1)!;
+    const kondygnacjaPrzed = cmax.floor;
+    cmax.floor = -999;
+    a.inputs.comparables[0].pricePerM2 = -1;
+    a.inputs.subject!.pietro = -42;
+    a.inputs.features[0].definitions!.lepsza = "ZATRUTE";
+
+    const b = wycena1409Anon();
+    expect(b.inputs.sampleSelection!.proposed.at(-1)!.floor).toBe(kondygnacjaPrzed);
+    expect(b.inputs.comparables[0].pricePerM2).toBeGreaterThan(0);
+    expect(b.inputs.subject!.pietro).toBe(PIETRO_PRZEDMIOTU);
+    expect(b.inputs.features[0].definitions!.lepsza).not.toBe("ZATRUTE");
+  });
+
+  it("progi cechy mierzalnej nie są tym samym obiektem co preset PRODUKCYJNY", () => {
+    // Fikstura kopiuje progi z presetu; gdyby oddawała jego obiekt, zapis w
+    // teście przepisałby `FEATURE_PRESETS` na resztę przebiegu procesu.
+    const preset = FEATURE_PRESETS.lokal.find((e) => e.key === "polozenie-na-pietrze")!;
+    const cecha = wycena1409Anon().inputs.features.find((f) => f.key === "polozenie-na-pietrze")!;
+    expect(cecha.measure).toEqual(preset.defaultMeasure);
+    expect(cecha.measure).not.toBe(preset.defaultMeasure);
+
+    cecha.measure!.bounds.lepsza = { od: 99 };
+    expect(preset.defaultMeasure!.bounds.lepsza).toEqual({ od: 4 });
+  });
+
+  it("odpis KW też jest kopią — wariant z wpisem w dziale III", () => {
+    const a = wycena1409Anon({ kw: "odpis_z_wpisem_dzial_iii" });
+    const b = wycena1409Anon({ kw: "odpis_z_wpisem_dzial_iii" });
+    expect(a.inputs.kw).not.toBe(b.inputs.kw);
+    a.inputs.kw!.sad = "ZATRUTY";
+    expect(wycena1409Anon({ kw: "odpis_z_wpisem_dzial_iii" }).inputs.kw!.sad).not.toBe("ZATRUTY");
+  });
+});
+
 describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
   const reported = () => buildDocumentModel(wycena1409Anon());
 
@@ -318,6 +366,14 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
    * przeliczany (PR #58).
    */
   describe("kondygnacja RCN staje się piętrem (wariant b)", () => {
+    /**
+     * Pisze po `v`, ale `v` jest prywatne — `wycena1409Anon()` zwraca głęboką
+     * kopię, więc zapis nie wychodzi poza to wywołanie. Pilnuje tego bramka
+     * `fixtures-isolation.test.ts` (rekurencyjny przemiat wszystkich fabryk) i
+     * describe „izolacja fikstury wycena1409Anon” wyżej w tym pliku; gdyby
+     * fikstura wróciła do płytkiej kopii, ten helper zatruwałby każdy następny
+     * test w przebiegu.
+     */
     const naKondygnacji = (floor: number | null, source: "rcn" | "rejestr_sm") => {
       const v = wycena1409Anon();
       const najdrozszy = Math.max(...v.inputs.comparables.map((c) => c.pricePerM2));

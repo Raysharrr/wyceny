@@ -120,6 +120,30 @@ describe("F-6: lokal feature preset", () => {
     expect(defaults.find((f) => f.key === "powierzchnia-uzytkowa")!.definitions).toEqual({});
   });
 
+  /**
+   * Wartości formularza nie mogą wskazywać na preset: `bounds` jest zagnieżdżone,
+   * więc płytkie oddanie pozwoliłoby wycenie zapisać własne progi do
+   * FEATURE_PRESETS, a stamtąd do każdej wyceny otwartej później w tym samym
+   * procesie. Asercja przez konsekwencję — zapis w jednym zestawie wartości,
+   * odczyt w presecie i w NASTĘPNYM zestawie.
+   */
+  it("progi w wartościach formularza to kopia, nie obiekt presetu", () => {
+    const pietro = lokal.find((e) => e.key === "polozenie-na-pietrze")!;
+    const pierwsza = defaultFeatureFormValues().find((f) => f.key === "polozenie-na-pietrze")!;
+    expect(pierwsza.measure).toEqual(pietro.defaultMeasure);
+
+    pierwsza.measure!.bounds.lepsza = { od: 99 };
+    pierwsza.measure!.kind = "area";
+
+    expect(pietro.defaultMeasure).toEqual({
+      kind: "floor",
+      bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+    });
+    const druga = defaultFeatureFormValues().find((f) => f.key === "polozenie-na-pietrze")!;
+    expect(druga.measure!.bounds.lepsza).toEqual({ od: 4 });
+    expect(druga.measure!.kind).toBe("floor");
+  });
+
   it("matchesPresetWeights: true for untouched defaults, false for any edit", () => {
     const defaults = defaultFeatureFormValues();
     expect(matchesPresetWeights(defaults)).toBe(true);

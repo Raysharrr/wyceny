@@ -255,6 +255,11 @@ export function defaultFeatureFormValues(): Array<{
       weightPct: e.defaultWeightPct,
       rating: null,
       definitions: { ...e.defaultDefinitions },
-      ...(e.defaultMeasure ? { measure: e.defaultMeasure } : {}),
+      // Deep copy, not the preset's own object: `bounds` is nested, so a shallow
+      // hand-over would let one valuation's thresholds write into FEATURE_PRESETS
+      // and from there into every valuation opened later in the same process.
+      // The form happens to REPLACE the measure rather than mutate it, but that
+      // is the caller's convention, not a contract this module can rely on.
+      ...(e.defaultMeasure ? { measure: structuredClone(e.defaultMeasure) } : {}),
     }));
 }
