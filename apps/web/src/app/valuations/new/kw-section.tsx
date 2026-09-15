@@ -587,7 +587,17 @@ export function KwSection(props: KwSectionProps) {
                   // former left B-06 demanding a lokal book whose card is
                   // hidden — a dead end — and §7 printing the standard variant.
                   onSourceChange(checked === true ? "akt" : "reczny");
-                  patchKw({ deweloperski: checked === true });
+                  // A FRESH stub, never `patchKw`: `onSourceChange` is
+                  // `resetKwSection`, which has just cleared `kw`, while this
+                  // closure still holds the pre-reset snapshot — spreading it
+                  // would write the abandoned book straight back (W7 class),
+                  // and nothing would object, because a developer purchase is
+                  // exempt from the lokal-book requirement in the first place.
+                  // Only on the way IN: unticking leaves the reset alone, so
+                  // the manual path goes back to demanding a KW number.
+                  if (checked === true) {
+                    setKw({ ...EMPTY_MANUAL_KW, deweloperski: true, dataBadania: today });
+                  }
                 }}
               />
               <label htmlFor="kw-deweloperski" className="text-sm">

@@ -185,7 +185,7 @@ function StateHarness(props: {
   seed?: Partial<FormInput>;
   propertyRight?: FormInput["propertyRight"];
 }) {
-  const { control } = useForm<FormInput, unknown, FormOutput>({
+  const { control, resetField } = useForm<FormInput, unknown, FormOutput>({
     defaultValues: {
       ...(props.propertyRight ? { propertyRight: props.propertyRight } : {}),
       ...(props.seed ?? {}),
@@ -198,6 +198,13 @@ function StateHarness(props: {
   // rendered from it — a static prop here would make the box un-untickable and
   // hide the half of the fix that clears the flag.
   const [source, setSource] = useState<KwSource>("reczny");
+  // Mirrors the one thing `resetKwSection` does that this section can observe:
+  // switching source CLEARS `kw`. A harness that only flipped the string would
+  // let a control get away with spreading a snapshot the parent just dropped.
+  const onSourceChange = (next: KwSource) => {
+    setSource(next);
+    resetField("kw");
+  };
   return (
     <>
       <KwSection
@@ -205,7 +212,7 @@ function StateHarness(props: {
         state={{ status: "idle" }}
         source={source}
         today="2026-09-15"
-        onSourceChange={setSource}
+        onSourceChange={onSourceChange}
         onFileSelected={() => {}}
         onRetry={() => {}}
         onUseDocumentArea={() => {}}
@@ -512,8 +519,11 @@ describe("KwSection", () => {
     await user.click(screen.getByRole("checkbox"));
     await waitFor(() => expect(json()?.deweloperski).toBe(true));
 
+    // Unticking hands the job back to the parent's reset — the snapshot goes
+    // away entirely rather than being rewritten with the flag cleared, so the
+    // manual path goes back to demanding a KW number.
     await user.click(screen.getByRole("checkbox"));
-    await waitFor(() => expect(json()?.deweloperski).toBe(false));
+    await waitFor(() => expect(json()).toBeNull());
   });
 
   /**
@@ -699,6 +709,73 @@ describe("KwSection — full-form wiring", () => {
         submitted.encumbranceTreatment as EncumbranceTreatment,
       ),
     ).toBe(true);
+  });
+
+  /**
+   * The trap under the developer checkbox: `onSourceChange` IS
+   * `resetKwSection`, which calls `resetField("kw")`. A handler that also
+   * spreads `kw` reads the snapshot from the render closure — i.e. from BEFORE
+   * the reset — and writes the just-cleared book straight back. The lokal's
+   * KW number would ride into a valuation of a lokal declared to have no book
+   * of its own, and the gate would never object (`ksiegaLokalu` is false for a
+   * developer purchase, so nobody looks). The W7 write-once class, one control
+   * over. The isolated harness cannot see this: its `onSourceChange` is a
+   * plain `useState` that resets nothing.
+   */
+  it("does not resurrect the manual book when the developer checkbox is ticked (W7 class)", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+
+    await fillRequiredExceptKw(user);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
+    const [lokalDzial3] = screen.getAllByRole("radiogroup", {
+      name: "Dział III — prawa, roszczenia i ograniczenia",
+    });
+    await user.click(within(lokalDzial3).getByRole("radio", { name: "Brak wpisów" }));
+
+    await user.click(screen.getByRole("checkbox", { name: /zakup deweloperski/i }));
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as {
+      kw?: { deweloperski?: boolean; kwLokalu?: string | null; dzial3?: unknown };
+    };
+    expect(submitted.kw?.deweloperski).toBe(true);
+    expect(submitted.kw?.kwLokalu ?? null).toBeNull();
+    expect(submitted.kw?.dzial3 ?? null).toBeNull();
+  });
+
+  /**
+   * Same orphaned-answer class as the property-right switch: the encumbrance
+   * question hangs off `kw.dzial3`, which `resetKwSection` clears, so the
+   * decision must go with it rather than ride invisibly into the save.
+   */
+  it("clears the encumbrance decision when the lokal book's source is switched", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+
+    await fillRequiredExceptKw(user);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
+    const [lokalDzial3] = screen.getAllByRole("radiogroup", {
+      name: "Dział III — prawa, roszczenia i ograniczenia",
+    });
+    await user.click(within(lokalDzial3).getByRole("radio", { name: "Są wpisy" }));
+    await user.type(
+      within(screen.getByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      "Zgodnie z poleceniem Zleceniodawcy.",
+    );
+
+    await user.click(screen.getByRole("radio", { name: "Wgraj PDF" }));
+    expect(screen.queryByTestId("kw-encumbrance")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "Wpisz ręcznie" }));
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as {
+      encumbranceTreatment?: unknown;
+    };
+    expect(submitted.encumbranceTreatment ?? null).toBeNull();
   });
 
   // D9: non-PDF is rejected client-side, before any network call.

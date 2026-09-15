@@ -252,6 +252,12 @@ export function SubjectForm({
     lastKwFile.current = null;
     resetField("kw");
     resetField("kwMeta");
+    // The encumbrance decision hangs off `kw.dzial3`, which has just gone: the
+    // question disappears from the screen, so a leftover answer is a claim
+    // nobody can see or retract. Harmless today (only the gate reads it), but
+    // `b1-template` is about to print it on the cover — the same reason the
+    // property-right switch clears it.
+    resetField("encumbranceTreatment");
     // Hard-reset the flat manual number too: a kwNumber typed in "reczny" must
     // not silently become `{nr_kw}` in the operat next to a DIFFERENT set of
     // extracted numbers after switching to an upload source. Switching back to
