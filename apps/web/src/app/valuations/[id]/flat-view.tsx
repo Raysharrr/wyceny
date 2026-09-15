@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { AlertTriangle, Banknote, ClipboardCheck, FileCheck2, MapPin } from "lucide-react";
+import { AlertTriangle, Banknote, ClipboardCheck, FileCheck2, MapPin, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/wizard/section-card";
 import { PURPOSE_LABEL } from "@/domain/document-model";
+import { kcsReady } from "@/domain/feature-rules";
 import type { Blocker } from "@/domain/provenance";
 import type { Valuation } from "@/ports/valuation";
 import {
@@ -68,7 +69,21 @@ export function FlatView({
   // left column (brief: repositioning only, no new information).
   const dataCards = (
     <>
-      {valuation.wr != null && valuation.inputs ? <KcsBreakdown inputs={valuation.inputs} /> : null}
+      {/* ADR-016: a valuation approved before the scale rule can carry a rating
+          with no place in its described scale — the engine refuses it, so the
+          KCS tables say why instead of taking the page down with them. */}
+      {valuation.wr != null && valuation.inputs ? (
+        kcsReady(valuation.inputs) ? (
+          <KcsBreakdown inputs={valuation.inputs} />
+        ) : (
+          <SectionCard icon={Scale} title="Rozbicie kalkulacji" sub="Tabele 2–4 operatu">
+            <p className="text-sm text-muted-foreground">
+              Oceny cech tej wyceny pochodzą sprzed zmiany skali ocen — zatwierdź cechy ponownie w
+              kroku 4, żeby zobaczyć rozbicie kalkulacji. Zapisana wartość rynkowa się nie zmienia.
+            </p>
+          </SectionCard>
+        )
+      ) : null}
       {valuation.wr != null && valuation.inputs ? (
         <ComparablesProvenance inputs={valuation.inputs} />
       ) : null}

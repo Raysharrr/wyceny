@@ -133,3 +133,35 @@ describe("FlatView — draft seen by a non-owner admin (no document)", () => {
     expect(screen.queryByTestId("sign-explainer")).not.toBeInTheDocument();
   });
 });
+
+// ADR-016: an approved valuation from before the rule may carry a rating on a
+// level its scale never described. `computeKcsOnScale` refuses such inputs, and
+// this view is a server component — without a guard the whole page would throw.
+describe("FlatView — approved before the scale rule (ADR-016)", () => {
+  const offScale = {
+    ...baseValuation,
+    inputs: {
+      ...approvableInputs(),
+      features: [
+        {
+          key: "standard-wykonczenia",
+          name: "Standard wykończenia",
+          weight: 1,
+          rating: "przecietna" as const,
+          definitions: { lepsza: "opis lepszej", gorsza: "opis gorszej" },
+        },
+      ],
+    },
+  };
+
+  it("explains the missing KCS tables instead of throwing", () => {
+    render(<FlatView {...baseProps} valuation={offScale} />);
+
+    expect(screen.getByRole("heading", { name: /Rozbicie kalkulacji/ })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Oceny cech tej wyceny pochodzą sprzed zmiany skali ocen/),
+    ).toBeInTheDocument();
+    // The amount that was issued is still on screen.
+    expect(screen.getByRole("heading", { name: "Wynik" })).toBeInTheDocument();
+  });
+});
