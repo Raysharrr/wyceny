@@ -114,7 +114,7 @@ function subjectSnapshotToForm(snapshot: SubjectSnapshot): Partial<SubjectFormVa
  * Coercing at this defaults boundary fixes both render and save with no data
  * migration and no change to `normalizeKw`/the mutation/schema layer.
  */
-function coerceLegacyKw(kw: Partial<KwSnapshot>): KwSnapshot {
+function coerceLegacyKw(kw: Partial<KwSnapshot>): Required<KwSnapshot> {
   return {
     source: kw.source ?? "odpis_kw",
     kwLokalu: kw.kwLokalu ?? null,
@@ -130,11 +130,20 @@ function coerceLegacyKw(kw: Partial<KwSnapshot>): KwSnapshot {
     dzial4: kw.dzial4 ?? null,
     // ADR-018: every field this function forgets is a field that survives the
     // save and then vanishes on the way back in — the appraiser re-opens step 1
-    // and the examination they recorded is gone. Enumerated here, so a new
-    // `KwSnapshot` field is a compile error rather than silent data loss.
+    // and the examination they recorded is gone.
+    //
+    // Under a plain `KwSnapshot` return type the enumeration was only a
+    // checklist — the fields below are OPTIONAL, so forgetting one still
+    // satisfied the type, and `tresc` was in fact missing from it when the
+    // round-trip was first measured (b1-kw-read). `Required<KwSnapshot>` above
+    // turns that checklist into a compile error: the return type now demands
+    // every optional field, at the cost of one word.
     dataBadania: kw.dataBadania ?? null,
     nrLokalu: kw.nrLokalu ?? null,
     akt: kw.akt ?? null,
+    // The transcribed dzialy. Losing these on re-entry would not blank a field
+    // the appraiser can see — it would silently stop §8.2 quoting the book.
+    tresc: kw.tresc ?? null,
   };
 }
 

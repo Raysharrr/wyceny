@@ -209,7 +209,7 @@ export function approvableInputs(): KcsInput {
   // księgi albo opis poziomu pisałby dane każdemu następnemu w przebiegu.
   // Domyka to także `approvableInput` i `confirmableInput`, bo obie budują
   // stąd. Klon na wyjściu, nie kopiowanie pól: nowe pole nie wymaga wtedy
-  // pamiętania o kopii (pilnuje tego `leakingPaths` w `fixtures.test.ts`).
+  // pamiętania o kopii (pilnuje tego `fixtures-isolation.test.ts`).
   return structuredClone(base);
 }
 

@@ -10,6 +10,8 @@
  * The last three fields are optional: drafts saved before ADR-018 carry a
  * snapshot without them and are read back unmigrated.
  */
+import type { KsiegaTresc } from "./kw-tresc";
+
 export type KwDzialSnapshot = { wpisy: boolean; tresc: string[] };
 
 /** Dział II — the deed the ownership came from, in the three parts the form asks for (ADR-018 reg. 1, decyzja usera 15.09). */
@@ -37,6 +39,17 @@ export type KwSnapshot = {
   /** Numer lokalu as the book states it (feeds the address comparison, ADR-019). */
   nrLokalu?: string | null;
   akt?: KwAkt | null;
+  /**
+   * The full content of the book's five dzialy, as §8.2 prints it — present
+   * ONLY when a PDF was transcribed AND the worker's deterministic validators
+   * passed (`walidacja.ok`). Never typed by hand: the manual path describes
+   * the dzialy in `dzial3`/`dzial4` instead, and the card says so.
+   *
+   * Carries persons' data on purpose (ADR-018 "Zmiana 15.09") — which is why
+   * it lives HERE, inside the valuation's `inputs`, and nowhere else: no log,
+   * no event, no fixture that is not fictional (F-13).
+   */
+  tresc?: KsiegaTresc | null;
 };
 
 /**
@@ -136,6 +149,12 @@ export function normalizeKw(kw: KwSnapshot): KwSnapshot {
     dataBadania: trimToNull(kw.dataBadania ?? null),
     nrLokalu: trimToNull(kw.nrLokalu ?? null),
     akt: normalizeAkt(kw.akt),
+    // `tresc` is carried by the spread above and deliberately NOT normalized.
+    // Two reasons: its strings are the eKW text VERBATIM (spacing around "/",
+    // the kind of dash, leading zeros — trimming them would be corruption, not
+    // tidying), and leaving the key untouched keeps a draft saved before this
+    // field byte-identical, so `sameSubjectGroup` does not lapse a whole
+    // confirmed step-1 group on its first re-save.
   };
 }
 

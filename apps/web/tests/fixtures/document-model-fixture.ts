@@ -2,7 +2,7 @@ import { computeKcs, type KcsInput } from "../../src/domain/kcs";
 import type { BuildDocumentInput, OperatAuthor } from "../../src/domain/document-model";
 import type { AppraiserProfile } from "../../src/ports/profile";
 import type { SubjectSnapshot } from "../../src/domain/subject-snapshot";
-import type { KwSnapshot } from "../../src/domain/kw-snapshot";
+import type { KwGruntSnapshot, KwSnapshot } from "../../src/domain/kw-snapshot";
 
 /**
  * Shared synthetic render-input fixture (F-12 completeness suite +
@@ -10,7 +10,11 @@ import type { KwSnapshot } from "../../src/domain/kw-snapshot";
  * 3 rated features with scale definitions — never the source Kościelna
  * operat's real data.
  */
-export function goldenInputs(subject?: SubjectSnapshot, kw?: KwSnapshot): KcsInput {
+export function goldenInputs(
+  subject?: SubjectSnapshot,
+  kw?: KwSnapshot,
+  kwGrunt?: KwGruntSnapshot,
+): KcsInput {
   return {
     area: 48.2,
     comparables: Array.from({ length: 12 }, (_, i) => ({
@@ -54,6 +58,7 @@ export function goldenInputs(subject?: SubjectSnapshot, kw?: KwSnapshot): KcsInp
     provenance: null,
     subject,
     kw,
+    kwGrunt,
   };
 }
 
@@ -81,6 +86,26 @@ export const KW_STANDARD: KwSnapshot = {
     wpisy: true,
     tresc: ["Hipoteka umowna na rzecz banku X", "Hipoteka przymusowa na rzecz US"],
   },
+  /**
+   * Since b1-kw-read the §8.2 block asks `kwRequirements`, not `kw != null` —
+   * so a fixture that stands for AN EXAMINED BOOK has to carry the day it was
+   * examined. Without it this snapshot describes a book nobody opened, which is
+   * exactly what the 14.09 operat did and what the new predicate refuses.
+   */
+  dataBadania: "2026-06-05",
+};
+
+/**
+ * The mother book, examined — the developer variant's whole legal picture (a
+ * lokal bought from a developer has no book of its own, so `kwRequirements`
+ * counts only this one).
+ */
+export const KW_GRUNT_ZBADANA: KwGruntSnapshot = {
+  source: "ekw_reczne",
+  nrKsiegi: "PO1P/2/4",
+  dataBadania: "2026-06-05",
+  dzial3: { wpisy: false, tresc: [] },
+  dzial4: { wpisy: false, tresc: [] },
 };
 
 /** Developer variant — no own kwLokalu, examination covers the grunt KW only. */
@@ -176,8 +201,9 @@ export const PROFIL_TESTOWY: AppraiserProfile = {
 export function syntheticDocumentInput(
   subject?: SubjectSnapshot,
   kw?: KwSnapshot,
+  kwGrunt?: KwGruntSnapshot,
 ): BuildDocumentInput {
-  const inputs = goldenInputs(subject, kw);
+  const inputs = goldenInputs(subject, kw, kwGrunt);
   const v: BuildDocumentInput = {
     address: "ul. Przykładowa 5, Poznań",
     area: 48.2,
@@ -194,6 +220,6 @@ export function syntheticDocumentInput(
   };
   // Bez klonu `author` byłby tym samym obiektem co stała `AUTOR_TESTOWY` we
   // wszystkich wywołaniach (`goldenInputs` jest czyste, więc to jedyny
-  // przeciek tej fabryki). Pilnuje tego `leakingPaths` w `fixtures.test.ts`.
+  // przeciek tej fabryki). Pilnuje tego `fixtures-isolation.test.ts`.
   return structuredClone(v);
 }
