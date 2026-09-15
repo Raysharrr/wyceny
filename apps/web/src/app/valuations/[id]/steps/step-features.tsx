@@ -606,14 +606,20 @@ export function StepFeatures({
                 // I-10 live, not on submit: a scale the save would refuse (B-09,
                 // B-10) says so in the row while the appraiser is editing it.
                 // B-08 is skipped — the „Wybierz ocenę” badge already says it.
+                //
+                // On a measurable feature the BANDS come first: they are the
+                // source of the texts, so a band problem is the cause and
+                // B-09/B-10 only its symptom (a band with no wording leaves its
+                // level undescribed, and „opisz dwa poziomy” would send the
+                // appraiser to fix the wrong thing).
                 const rowIssue =
+                  (measure ? measureIssues(measure)[0] : undefined) ??
                   featureIssues({
                     name: field.name,
                     weight: (Number(current?.weightPct) || 0) / 100,
                     rating,
                     definitions,
-                  }).find((issue) => issue.code !== "B-08")?.label ??
-                  (measure ? measureIssues(measure)[0] : undefined);
+                  }).find((issue) => issue.code !== "B-08")?.label;
                 return (
                   <FeatureRatingRow
                     key={field.id}

@@ -52,6 +52,16 @@ function floorLabel(value: number): string {
   return value === 0 ? "parter" : `${value} piętro`;
 }
 
+/**
+ * How many storeys a piętro band may list before the wording runs out. Across
+ * eight operats every enumeration is one or two items ("parter", "parter,
+ * 1 piętro", "1 piętro, 2 piętro", "4 piętro, 5 piętro"); a wider range is
+ * always written as "N piętro i powyżej" or left descriptive ("piętra
+ * pośrednie"). There is not one enumeration of three or more (user decision
+ * 15.09), so this is the edge of the evidence, not a style preference.
+ */
+const MAX_FLOOR_ENUMERATION = 2;
+
 /** Bands that carry an edge, ordered by VALUE — for powierzchnia that is the reverse of the rating order. */
 function valueOrderedBands(
   measure: FeatureMeasure,
@@ -74,8 +84,8 @@ function valueOrderedBands(
  *   ("do 40 m²", never "powierzchnia użytkowa do 40 m²");
  * - the piętro band that is neither the lowest nor the highest is "piętra
  *   pośrednie" — descriptive in all four operats, never a numeric range;
- * - the lowest piętro band is an ENUMERATION ("parter", "parter, 1 piętro"),
- *   and the highest is "N piętro i powyżej".
+ * - the lowest piętro band is an ENUMERATION of at most two storeys ("parter",
+ *   "parter, 1 piętro"), and the highest is "N piętro i powyżej".
  *
  * `position` is the band's place in the value order, which decides only the
  * piętro middle wording; every other sentence is written from the edges
@@ -97,6 +107,11 @@ function definitionFromBounds(
   if (upper == null) return `${floorLabel(od ?? 0)} i powyżej`;
   if (position === "middle") return "piętra pośrednie";
   const from = od ?? 0;
+  // A closed band wider than the enumeration has NO wording in the operats, and
+  // "N piętro i powyżej" would claim storeys it does not cover. Nothing is
+  // written; `measureIssues` names the band in the row instead of the generator
+  // inventing a sentence that would go into the operat.
+  if (upper - from + 1 > MAX_FLOOR_ENUMERATION) return "";
   const storeys = [];
   for (let n = from; n <= upper; n++) storeys.push(floorLabel(n));
   return storeys.join(", ");
@@ -178,6 +193,21 @@ export function measureIssues(measure: FeatureMeasure): string[] {
         ? `Przedziały poziomów ${pair} nachodzą na siebie.`
         : `Między przedziałami poziomów ${pair} jest luka.`,
     );
+  }
+  if (issues.length > 0) return issues;
+
+  // Last, because it is about WORDING rather than about the bands being a
+  // scale: a closed piętro band wider than the enumeration has no sentence in
+  // the operats, so the generator writes none and the row says why.
+  if (measure.kind === "floor") {
+    for (const { level, bound } of bands) {
+      const from = bound.od ?? 0;
+      if (bound.do == null || bound.do - from + 1 <= MAX_FLOOR_ENUMERATION) continue;
+      if (definitionsFromMeasure(measure)[level]) continue;
+      issues.push(
+        `Przedział poziomu „${LEVEL_LABEL[level]}” obejmuje więcej niż ${MAX_FLOOR_ENUMERATION} piętra i jest domknięty z góry — operaty nie mają na to zapisu. Zwęź go albo opisz poziom pośredni.`,
+      );
+    }
   }
   return issues;
 }
