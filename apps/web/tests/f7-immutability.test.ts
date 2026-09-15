@@ -8,6 +8,7 @@ import { ApprovalBlockedError, NotSignableError } from "../src/domain/valuation"
 import type { SessionUser } from "../src/ports/valuation";
 import { approvalGate } from "../src/domain/provenance";
 import { PROSE_SECTIONS, type ProseSection } from "../src/domain/prose-snapshot";
+import { approvedOperatKeys } from "../src/lib/operat-doc-keys";
 import {
   approvableInput,
   confirmedProse,
@@ -506,9 +507,10 @@ describe("F-7 storage key encoding invariance", () => {
   // document. This test makes any future key-alphabet drift loudly visible.
   it("every storage key format is unaffected by encodeURIComponent", () => {
     const uuid = "123e4567-e89b-12d3-a456-426614174000";
+    const issued = approvedOperatKeys(uuid, new Date("2026-09-15T08:00:00.000Z"));
     const keys = [
-      `operat-${uuid}.pdf`,
-      `operat-${uuid}.docx`,
+      issued.pdf,
+      issued.docx,
       `operat-${uuid}-signed.pdf`,
       `operat-${uuid}-signed.docx`,
     ];

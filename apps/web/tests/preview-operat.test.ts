@@ -291,9 +291,11 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     await previewOperat(ID);
 
     expect(approveMock).not.toHaveBeenCalled();
+    // By shape, not by spelling: since ADR-020 the issued keys carry the
+    // approval's timestamp, and an assertion naming one fixed key would go on
+    // passing while the preview wrote a differently-named issued document.
     const writtenKeys = storagePutMock.mock.calls.map(([key]) => key);
-    expect(writtenKeys).not.toContain(`operat-${ID}.pdf`);
-    expect(writtenKeys).not.toContain(`operat-${ID}.docx`);
+    expect(writtenKeys.filter((key) => key.startsWith("operat-"))).toEqual([]);
     expect(current.docUrl).toBeNull();
     expect(current.docxUrl).toBeNull();
   });

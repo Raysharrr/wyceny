@@ -1,8 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import type { ProseSnapshot } from "../src/domain/prose-snapshot";
-import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
+import {
+  approvableInput,
+  confirmedProse,
+  confirmedProseFor,
+  withConfirmedProse,
+} from "./fixtures/valuation-inputs";
 import { withCode } from "./fixtures/with-code";
 
 /**
@@ -46,6 +51,7 @@ import { previewOperat } from "../src/app/actions/preview-operat";
 import { storage, valuationRepository, worker, mapImages } from "@/app/valuations/_deps";
 import { StorageNotFoundError } from "@/ports/storage";
 import { ApprovalBlockedError, InputsChangedError } from "@/domain/valuation";
+import { approvedOperatKeys } from "@/lib/operat-doc-keys";
 
 const getMock = vi.mocked(valuationRepository.get);
 const approveMock = vi.mocked(valuationRepository.approve);
@@ -70,6 +76,15 @@ const JPG_1PX = Buffer.from(
 
 const generatedMedia = (buf: Buffer) =>
   Object.keys(new PizZip(buf).files).filter((f) => /^word\/media\/image_generated_/.test(f));
+
+/**
+ * The issued DOCX, found by shape rather than by spelling: since ADR-020 the
+ * key carries this approval's `approvedAt` (`approvedOperatKeys`), so the tests
+ * that only care "the operat was written" must not re-spell it. The one test
+ * that does care about the spelling asserts it against the helper.
+ */
+const isOperatDocxKey = (key: string, id: string) =>
+  new RegExp(`^operat-${id}-\\d+\\.docx$`).test(key);
 
 const approved: Valuation = {
   id: "valuation-approved-1",
@@ -189,7 +204,7 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
       { requireProse: true },
     );
 
-    const docxCall = storagePutMock.mock.calls.find(([key]) => key === `operat-${draft.id}.docx`);
+    const docxCall = storagePutMock.mock.calls.find(([key]) => isOperatDocxKey(key, draft.id));
     const docxBytes = docxCall?.[1] as Buffer;
     expect(generatedMedia(docxBytes)).toHaveLength(2);
   });
@@ -241,7 +256,7 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     // would tell the next reader this valuation has maps it just deleted.
     expect(freezeMapsMock).toHaveBeenCalledWith(draft.id, expect.anything(), null);
 
-    const docxCall = storagePutMock.mock.calls.find(([key]) => key === `operat-${draft.id}.docx`);
+    const docxCall = storagePutMock.mock.calls.find(([key]) => isOperatDocxKey(key, draft.id));
     const docxBytes = docxCall?.[1] as Buffer;
     const text = new PizZip(docxBytes).file("word/document.xml")!.asText();
     expect(text).toContain("Dokumentacja kartograficzna zostanie uzupełniona.");
@@ -382,8 +397,8 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
     expect(storageGetMock).toHaveBeenCalledWith(photoKeys.otoczenie);
     expect(storageGetMock).toHaveBeenCalledWith(photoKeys.budynekZewn);
 
-    const docxCall = storagePutMock.mock.calls.find(
-      ([key]) => key === `operat-${draftWithPhotos.id}.docx`,
+    const docxCall = storagePutMock.mock.calls.find(([key]) =>
+      isOperatDocxKey(key, draftWithPhotos.id),
     );
     const docxBytes = docxCall?.[1] as Buffer;
     expect(generatedMedia(docxBytes)).toHaveLength(2 + 2); // 2 maps + 2 photos
@@ -694,8 +709,8 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
 
       expect(await approveValuation(draftBase.id)).toBeUndefined();
 
-      const docxCall = storagePutMock.mock.calls.find(
-        ([key]) => key === `operat-${draftBase.id}.docx`,
+      const docxCall = storagePutMock.mock.calls.find(([key]) =>
+        isOperatDocxKey(key, draftBase.id),
       );
       const text = new PizZip(docxCall![1] as Buffer)
         .file("word/document.xml")!
@@ -885,7 +900,7 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
   const deletedKeys = () => storageDeleteMock.mock.calls.map(([key]) => key);
   const putKeys = () => storagePutMock.mock.calls.map(([key]) => key);
   const issuedDocx = () =>
-    storagePutMock.mock.calls.find(([key]) => key === `operat-${draftT12.id}.docx`)?.[1] as Buffer;
+    storagePutMock.mock.calls.find(([key]) => isOperatDocxKey(key, draftT12.id))?.[1] as Buffer;
 
   beforeEach(() => {
     getMock.mockReset();
@@ -1132,5 +1147,98 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
     expect(deletedKeys().filter((key) => key.startsWith("mapa-"))).toEqual([]);
     for (const key of mapKeys) expect(blobs.has(key)).toBe(true);
     expect(result).toEqual({ error: "Nie znaleziono wyceny albo nie masz do niej dostępu." });
+  });
+});
+
+/**
+ * ADR-020 wariant (a): signing puts the scan on the DOCX this approval stored,
+ * so the key that approval writes must be the key signing reads. A fixed
+ * `operat-<id>.docx` could not carry both — after „Cofnij zatwierdzenie i
+ * popraw” the next approval would overwrite the file reguła 6 promises stays
+ * in the history. Hence one key per approval, `approvedOperatKeys`.
+ */
+describe("każde zatwierdzenie ma własne pliki (ADR-020, reguła 6)", () => {
+  const ADDRESS_KEYS = "ul. Kluczowa 1, Poznań";
+  const draftKeys: Valuation = {
+    id: "valuation-keys-1",
+    address: ADDRESS_KEYS,
+    area: 71.63,
+    wr: 1_044_400,
+    inputs: withConfirmedProse(ADDRESS_KEYS, approvableInput("test-user").inputs!),
+    amountInWords: null,
+    docUrl: null,
+    docxUrl: null,
+    purpose: "sprzedaz",
+    propertyRight: "wlasnosc_lokalu",
+    kwNumber: "PO1P/1/6",
+    client: "Jan Testowy",
+    inspectionDate: "2026-07-10",
+    ownerId: "test-user",
+    status: "in_progress",
+    approvedAt: null,
+    signedAt: null,
+    supersedesId: null,
+    mapsFrozenFor: null,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getMock.mockResolvedValue(draftKeys);
+    fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
+    amountInWordsMock.mockResolvedValue("milion czterdzieści cztery tysiące czterysta złotych");
+    convertToPdfMock.mockResolvedValue(Buffer.from("pdf-bytes"));
+    storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
+    freezeMapsMock.mockImplementation(async (_id, _user, address) => ({
+      ...draftKeys,
+      mapsFrozenFor: address,
+    }));
+    approveMock.mockResolvedValue({ ...draftKeys, status: "approved" });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("writes the DOCX and the PDF under the keys of the approvedAt it persists", async () => {
+    expect(await approveValuation(draftKeys.id)).toBeUndefined();
+
+    const approvedAt = approveMock.mock.calls[0][3] as Date;
+    const keys = approvedOperatKeys(draftKeys.id, approvedAt);
+    const written = storagePutMock.mock.calls.map(([key]) => key);
+    expect(written).toContain(keys.docx);
+    expect(written).toContain(keys.pdf);
+    // The row points at exactly those two files, so „otwórz operat” and the
+    // signature read the same bytes.
+    expect(approveMock.mock.calls[0][2]).toMatchObject({
+      docxUrl: `/api/docs/${keys.docx}`,
+      docUrl: `/api/docs/${keys.pdf}`,
+    });
+  });
+
+  it("a second approval writes new keys and touches neither of the first one's files", async () => {
+    // Fake time so the two approvals are a known distance apart; in production
+    // a reopen and a re-approval are minutes of editing apart.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-15T08:00:00.000Z"));
+    await approveValuation(draftKeys.id);
+    const first = approvedOperatKeys(draftKeys.id, approveMock.mock.calls[0][3] as Date);
+
+    // A reopened valuation is a draft again, approved after the corrections.
+    vi.setSystemTime(new Date("2026-09-15T08:12:00.000Z"));
+    await approveValuation(draftKeys.id);
+    const second = approvedOperatKeys(draftKeys.id, approveMock.mock.calls[1][3] as Date);
+
+    expect(second.docx).not.toBe(first.docx);
+    const written = storagePutMock.mock.calls.map(([key]) => key);
+    expect(written.filter((key) => key === first.docx)).toHaveLength(1);
+    expect(written).toContain(second.docx);
+    expect(storageDeleteMock.mock.calls.map(([key]) => key)).not.toContain(first.docx);
+  });
+
+  it("the keys survive encodeURIComponent, like every other document key (F-7)", () => {
+    const keys = approvedOperatKeys("123e4567-e89b-12d3-a456-426614174000", new Date());
+    expect(encodeURIComponent(keys.docx)).toBe(keys.docx);
+    expect(encodeURIComponent(keys.pdf)).toBe(keys.pdf);
   });
 });

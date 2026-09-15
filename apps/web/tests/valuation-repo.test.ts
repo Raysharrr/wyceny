@@ -212,6 +212,31 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(reread!.approvedAt).toBeInstanceOf(Date);
   });
 
+  /**
+   * ADR-020: the operat's storage key is `approvedAt.getTime()`
+   * (`approvedOperatKeys`), written by approve and read back by the signature
+   * from a fresh `get`. A column that dropped milliseconds would move the key
+   * between the two, and every signature would fail with „zatwierdzono przed
+   * aktualizacją” on a valuation that is perfectly fine — invisible to every
+   * test with a mocked repository. Hence this one, on real Postgres.
+   */
+  it("approvedAt survives the round-trip to the millisecond, so the operat key does", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Milisekundowa 1"),
+      inputs: withConfirmedProse("ul. Milisekundowa 1", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+    // A time whose millisecond part is not zero — the part that gets lost.
+    const now = new Date("2026-09-15T08:00:00.123Z");
+
+    const approved = await repo.approve(created.id, appraiserA, undefined, now);
+    const reread = await repo.get(created.id, appraiserA);
+
+    expect(approved!.approvedAt!.getTime()).toBe(now.getTime());
+    expect(reread!.approvedAt!.getTime()).toBe(now.getTime());
+  });
+
   it("an approved valuation refuses further mutations (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 5"),

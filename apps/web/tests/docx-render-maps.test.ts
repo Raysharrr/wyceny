@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import PizZip from "pizzip";
-import { renderOperatDocx, type RenderMaps } from "../src/adapters/docx-render";
+import { renderOperatDocx, signOperatDocx, type RenderMaps } from "../src/adapters/docx-render";
 import { buildDocumentModel } from "../src/domain/document-model";
 import { syntheticDocumentInput } from "./fixtures/document-model-fixture";
 import { JPG_1PX, PNG_1PX } from "./fixtures/jpeg-fixtures";
@@ -53,7 +53,7 @@ describe("renderOperatDocx maps (Slice 9, F-12 media leg)", () => {
 
   it("keeps approve/sign text identical with maps (drift guard) and adds exactly one medium on sign", () => {
     const approved = renderOperatDocx(model, { maps: MAPS });
-    const signed = renderOperatDocx(model, { maps: MAPS, signature: PNG_1PX });
+    const signed = signOperatDocx(approved, PNG_1PX);
     expect(textOf(signed)).toBe(textOf(approved));
     expect(generatedMedia(signed).length).toBe(3);
   });

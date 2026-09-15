@@ -21,6 +21,7 @@ import { computeKcs } from "@/domain/kcs";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
+import { approvedOperatKeys } from "@/lib/operat-doc-keys";
 import { dropMapBytesIfStillOurDraft, frozenMapKeys, readFrozenMaps } from "@/lib/frozen-maps";
 
 export type ApproveValuationResult =
@@ -276,8 +277,13 @@ export async function approveValuation(
       }
       const docx = renderOperatDocx(model, { maps, photos });
       const pdf = await worker.convertToPdf(docx);
-      const docxUrl = await storage.put(`operat-${id}.docx`, docx);
-      const docUrl = await storage.put(`operat-${id}.pdf`, pdf);
+      // One key per approval (ADR-020 wariant a): the DOCX stored here is the
+      // very file `signValuationAction` puts the signature on, and after
+      // „Cofnij zatwierdzenie i popraw” the next approval must not overwrite
+      // it — reguła 6 promises the previous document stays in the history.
+      const issued = approvedOperatKeys(id, now);
+      const docxUrl = await storage.put(issued.docx, docx);
+      const docUrl = await storage.put(issued.pdf, pdf);
 
       const updated = await valuationRepository.approve(
         id,
