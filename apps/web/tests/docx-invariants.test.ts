@@ -143,6 +143,11 @@ describe("openDocx — parser XML bez usuwania znaczników", () => {
     expect(doc.textboxes[0].text).toContain("e-mail");
     expect(doc.textboxes[1].text).toContain("e-mail");
   });
+
+  it("rzuca, gdy dokument nie ma żadnego akapitu — pusty render nie przejdzie asercji", () => {
+    expect(() => openDocx(docx(""))).toThrow(/żadnego akapitu/);
+    expect(() => openDocx(docx("<w:sectPr/>"))).toThrow(/żadnego akapitu/);
+  });
 });
 
 describe("textboxTexts — obie kopie pola tekstowego osobno", () => {
@@ -245,6 +250,13 @@ describe("expectNoText", () => {
     expect(() => expectNoText(doc, "wg wypisu z ewidencji")).toThrow(/wg wypisu z ewidencji/);
   });
 
+  it("wykrywa frazę rozbitą na dwa akapity body", () => {
+    const doc = openDocx(docx(para("Dane ewidencyjne: wg") + para("wypisu z ewidencji gruntów")));
+    // Żaden akapit osobno nie ma frazy — rzut może wyjść tylko ze złączonego tekstu.
+    expect(doc.paragraphs.some((p) => p.text.includes("wg wypisu"))).toBe(false);
+    expect(() => expectNoText(doc, "wg wypisu z ewidencji")).toThrow(/niedozwolona fraza/);
+  });
+
   it("wykrywa frazę obecną tylko w kopii VML pola tekstowego", () => {
     const doc = openDocx(docx(textbox("Jan Fikcyjny", "Anna Inna")));
     expect(() => expectNoText(doc, "Anna Inna")).toThrow(/txbx-vml/);
@@ -277,6 +289,16 @@ describe("expectExactlyOne", () => {
       ),
     );
     expect(() => expectExactlyOne(doc, VARIANTS)).toThrow();
+  });
+
+  it("wariant zawarty w dłuższym nie liczy się w miejscu dłuższego", () => {
+    const OVERLAPPING = ["obowiązuje miejscowy plan", "nie obowiązuje miejscowy plan"];
+    const doc = openDocx(docx(para("Dla terenu nie obowiązuje miejscowy plan.")));
+    expect(expectExactlyOne(doc, OVERLAPPING)).toBe("nie obowiązuje miejscowy plan");
+    const both = openDocx(
+      docx(para("Dla terenu nie obowiązuje miejscowy plan.") + para("Obowiązuje miejscowy plan.")),
+    );
+    expect(() => expectExactlyOne(both, OVERLAPPING)).toThrow();
   });
 
   it("rzuca, gdy to samo zdanie stoi w dwóch sekcjach", () => {
@@ -312,6 +334,24 @@ describe("expectImageInParagraph", () => {
   it("sprawdza obszar przed nagłówkiem (okładka)", () => {
     expect(() => expectImageInParagraph(doc, { before: "1. Wstęp" })).toThrow();
     expect(expectImageInParagraph(doc, { before: "2. Cel wyceny" })).toHaveLength(1);
+  });
+
+  it("liczy obraz z pola tekstowego raz — bez kopii VML", () => {
+    const withLogo = openDocx(
+      docx(
+        `<w:p><w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wp:anchor><a:graphic><a:graphicData><wps:wsp><wps:txbx><w:txbxContent>${image("rIdImg")}</w:txbxContent></wps:txbx></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox><w:txbxContent><w:p><w:r><w:pict><v:shape><v:imagedata r:id="rIdImg"/></v:shape></w:pict></w:r></w:p></w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p>` +
+          para("1. Wstęp"),
+        { rels: IMAGE_REL },
+      ),
+    );
+    expect(withLogo.images).toHaveLength(2);
+    expect(expectImageInParagraph(withLogo, { before: "1. Wstęp" }).map((i) => i.rId)).toEqual([
+      "rIdImg",
+    ]);
+    // Szablon: logo okładki (rId8) w obu kopiach pola tekstowego + obraz w body przed §1.
+    expect(
+      expectImageInParagraph(openDocx(TEMPLATE), { before: "1. Wyciąg" }).map((i) => i.rId),
+    ).toEqual(["rId8", "rId12"]);
   });
 
   it("na renderze widzi mapy w §8.1", () => {

@@ -198,6 +198,8 @@ export function openDocx(buffer: Buffer | Uint8Array): DocxDoc {
 
   const paragraphs: DocxParagraph[] = [];
   const elements = Array.from(xml.getElementsByTagNameNS(W, "p"));
+  // Pusty dokument (np. zepsuty render) nie może przejść asercji „fraza nie występuje”.
+  if (elements.length === 0) throw new Error("docx-invariants: dokument nie ma żadnego akapitu");
   const byElement = new Map<Element, DocxParagraph>();
   for (const p of elements) {
     const paragraph: DocxParagraph = {
@@ -344,8 +346,9 @@ function occurrences(haystack: string, needle: string): number {
 
 /**
  * Fraza nie występuje w żadnym akapicie — w body, tabelach i OBU kopiach pola tekstowego
- * (dane w samej kopii VML też są w dokumencie). Porównanie bez rozróżniania wielkości liter
- * i po normalizacji białych znaków, w obrębie akapitu. Zamiast dokumentu można podać tekst, np. {@link sectionText}.
+ * (dane w samej kopii VML też są w dokumencie) — ani w złączonym tekście body i tabel, więc
+ * fraza rozbita na dwa akapity też jest wykryta. Porównanie bez rozróżniania wielkości liter
+ * i po normalizacji białych znaków. Zamiast dokumentu można podać tekst, np. {@link sectionText}.
  */
 export function expectNoText(target: DocxDoc | string, phrase: string): void {
   const wanted = fold(phrase);
@@ -353,15 +356,45 @@ export function expectNoText(target: DocxDoc | string, phrase: string): void {
     expect(fold(target), `niedozwolona fraza „${phrase}”`).not.toContain(wanted);
     return;
   }
-  const hits = target.paragraphs
-    .filter((p) => fold(p.text).includes(wanted))
-    .map((p) => `${p.container}#${p.index}: ${normalize(p.text).slice(0, 160)}`);
+  const inParagraphs = target.paragraphs.filter((p) => fold(p.text).includes(wanted));
+  const hits = inParagraphs.map(
+    (p) => `${p.container}#${p.index}: ${normalize(p.text).slice(0, 160)}`,
+  );
+  const flow = target.paragraphs.filter((p) => p.container === "body" || p.container === "table");
+  const acrossParagraphs =
+    occurrences(fold(flow.map((p) => p.text).join(" ")), wanted) -
+    flow.reduce((sum, p) => sum + occurrences(fold(p.text), wanted), 0);
+  if (acrossParagraphs > 0)
+    hits.push(`body/table: fraza rozbita między akapity ×${acrossParagraphs}`);
   expect(hits, `niedozwolona fraza „${phrase}”`).toEqual([]);
 }
 
 /**
+ * Trafienia wariantów w jednym tekście, najdłuższy wariant pierwszy: zakres trafienia
+ * dłuższego wyklucza trafienia krótszego w tym samym miejscu („nie obowiązuje miejscowy plan”
+ * nie liczy się też jako „obowiązuje miejscowy plan”).
+ */
+function variantHits(text: string, variants: string[]): number[] {
+  const counts = variants.map(() => 0);
+  const taken: Array<[number, number]> = [];
+  const order = variants.map((v, i) => i).sort((a, b) => variants[b].length - variants[a].length);
+  for (const i of order) {
+    const needle = variants[i];
+    if (needle === "") continue;
+    for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + 1)) {
+      const end = at + needle.length;
+      if (taken.some(([s, e]) => at < e && s < end)) continue;
+      taken.push([at, end]);
+      counts[i]++;
+    }
+  }
+  return counts;
+}
+
+/**
  * Dokładnie jeden z wariantów występuje dokładnie raz (bez rozróżniania wielkości liter, jak
- * {@link expectNoText}). Pole tekstowe liczone raz (kopia
+ * {@link expectNoText}; wariant zawarty w dłuższym nie liczy się w miejscu dłuższego). Pole
+ * tekstowe liczone raz (kopia
  * `mc:Choice`; zgodność kopii sprawdza {@link textboxTexts}). Zwraca znaleziony wariant.
  */
 export function expectExactlyOne(target: DocxDoc | string, sentinels: string[]): string {
@@ -369,9 +402,11 @@ export function expectExactlyOne(target: DocxDoc | string, sentinels: string[]):
     typeof target === "string"
       ? [fold(target)]
       : target.paragraphs.filter((p) => p.container !== "txbx-vml").map((p) => fold(p.text));
-  const counts = sentinels.map((s) => ({
-    sentinel: s,
-    count: texts.reduce((sum, t) => sum + occurrences(t, fold(s)), 0),
+  const folded = sentinels.map(fold);
+  const perText = texts.map((t) => variantHits(t, folded));
+  const counts = sentinels.map((sentinel, i) => ({
+    sentinel,
+    count: perText.reduce((sum, hits) => sum + hits[i], 0),
   }));
   expect(
     counts.reduce((sum, c) => sum + c.count, 0),
@@ -382,7 +417,8 @@ export function expectExactlyOne(target: DocxDoc | string, sentinels: string[]):
 
 /**
  * Obraz osadzony w akapicie sekcji (`section`) albo w akapitach przed nagłówkiem
- * (`before`, np. okładka przed „1. Wyciąg…”). Zwraca znalezione obrazy.
+ * (`before`, np. okładka przed „1. Wyciąg…”). Zwraca znalezione obrazy — bez kopii VML pola
+ * tekstowego, więc logo w polu okładki występuje raz.
  */
 export function expectImageInParagraph(
   doc: DocxDoc,
@@ -396,7 +432,9 @@ export function expectImageInParagraph(
             .slice(0, findHeading(doc, where.before).paragraph.index)
             .map((p) => p.index),
         );
-  const found = doc.images.filter((i) => indices.has(i.paragraph));
+  const found = doc.images.filter(
+    (i) => indices.has(i.paragraph) && doc.paragraphs[i.paragraph].container !== "txbx-vml",
+  );
   const label = "section" in where ? `w sekcji „${where.section}”` : `przed „${where.before}”`;
   expect(found.length, `brak obrazu ${label}`).toBeGreaterThan(0);
   return found;
