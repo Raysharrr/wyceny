@@ -1057,6 +1057,58 @@ describe("KwSection — full-form wiring", () => {
     expect(payload.encumbranceTreatment ?? null).toBeNull();
   });
 
+  /**
+   * The source switch, in EDIT mode — the gap the create-mode version of this
+   * test could not see. `resetKwSection`'s `resetField` puts the STORED
+   * decision back, so only the explicit retraction removes it.
+   */
+  it("clears a STORED encumbrance decision when the lokal book's source is switched (edit mode)", async () => {
+    const user = userEvent.setup();
+    const stored = {
+      address: "ul. Kościelna 33, Poznań",
+      area: "69.56",
+      purpose: "sprzedaz" as never,
+      client: "Jan Kowalski",
+      inspectionDate: "2026-09-15",
+      kwNumber: "AB1C/1/9",
+      kw: {
+        source: "ekw_reczne",
+        kwLokalu: "AB1C/1/9",
+        kwGruntu: null,
+        kwInne: [],
+        deweloperski: false,
+        powUzytkowaKw: null,
+        udzial: null,
+        sad: null,
+        wydzial: null,
+        dataDokumentu: null,
+        dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu"] },
+        dzial4: { wpisy: false, tresc: [] },
+        dataBadania: "2026-09-15",
+      },
+      encumbranceTreatment: {
+        wariant: "bez_uwzglednienia",
+        podstawa: "Zgodnie z poleceniem Zleceniodawcy.",
+      },
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+
+    render(<SubjectForm valuationId="val-src" defaults={stored} />);
+    expect(screen.getByTestId("kw-encumbrance")).toBeDefined();
+
+    await user.click(screen.getByRole("radio", { name: "Wgraj PDF" }));
+    expect(screen.queryByTestId("kw-encumbrance")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "Wpisz ręcznie" }));
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
+    const [, payload] = vi.mocked(saveSubjectAction).mock.calls[0] as unknown as [
+      string,
+      { encumbranceTreatment?: unknown },
+    ];
+    expect(payload.encumbranceTreatment ?? null).toBeNull();
+  });
+
   // D9: non-PDF is rejected client-side, before any network call.
   it("rejects a non-PDF file with an inline error and no extraction (D9)", async () => {
     // applyAccept:false (a setup() option in user-event v14) — the input has

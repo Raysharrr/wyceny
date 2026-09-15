@@ -462,6 +462,42 @@ export function KwSection(props: KwSectionProps) {
     setKwGrunt({ ...base, nrKsiegi: base.nrKsiegi ?? kw?.kwGruntu ?? null, ...patch });
   };
 
+  /**
+   * THE one place that decides what disappears when the lokal's examination is
+   * withdrawn. Three controls withdraw it — the source switch, the developer
+   * checkbox and the property-right radio — and before this existed each wrote
+   * its own subset of the five carriers (`kw`, `kwGrunt`,
+   * `encumbranceTreatment`, `kwNumber`, `kwSource`). Three of the three had
+   * already forgotten one, in three separate rounds of review; `b1-kw-read`
+   * adds a sixth carrier right after this PR, and a fourth near-miss is not
+   * worth waiting for.
+   *
+   * Two rules are baked in here so no caller can get them wrong again:
+   *
+   * 1. `onSourceChange` goes FIRST. It is `resetKwSection`, whose `resetField`
+   *    restores the form's DEFAULT — in edit mode the STORED snapshot — so a
+   *    caller that reset last would silently undo its own clears.
+   * 2. Every clear is an explicit VALUE, never a reliance on that reset. Same
+   *    reason: on a loaded draft `resetField` means "put back what was saved".
+   *    `null`, not `undefined` — `setValue(…, undefined)` is not a reliable
+   *    clear in RHF, and all three fields are `.nullish()` so the schema
+   *    accepts the retraction instead of failing on a path no field renders.
+   *
+   * `kwGrunt` is opt-in: only a change of property right invalidates the
+   * mother book. Switching the lokal's source, or declaring a developer
+   * purchase, leaves it standing — it is still required and still true.
+   */
+  const retractExamination = (next: {
+    source: KwSource;
+    kw?: Record<string, unknown> | null;
+    grunt?: boolean;
+  }) => {
+    onSourceChange(next.source);
+    setKw(next.kw ?? null);
+    setEncumbrance(null);
+    if (next.grunt) setKwGrunt(null);
+  };
+
   return (
     <SectionCard
       icon={FileText}
@@ -508,25 +544,18 @@ export function KwSection(props: KwSectionProps) {
                         // the coop right `b1-template` prints the encumbrance
                         // phrase on the cover, so a leftover here is a false
                         // legal claim in the operat, not just stale state.
-                        // The section key FIRST, the explicit clears after —
-                        // `onSourceChange` is `resetKwSection`, whose
-                        // `resetField` restores the form's DEFAULT (in edit
-                        // mode: the stored snapshot), so running it last would
-                        // undo the three clears below. Same order as the
-                        // developer checkbox, for the same reason.
+                        // A different right is a different legal object: the
+                        // books examined for the old one, the mother book, and
+                        // any encumbrance decision made about them must not
+                        // ride along. Under the coop right `b1-template` prints
+                        // the encumbrance phrase on the cover, so a leftover is
+                        // a false legal claim, not just stale state.
                         //
-                        // Clearing `kw` while leaving the key alone is how the
-                        // state I had argued was unreachable gets reached: tick
-                        // "deweloperski", switch right, switch back — the deed
-                        // card is gone (the record says so), but an untouched
-                        // key still selects "Wgraj PDF" nobody chose and hands
-                        // `extractKw` `expectedType: "akt"`, so uploading an
-                        // excerpt fails with a type-mismatch warning that
-                        // nothing on screen explains.
-                        onSourceChange("reczny");
-                        setKw(null);
-                        setKwGrunt(null);
-                        setEncumbrance(null);
+                        // `grunt: true` — this is the ONE retraction that also
+                        // invalidates the mother book. The full section reset
+                        // that rides along is wanted here too: `kwNumber` and a
+                        // document-seeded area belong to the abandoned right.
+                        retractExamination({ source: "reczny", kw: null, grunt: true });
                       }}
                       onBlur={field.onBlur}
                       className={cn(TILE, selected ? TILE_SELECTED : TILE_IDLE)}
@@ -615,40 +644,18 @@ export function KwSection(props: KwSectionProps) {
                 id="kw-deweloperski"
                 checked={deweloperski}
                 onCheckedChange={(checked) => {
-                  // BOTH: the source switch swaps the card, the snapshot field
-                  // is what the gate and the operat read. Writing only the
-                  // former left B-06 demanding a lokal book whose card is
-                  // hidden — a dead end — and §7 printing the standard variant.
-                  onSourceChange(checked === true ? "akt" : "reczny");
-                  // A FRESH stub, never `patchKw`: `onSourceChange` is
-                  // `resetKwSection`, which has just cleared `kw`, while this
-                  // closure still holds the pre-reset snapshot — spreading it
-                  // would write the abandoned book straight back (W7 class),
-                  // and nothing would object, because a developer purchase is
-                  // exempt from the lokal-book requirement in the first place.
-                  // Both ways write the snapshot outright, because
-                  // `resetKwSection`'s `resetField("kw")` resets to the form's
-                  // DEFAULT — which in edit mode is the stored snapshot, not
-                  // nothing. Relying on it to clear the flag worked only on a
-                  // fresh form; re-opening a developer draft and unticking put
-                  // the saved stub straight back. `null` on the way out is the
-                  // retraction: no book examined, manual path, start over —
-                  // and it restores the "type a KW number" demand, which a
+                  // The record carries "developer purchase", so ticking writes
+                  // a FRESH stub — never a spread of `kw`, which the retraction
+                  // has just dropped. Unticking withdraws to nothing, which
+                  // also restores the "type a KW number" demand that a
                   // number-less snapshot would switch off.
-                  setKw(
-                    checked === true
-                      ? { ...EMPTY_MANUAL_KW, deweloperski: true, dataBadania: today }
-                      : null,
-                  );
-                  // The encumbrance question hangs off `kw.dzial3`, and either
-                  // direction of this checkbox leaves that null — so the block
-                  // disappears while its answer would ride on into the record.
-                  // ADR-018 reg. 6 puts that answer on the operat's COVER, so
-                  // an orphan here is a false sentence on page one. `null`, not
-                  // `undefined`: the retraction has to be a value the schema
-                  // accepts (`.nullish()`), or it fails on a path no field
-                  // renders. Same clear the property-right radio already does.
-                  setEncumbrance(null);
+                  retractExamination({
+                    source: checked === true ? "akt" : "reczny",
+                    kw:
+                      checked === true
+                        ? { ...EMPTY_MANUAL_KW, deweloperski: true, dataBadania: today }
+                        : null,
+                  });
                 }}
               />
               <label htmlFor="kw-deweloperski" className="text-sm">
@@ -686,7 +693,7 @@ export function KwSection(props: KwSectionProps) {
                       label="Źródło danych księgi lokalu"
                       options={BOOK_SOURCE_OPTIONS}
                       value={source === "reczny" ? "reczny" : "odpis_kw"}
-                      onChange={onSourceChange}
+                      onChange={(next) => retractExamination({ source: next as KwSource })}
                     />
                   ) : undefined
                 }
