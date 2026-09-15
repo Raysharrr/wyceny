@@ -124,13 +124,13 @@ class TranscriptionFailed(Exception):
     @property
     def code(self) -> str:
         stop_reason = self.result.stop_reason
-        if stop_reason == "refusal":
-            return "kw_transkrypcja_odmowa"
-        # Structured output yields schema-invalid text in practice only when it was
-        # cut off, so INVALID_OUTPUT is treated as a truncation — and repeating the
-        # same book repeats it, which is why both are non-retryable.
-        if stop_reason in ("max_tokens", INVALID_OUTPUT):
+        # Only a stop_reason the API reported is a known truncation. INVALID_OUTPUT
+        # hides it: JSON cut at max_tokens AND a refusal written as text both fail
+        # the SDK's validation — so neither may claim the book is too large.
+        if stop_reason == "max_tokens":
             return "kw_transkrypcja_ucieta"
+        if stop_reason in ("refusal", INVALID_OUTPUT):
+            return "kw_transkrypcja_nieczytelna"
         return "kw_transkrypcja_blad"
 
 

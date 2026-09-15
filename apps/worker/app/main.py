@@ -662,7 +662,7 @@ TRANSCRIBE_ERRORS = {
         422,
         "Treść księgi jest zbyt obszerna, żeby odczytać ją w całości — wpisz dane ręcznie.",
     ),
-    "kw_transkrypcja_odmowa": (
+    "kw_transkrypcja_nieczytelna": (
         422,
         "Nie udało się odczytać treści księgi z tego pliku — wpisz dane ręcznie.",
     ),
