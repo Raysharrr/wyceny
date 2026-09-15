@@ -15,7 +15,8 @@ import {
 } from "@/domain/valuation";
 import type { Blocker } from "@/domain/provenance";
 import { gateContextFor } from "@/lib/gate-context";
-import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
+import { buildDocumentModel } from "@/domain/document-model";
+import { documentInputFor } from "@/domain/document-input";
 import { computeKcs } from "@/domain/kcs";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -193,19 +194,9 @@ export async function approveValuation(
       }
       const maps = embedded?.maps ?? null;
 
-      const model = buildDocumentModel({
-        address: valuation.address,
-        area: valuation.area,
-        purpose: valuation.purpose as OperatPurpose,
-        kwNumber: valuation.kwNumber,
-        propertyRight: valuation.propertyRight,
-        client: valuation.client ?? "",
-        inspectionDate: valuation.inspectionDate ?? "",
-        approvedAt: now,
-        inputs: valuation.inputs,
-        kcs,
-        amountInWords,
-      });
+      const model = buildDocumentModel(
+        documentInputFor(valuation, { approvedAt: now, kcs, amountInWords }),
+      );
       // Keyed on "nothing embedded", never on "did not fetch". Today the two
       // coincide — every branch that produces maps sets `embedded` — but only
       // the first stays correct if a third way of obtaining them is ever added,
