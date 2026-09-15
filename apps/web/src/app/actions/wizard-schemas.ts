@@ -25,6 +25,8 @@ const step1Object = valuationFormObject.pick({
   subject: true,
   subjectMeta: true,
   kw: true,
+  kwGrunt: true,
+  encumbranceTreatment: true,
   kwMeta: true,
   purpose: true,
   propertyRight: true,

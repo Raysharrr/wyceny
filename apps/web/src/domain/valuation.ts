@@ -514,6 +514,9 @@ export type SubjectUpdate = {
   subject: KcsInput["subject"];
   subjectMeta: KcsInput["subjectMeta"];
   kw: KcsInput["kw"];
+  /** Examination of the grunt's book and the encumbrance decision (ADR-018) — optional so callers that predate the block keep compiling. */
+  kwGrunt?: KcsInput["kwGrunt"];
+  encumbranceTreatment?: KcsInput["encumbranceTreatment"];
   kwMeta: KcsInput["kwMeta"];
   provenance: Partial<InputsProvenance> & Pick<InputsProvenance, "address" | "area">;
 };
@@ -583,6 +586,8 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
       subject: u.subject ?? null,
       subjectMeta: u.subjectMeta ?? null,
       kw: u.kw ?? null,
+      kwGrunt: u.kwGrunt ?? null,
+      encumbranceTreatment: u.encumbranceTreatment ?? null,
       kwMeta: u.kwMeta ?? null,
       provenance,
     },
