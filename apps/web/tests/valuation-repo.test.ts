@@ -503,27 +503,34 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     // matches, zero rows come back, and the branch under test runs.
     const blocker = new Client({ connectionString: process.env.DATABASE_URL });
     await blocker.connect();
-    let racing: Promise<Valuation | null> | undefined;
+    let refusal: unknown;
     try {
       await blocker.query("begin");
       await blocker.query("update valuation set status = 'in_progress' where id = $1", [id]);
 
-      racing = repo.reopen(id, appraiserA);
+      // The rejection handler is attached the moment the promise exists, and
+      // awaited ONCE: a second `await` on a rejected promise reports an
+      // unhandled rejection, and so does a `commit` that fails below while
+      // this promise is still pending.
+      const racing = repo.reopen(id, appraiserA).catch((e: unknown) => e);
       // Long enough for the UPDATE inside `reopen` to reach the lock; the
       // assertions below fail loudly if it has not.
       await new Promise((resolve) => setTimeout(resolve, 300));
       await blocker.query("commit");
+      refusal = await racing;
     } finally {
-      // Caught ONCE: a second `await` on a rejected promise reports an
-      // unhandled rejection even though the test itself passes.
-      const error = await racing!.catch((e: unknown) => e);
+      // Releasing the connection is ALL this block does. Asserting here would
+      // mask the real cause when the setup itself fails (`begin`/`update`
+      // throwing), and an early `return` to avoid that would be worse still —
+      // it discards the in-flight exception and the test goes green on broken
+      // infrastructure.
       await blocker.end();
-
-      expect(error).toBeInstanceOf(NotReopenableError);
-      // The message is what separates this branch from the domain's refusal —
-      // the two throw the same type, and only the wording says which ran.
-      expect((error as Error).message).toMatch(/mid-reopen/);
     }
+
+    expect(refusal).toBeInstanceOf(NotReopenableError);
+    // The message is what separates this branch from the domain's refusal —
+    // the two throw the same type, and only the wording says which ran.
+    expect((refusal as Error).message).toMatch(/mid-reopen/);
 
     // The refusal wrote nothing: the withdrawal that did happen was the
     // blocker's raw UPDATE, which leaves no audit row of its own.
