@@ -1,6 +1,8 @@
 import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { LEVEL_LABEL } from "./feature-presets";
 import { kwRequirements } from "./kw-requirements";
+import type { KwAkt, KwDzialSnapshot } from "./kw-snapshot";
+import type { KsiegaTresc } from "./kw-tresc";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
@@ -205,6 +207,124 @@ function terminateEntries(tresc: string[]): string[] {
   return tresc.map((t) => `${terminateSentence(t)} `);
 }
 
+/**
+ * The separator between an eKW cell's values inside one column. A pipe, not a
+ * comma: the cells themselves contain commas ("WIELKOPOLSKIE, M. POZNAŃ,
+ * POZNAŃ M., POZNAŃ" is ONE cell), so a comma would blur the boundary between
+ * cells into the boundary inside one. eKW never prints a pipe, so nothing in
+ * the book can be mistaken for the separator. `b1-template` inherits this
+ * choice — it cannot be undone from the rendered document.
+ */
+const KSIEGA_CELL_SEP = " | ";
+
+/** A row whose only content is its first column (a heading, a "BRAK WPISÓW"). */
+function soleRow(typ: KsiegaRow["typ"], kol1: string): KsiegaRow {
+  return { typ, kol1, kol2: "", kol3: "" };
+}
+
+/**
+ * The five dzialy as §8.2's table rows, in eKW's own order (spike RAPORT,
+ * "Mapowanie na generator DOCX"). One flat list: a nested model would make the
+ * template walk four levels, and template tags are the hardest thing here to
+ * change later.
+ */
+function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
+  const rows: KsiegaRow[] = [];
+  for (const dzial of tresc.dzialy) {
+    rows.push(soleRow("dzial", dzial.tytul));
+    // A dział marked BRAK WPISÓW gets a row SAYING so. Emitting nothing would
+    // leave the reader unable to tell "examined and empty" from "skipped" —
+    // the same distinction `dzial3_brak` guards on the manual path.
+    if (dzial.brakWpisow) rows.push(soleRow("brak", "BRAK WPISÓW"));
+    for (const tabela of dzial.tabele) {
+      if (tabela.naglowek) rows.push(soleRow("tabela", tabela.naglowek));
+      for (const wpis of tabela.wpisy) {
+        // Only an entry that eKW itself opened with "Lp. N." gets the row; a
+        // single-entry table has `lp: null` and needs no opener.
+        if (wpis.lp != null) {
+          rows.push({
+            typ: "lp",
+            kol1: `Lp. ${wpis.lp}.`,
+            kol2: "",
+            kol3: wpis.nrPodstawyWpisu ?? "",
+          });
+        }
+        for (const rubryka of wpis.rubryki) {
+          rows.push({
+            typ: "rubryka",
+            kol1: rubryka.nazwa,
+            kol2: rubryka.lp ?? "",
+            kol3: rubryka.wartosci.join(KSIEGA_CELL_SEP),
+          });
+        }
+      }
+    }
+    for (const dokument of dzial.dokumenty) {
+      // The parenthesised field descriptions are part of the printout Aneta
+      // pastes, so they ride with the line they describe rather than being
+      // dropped as chrome.
+      const join = (line: string | null, opis: string | null) =>
+        [line, opis].filter((p) => p != null && p !== "").join(" ");
+      rows.push({
+        typ: "dokument",
+        kol1: dokument.nrPodstawyWpisu,
+        kol2: join(dokument.dokument, dokument.dokumentOpisPol),
+        kol3: join(dokument.wniosek, dokument.wniosekOpisPol),
+      });
+    }
+  }
+  return rows;
+}
+
+/**
+ * §8.2's examination protocol for one book (D-21). The wording follows the
+ * office's own operat; the date goes through `formatDatePl` because
+ * `dataBadania` is stored ISO and this is the first place it is printed.
+ *
+ * Returns "" when any of the three facts is missing — a protocol that cannot
+ * say WHICH book was read WHEN is not a protocol, and the examination gate has
+ * already refused such a valuation.
+ */
+function protokolBadania(
+  numer: string | null | undefined,
+  dataBadania: string | null | undefined,
+  rodzaj: string,
+): string {
+  if (!numer || !dataBadania) return "";
+  return (
+    `W dniu ${formatDatePl(dataBadania)} dokonano badania księgi wieczystej ` +
+    `${rodzaj} nr ${numer} (źródło: przeglądarka eKW).`
+  );
+}
+
+/** §7's deed sentence (ADR-018 reg. 5): only the parts the book actually states. */
+function aktOpis(akt: KwAkt | null | undefined): string {
+  if (akt == null) return "";
+  const parts = [
+    akt.rodzaj.trim(),
+    akt.rep.trim() ? `Rep. A nr ${akt.rep.trim()}` : "",
+    akt.data.trim() ? `z dnia ${formatDatePl(akt.data.trim())}` : "",
+  ].filter((p) => p !== "");
+  // "kind, Rep. A nr N z dnia D" — the date hangs off the Rep. number without a
+  // comma, as in the source operat, so the two leading parts join with one.
+  if (parts.length === 0) return "";
+  const [first, ...rest] = parts;
+  return rest.length === 0 ? first : `${first}, ${rest.join(" ")}`;
+}
+
+/**
+ * The manual path's sentence for one dział. Silence when the question was never
+ * answered (`dzial == null`): "brak wpisów" there would fabricate a clean-title
+ * or no-mortgage claim about a dział nobody read — the 14.09 failure itself.
+ */
+function dzialOpis(dzial: KwDzialSnapshot | null | undefined, etykieta: string): string {
+  if (dzial == null) return "";
+  if (!dzial.wpisy) return `${etykieta}: brak wpisów.`;
+  return dzial.tresc.length === 0
+    ? ""
+    : `${etykieta}: ${terminateEntries(dzial.tresc).join("")}`.trimEnd();
+}
+
 /** Polish list join for feature names: "a, b oraz c" (single name unchanged). */
 function polishFeatureList(names: string[]): string {
   if (names.length <= 1) return names[0] ?? "";
@@ -225,6 +345,18 @@ export type TransactionRow = {
   ulica: string;
   pow: string;
   cena_jedn: string;
+};
+
+/**
+ * One row of §8.2's transcribed book. Three columns, because that is what the
+ * eKW printout is — a label, its Lp., and its cells — and `typ` says which
+ * shape the row has so the template can style it without parsing `kol1`.
+ */
+export type KsiegaRow = {
+  typ: "dzial" | "brak" | "tabela" | "lp" | "rubryka" | "dokument";
+  kol1: string;
+  kol2: string;
+  kol3: string;
 };
 
 export type FeatureRow = {
@@ -305,6 +437,63 @@ export type DocumentModel = {
   // "akt" (deed) source it is hidden, so the operat never implies possession of a
   // KW excerpt it may not hold (final-review #5b).
   kw_stub_odpis: boolean;
+  /**
+   * §8.2's examination protocol, one dated sentence per book (D-21) — what the
+   * 14.09 operat said instead of "Pełna treść odpisu KW pozostaje w
+   * dokumentacji źródłowej rzeczoznawcy", which is a sentence an operat may
+   * not contain. Empty, with its flag false, for a book nobody examined.
+   *
+   * The date inside comes from `dataBadania` through `formatDatePl`. That
+   * field is stored ISO and had never been rendered before b1-kw-read: this is
+   * the first place it reaches paper, and "2026-09-15" on a legal document is
+   * not a Polish date.
+   */
+  protokol_lokalu: string;
+  ma_protokol_lokalu: boolean;
+  protokol_gruntu: string;
+  ma_protokol_gruntu: boolean;
+  /**
+   * §2's sentence about the mother book (D-07): "Dla nieruchomości gruntowej
+   * Sąd Rejonowy … prowadzi księgę wieczystą nr …". Both empty when the grunt's
+   * book was not examined — the generic "właściwy sąd rejonowy prowadzi odrębną
+   * księgę wieczystą" is forbidden, because it implies an examination.
+   */
+  nr_ksiegi_gruntu: string;
+  sad_ksiegi_gruntu: string;
+  /**
+   * The lokal book's five dzialy, FLATTENED into table rows for §8.2 — the
+   * generator gets one loop rather than four nested ones. Order is eKW's own:
+   * dział → "BRAK WPISÓW" or its tables → each entry's "Lp. N." → its rubrics →
+   * the dział's documents. Empty when no transcription was stored.
+   *
+   * These rows carry persons' names and PESELs, deliberately: ADR-018 reg. 7
+   * (decyzja usera 15.09) says §8.2 prints the dzialy as the office's own
+   * operat does. That is a documented exception to the F-12 minimisation which
+   * still governs every other path — see `tests/f12-document-masking.test.ts`.
+   */
+  ksiega_lokalu_wiersze: KsiegaRow[];
+  ma_tresc_lokalu: boolean;
+  /** §8.2's sentences for the manual path — used when there is no transcription to quote. */
+  dzial3_opis: string;
+  dzial4_opis: string;
+  /**
+   * Dział II's deed, as §7 prints it (ADR-018 reg. 5, D-12): the kind, the Rep.
+   * A number and the date, joined. `ma_akt` false means the operat says nothing
+   * about a deed at all — never a sentence with blanks in it.
+   */
+  akt_opis: string;
+  ma_akt: boolean;
+  /**
+   * The encumbrance in the LOKAL's dział III (ADR-018 reg. 6, D-02/D-25/D-35).
+   * THREE states, not two: the two variant flags are mutually exclusive but NOT
+   * exhaustive — `ma_obciazenie` with neither of them is the half-made decision
+   * (`wariant: null`), where the basis is typed and the choice is not. The model
+   * does not pick one; B-07 refuses to approve it, so only the preview gets there.
+   */
+  ma_obciazenie: boolean;
+  obciazenie_bez_uwzglednienia: boolean;
+  obciazenie_z_uwzglednieniem: boolean;
+  obciazenie_podstawa: string;
   udzial_kw: string;
   pow_kw_present: boolean;
   pow_uzytkowa_kw: string;
@@ -498,6 +687,28 @@ export function buildDocumentModel(
     subject.mpzpAbsent !== true &&
     Boolean(subject.mpzpSymbol || subject.mpzpNazwa || subject.mpzpUchwala);
   const kw = inputs.kw ?? null;
+  const kwGrunt = inputs.kwGrunt ?? null;
+  /**
+   * R-10, asked once. `kw_badanie` used to be `kw != null`, which called a
+   * snapshot an examination — and the 14.09 operat is what that produced: a
+   * dział III described as clean that nobody had opened. The rule that decides
+   * whether a book counts as examined lives in ONE place, and §8.2 asks it
+   * rather than re-deriving a second answer (ADR-018 reg. 2/3, I-13).
+   */
+  const kwReq = kwRequirements(input.propertyRight, kw, kwGrunt);
+  /**
+   * At least one book actually read. Not `!brakBadania`: a valuation whose
+   * lokal book IS examined and whose grunt book is not would then show nothing
+   * at all in the preview — hiding true information from the very person who
+   * has to finish the job. Not `lokalZbadana` alone either: a lokal bought from
+   * a developer has no book of its own, and the mother book IS its examination.
+   */
+  const kwBadanie = kwReq.lokalZbadana || kwReq.gruntZbadana;
+  const kwDeweloperski = kwBadanie && kw?.deweloperski === true;
+  const encumbrance = inputs.encumbranceTreatment ?? null;
+  // Only the LOKAL's dział III encumbers this lokal. An entry in the grunt's is
+  // described in §8.2 but raises no question here (D-02, kw-requirements).
+  const maObciazenie = kw?.dzial3?.wpisy === true;
   const rightDoc = PROPERTY_RIGHT_DOC[input.propertyRight];
   const kwBrak = rightDoc.klauzulaBrakKw !== null && !input.kwNumber;
   const maPiwnice = rightDoc.klauzulaPiwnicy !== null && inputs.hasBasement === true;
@@ -568,9 +779,9 @@ export function buildDocumentModel(
       ? `${subject.kondygnacjeNadziemne ?? DASH} / ${subject.kondygnacjePodziemne ?? DASH}`
       : DASH,
     rok_budowy: subject?.rokBudowy != null ? String(subject.rokBudowy) : ROK_BUDOWY_BD,
-    kw_badanie: kw != null,
-    kw_standard: kw != null && !kw.deweloperski,
-    kw_deweloperski: kw != null && kw.deweloperski,
+    kw_badanie: kwBadanie,
+    kw_standard: kwBadanie && !kwDeweloperski,
+    kw_deweloperski: kwDeweloperski,
     kw_zrodlo: kw ? KW_ZRODLO_TEXT[kw.source] : DASH,
     kw_lokalu: kw?.kwLokalu ?? DASH,
     kw_gruntu: kw?.kwGruntu ?? DASH,
@@ -580,12 +791,42 @@ export function buildDocumentModel(
     // Legacy/manual (kw == null) and odpis_kw source keep the sentence (accurate);
     // an akt (deed) source hides it — no false claim of holding a KW excerpt.
     kw_stub_odpis: kw == null || kw.source === "odpis_kw",
-    // Honest udział: the "wg odpisu księgi wieczystej" annotation is a LEGACY
-    // fallback for pre-Slice-6 rows that never examined a KW (kw == null). When
-    // a KW WAS examined (kw != null) but the extract carries no udział, render a
-    // dash — the document must not claim the share was "per the KW excerpt"
-    // when the excerpt (or akt) never stated it.
-    udzial_kw: kw == null ? "wg odpisu księgi wieczystej" : (kw.udzial ?? DASH),
+    protokol_lokalu: protokolBadania(kw?.kwLokalu, kw?.dataBadania, "nieruchomości lokalowej"),
+    ma_protokol_lokalu:
+      protokolBadania(kw?.kwLokalu, kw?.dataBadania, "nieruchomości lokalowej") !== "",
+    protokol_gruntu: protokolBadania(
+      kwGrunt?.nrKsiegi,
+      kwGrunt?.dataBadania,
+      "nieruchomości gruntowej",
+    ),
+    ma_protokol_gruntu:
+      protokolBadania(kwGrunt?.nrKsiegi, kwGrunt?.dataBadania, "nieruchomości gruntowej") !== "",
+    // D-07: the number comes from the EXAMINED grunt book, never from the lokal
+    // book's `kwGruntu` alone — that number is a fact the lokal's book states,
+    // not evidence anyone opened the book it names.
+    nr_ksiegi_gruntu: kwReq.gruntZbadana ? (kwGrunt?.nrKsiegi ?? "") : "",
+    // The lokal was carved out of the grunt, so the same court keeps both books
+    // — and when the snapshot names no court, §2's sentence about the grunt says
+    // exactly what §2's sentence about the lokal says, rather than inventing one.
+    sad_ksiegi_gruntu: kwReq.gruntZbadana
+      ? [kw?.sad, kw?.wydzial].filter(Boolean).join(" ") || (kw?.sad ?? DASH)
+      : "",
+    ksiega_lokalu_wiersze: kw?.tresc ? ksiegaRows(kw.tresc) : [],
+    ma_tresc_lokalu: kw?.tresc != null,
+    dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),
+    dzial4_opis: dzialOpis(kw?.dzial4, "Dział IV"),
+    akt_opis: aktOpis(kw?.akt),
+    ma_akt: aktOpis(kw?.akt) !== "",
+    ma_obciazenie: maObciazenie,
+    obciazenie_bez_uwzglednienia: maObciazenie && encumbrance?.wariant === "bez_uwzglednienia",
+    obciazenie_z_uwzglednieniem: maObciazenie && encumbrance?.wariant === "z_uwzglednieniem",
+    obciazenie_podstawa: maObciazenie ? (encumbrance?.podstawa ?? "") : "",
+    // Honest udział (D-24, I-19, ADR-018 reg. 4). The "wg odpisu księgi
+    // wieczystej" annotation used to stand in when `kw == null` — i.e. on
+    // exactly the valuations that had examined nothing, where it named a
+    // document nobody held. A dash says the true thing instead: the operat does
+    // not know the share.
+    udzial_kw: kw?.udzial ?? DASH,
     pow_kw_present: kw?.powUzytkowaKw != null,
     pow_uzytkowa_kw: kw?.powUzytkowaKw != null ? formatNumber(kw.powUzytkowaKw, 2) : DASH,
     // dzialN == null means the source document carries NO dział info (e.g. an

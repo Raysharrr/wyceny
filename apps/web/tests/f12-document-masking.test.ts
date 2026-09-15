@@ -149,7 +149,21 @@ describe("F-12: KW examination masking (Slice 6, defense-in-depth)", () => {
     };
   }
 
-  it("never leaks an 11-digit (PESEL-shaped) run anywhere in the serialized model", () => {
+  /**
+   * SCOPE, narrowed by b1-kw-read. This guards the FIELD-READ path, whose
+   * snapshot arrives post-`scrub_extract` and must not have an 11-digit run
+   * reintroduced by a passthrough (sąd, wydział, udział, dział III/IV text).
+   *
+   * It is no longer true of every model, and saying so would be a false
+   * assurance. `inputs.kw.tresc` — the full transcription of the five dzialy —
+   * carries persons and PESELs ON PURPOSE: ADR-018 reg. 7 (decyzja usera 15.09)
+   * has §8.2 print the dzialy as the office's own operat does. That exception is
+   * pinned in the opposite direction by "carries persons' data from the
+   * transcription on purpose" in `tests/document-model-kw.test.ts`, so
+   * tightening F-12 back over `tresc` has to face the decision instead of
+   * quietly undoing it. The fixture below therefore has no `tresc`.
+   */
+  it("never leaks an 11-digit (PESEL-shaped) run from the FIELD READ into the model", () => {
     const inputs = { ...syntheticInputs(), kw: kwFixtureWithScrubMarker() };
     const model = buildDocumentModel({ ...goldenInput(), inputs, kcs: computeKcs(inputs) });
     const json = JSON.stringify(model);
