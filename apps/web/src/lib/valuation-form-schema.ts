@@ -40,13 +40,17 @@ export const featureDefinitionsSchema = z.object({
 });
 
 /**
- * Mirrors `MeasureBound` from `@/domain/kcs` — an absent edge is unbounded.
+ * Mirrors `MeasureBound` from `@/domain/kcs` — an absent edge is unbounded, and
+ * an edge that IS there is a whole number: the operats write these bands in
+ * whole piętra and whole m², and the touching rule (`prev.do + 1 === next.od`)
+ * is only meaningful on integers.
+ *
  * Plain `z.number()`, not `z.coerce`: the threshold inputs already hand over a
  * number, and coercion would type the form's own value as `unknown`.
  */
 const measureBoundSchema = z.object({
-  od: z.number().optional(),
-  do: z.number().optional(),
+  od: z.number().int("Próg podaj liczbą całkowitą.").optional(),
+  do: z.number().int("Próg podaj liczbą całkowitą.").optional(),
 });
 
 /**

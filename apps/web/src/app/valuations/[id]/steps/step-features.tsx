@@ -269,8 +269,9 @@ function BoundInput({
         id={id}
         data-testid={id}
         type="number"
-        step={kind === "floor" ? "1" : "0.01"}
-        inputMode="decimal"
+        // Whole piętra and whole m² alike — the bands are integers (kcs.ts).
+        step="1"
+        inputMode="numeric"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
       />
@@ -382,8 +383,23 @@ function measureValueText(kind: FeatureMeasure["kind"], value: number): string {
 }
 
 /**
+ * The whole m² the bands are actually compared against, or null when the
+ * subject's own number already IS that value. The hint has to show it: "46,8
+ * m²" beside a threshold "od 47 m²" and an arrow to „gorsza” would be a
+ * sentence whose two numbers argue with its own conclusion, and every number a
+ * hint shows has to follow from data the appraiser can see.
+ */
+function roundedValueText(kind: FeatureMeasure["kind"], value: number): string | null {
+  if (kind === "floor") return null;
+  const rounded = Math.round(value);
+  return rounded === value ? null : measureValueText(kind, rounded);
+}
+
+/**
  * The suggested level's own band, split the way the mockup sets it: the
- * preposition stays in the running text, the numbers are the bold part.
+ * preposition stays in the running text, the numbers are the bold part. Both
+ * edges are inclusive, so "do" means "up to and including" — the same word the
+ * generated definition uses.
  */
 function boundText(
   kind: FeatureMeasure["kind"],
@@ -393,12 +409,12 @@ function boundText(
     kind === "floor" ? String(n) : `${measureValueFormatter.format(n)} m²`;
   if (kind === "floor" && bound.od === 0 && bound.do === 0) return { slowo: "", liczba: "parter" };
   if (bound.od != null && bound.do != null) {
-    return { slowo: "od", liczba: `${unit(bound.od)} do ${unit(bound.do)}` };
+    return bound.od === 0
+      ? { slowo: "do", liczba: unit(bound.do) }
+      : { slowo: "od", liczba: `${unit(bound.od)} do ${unit(bound.do)}` };
   }
   if (bound.od != null) return { slowo: "od", liczba: unit(bound.od) };
-  if (bound.do != null) {
-    return { slowo: kind === "floor" ? "do" : "poniżej", liczba: unit(bound.do) };
-  }
+  if (bound.do != null) return { slowo: "do", liczba: unit(bound.do) };
   return { slowo: "", liczba: "" };
 }
 
@@ -428,6 +444,7 @@ function ThresholdHint({
   onAccept: () => void;
 }) {
   const prog = boundText(measure.kind, measure.bounds[level]!);
+  const zaokraglona = roundedValueText(measure.kind, value);
   return (
     <div
       data-testid={`threshold-hint-${featureKey}`}
@@ -435,8 +452,15 @@ function ThresholdHint({
     >
       <span>
         Podpowiedź: {MEASURE_NOUN[measure.kind]} przedmiotu{" "}
-        <b>{measureValueText(measure.kind, value)}</b> (krok 1) · próg „{LEVEL_LABEL[level]}”
-        {prog.slowo ? ` ${prog.slowo}` : ""} <b>{prog.liczba}</b> → <b>{LEVEL_LABEL[level]}</b>
+        <b>{measureValueText(measure.kind, value)}</b>
+        {zaokraglona ? (
+          <>
+            {" ≈ "}
+            <b>{zaokraglona}</b>
+          </>
+        ) : null}{" "}
+        (krok 1) · próg „{LEVEL_LABEL[level]}”{prog.slowo ? ` ${prog.slowo}` : ""}{" "}
+        <b>{prog.liczba}</b> → <b>{LEVEL_LABEL[level]}</b>
       </span>
       <Button type="button" variant="outline" size="xs" onClick={onAccept}>
         Przyjmij

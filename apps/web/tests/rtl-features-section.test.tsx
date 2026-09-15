@@ -301,7 +301,7 @@ describe("StepFeatures — level cards and ratings (ADR-016, P5)", () => {
             name: "Powierzchnia użytkowa",
             weight: 0.5,
             rating: null,
-            definitions: { lepsza: "poniżej 47 m²", gorsza: "47 m² i więcej" },
+            definitions: { lepsza: "do 46 m²", gorsza: "od 47 m²" },
           },
         ]}
         comparables={PRICED_COMPARABLES}
@@ -340,7 +340,7 @@ describe("StepFeatures — rating-scale definitions (Slice 7, migrated Task 10)"
     const lepsza = screen.getByTestId(
       "feature-def-powierzchnia-uzytkowa-lepsza",
     ) as HTMLInputElement;
-    expect(lepsza.value).toContain("60");
+    expect(lepsza.value).toBe("do 59 m²");
   });
 
   it("a different comparableAreas median seeds a different powierzchnia definition", async () => {
@@ -356,7 +356,7 @@ describe("StepFeatures — rating-scale definitions (Slice 7, migrated Task 10)"
     const lepsza = screen.getByTestId(
       "feature-def-powierzchnia-uzytkowa-lepsza",
     ) as HTMLInputElement;
-    expect(lepsza.value).toContain("80");
+    expect(lepsza.value).toBe("do 79 m²");
   });
 
   it("an already-filled powierzchnia definition is not overwritten by the median", async () => {
@@ -565,8 +565,8 @@ describe("StepFeatures — progi liczbowe i podpowiedź (FH.1, FH.2)", () => {
     );
     expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
       "gorszaparter",
-      "przeciętnapiętra od 1 do 3",
-      "lepszaod 4 piętra",
+      "przeciętnapiętra pośrednie",
+      "lepsza4 piętro i powyżej",
     ]);
 
     await openScale(user, "polozenie-na-pietrze");
@@ -579,12 +579,12 @@ describe("StepFeatures — progi liczbowe i podpowiedź (FH.1, FH.2)", () => {
 
     expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
       "gorszaparter",
-      "przeciętnapiętra od 1 do 5",
-      "lepszaod 6 piętra",
+      "przeciętnapiętra pośrednie",
+      "lepsza6 piętro i powyżej",
     ]);
     expect(
       (screen.getByTestId("feature-def-polozenie-na-pietrze-lepsza") as HTMLInputElement).value,
-    ).toBe("od 6 piętra");
+    ).toBe("6 piętro i powyżej");
   });
 
   it("luka między progami mówi o tym w wierszu, przed zapisem (D-46)", async () => {
@@ -662,8 +662,48 @@ describe("StepFeatures — progi liczbowe i podpowiedź (FH.1, FH.2)", () => {
       />,
     );
     expect(screen.getByTestId("threshold-hint-powierzchnia-uzytkowa").textContent).toContain(
-      "Podpowiedź: powierzchnia przedmiotu 44,23 m² (krok 1) · próg „lepsza” poniżej 47 m² → lepsza",
+      "Podpowiedź: powierzchnia przedmiotu 44,23 m² ≈ 44 m² (krok 1) · próg „lepsza” do 46 m² → lepsza",
     );
+  });
+
+  it("podpowiedź liczy według progów rzeczoznawcy, nie według presetu (skala z operatu 14.09)", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={[]}
+        area={PLACEHOLDER_AREA}
+        pietro={5}
+      />,
+    );
+    // Preset (parter / 1–3 / od 4) stawia 5 piętro w „lepsza”.
+    expect(screen.getByTestId("threshold-hint-polozenie-na-pietrze").textContent).toContain(
+      "próg „lepsza” od 4 → lepsza",
+    );
+
+    // Skala Anety z Bohaterów II: budynek ma 11 kondygnacji nadziemnych, więc
+    // „lepsza” zaczyna się dopiero na szóstym piętrze.
+    await openScale(user, "polozenie-na-pietrze");
+    for (const [level, edge, value] of [
+      ["gorsza", "do", "1"],
+      ["przecietna", "od", "2"],
+      ["przecietna", "do", "5"],
+      ["lepsza", "od", "6"],
+    ] as const) {
+      await user.clear(bound("polozenie-na-pietrze", level, edge));
+      await user.type(bound("polozenie-na-pietrze", level, edge), value);
+    }
+
+    // To samo 5 piętro, inna skala — inna podpowiedź.
+    expect(screen.getByTestId("threshold-hint-polozenie-na-pietrze").textContent).toContain(
+      "Podpowiedź: piętro przedmiotu 5 (krok 1) · próg „przeciętna” od 2 do 5 → przeciętna",
+    );
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "gorszaparter, 1 piętro",
+      "przeciętnapiętra pośrednie",
+      "lepsza6 piętro i powyżej",
+    ]);
   });
 
   it("podpowiedź zostaje, gdy ocena różni się od podpowiedzianej, i znika, gdy jest zgodna", async () => {

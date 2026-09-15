@@ -47,64 +47,91 @@ const ENGINE_RATING: Record<RatingPosition, FeatureRating> = {
 
 // ─── Numeric thresholds of measurable features (FH.1, plan §P1.1, D-46/D-48) ─
 
-/** Polish decimal, no trailing zeros — the scale texts print whole m² today. */
-function measureNumber(value: number): string {
-  return String(value).replace(".", ",");
+/** One storey as the operats name it — parter has no number. */
+function floorLabel(value: number): string {
+  return value === 0 ? "parter" : `${value} piętro`;
+}
+
+/** Bands that carry an edge, ordered by VALUE — for powierzchnia that is the reverse of the rating order. */
+function valueOrderedBands(
+  measure: FeatureMeasure,
+): Array<{ level: FeatureRating; bound: MeasureBound }> {
+  return SCALE_ORDER.flatMap((level) => {
+    const bound = measure.bounds[level];
+    return bound && (bound.od != null || bound.do != null) ? [{ level, bound }] : [];
+  }).sort(
+    (a, b) => (a.bound.od ?? Number.NEGATIVE_INFINITY) - (b.bound.od ?? Number.NEGATIVE_INFINITY),
+  );
 }
 
 /**
- * The definition text of ONE band, in the wording the presets already print
- * (D-46 for piętro, the sample-median pair for powierzchnia) — this is the
- * only place a scale text is written, so a threshold edit and the preset can
- * never drift apart.
+ * The definition text of ONE band, in the wording four KCŚ operats use
+ * (Kościelna, Meissnera, Starołęcka, Bohaterów II — team-lead's extract,
+ * 15.09). This is the only place a scale text is written, so a threshold edit
+ * and the preset can never drift apart. Three rules the operats settle:
+ *
+ * - the feature's NAME is the table heading, so the definition never repeats it
+ *   ("do 40 m²", never "powierzchnia użytkowa do 40 m²");
+ * - the piętro band that is neither the lowest nor the highest is "piętra
+ *   pośrednie" — descriptive in all four operats, never a numeric range;
+ * - the lowest piętro band is an ENUMERATION ("parter", "parter, 1 piętro"),
+ *   and the highest is "N piętro i powyżej".
+ *
+ * `position` is the band's place in the value order, which decides only the
+ * piętro middle wording; every other sentence is written from the edges
+ * themselves, so a band can never claim coverage it does not have.
  */
-export function definitionFromBounds(kind: FeatureMeasure["kind"], bound: MeasureBound): string {
+function definitionFromBounds(
+  kind: FeatureMeasure["kind"],
+  bound: MeasureBound,
+  position: "lowest" | "middle" | "highest",
+): string {
   const { od, do: upper } = bound;
-  if (kind === "area") {
-    if (od == null && upper == null) return "";
-    if (od == null) return `powierzchnia użytkowa poniżej ${measureNumber(upper!)} m²`;
-    if (upper == null) return `powierzchnia użytkowa ${measureNumber(od)} m² i więcej`;
-    return `powierzchnia użytkowa od ${measureNumber(od)} m² do ${measureNumber(upper)} m²`;
-  }
-  // Piętro: parter = 0, both edges inclusive.
   if (od == null && upper == null) return "";
-  if (od == null) return upper === 0 ? "parter" : `do ${measureNumber(upper!)} piętra`;
-  if (upper == null) return od === 0 ? "parter i wyżej" : `od ${measureNumber(od)} piętra`;
-  if (od === 0 && upper === 0) return "parter";
-  if (od === 0) return `parter i piętra do ${measureNumber(upper)}`;
-  if (od === upper) return `${measureNumber(od)} piętro`;
-  return `piętra od ${measureNumber(od)} do ${measureNumber(upper)}`;
+  if (kind === "area") {
+    // The 14.09 operat's pattern (Bohaterów II), not the older "poniżej/powyżej".
+    if (od == null) return `do ${upper} m²`;
+    if (upper == null) return `od ${od} m²`;
+    return `od ${od} m² do ${upper} m²`;
+  }
+  if (upper == null) return `${floorLabel(od ?? 0)} i powyżej`;
+  if (position === "middle") return "piętra pośrednie";
+  const from = od ?? 0;
+  const storeys = [];
+  for (let n = from; n <= upper; n++) storeys.push(floorLabel(n));
+  return storeys.join(", ");
 }
 
 /** Every band's definition text — what `Feature.definitions` must equal while `measure` stands. */
 export function definitionsFromMeasure(
   measure: FeatureMeasure,
 ): Partial<Record<FeatureRating, string>> {
+  const bands = valueOrderedBands(measure);
   const out: Partial<Record<FeatureRating, string>> = {};
-  for (const level of SCALE_ORDER) {
-    const bound = measure.bounds[level];
-    if (bound) out[level] = definitionFromBounds(measure.kind, bound);
-  }
+  bands.forEach(({ level, bound }, i) => {
+    const position = i === 0 ? "lowest" : i === bands.length - 1 ? "highest" : "middle";
+    out[level] = definitionFromBounds(measure.kind, bound, position);
+  });
   return out;
 }
 
 /**
  * The level a measured value falls into, or null when no band covers it — a
- * kondygnacja below parter, a blank field, a scale with a gap. Floor bands are
- * closed on both edges; area bands take `do` as the exclusive upper edge, so
- * exactly 47 m² belongs to the "47 m² i więcej" band and to no other.
+ * kondygnacja below parter, a blank field, a scale with a gap. Both edges are
+ * inclusive; an area is rounded half-up to whole m² first, because the operats
+ * write whole-m² bands and 46,8 m² has to land somewhere.
  */
 export function levelForValue(
   measure: FeatureMeasure,
   value: number | null | undefined,
 ): FeatureRating | null {
   if (value == null || !Number.isFinite(value)) return null;
+  const placed = measure.kind === "area" ? Math.round(value) : value;
   for (const level of SCALE_ORDER) {
     const bound = measure.bounds[level];
     if (!bound) continue;
-    if (bound.od != null && value < bound.od) continue;
-    if (bound.do != null && (measure.kind === "floor" ? value > bound.do : value >= bound.do))
-      continue;
+    if (bound.od != null && placed < bound.od) continue;
+    if (bound.do != null && placed > bound.do) continue;
     return level;
   }
   return null;
@@ -112,15 +139,15 @@ export function levelForValue(
 
 /**
  * What stops the bands from being a scale (D-46, D-48): fewer than two bands,
- * an inverted band, an overlap, or a gap. Aneta's corrected area scale (do 40 /
- * 41–45 / od 46) is the worked example of the gap case.
+ * an inverted band, an overlap, or a gap. Aneta's 14.09 area scale (do 40 /
+ * 41–45 / od 46) is the worked example of a scale that MUST pass — it is what
+ * forced the whole-number inclusive convention.
  */
 export function measureIssues(measure: FeatureMeasure): string[] {
   const issues: string[] = [];
-  const bands = SCALE_ORDER.flatMap((level) => {
-    const bound = measure.bounds[level];
-    return bound ? [{ level, bound }] : [];
-  });
+  // A level with both fields blank is not a band — it would otherwise pad the
+  // count and let a one-band scale through.
+  const bands = valueOrderedBands(measure);
   if (bands.length < 2) {
     issues.push("Skala liczbowa musi mieć co najmniej dwa przedziały.");
     return issues;
@@ -132,14 +159,9 @@ export function measureIssues(measure: FeatureMeasure): string[] {
   }
   if (issues.length > 0) return issues;
 
-  // Sorted by their lower edge — the value order, which for powierzchnia runs
-  // opposite to the rating order (lepsza = the smaller flat).
-  const sorted = [...bands].sort(
-    (a, b) => (a.bound.od ?? Number.NEGATIVE_INFINITY) - (b.bound.od ?? Number.NEGATIVE_INFINITY),
-  );
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const next = sorted[i];
+  for (let i = 1; i < bands.length; i++) {
+    const prev = bands[i - 1];
+    const next = bands[i];
     const prevEnd = prev.bound.do;
     const nextStart = next.bound.od;
     const pair = `„${LEVEL_LABEL[prev.level]}” i „${LEVEL_LABEL[next.level]}”`;
@@ -147,11 +169,10 @@ export function measureIssues(measure: FeatureMeasure): string[] {
       issues.push(`Przedziały poziomów ${pair} nachodzą na siebie.`);
       continue;
     }
-    // Floors are whole numbers, so the bands touch one storey apart; areas are
-    // continuous, so they touch at the same number (`do` exclusive).
-    const touching = measure.kind === "floor" ? prevEnd + 1 === nextStart : prevEnd === nextStart;
-    if (touching) continue;
-    const overlaps = measure.kind === "floor" ? nextStart <= prevEnd : nextStart < prevEnd;
+    // One convention for both kinds: whole numbers, both edges inclusive, so
+    // neighbours touch one step apart ("do 40 m²" then "od 41 m²").
+    if (prevEnd + 1 === nextStart) continue;
+    const overlaps = nextStart <= prevEnd;
     issues.push(
       overlaps
         ? `Przedziały poziomów ${pair} nachodzą na siebie.`

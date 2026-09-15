@@ -116,7 +116,7 @@ export type Comparable = {
   status?: ProvenanceStatus;
 };
 
-/** One band of a measurable scale; an absent edge is unbounded on that side. */
+/** One band of a measurable scale; whole numbers, an absent edge is unbounded on that side. */
 export type MeasureBound = { od?: number; do?: number };
 
 /**
@@ -126,12 +126,17 @@ export type MeasureBound = { od?: number; do?: number };
  * (`definitionsFromMeasure`), never parsed back — so an appraiser who retypes
  * a definition by hand drops `measure` and with it the suggestion.
  *
- * `kind` fixes what the number means and how the bands touch:
- * - `"floor"` — piętro as a whole number, parter = 0; both edges INCLUSIVE,
- *   neighbours touch at `prev.do + 1 === next.od`;
- * - `"area"` — m², continuous; `od` inclusive, `do` EXCLUSIVE, neighbours
- *   touch at `prev.do === next.od` (the preset's "poniżej 47 m²" / "47 m²
- *   i więcej" pair).
+ * Both kinds share ONE convention, taken from how the operats actually write
+ * these scales: edges are WHOLE numbers, both INCLUSIVE, neighbours touch at
+ * `prev.do + 1 === next.od`. Aneta's 14.09 area scale is literally "do 40 m² /
+ * od 41 m² do 45 m² / od 46 m²", and a continuous `do`-exclusive reading cannot
+ * express it — 40→41 and 45→46 come out as gaps and the step refuses to save.
+ * `kind` therefore fixes only what the number MEANS and how a measured value
+ * reaches the bands:
+ * - `"floor"` — piętro as a whole number, parter = 0; the value is whole already;
+ * - `"area"` — m²; the measured area is rounded half-up to whole m² before it is
+ *   placed, so no flat lands in the gap the operat's own wording leaves open
+ *   (40,5 m² is "do 40 m²" or "od 41 m²" — never neither).
  *
  * The engine never reads this; it feeds the step-4 suggestion and the §12.2
  * Cmin/Cmax sentences (D-52).

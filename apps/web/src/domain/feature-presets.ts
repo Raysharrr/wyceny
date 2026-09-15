@@ -186,12 +186,16 @@ export function medianAreaM2(areas: Array<number | null | undefined>): number | 
 /**
  * Sample-derived powierzchnia thresholds; null when the sample carries no
  * areas. The median splits the scale in two: below it the flat is the smaller
- * (and, per m², the dearer) one — `do` is the exclusive edge, so a flat of
- * exactly the median area falls in "i więcej".
+ * (and, per m², the dearer) one. Both edges are inclusive whole m², so the
+ * bands touch one m² apart — "do 46 m²" / "od 47 m²" for a median of 47, which
+ * leaves a flat of exactly the median area in the larger band, as before.
+ *
+ * TWO levels, not three: that is the real shape of the Kościelna and Meissnera
+ * operats, and it is all a median can honestly say.
  */
 export function powierzchniaMeasure(medianM2: number | null): FeatureMeasure | null {
   if (medianM2 == null) return null;
-  return { kind: "area", bounds: { lepsza: { do: medianM2 }, gorsza: { od: medianM2 } } };
+  return { kind: "area", bounds: { lepsza: { do: medianM2 - 1 }, gorsza: { od: medianM2 } } };
 }
 
 /** Sample-derived powierzchnia definitions; {} when the sample carries no areas. */

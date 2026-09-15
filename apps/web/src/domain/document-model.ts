@@ -397,12 +397,11 @@ export type DocumentModel = {
    * (D-52). `b1-template` prints these; the flat `opis_cmin`/`opis_cmax`
    * below are the first flat's lines, the shape the template renders today.
    *
-   * BLOCKER for whoever prints these: the piętro line is NOT verified for the
-   * `rcn` source. RCN's `lok_nr_kond` counts kondygnacje (parter = 1), while
-   * the coop register's `floor` is hand-typed under a "Piętro" label (parter =
-   * 0), so the two sources are off by one against each other and against
-   * `subject.pietro`. Evidence and the three options are in PR #58; until it is
-   * decided, do not print a piętro sentence from these entries.
+   * The piętro behind these lines is normalised per source
+   * (`pietroOfCandidate`): RCN's kondygnacja loses one, the cooperative
+   * register's hand-typed "Piętro" does not. Step 3's table still LABELS the
+   * raw RCN kondygnacja "Piętro", so it shows one more than these sentences do
+   * — the label fix is a follow-up of PR #58, not a defect of this value.
    */
   lokale_cmin: ComparableDescription[];
   lokale_cmax: ComparableDescription[];
@@ -577,23 +576,53 @@ export function candidateOf(
 }
 
 /**
+ * The transaction's PIĘTRO (parter = 0) — the unit the scale's bands and the
+ * subject's own `pietro` are in, which is not the unit either register stores.
+ *
+ * RCN's `floor` is `lok_nr_kond`, a kondygnacja numbered from 1, so it loses
+ * one. Measured, not assumed: across the 8 snapshot fixtures (80 000 rows)
+ * `handlowoUslugowa` sits at 1 (839 of 976) and `garaz` at −1 (10 117 of
+ * 11 779) — retail on the ground floor and garages one level below only line up
+ * if parter is 1. Underground rows then come out negative and no band covers
+ * them, which is the honest answer for a garage.
+ *
+ * The cooperative register's `floor` is hand-typed by the office under a
+ * "Piętro" label, so it is taken as a piętro and NOT converted. That is a
+ * reading of the label, not a measurement: every floor-bearing row in the
+ * database belongs to our own E2E fixtures, so there is nothing to measure
+ * (PR #58). An absent `source` is not treated as RCN — rows saved before the
+ * field existed must not be silently shifted.
+ */
+function pietroOfCandidate(
+  source: Comparable["source"],
+  candidate: Candidate | null,
+): number | null {
+  const floor = candidate?.floor;
+  if (floor == null) return null;
+  return source === "rcn" ? floor - 1 : floor;
+}
+
+/**
  * §12.2 wording of ONE feature for ONE comparable flat (D-52). A measurable
  * feature is placed by the SAME thresholds the subject is placed by, reading
  * the transaction's own piętro or powierzchnia; everything else says outright
  * that the register does not carry the answer.
  *
- * `floor` comes from the register field `lok_nr_kond` unchanged — see the PR's
- * drift note: the register counts kondygnacje, the piętro scale counts piętra.
+ * The piętro comes from `pietroOfCandidate`, which converts the RCN
+ * kondygnacja; the area comes from the row itself, falling back to the
+ * candidate.
  */
 function comparableFeatureText(
   feature: Feature,
-  comparable: Pick<Comparable, "area">,
+  comparable: Pick<Comparable, "area" | "source">,
   candidate: Candidate | null,
 ): string {
   const measure = feature.measure;
   if (!measure) return OCENA_SPOZA_REJESTRU;
   const value =
-    measure.kind === "floor" ? candidate?.floor : (comparable.area ?? candidate?.area ?? null);
+    measure.kind === "floor"
+      ? pietroOfCandidate(comparable.source, candidate)
+      : (comparable.area ?? candidate?.area ?? null);
   const level = levelForValue(measure, value);
   if (!level) return OCENA_SPOZA_REJESTRU;
   // The wording follows the level's POSITION in the described scale, exactly

@@ -249,15 +249,16 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
     expect(candidateOf({}, inputs.sampleSelection)).toBeNull();
   });
 
-  it("Cmax na 3. piętrze to „wartość pośrednia”, nie „najwyższa” (D-52)", () => {
+  it("Cmax na 3. kondygnacji to „wartość pośrednia”, nie „najwyższa” (D-52)", () => {
     expect(cmaxRows).toHaveLength(1);
-    expect(cmaxRows[0].floor).toBe(3); // próg „przeciętna”: piętra od 1 do 3
+    // Kondygnacja 3 w RCN = 2 piętro, czyli przedział „piętra pośrednie” (1–3).
+    expect(cmaxRows[0].floor).toBe(3);
     const [lokal] = reported().lokale_cmax;
     expect(lokal.cechy).toEqual([
       { nazwa: "Standard wykończenia", opis: OCENA_SPOZA_REJESTRU },
       { nazwa: "Położenie na piętrze", opis: "wartość pośrednia cechy" },
       { nazwa: "Lokalizacja szczegółowa", opis: OCENA_SPOZA_REJESTRU },
-      // 35,9 m² < próg 44 m² → „lepsza”, wyższy z dwóch opisanych poziomów.
+      // 35,9 m² ≤ 43 m² → „lepsza”, wyższy z dwóch opisanych poziomów.
       { nazwa: "Powierzchnia użytkowa", opis: "wartość najwyższa cechy" },
       { nazwa: "Pomieszczenia przynależne", opis: OCENA_SPOZA_REJESTRU },
       { nazwa: "Dodatkowe", opis: OCENA_SPOZA_REJESTRU },
@@ -270,10 +271,10 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
     expect(lokale_cmin).toHaveLength(2);
     const pietro = (i: number) =>
       lokale_cmin[i].cechy.find((c) => c.nazwa === "Położenie na piętrze")!.opis;
-    // Piętra 10 i 5 — oba w przedziale „od 4 piętra”, czyli najwyższy poziom.
+    // Kondygnacje 10 i 5 = piętra 9 i 4 — oba w „4 piętro i powyżej”.
     expect(cminRows.map((c) => c.floor)).toEqual([10, 5]);
     expect([pietro(0), pietro(1)]).toEqual(["wartość najwyższa cechy", "wartość najwyższa cechy"]);
-    // 48,6 i 47,9 m² ≥ próg 44 m² → „gorsza”, niższy z dwóch opisanych poziomów.
+    // 48,6 i 47,9 m² ≥ 44 m² → „gorsza”, niższy z dwóch opisanych poziomów.
     const pow = (i: number) =>
       lokale_cmin[i].cechy.find((c) => c.nazwa === "Powierzchnia użytkowa")!.opis;
     expect([pow(0), pow(1)]).toEqual(["wartość najniższa cechy", "wartość najniższa cechy"]);
@@ -304,6 +305,45 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
     // Cztery cechy niemierzalne — żadna nie udaje oceny wyprowadzonej z rejestru.
     expect(opisy.filter((o) => o === OCENA_SPOZA_REJESTRU)).toHaveLength(4);
     expect(OCENA_SPOZA_REJESTRU).not.toContain("wartość");
+  });
+
+  /**
+   * RCN trzyma `lok_nr_kond` — numer kondygnacji liczony od 1 — a skala mówi o
+   * piętrach z parterem 0. Pomiar na 8 migawkach (80 000 rekordów): lokale
+   * handlowo-usługowe stoją w 839 z 976 przypadków na 1, a garaże w 10 117 z
+   * 11 779 na −1, co trzyma się kupy tylko przy parterze = 1. Rejestr
+   * spółdzielczy wpisuje piętro ręcznie pod etykietą „Piętro” i nie jest
+   * przeliczany (PR #58).
+   */
+  describe("kondygnacja RCN staje się piętrem (wariant b)", () => {
+    const naKondygnacji = (floor: number | null, source: "rcn" | "rejestr_sm") => {
+      const v = wycena1409Anon();
+      const najdrozszy = Math.max(...v.inputs.comparables.map((c) => c.pricePerM2));
+      const rows = v.inputs.comparables.filter((c) => c.pricePerM2 === najdrozszy);
+      expect(rows).toHaveLength(1);
+      rows[0].source = source;
+      const kandydat = v.inputs.sampleSelection!.proposed.find(
+        (c) => c.transactionId === rows[0].transactionId,
+      )!;
+      kandydat.floor = floor;
+      return buildDocumentModel(v).lokale_cmax[0].cechy.find(
+        (c) => c.nazwa === "Położenie na piętrze",
+      )!.opis;
+    };
+
+    it("kondygnacja 1 to parter, czyli najniższy poziom skali — nie „pośredni”", () => {
+      expect(naKondygnacji(1, "rcn")).toBe("wartość najniższa cechy");
+      // Bez konwersji ta sama liczba wpadłaby w „piętra pośrednie”.
+      expect(naKondygnacji(1, "rejestr_sm")).toBe("wartość pośrednia cechy");
+    });
+
+    it("kondygnacja podziemna i zero nie trafiają w żaden przedział", () => {
+      // Garaż na −1 i wiersz bez numeru kondygnacji (0 w RCN nie występuje jako
+      // parter) schodzą poniżej parteru — operat mówi wprost, że nie wie.
+      expect(naKondygnacji(-1, "rcn")).toBe(OCENA_SPOZA_REJESTRU);
+      expect(naKondygnacji(0, "rcn")).toBe(OCENA_SPOZA_REJESTRU);
+      expect(naKondygnacji(null, "rcn")).toBe(OCENA_SPOZA_REJESTRU);
+    });
   });
 
   it("`opis_cmin`/`opis_cmax` to zdania pierwszego lokalu o tej cenie", () => {
