@@ -11,8 +11,8 @@ const roundTo = (value: number, dp: number): number => {
 
 // Crafted so every stage lands on a different value one decimal place over:
 // csr 10741.33 (2dp) vs 10741.333 (3dp), vmin 0.919 vs 0.9194, vmax 1.149 vs
-// 1.1495, sumUi 1.05 vs 1.0502, unitValue 11278.4 vs 11278.397, wr 807 900
-// (nearest 100) vs 807 870 (nearest 10).
+// 1.1495, sumUi 1.051 vs 1.0510 (rows 0.276 + 0.2 + 0.575), unitValue 11289.14
+// vs 11289.138, wr 808 600 (nearest 100) vs 808 640 (nearest 10).
 const input: KcsInput = {
   area: 71.63,
   comparables: [{ pricePerM2: 9876 }, { pricePerM2: 10001 }, { pricePerM2: 12347 }],
@@ -31,6 +31,7 @@ describe("ROUNDING", () => {
       csr: 2,
       vmin: 3,
       vmax: 3,
+      ui: 3,
       sumUi: 3,
       unitValue: 2,
       wrNearest: 100,
@@ -58,6 +59,20 @@ describe("ROUNDING", () => {
     expect(result.unitValue).toBe(roundTo(result.csr * result.sumUi, ROUNDING.unitValue));
     expect(result.wr).toBe(
       Math.round(result.wrUnrounded / ROUNDING.wrNearest) * ROUNDING.wrNearest,
+    );
+  });
+
+  // Tabela 3 prints every Ui at 3 dp and the appraiser adds up the printed
+  // column, so the engine rounds each row before summing. Literal values, not
+  // a re-derivation: 0,3 × vmin 0,919 = 0,2757 would otherwise sum unrounded.
+  it("rounds each Ui before the sum", () => {
+    const { ui, sumUi } = computeKcs(input);
+    expect(ui.map((share) => share.value)).toEqual([0.276, 0.2, 0.575]);
+    expect(sumUi).toBe(
+      roundTo(
+        ui.reduce((sum, share) => sum + share.value, 0),
+        ROUNDING.sumUi,
+      ),
     );
   });
 });

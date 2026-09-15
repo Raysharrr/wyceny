@@ -20,6 +20,7 @@ import {
 } from "../src/domain/valuation";
 import type { Valuation } from "../src/ports/valuation";
 import type { Comparable, KcsInput } from "../src/domain/kcs";
+import { THREE_LEVEL_SCALE } from "./fixtures/valuation-inputs";
 import { approvalGate, type InputsProvenance } from "../src/domain/provenance";
 import { confirmProseSnapshot, PROSE_SECTIONS } from "../src/domain/prose-snapshot";
 import { confirmedProse, EXAMINED_BOOKS } from "./fixtures/valuation-inputs";
@@ -75,7 +76,15 @@ function rcnInputs(): KcsInput {
       transactionId: `tx-${i}`,
       status: "to_verify" as const,
     })),
-    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    // A rating on its described scale, so the ADR-016 blockers (B-08…B-10) clear.
+    features: [
+      {
+        name: "standard",
+        weight: 1,
+        rating: "przecietna" as const,
+        definitions: THREE_LEVEL_SCALE,
+      },
+    ],
     sampleMeta: {
       point: { x: 355300.15, y: 505330.31, source: "subject" as const },
       maxRadiusM: 3000,

@@ -40,7 +40,7 @@ describe("fikstura wycena-1409-anon — schemat formularza", () => {
     { skalaPowierzchni: "poprawiona", kw: "odpis_z_wpisem_dzial_iii" },
   ] as const;
 
-  for (const variant of VARIANTS) {
+  for (const variant of VARIANTS.filter((v) => v.skalaPowierzchni === "poprawiona")) {
     it(`przechodzi valuationFormSchema bez zgubionych pól (${variant.skalaPowierzchni}, ${variant.kw})`, () => {
       const values = formValuesOf(wycena1409Anon(variant));
       const parsed = valuationFormSchema.safeParse(values);
@@ -48,6 +48,18 @@ describe("fikstura wycena-1409-anon — schemat formularza", () => {
       // Równość, nie samo `success`: zod po cichu obcina nieznane klucze, więc pole spoza
       // schematu przeszłoby walidację, a nie dotarło do aplikacji.
       expect(parsed.data).toEqual(values);
+    });
+  }
+
+  // Zmiana kontraktu FS.1/FS.2 (ADR-016 reg. 4, I-10): wariant `jak_zgloszono` ma ocenę na
+  // nieopisanym poziomie — dokładnie to, czego schemat zapisu ma NIE przyjąć. Fikstura
+  // zostaje bez zmian, zmienia się oczekiwanie: ten wariant jest odrzucany z B-09.
+  for (const variant of VARIANTS.filter((v) => v.skalaPowierzchni === "jak_zgloszono")) {
+    it(`valuationFormSchema odrzuca ocenę spoza skali (${variant.skalaPowierzchni}, ${variant.kw})`, () => {
+      const parsed = valuationFormSchema.safeParse(formValuesOf(wycena1409Anon(variant)));
+      expect(parsed.error?.issues.map((i) => i.message)).toEqual([
+        "Ocena „przeciętna” cechy „Powierzchnia użytkowa” nie ma opisu w skali — opisz ten poziom albo zmień ocenę.",
+      ]);
     });
   }
 
@@ -61,7 +73,9 @@ describe("fikstura wycena-1409-anon — schemat formularza", () => {
   it("renderuje się przez prawdziwy szablon (warstwa docx-invariants)", () => {
     for (const variant of VARIANTS) {
       const doc = openDocx(renderOperatDocx(buildDocumentModel(wycena1409Anon(variant))));
-      expect(sectionText(doc, "12.3.")).toContain("powierzchnia użytkowa");
+      // Po D-43 nazwy cech w presecie zaczynają się wielką literą, a fikstura bierze je
+      // z presetu — porównanie nie może zależeć od wielkości pierwszej litery.
+      expect(sectionText(doc, "12.3.").toLowerCase()).toContain("powierzchnia użytkowa");
       expectNoText(doc, "undefined");
     }
   });

@@ -22,8 +22,8 @@ import {
 import type { Blocker } from "@/domain/provenance";
 import { gateContextFor } from "@/lib/gate-context";
 import { buildDocumentModel } from "@/domain/document-model";
-import { authorFrom, documentInputFor } from "@/domain/document-input";
-import { computeKcs } from "@/domain/kcs";
+import { AmountMismatchError, authorFrom, documentInputFor } from "@/domain/document-input";
+import { computeKcsOnScale } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
@@ -121,7 +121,7 @@ export async function approveValuation(
       if (!valuation.inputs) {
         return { error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu." };
       }
-      const kcs = computeKcs(valuation.inputs);
+      const kcs = computeKcsOnScale(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
 
       // Slice 14 (Task 12): issuing REUSES the maps the appraiser just read.
@@ -352,6 +352,24 @@ export async function approveValuation(
         });
       }
     } catch (error) {
+      // I-21 (`documentInputFor`): the render would print an amount other than
+      // the one this valuation carries. NO live path reaches this today —
+      // `reopenApproved` clears `wr`, and a draft's read through
+      // `readFeatureScale` drops an amount its snapshot no longer produces.
+      // That read has one gap — it returns early on a draft with NO features,
+      // which keeps its amount — and two other locks close it: the schema
+      // refuses to save such a snapshot (`valuation-form-schema.ts`, features
+      // `.min(1)`), and `approvalBlockers` above runs before this render.
+      // It is caught anyway because the throw would otherwise surface as "nie
+      // udało się wygenerować operatu", blaming the generator for a data
+      // problem, and because the guard exists for the path that does not
+      // exist YET.
+      if (error instanceof AmountMismatchError) {
+        return {
+          error:
+            "Kwota zapisana przy wycenie nie wynika już z jej danych — otwórz krok 5 i zatwierdź kalkulację ponownie.",
+        };
+      }
       if (error instanceof InputsChangedError) {
         return {
           error:

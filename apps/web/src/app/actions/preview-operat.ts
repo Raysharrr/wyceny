@@ -13,7 +13,7 @@ import {
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
 import { buildDocumentModel } from "@/domain/document-model";
 import { authorFrom, documentInputFor } from "@/domain/document-input";
-import { computeKcs } from "@/domain/kcs";
+import { computeKcsOnScale, kcsReady } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
@@ -83,6 +83,17 @@ export async function previewOperat(
     }
     if (!valuation.inputs) {
       return { error: "Brak danych wejściowych operatu — nie ma czego pokazać." };
+    }
+    // ADR-016: a draft whose ratings predate the scale rule has no WR to print.
+    // Said here, where it is true, instead of as the worker error below. (The
+    // preview only ever runs on a draft, whose stored `wr` the read migration
+    // has already dropped if it stopped following from the snapshot — so the
+    // I-21 guard inside `documentInputFor` has nothing left to catch here.)
+    if (!kcsReady(valuation.inputs)) {
+      return {
+        error:
+          "Oceny cech pochodzą sprzed zmiany skali ocen — zatwierdź cechy ponownie w kroku 4, żeby zobaczyć podgląd.",
+      };
     }
 
     try {
@@ -168,7 +179,7 @@ export async function previewOperat(
         };
       }
 
-      const kcs = computeKcs(valuation.inputs);
+      const kcs = computeKcsOnScale(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
       // The preview reads the CURRENT profile (ADR-020 cz. 1): the appraiser
       // sees their own author block filling in as they complete /profile, and

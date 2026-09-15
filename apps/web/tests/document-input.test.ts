@@ -43,19 +43,24 @@ import { previewOperat } from "../src/app/actions/preview-operat";
 import { signValuationAction } from "../src/app/actions/sign-valuation";
 import { profileRepository, storage, valuationRepository, worker } from "@/app/valuations/_deps";
 import { buildDocumentModel } from "@/domain/document-model";
-import { documentInputFor } from "@/domain/document-input";
+import { AmountMismatchError, documentInputFor } from "@/domain/document-input";
 import { computeKcs } from "@/domain/kcs";
+import { computeKcsOnScale } from "@/domain/feature-rules";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 
 const ADDRESS = "Audit approvable";
 const APPROVED_AT = new Date("2026-07-19T10:00:00.000Z");
 
+const INPUTS = withConfirmedProse(ADDRESS, approvableInput("u1").inputs!);
+/** I-21: the amount a valuation carries has to be the one its snapshot gives. */
+const WR = computeKcsOnScale(INPUTS).wr;
+
 const valuation = (overrides: Partial<Valuation> = {}): Valuation => ({
   id: "v1",
   address: ADDRESS,
   area: 40,
-  wr: 400_000,
-  inputs: withConfirmedProse(ADDRESS, approvableInput("u1").inputs!),
+  wr: WR,
+  inputs: INPUTS,
   amountInWords: null,
   docUrl: "/api/docs/operat-v1.pdf",
   docxUrl: "/api/docs/operat-v1.docx",
@@ -120,6 +125,46 @@ describe("documentInputFor — today's fields, verbatim", () => {
     expect(input.inspectionDate).toBe("");
     expect(input.kwNumber).toBeNull();
     expect(input.propertyRight).toBe("spoldzielcze_wlasnosciowe");
+  });
+});
+
+/**
+ * I-21 — the document may not print an amount other than the one the valuation
+ * carries. The case that made this necessary: a valuation approved under the
+ * pre-ADR-016 rule keeps the amount it was issued with, while a render from its
+ * own snapshot now lands elsewhere; `kcsReady` is true, so nothing else would
+ * stop it. Guarded in `documentInputFor` because every render path goes
+ * through it (R-2).
+ */
+describe("documentInputFor refuses to print an amount the valuation does not carry", () => {
+  const render = (v: Valuation) => ({
+    approvedAt: APPROVED_AT,
+    kcs: computeKcsOnScale(v.inputs!),
+    amountInWords: "słownie",
+    author: AUTOR_TESTOWY,
+  });
+
+  it("throws when the render's WR differs from the stored one", () => {
+    const v = valuation({ wr: WR - 400, status: "approved" });
+    expect(() => documentInputFor(v, render(v))).toThrow(AmountMismatchError);
+  });
+
+  it("carries both numbers, so the refusal can name them", () => {
+    const v = valuation({ wr: WR - 400 });
+    try {
+      documentInputFor(v, render(v));
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AmountMismatchError);
+      expect((e as AmountMismatchError).stored).toBe(WR - 400);
+      expect((e as AmountMismatchError).rendered).toBe(WR);
+    }
+  });
+
+  // A draft before step 5 has no amount to contradict — the preview must work.
+  it("lets a valuation without a stored amount through", () => {
+    const v = valuation({ wr: null });
+    expect(() => documentInputFor(v, render(v))).not.toThrow();
   });
 });
 

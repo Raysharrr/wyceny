@@ -1,6 +1,7 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers, formatDatePl } from "./document-model";
-import { computeKcs, isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
+import { computeKcsOnScale, describedLevels, featureIssues, kcsReady } from "./feature-rules";
+import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
@@ -645,7 +646,64 @@ export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation 
   const provenance = sameJson(v.inputs.features, u.features)
     ? carryGroupStatuses(v.inputs.provenance, reassigned, FEATURES_GROUP_KEYS)
     : reassigned;
-  return { ...v, wr: null, inputs: { ...v.inputs, features: u.features, provenance } };
+  return {
+    ...v,
+    wr: null,
+    inputs: { ...v.inputs, features: u.features, provenance },
+  };
+}
+
+/**
+ * Does the amount this valuation carries still follow from its own snapshot?
+ * The step-5 confirm writes exactly what the engine returns, so this is true
+ * for everything saved under the current rules and false for an amount
+ * computed under an earlier one. Two callers, one question: the draft read
+ * below drops such an amount, and the views refuse to show recomputed tables
+ * beside it (I-21).
+ *
+ * `false` ALSO when there is no amount at all (`wr == null`) or the snapshot
+ * produces none — the question is "does the amount follow", and a missing one
+ * does not. Callers that treat `false` as "the numbers disagree" have to check
+ * `wr != null` first, the way `flat-view` does; otherwise a draft before step 5
+ * reads as a mismatch.
+ */
+export function amountMatchesSnapshot(v: Valuation): boolean {
+  if (v.wr == null || !v.inputs || !kcsReady(v.inputs)) return false;
+  return computeKcsOnScale(v.inputs).wr === v.wr;
+}
+
+/**
+ * A draft read after the ADR-016 change („Migracja danych”, no SQL). Two
+ * things can be wrong with a draft saved under the old rule, and both are read
+ * off the DATA — there is no rule marker to consult:
+ *
+ * - a rating that misses a scale which HAS described levels is not a rating any
+ *   more, so it is cleared to an explicit `null` (B-08; jsonb would drop
+ *   `undefined`). A feature with no described level at all keeps its rating:
+ *   there is nothing to choose between yet, and B-10 already says so;
+ * - `wr` that no longer follows from the snapshot is dropped. The step-5
+ *   confirm is the only writer of `wr` and writes exactly what the engine
+ *   returns, so on every correctly saved draft this is a no-op — it fires
+ *   precisely where the amount was computed under the old rule, and the
+ *   appraiser confirms the calculation again (F-3 enforced at read time).
+ *
+ * Approved and signed valuations keep what they were issued with, and a draft
+ * with no features has nothing to check. Pure and idempotent.
+ */
+export function readFeatureScale(v: Valuation): Valuation {
+  if (v.status !== "in_progress" || !v.inputs || v.inputs.features.length === 0) return v;
+  const features = v.inputs.features.map((f) => {
+    const levels = describedLevels(f);
+    return f.rating != null && levels.length > 0 && !levels.includes(f.rating)
+      ? { ...f, rating: null }
+      : f;
+  });
+  const inputs = { ...v.inputs, features };
+  // A draft with no amount has none to lose; one with an amount keeps it only
+  // while the snapshot still produces it.
+  const keepsAmount = v.wr == null || amountMatchesSnapshot({ ...v, inputs });
+  if (keepsAmount && features.every((f, i) => f === v.inputs!.features[i])) return v;
+  return { ...v, wr: keepsAmount ? v.wr : null, inputs };
 }
 
 export class CalculationNotReadyError extends Error {
@@ -656,14 +714,15 @@ export class CalculationNotReadyError extends Error {
 }
 
 /** Step-5 confirm: the ONLY place the wizard writes wr. Same engine call the
- * legacy create action used (F-1: computeKcs itself untouched). */
+ * legacy create action used (F-1: computeKcs itself untouched), fed the rating
+ * positions (ADR-016). */
 export function applyCalculationConfirm(v: Valuation): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to confirm`);
-  if (v.inputs.comparables.length < 3 || v.inputs.features.length === 0) {
+  if (v.inputs.comparables.length < 3 || v.inputs.features.length === 0 || !kcsReady(v.inputs)) {
     throw new CalculationNotReadyError();
   }
-  return { ...v, wr: computeKcs(v.inputs).wr };
+  return { ...v, wr: computeKcsOnScale(v.inputs).wr };
 }
 
 /**
@@ -687,13 +746,26 @@ export function approvalBlockers(v: Valuation, ctx: GateOptions): Blocker[] {
   const gate = v.inputs ? approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, ctx) : null;
   return [
     ...(gate && !gate.ok ? gate.blockers : []),
+    ...featureScaleBlockers(v),
     ...documentFieldBlockers(v),
-    // Last, and outside the two groups above, because these are the only
-    // blockers that are NOT about this valuation: they are about the person
-    // issuing it, and they are cleared on /profile once for every draft they
-    // will ever hold.
+    // Last, and outside the groups above, because these are the only blockers
+    // that are NOT about this valuation: they are about the person issuing it,
+    // and they are cleared on /profile once for every draft they will ever hold.
     ...profileBlockers(ctx),
   ];
+}
+
+/**
+ * B-08…B-10 (ADR-016 reg. 3–4, spec §4) — each feature's rating against its
+ * described scale. A draft whose ratings predate the rule needs no blocker of
+ * its own: {@link readFeatureScale} drops the amount that no longer follows
+ * from the snapshot, and the missing `wr` is what the gate already refuses.
+ */
+function featureScaleBlockers(v: Valuation): Blocker[] {
+  if (!v.inputs) return [];
+  return v.inputs.features.flatMap((f, i) =>
+    featureIssues(f).map((issue) => ({ path: `features[${i}]`, ...issue })),
+  );
 }
 
 /**

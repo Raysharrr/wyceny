@@ -1,3 +1,4 @@
+import { computeKcsOnScale } from "../../src/domain/feature-rules";
 import type { KcsInput } from "../../src/domain/kcs";
 import type { InputsProvenance } from "../../src/domain/provenance";
 import { currentSectionFactsHash } from "../../src/domain/prose-hash";
@@ -93,7 +94,10 @@ export function valuationInput(ownerId: string, address: string): NewValuationIn
   return {
     address,
     area: 33.3,
-    wr: 333000,
+    // No snapshot, so no amount can follow from one: `readFeatureScale` drops a
+    // `wr` that its inputs do not produce (ADR-016). Tests that need a priced
+    // draft pass `inputs` AND the matching `wr` — see `approvableInput`.
+    wr: null,
     inputs: null,
     amountInWords: null,
     docUrl: null,
@@ -104,6 +108,17 @@ export function valuationInput(ownerId: string, address: string): NewValuationIn
     ownerId,
   };
 }
+
+/**
+ * A described three-level scale (ADR-016): a rating on any level has a
+ * position, so a feature carrying it feeds the engine like before the rule.
+ * Fictional text (F-9).
+ */
+export const THREE_LEVEL_SCALE = {
+  lepsza: "opis poziomu lepszego",
+  przecietna: "opis poziomu przeciętnego",
+  gorsza: "opis poziomu gorszego",
+};
 
 /**
  * Both books examined, the way ADR-018 requires of any valuation allowed to be
@@ -159,7 +174,15 @@ export function approvableInputs(): KcsInput {
       transactionId: `tx-${i}`,
       status: "to_verify" as const,
     })),
-    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    features: [
+      {
+        name: "standard",
+        weight: 1,
+        rating: "przecietna" as const,
+        definitions: THREE_LEVEL_SCALE,
+      },
+    ],
+    // Saved under the ADR-016 rule — a draft without the marker is migrated on read.
     sampleMeta: {
       point: { x: 355300.15, y: 505330.31, source: "subject" as const },
       maxRadiusM: 3000,
@@ -195,18 +218,31 @@ export function approvableInputs(): KcsInput {
  * the gate REFUSES a bare draft need it. A test that wants an approval to
  * SUCCEED wraps the inputs in {@link withConfirmedProse}.
  */
+/**
+ * The amount `approvableInputs()` produces. A draft carrying any OTHER number
+ * loses it on read (`readFeatureScale`, ADR-016), so a test that wants a priced
+ * approvable draft passes this beside the inputs.
+ */
+export function approvableWr(): number {
+  return computeKcsOnScale(approvableInputs()).wr;
+}
+
 export function approvableInput(ownerId: string): NewValuationInput {
   const base = approvableInputs();
+  const inputs = {
+    ...base,
+    comparables: base.comparables.map((c) => ({ ...c, status: "confirmed" as const })),
+    provenance: {
+      ...base.provenance!,
+      geocode: { source: "geokoder" as const, status: "confirmed" as const },
+    },
+  };
   return {
     ...valuationInput(ownerId, "Audit approvable"),
-    inputs: {
-      ...base,
-      comparables: base.comparables.map((c) => ({ ...c, status: "confirmed" as const })),
-      provenance: {
-        ...base.provenance!,
-        geocode: { source: "geokoder" as const, status: "confirmed" as const },
-      },
-    },
+    inputs,
+    // ADR-016: `wr` that does not follow from the snapshot is dropped on read
+    // (`readFeatureScale`), so a fixture cannot invent one.
+    wr: computeKcsOnScale(inputs).wr,
     purpose: "sprzedaz",
     kwNumber: "PO1P/1/6",
     client: "Jan Testowy",

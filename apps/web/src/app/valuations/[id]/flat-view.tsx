@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { AlertTriangle, Banknote, ClipboardCheck, FileCheck2, MapPin } from "lucide-react";
+import { AlertTriangle, Banknote, ClipboardCheck, FileCheck2, MapPin, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/wizard/section-card";
 import { PURPOSE_LABEL } from "@/domain/document-model";
 import type { Blocker } from "@/domain/provenance";
+import { amountMatchesSnapshot } from "@/domain/valuation";
 import type { Valuation } from "@/ports/valuation";
 import {
   ComparablesProvenance,
@@ -70,7 +71,26 @@ export function FlatView({
   // left column (brief: repositioning only, no new information).
   const dataCards = (
     <>
-      {valuation.wr != null && valuation.inputs ? <KcsBreakdown inputs={valuation.inputs} /> : null}
+      {/* I-21: the tables are recomputed from the snapshot, so they are shown
+          only when that recomputation still yields the amount this valuation
+          was issued with. A valuation approved under an earlier rule fails on
+          one of the two counts — either the engine refuses its ratings (and a
+          server component would turn that throw into a dead page), or it
+          returns a different number — and then the card says so instead. */}
+      {valuation.wr != null && valuation.inputs ? (
+        amountMatchesSnapshot(valuation) ? (
+          <KcsBreakdown inputs={valuation.inputs} />
+        ) : (
+          <SectionCard icon={Scale} title="Rozbicie kalkulacji" sub="Tabele 2–4 operatu">
+            <p className="text-sm text-muted-foreground">
+              Ten operat zatwierdzono przed aktualizacją programu, więc rozbicia kalkulacji nie da
+              się dziś odtworzyć z jego danych. Zapisana wartość rynkowa i wydany dokument pozostają
+              bez zmian; żeby zobaczyć tabele, użyj „Cofnij zatwierdzenie i popraw”, przelicz wycenę
+              i zatwierdź ją ponownie.
+            </p>
+          </SectionCard>
+        )
+      ) : null}
       {valuation.wr != null && valuation.inputs ? (
         <ComparablesProvenance inputs={valuation.inputs} />
       ) : null}

@@ -5,18 +5,14 @@ import { computeKcs, type FeatureRating, type KcsInput } from "../src/domain/kcs
 
 /**
  * Golden "Piastowskie" (T-12, S4; spec 2026-09-12 §7.1) — the only end-to-end
- * reference for a spółdzielcze własnościowe prawo do lokalu. It shows what the
- * engine DOES on the appraiser's own 15-row sample, not what the operat printed:
+ * reference for a spółdzielcze własnościowe prawo do lokalu, and the proof of
+ * the operat's Ui rounding: the document prints every Ui of Tabela 3 at 3 dp
+ * and the appraiser adds up the printed column, so the engine does the same and
+ * reproduces her 447 300 zł TO THE ZŁOTY (ΣUi 1,042 · 10 321,50 zł/m²).
  *
- *   sheet (full precision)          ΣUi 1,0415049  → 447 121,20 → 447 100
- *   operat, Tabela 4 (ΣUi at 3 dp)  ΣUi 1,042      → 447 333,81 → 447 300
- *   this engine (ROUNDING)          ΣUi 1,041      → 446 904,31 → 446 900
- *
- * The −429,50 zł (−0,10 %) gap has ONE cause: `computeKcs` rounds vmin/vmax to
- * 3 dp BEFORE multiplying by the weights, while the sheet and the operat
- * multiply by V in full precision and round only ΣUi. F-1 (Kościelna) passes to
- * the złoty only because no feature there is rated "przeciętna". The engine is
- * deliberately NOT changed here (block decision 4) — follow-up T-26.
+ * Until 2026-09-15 the engine summed unrounded Ui and gave 446 900 zł; that
+ * −429,50 zł gap was follow-up T-26, now closed. Kościelna is unaffected — no
+ * Ui there lands on a fourth decimal that would move the sum.
  *
  * ⚠ DEDUP vs GOLDEN: rows 3 and 4 of the fixture are the registry duplicate
  * (Lp. 194/197 — identical down to the flat number). `coopDedupeKey` merges
@@ -55,21 +51,21 @@ describe("KCS engine — Piastowskie coop reference operat (T-12)", () => {
     expect(fixture.rows[2]).toEqual(fixture.rows[3]);
   });
 
-  it("reproduces WR = 446 900 zł under the engine's rounding convention", () => {
+  // F-1 (T-26 closed): reproduces the operat Aneta issued, to the złoty.
+  it("reproduces the operat's printed 447 300 zł", () => {
     const result = computeKcs(piastowskieInput());
     expect(result.csr).toBe(fixture.expected.csr);
     expect(result.sumUi).toBe(fixture.expected.sumUi);
     expect(result.unitValue).toBe(fixture.expected.unitValue);
     expect(result.wr).toBe(fixture.expected.wr);
+    expect(result.wr).toBe(fixture.operatWr);
   });
 
-  // A DOCUMENTED deviation from the operat's 447 300 zł, not a proof of
-  // correctness: see the header. The bound is tight enough to catch a wrong
-  // rating enum ("najwyższa" would silently fall into the `w` branch and give
-  // 429 300) and loose enough to admit the rounding-convention gap.
-  it("stays within 0,15 % of the operat's printed 447 300 zł (rounding convention gap)", () => {
-    const { wr } = computeKcs(piastowskieInput());
-    expect(Math.abs(wr - fixture.operatWr) / fixture.operatWr).toBeLessThan(0.0015);
-    expect(wr).not.toBe(fixture.operatWr);
+  // I-11: what Tabela 3 prints is what ΣUi is made of.
+  it("sums the printed Ui rows into ΣUi", () => {
+    const result = computeKcs(piastowskieInput());
+    expect(result.ui.map((share) => share.value)).toEqual([0.4, 0.214, 0.321, 0.107]);
+    const printed = result.ui.reduce((sum, share) => sum + share.value, 0);
+    expect(Math.round(printed * 1000) / 1000).toBe(result.sumUi);
   });
 });

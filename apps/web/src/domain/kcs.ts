@@ -13,6 +13,10 @@
  * the convention itself is declared in `ROUNDING` below;
  * half-up everywhere (values are always positive here). Full-precision math
  * would yield 1 043 900 for Kościelna instead of the operat's 1 044 400.
+ *
+ * Tabela 3 prints EVERY Ui at 3 dp and the appraiser adds up the printed
+ * column, so each Ui is rounded before the sum (`ROUNDING.ui`) — that is what
+ * makes Piastowskie print the operat's 447 300 zł instead of 446 900 zł.
  */
 
 import type { ProvenanceStatus } from "@wyceny/shared";
@@ -116,10 +120,15 @@ export type Feature = {
   name: string;
   /** Weight as a fraction (Σ over features = 1.0). UI works in %, converts before calling. */
   weight: number;
-  rating: FeatureRating;
+  /** Null until the appraiser picks a level — there is no default rating (ADR-016 reg. 3). */
+  rating: FeatureRating | null;
   /** Preset pool key (Slice 7, F-6) — display/audit metadata only; the engine never reads it. */
   key?: string;
-  /** Per-level rating-scale definitions (Slice 7) — operat content only; the engine never reads them. */
+  /**
+   * Per-level rating-scale definitions (Slice 7). The engine never reads them;
+   * `computeKcsOnScale` (domain/feature-rules.ts) turns them into the rating's
+   * position before calling it (ADR-016 reg. 2).
+   */
   definitions?: Partial<Record<FeatureRating, string>> | null;
 };
 
@@ -190,6 +199,8 @@ export const ROUNDING = {
   csr: 2,
   vmin: 3,
   vmax: 3,
+  /** Each Ui of Tabela 3, rounded before the sum. */
+  ui: 3,
   sumUi: 3,
   unitValue: 2,
   wrNearest: 100,
@@ -214,6 +225,9 @@ export function computeKcs(input: KcsInput): KcsResult {
     }
     return c.pricePerM2;
   });
+  if (input.features.some((f) => f.rating == null)) {
+    throw new Error("KCS engine: every feature must be rated");
+  }
 
   const cmin = Math.min(...prices);
   const cmax = Math.max(...prices);
@@ -223,8 +237,10 @@ export function computeKcs(input: KcsInput): KcsResult {
 
   const ui: FeatureShare[] = input.features.map((f) => ({
     ...f,
-    value:
+    value: roundTo(
       f.rating === "lepsza" ? f.weight * vmax : f.rating === "gorsza" ? f.weight * vmin : f.weight,
+      ROUNDING.ui,
+    ),
   }));
   const sumUi = roundTo(
     ui.reduce((sum, share) => sum + share.value, 0),

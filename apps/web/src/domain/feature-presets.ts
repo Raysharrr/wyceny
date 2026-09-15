@@ -9,12 +9,23 @@ import type { FeatureRating } from "./kcs";
  *
  * Definition TEXTS are hypothesis-grade defaults derived from the Kościelna
  * operat and the Gościejewko court operat §9.1 (wiki: cechy-porownawcze-lokali)
- * — Aneta verifies them during app testing (user decision 2026-07-15). The
+ * — Aneta verifies them during app testing (user decision 2026-07-15); names
+ * and texts corrected after her 14.09 operat (D-43, D-45, D-46, D-49). The
  * MODEL (per-valuation, editable) is confirmed. Pure module: zero I/O (F-10).
  */
 
 /** Document/display order of rating levels. */
 export const FEATURE_LEVELS = ["lepsza", "przecietna", "gorsza"] as const;
+
+/**
+ * Label per rating level — the internal enum stays diacritic-free. One map for
+ * the §12.1 scale block, the prose facts and the ADR-016 blockers.
+ */
+export const LEVEL_LABEL: Record<FeatureRating, string> = {
+  lepsza: "lepsza",
+  przecietna: "przeciętna",
+  gorsza: "gorsza",
+};
 
 export type FeatureDefinitions = Partial<Record<FeatureRating, string>>;
 
@@ -48,29 +59,31 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
   lokal: [
     {
       key: "standard-wykonczenia",
-      name: "standard wykończenia",
+      name: "Standard wykończenia",
       defaultWeightPct: 40,
       kind: "basic",
       defaultDefinitions: {
         lepsza: "standard dobry, wykończenie materiałami lepszej jakości",
-        przecietna: "standard dobry, wykończenie materiałami dobrej jakości",
+        przecietna:
+          "standard przeciętny, wykończenie materiałami przeciętnej jakości, widoczne zużycia elementów wykończenia",
         gorsza: "wymagany remont lub odświeżenie części elementów wykończenia",
       },
     },
     {
       key: "polozenie-na-pietrze",
-      name: "położenie na piętrze",
+      name: "Położenie na piętrze",
       defaultWeightPct: 30,
       kind: "basic",
       defaultDefinitions: {
-        lepsza: "czwarte piętro i powyżej",
-        przecietna: "piętra pośrednie (1–3)",
+        // D-46: closed, disjoint ranges (parter = 0).
+        lepsza: "od 4 piętra",
+        przecietna: "piętra od 1 do 3",
         gorsza: "parter",
       },
     },
     {
       key: "lokalizacja",
-      name: "lokalizacja",
+      name: "Lokalizacja szczegółowa",
       defaultWeightPct: 10,
       kind: "basic",
       defaultDefinitions: {
@@ -82,7 +95,7 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "powierzchnia-uzytkowa",
-      name: "powierzchnia użytkowa",
+      name: "Powierzchnia użytkowa",
       defaultWeightPct: 10,
       kind: "basic",
       // Dynamic: threshold comes from the comparable-sample area median —
@@ -92,17 +105,17 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "pomieszczenia-przynalezne",
-      name: "pomieszczenia przynależne",
+      name: "Pomieszczenia przynależne",
       defaultWeightPct: 4,
       kind: "basic",
       defaultDefinitions: {
-        lepsza: "przynależna komórka lokatorska lub inne pomieszczenie",
+        lepsza: "przynależna piwnica lub inne pomieszczenie",
         gorsza: "brak pomieszczeń przynależnych",
       },
     },
     {
       key: "dodatkowe",
-      name: "dodatkowe",
+      name: "Dodatkowe",
       defaultWeightPct: 6,
       kind: "basic",
       defaultDefinitions: {
@@ -112,7 +125,7 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "funkcjonalnosc-lokalu",
-      name: "funkcjonalność lokalu",
+      name: "Funkcjonalność lokalu",
       defaultWeightPct: 0,
       kind: "exceptional",
       defaultDefinitions: {
@@ -122,7 +135,7 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "liczba-izb",
-      name: "liczba izb",
+      name: "Liczba izb",
       defaultWeightPct: 0,
       kind: "exceptional",
       defaultDefinitions: {
@@ -132,7 +145,7 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "rodzaj-zabudowy",
-      name: "rodzaj zabudowy budynku",
+      name: "Rodzaj zabudowy budynku",
       defaultWeightPct: 0,
       kind: "exceptional",
       defaultDefinitions: {
@@ -197,12 +210,12 @@ export function matchesPresetDefinitions(
   });
 }
 
-/** Form seed: the active basic bag (weights in %, all przecietna, definitions copied). */
+/** Form seed: the active basic bag (weights in %, no rating — ADR-016 reg. 3, definitions copied). */
 export function defaultFeatureFormValues(): Array<{
   key: LokalFeatureKey;
   name: string;
   weightPct: number;
-  rating: "przecietna";
+  rating: FeatureRating | null;
   definitions: FeatureDefinitions;
 }> {
   return FEATURE_PRESETS.lokal
@@ -211,7 +224,7 @@ export function defaultFeatureFormValues(): Array<{
       key: e.key as LokalFeatureKey,
       name: e.name,
       weightPct: e.defaultWeightPct,
-      rating: "przecietna" as const,
+      rating: null,
       definitions: { ...e.defaultDefinitions },
     }));
 }

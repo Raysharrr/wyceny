@@ -18,6 +18,7 @@ import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
 import {
   approvableInputs,
+  approvableWr,
   partialDraftInputs,
   valuationInput,
   withConfirmedProse,
@@ -120,18 +121,29 @@ describe("valuationRepo (integration, real Postgres)", () => {
     const created = await repo.create({
       address: "ul. Kościelna 33A, Poznań",
       area: 71.63,
-      wr: 1_044_400,
+      // One comparable, one feature rated on its described scale: Ui = 1 × Vmax
+      // = 1, so the amount is simply the unit price × area. Spelled out rather
+      // than invented, because a `wr` that does not follow from the snapshot is
+      // dropped on read (`readFeatureScale`, ADR-016).
+      wr: 1_052_900,
       inputs: {
         area: 71.63,
         comparables: [{ date: "2024-07", area: 63.27, pricePerM2: 14698.91 }],
-        features: [{ name: "standard wykończenia", weight: 1, rating: "lepsza" }],
+        features: [
+          {
+            name: "standard wykończenia",
+            weight: 1,
+            rating: "lepsza",
+            definitions: { lepsza: "opis lepszej", gorsza: "opis gorszej" },
+          },
+        ],
       },
       amountInWords: null,
       docUrl: null,
       ownerId: appraiserA.id,
     });
     const fetched = await repo.get(created.id, appraiserA);
-    expect(fetched?.wr).toBe(1_044_400);
+    expect(fetched?.wr).toBe(1_052_900);
     expect(fetched?.inputs?.comparables[0]?.pricePerM2).toBe(14698.91);
   });
 
@@ -172,6 +184,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("confirmSample flips rcn rows to confirmed and persists, leaving geocode to step 1", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 1"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const confirmed = await repo.confirmSample(created.id, appraiserA);
@@ -187,6 +200,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("confirmSample is owner-only: another appraiser AND a non-owner admin get null", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 2"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     expect(await repo.confirmSample(created.id, appraiserB)).toBeNull();
@@ -196,6 +210,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve rejects an unconfirmed draft with ApprovalBlockedError (server-side gate — API bypass impossible)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 3"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     await expect(repo.approve(created.id, appraiserA)).rejects.toThrow(ApprovalBlockedError);
@@ -207,6 +222,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve succeeds after confirmSample: status approved + approvedAt persisted", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 4"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 4", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -230,6 +246,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approvedAt survives the round-trip to the millisecond, so the operat key does", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Milisekundowa 1"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Milisekundowa 1", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -260,6 +277,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve odmawia w transakcji przy niekompletnym profilu autora (B-15)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Profilowa 1"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Profilowa 1", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -288,6 +306,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve odmawia w transakcji przy polisie po terminie (B-16)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Profilowa 2"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Profilowa 2", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -320,6 +339,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve przechodzi w transakcji przy kompletnym profilu i ważnej polisie", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Profilowa 3"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Profilowa 3", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -348,6 +368,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("an approved valuation refuses further mutations (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 5"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 5", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -379,6 +400,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     // fields must still be refused — with a blocker naming path "purpose".
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 7"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
       purpose: null,
       kwNumber: null,
@@ -402,6 +424,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve persists docUrl + docxUrl when passed", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 8"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 8", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -428,6 +451,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve without amountInWords leaves the column alone (older callers, and sign)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 8b"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 8b", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -445,6 +469,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve with audit.mapsSkipped writes an 'approved' audit row whose meta contains mapsSkipped: true (Slice 9)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 9"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 9", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -476,6 +501,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   async function approvedFixture(address: string, now = new Date()) {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, address),
+      wr: approvableWr(),
       inputs: withConfirmedProse(address, approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -545,6 +571,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     // the signature refusal points at. The audit row has to name THOSE keys.
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Cofnieta 6"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Cofnieta 6", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -653,6 +680,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve rejects with InputsChangedError when expectedInputs no longer matches the row (approve-window drift guard, final review)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 10"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -685,6 +713,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve succeeds when expectedInputs matches the row exactly (no drift)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 11"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 11", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -808,6 +837,7 @@ describe("F-5: confirmKw mutation (KW-extract provenance, Task 8)", () => {
   it("confirmKw on an approved valuation throws (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 13"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 13", kwApprovableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -823,6 +853,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("adds a photo key, audits inspection_updated with op meta, in one tx", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 1"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const key = buildPhotoKey("wnetrza", "u-1", created.id);
@@ -847,6 +878,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("updateInspection is owner-only: another appraiser AND a non-owner admin get null", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 2"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const key = buildPhotoKey("wnetrza", "u-2", created.id);
@@ -858,6 +890,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("updateInspection on an approved valuation throws (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 3"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Ogledziny 3", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -872,6 +905,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("set_note persists the trimmed note", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 4"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const updated = await repo.updateInspection(created.id, appraiserA, {
@@ -884,6 +918,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("set_date persists inspectionDate (column), audits 'date_updated', and survives a re-read", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 5"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const updated = await repo.updateInspection(created.id, appraiserA, {

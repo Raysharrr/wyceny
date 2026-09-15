@@ -32,17 +32,16 @@ import {
  * - kategoria zdjęć „wnętrza” bez zdjęcia.
  *
  * ΣUi wariantu `poprawiona` (Cśr 10 362,29; Vmin 0,878; Vmax 1,146; pow. 43,6 m²). Reguła
- * ustalona 15.09 (koordynator): Ui zaokrąglany do 3 miejsc w każdym wierszu, ΣUi = suma
- * zaokrąglonych wierszy, jak u Anety — zmianę w `kcs.ts` robi FS.1 (`b1-feature-scales`).
- * - dziś (przeciętna → Ui śr; tyle samo w `jak_zgloszono`): 0,400 + 0,344 + 0,100 + 0,100 +
- *   0,035 + 0,053 = 1,032 → WR 466 300 zł (obie reguły dają to samo);
+ * ustalona 15.09 (koordynator) i wdrożona w `kcs.ts` przez FS.1 (`b1-feature-scales`): Ui
+ * zaokrąglany do 3 miejsc w każdym wierszu, ΣUi = suma zaokrąglonych wierszy, jak u Anety.
+ * - stary rachunek po kluczu oceny (przeciętna → Ui śr; tyle samo w `jak_zgloszono`):
+ *   0,400 + 0,344 + 0,100 + 0,100 + 0,035 + 0,053 = 1,032 → WR 466 300 zł;
  * - po ADR-016 (lokalizacja → Ui min 0,088): wiersze 1,020 → WR 460 800 zł =
- *   {@link OCZEKIWANE_PO_ADR016}. Dopóki FS.1 nie jest w gałęzi integracyjnej, silnik zaokrąga
- *   dopiero sumę (0,4 + 0,3438 + 0,0878 + 0,1 + 0,03512 + 0,05268 = 1,0194) i daje
- *   1,019 → WR 460 400 zł.
- * Ceny dobrane tak, żeby rozjazd był taki jak na danych 14.09 (dziś zgodnie, po ADR-016
- * różnica 0,001: tam 1,021 / 466 800 w silniku wobec 1,022 / 467 300 u Anety), a żaden Ui
- * nie leżał na połówce trzeciego miejsca — wynik nie zależy od błędów zmiennoprzecinkowych.
+ *   {@link OCZEKIWANE_PO_ADR016}, i tyle daje dziś silnik (asercja w `feature-rules.test.ts`).
+ *   Samo mapowanie pozycji, bez zaokrąglania wierszy, dałoby 1,019 → 460 400 zł.
+ * Ceny dobrane tak, żeby rozjazd był taki jak na danych 14.09 (tam 1,021 / 466 800 przed
+ * zmianą wobec 1,022 / 467 300 u Anety), a żaden Ui nie leżał na połówce trzeciego
+ * miejsca — wynik nie zależy od błędów zmiennoprzecinkowych.
  *
  * Pola nowych kontraktów paczki 1 (`subject.pietro`, `ekw_reczne`, `kwGrunt`,
  * `encumbranceTreatment`, progi `measure`, profil autora) dopisują sesje-właściciele.
@@ -59,7 +58,7 @@ export const PIETRO_PRZEDMIOTU = 7;
 
 /**
  * Oczekiwany wynik wariantu `poprawiona` po ADR-016 wg reguły „Ui per wiersz” (komentarz
- * modułu). Asercję na silniku pisze FS.1; do jej merge'u silnik daje 1,019 / 460 400.
+ * modułu) — to, co liczy dziś silnik (`feature-rules.test.ts` asertuje tę równość).
  */
 export const OCZEKIWANE_PO_ADR016 = { sumUi: 1.02, wr: 460_800 } as const;
 

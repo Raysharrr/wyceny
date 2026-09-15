@@ -4,6 +4,7 @@ import type { Valuation } from "../src/ports/valuation";
 import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import {
   approvableInput,
+  approvableWr,
   confirmedProse,
   confirmedProseFor,
   withConfirmedProse,
@@ -158,7 +159,8 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
     id: "valuation-draft-1",
     address: "ul. Kościelna 33A, Poznań",
     area: 71.63,
-    wr: 1_044_400,
+    // I-21: the amount has to be the one this snapshot produces.
+    wr: approvableWr(),
     inputs: {
       ...approvableInput("test-user").inputs!,
       prose: confirmedProseFor("ul. Kościelna 33A, Poznań", approvableInput("test-user").inputs!),
@@ -356,7 +358,8 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
     id: "valuation-draft-photos-1",
     address: "ul. Fotograficzna 5, Poznań",
     area: 60,
-    wr: 900_000,
+    // I-21: the amount has to be the one this snapshot produces.
+    wr: approvableWr(),
     inputs: {
       ...approvableInput("test-user").inputs!,
       prose: confirmedProseFor(
@@ -473,7 +476,8 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     id: "valuation-prose-1",
     address: "ul. Opisowa 7, Poznań",
     area: 55,
-    wr: 700_000,
+    // I-21: the amount has to be the one this snapshot produces.
+    wr: approvableWr(),
     inputs: {
       ...approvableInput("test-user").inputs!,
       prose: confirmedProseFor("ul. Opisowa 7, Poznań", approvableInput("test-user").inputs!),
@@ -752,7 +756,8 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
     id: "valuation-drift-1",
     address: "ul. Dryfująca 1, Poznań",
     area: 71.63,
-    wr: 1_044_400,
+    // I-21: the amount has to be the one this snapshot produces.
+    wr: approvableWr(),
     inputs: {
       ...approvableInput("test-user").inputs!,
       prose: confirmedProseFor("ul. Dryfująca 1, Poznań", approvableInput("test-user").inputs!),
@@ -897,7 +902,8 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
     id: "valuation-t12-1",
     address: "ul. Klonowa 7, m. Nowogród",
     area: 71.63,
-    wr: 1_044_400,
+    // I-21: the amount has to be the one this snapshot produces.
+    wr: approvableWr(),
     inputs: {
       ...approvableInput("test-user").inputs!,
       prose: confirmedProseFor("ul. Klonowa 7, m. Nowogród", approvableInput("test-user").inputs!),
@@ -1196,7 +1202,8 @@ describe("każde zatwierdzenie ma własne pliki (ADR-020, reguła 6)", () => {
     id: "valuation-keys-1",
     address: ADDRESS_KEYS,
     area: 71.63,
-    wr: 1_044_400,
+    // I-21: the amount has to be the one this snapshot produces.
+    wr: approvableWr(),
     inputs: withConfirmedProse(ADDRESS_KEYS, approvableInput("test-user").inputs!),
     amountInWords: null,
     docUrl: null,
@@ -1288,7 +1295,8 @@ describe("approveValuation — profil autora i polisa OC (B-15, B-16)", () => {
     id: "valuation-profil-1",
     address: "ul. Opisowa 7, Poznań",
     area: 55,
-    wr: 700_000,
+    // I-21: the amount has to be the one this snapshot produces.
+    wr: approvableWr(),
     inputs: {
       ...approvableInput("test-user").inputs!,
       prose: confirmedProseFor("ul. Opisowa 7, Poznań", approvableInput("test-user").inputs!),

@@ -16,7 +16,13 @@ import fixture from "./fixtures/koscielna.json";
  * F-6 (fitness function): the expert preset (ADR-006) is the single source of
  * truth for the lokal feature bag. Guards: Σ(basic weights) = 100 exactly, the
  * bag is Aneta's canonical 6+3 list, the basic six reproduce the golden-era
- * form defaults (40/30/10/10/4/6), and the engine ignores the new metadata.
+ * form weights (40/30/10/10/4/6), and the engine ignores the new metadata.
+ *
+ * CONTRACT CHANGE (ADR-016 reg. 3, spec §7.4, block „naprawa operatu” P5): the
+ * preset used to seed every feature with the rating "przecietna"; since then
+ * it seeds NO rating (`null`) — the appraiser picks every level. The key set
+ * is unchanged. Names and texts follow the 14.09 operat review (D-43, D-45,
+ * D-46, D-49).
  */
 describe("F-6: lokal feature preset", () => {
   const lokal = FEATURE_PRESETS.lokal;
@@ -37,15 +43,39 @@ describe("F-6: lokal feature preset", () => {
     ]);
   });
 
-  it("basic six reproduce the pre-Slice-7 hardcoded form defaults exactly", () => {
+  it("basic six keep the pre-Slice-7 weights; names capitalised as in the operat (D-43)", () => {
     expect(basic.map((e) => [e.name, e.defaultWeightPct])).toEqual([
-      ["standard wykończenia", 40],
-      ["położenie na piętrze", 30],
-      ["lokalizacja", 10],
-      ["powierzchnia użytkowa", 10],
-      ["pomieszczenia przynależne", 4],
-      ["dodatkowe", 6],
+      ["Standard wykończenia", 40],
+      ["Położenie na piętrze", 30],
+      ["Lokalizacja szczegółowa", 10],
+      ["Powierzchnia użytkowa", 10],
+      ["Pomieszczenia przynależne", 4],
+      ["Dodatkowe", 6],
     ]);
+    expect(lokal.filter((e) => e.kind === "exceptional").map((e) => e.name)).toEqual([
+      "Funkcjonalność lokalu",
+      "Liczba izb",
+      "Rodzaj zabudowy budynku",
+    ]);
+  });
+
+  it("scale texts from the 14.09 review: D-45 standard, D-46 floor, D-49 rooms; no trailing dots", () => {
+    const defs = (key: string) => lokal.find((e) => e.key === key)!.defaultDefinitions;
+    expect(defs("standard-wykonczenia").przecietna).toBe(
+      "standard przeciętny, wykończenie materiałami przeciętnej jakości, widoczne zużycia elementów wykończenia",
+    );
+    // D-46: closed, disjoint floor ranges (numbers stay those of the preset; thresholds: b1-feature-hints).
+    expect(defs("polozenie-na-pietrze")).toEqual({
+      lepsza: "od 4 piętra",
+      przecietna: "piętra od 1 do 3",
+      gorsza: "parter",
+    });
+    expect(defs("pomieszczenia-przynalezne").lepsza).toBe(
+      "przynależna piwnica lub inne pomieszczenie",
+    );
+    for (const e of lokal) {
+      for (const text of Object.values(e.defaultDefinitions)) expect(text).not.toMatch(/\.$/);
+    }
   });
 
   it("basic weights sum to exactly 100; exceptional entries carry weight 0", () => {
@@ -80,11 +110,12 @@ describe("F-6: lokal feature preset", () => {
     expect(defs.przecietna).toBeUndefined();
   });
 
-  it("defaultFeatureFormValues() = active basic bag, all przecietna, static definitions copied", () => {
+  it("defaultFeatureFormValues() = active basic bag, NO default rating (ADR-016 reg. 3), static definitions copied", () => {
     const defaults = defaultFeatureFormValues();
     expect(defaults.map((f) => [f.key, f.weightPct, f.rating])).toEqual(
-      basic.map((e) => [e.key, e.defaultWeightPct, "przecietna"]),
+      basic.map((e) => [e.key, e.defaultWeightPct, null]),
     );
+    expect(defaults.some((f) => f.rating != null)).toBe(false);
     // powierzchnia starts empty — the form fills it from the live sample median
     expect(defaults.find((f) => f.key === "powierzchnia-uzytkowa")!.definitions).toEqual({});
   });

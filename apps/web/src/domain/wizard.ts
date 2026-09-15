@@ -1,3 +1,4 @@
+import { kcsReady } from "./feature-rules";
 import type { KcsInput } from "./kcs";
 import type { Valuation } from "../ports/valuation";
 
@@ -35,7 +36,12 @@ export function resolveStep(param: string | undefined, max: number): number {
 }
 
 export function calculationReady(inputs: KcsInput | null): boolean {
-  return inputs != null && inputs.comparables.length >= 3 && inputs.features.length > 0;
+  return (
+    inputs != null &&
+    inputs.comparables.length >= 3 &&
+    inputs.features.length > 0 &&
+    kcsReady(inputs)
+  );
 }
 
 /**
@@ -74,6 +80,8 @@ const BLOCKER_STEP: Record<string, number> = {
   "provenance.weights": 4,
   "provenance.ratings": 4,
   "provenance.featureDefs": 4,
+  // ADR-016: each feature's rating against its scale (B-08…B-10).
+  features: 4,
   // Step 5 (Kalkulacja).
   wr: 5,
   // Step 6 (Opisy): the prose snapshot and each of its six sections.

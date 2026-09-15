@@ -1,0 +1,19 @@
+{
+  "name": "Wycena 14.09 — operat wzorcowy Anety (ADR-016, P5)",
+  "note": "AGREGATY ONLY (F-9): the 20 unit prices are synthetic numbers reconstructed to hit the operat's Cmin 9 040,48 (twice), Cmax 11 931,82 and Cśr 10 337,10 — they are NOT the transactions of the sample. No address, no KW, no names. The features carry the ratings as the operat has them, already mapped onto the engine's keys: standard mid (3 levels), piętro max, lokalizacja min (2 described levels, the lower one), powierzchnia mid (3 levels), pomieszczenia min (2 described levels, the lower one).",
+  "subjectArea": 44.23,
+  "pricesPerM2": [
+    9040.48, 9040.48, 9312.55, 9587.1, 9744.32, 9903.67, 10012.4, 10120.75, 10238.91, 10345.29,
+    10355.02, 10460.18, 10575.44, 10688.27, 10790.63, 10902.11, 11048.36, 11210.94, 11433.28,
+    11931.82
+  ],
+  "features": [
+    { "name": "standard wykończenia", "weight": 0.4, "rating": "przecietna" },
+    { "name": "położenie na piętrze", "weight": 0.3, "rating": "lepsza" },
+    { "name": "lokalizacja szczegółowa", "weight": 0.1, "rating": "gorsza" },
+    { "name": "powierzchnia użytkowa", "weight": 0.1, "rating": "przecietna" },
+    { "name": "pomieszczenia przynależne", "weight": 0.1, "rating": "gorsza" }
+  ],
+  "expected": { "csr": 10337.1, "sumUi": 1.022, "unitValue": 10564.52, "wr": 467300 },
+  "operatWr": 467300
+}

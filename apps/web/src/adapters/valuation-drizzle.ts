@@ -18,6 +18,7 @@ import {
   newValuation,
   newVersionOf,
   NotReopenableError,
+  readFeatureScale,
   reopenApproved,
   signValuation,
   type AuditAction,
@@ -76,7 +77,12 @@ function normalizeProse(prose: ProseSnapshot | null | undefined): ProseSnapshot 
  */
 function toValuation(row: typeof schema.valuation.$inferSelect): Valuation {
   const inputs = row.inputs as KcsInput | null;
-  return { ...row, inputs: inputs ? { ...inputs, prose: normalizeProse(inputs.prose) } : inputs };
+  // Ratings of a draft saved before ADR-016 migrate on read, like the prose
+  // above — every repo method narrows through here, `approve` included.
+  return readFeatureScale({
+    ...row,
+    inputs: inputs ? { ...inputs, prose: normalizeProse(inputs.prose) } : inputs,
+  });
 }
 
 type Tx = Parameters<Parameters<NodePgDatabase<typeof schema>["transaction"]>[0]>[0];

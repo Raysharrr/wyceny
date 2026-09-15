@@ -21,13 +21,16 @@ vi.mock("@/app/actions/reopen-valuation", () => ({ reopenValuationAction: vi.fn(
 
 import { FlatView } from "@/app/valuations/[id]/flat-view";
 import type { Valuation } from "@/ports/valuation";
+import { computeKcsOnScale } from "@/domain/feature-rules";
 import { approvableInputs } from "./fixtures/valuation-inputs";
 
 const baseValuation: Valuation = {
   id: "11111111-1111-1111-1111-111111111111",
   address: "Kościelna 33/36, Poznań",
   area: 33.3,
-  wr: 333000,
+  // I-21: the amount a valuation carries must be the one its snapshot gives —
+  // the flat view refuses to recompute the tables beside any other number.
+  wr: computeKcsOnScale(approvableInputs()).wr,
   inputs: approvableInputs(),
   amountInWords: "trzysta trzydzieści trzy tysiące złotych",
   docUrl: "https://example.test/operat.pdf",
@@ -155,5 +158,53 @@ describe("FlatView — draft seen by a non-owner admin (no document)", () => {
     expect(screen.getByRole("heading", { name: /Cechy/ })).toBeInTheDocument();
     // Not the owner and nothing to do — no action card, so no sign explainer.
     expect(screen.queryByTestId("sign-explainer")).not.toBeInTheDocument();
+  });
+});
+
+// ADR-016: an approved valuation from before the rule may carry a rating on a
+// level its scale never described. `computeKcsOnScale` refuses such inputs, and
+// this view is a server component — without a guard the whole page would throw.
+describe("FlatView — approved before the scale rule (ADR-016, I-21)", () => {
+  const offScale = {
+    ...baseValuation,
+    inputs: {
+      ...approvableInputs(),
+      features: [
+        {
+          key: "standard-wykonczenia",
+          name: "Standard wykończenia",
+          weight: 1,
+          rating: "przecietna" as const,
+          definitions: { lepsza: "opis lepszej", gorsza: "opis gorszej" },
+        },
+      ],
+    },
+  };
+
+  it("explains the missing KCS tables instead of throwing", () => {
+    render(<FlatView {...baseProps} valuation={offScale} />);
+
+    expect(screen.getByRole("heading", { name: /Rozbicie kalkulacji/ })).toBeInTheDocument();
+    expect(screen.getByText(/zatwierdzono przed aktualizacją programu/)).toBeInTheDocument();
+    // The amount that was issued is still on screen.
+    expect(screen.getByRole("heading", { name: "Wynik" })).toBeInTheDocument();
+  });
+
+  // The nastier half of the same problem: the engine HAPPILY computes this
+  // snapshot, it just lands on a different number than the one the operat was
+  // issued with. Showing the recomputed Tabele 2–4 beside the stored amount
+  // would put two contradictory numbers on one screen (I-21).
+  it("hides the tables when the snapshot now yields a different amount", () => {
+    const drifted = { ...baseValuation, wr: baseValuation.wr! - 400 };
+    render(<FlatView {...baseProps} valuation={drifted} />);
+
+    expect(screen.getByText(/zatwierdzono przed aktualizacją programu/)).toBeInTheDocument();
+    expect(screen.queryByText("Tabela 2 operatu")).not.toBeInTheDocument();
+  });
+
+  it("shows the tables when the snapshot still yields the stored amount", () => {
+    render(<FlatView {...baseProps} />);
+
+    expect(screen.queryByText(/zatwierdzono przed aktualizacją programu/)).not.toBeInTheDocument();
   });
 });

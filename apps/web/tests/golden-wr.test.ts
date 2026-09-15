@@ -25,6 +25,16 @@ describe("KCS engine — Kościelna reference operat", () => {
     expect(result.wr).toBe(fixture.expected.wr);
   });
 
+  // Rounding each Ui before the sum (ROUNDING.ui, 2026-09-15) leaves this
+  // golden untouched — no Ui here lands on a fourth decimal that would move
+  // ΣUi. Piastowskie is where the convention shows: 446 900 → the operat's
+  // 447 300. Literal rows, so a change to the convention fails HERE too.
+  it("F-1: the printed Ui rows are what ΣUi is made of", () => {
+    const { ui, sumUi } = computeKcs(fixture.input);
+    expect(ui.map((share) => share.value)).toEqual([0.453, 0.34, 0.092, 0.113, 0.113]);
+    expect(Math.round(ui.reduce((sum, share) => sum + share.value, 0) * 1000) / 1000).toBe(sumUi);
+  });
+
   // F-2: determinism — same input, same output, every time. The engine has
   // no Date/random/I-O by construction; this pins it against regressions.
   it("F-2: is deterministic across repeated calls", () => {

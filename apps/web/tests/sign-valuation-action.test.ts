@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
-import { approvableInput } from "./fixtures/valuation-inputs";
+import { approvableWr, approvableInput } from "./fixtures/valuation-inputs";
 import { renderOperatDocx, signOperatDocx } from "../src/adapters/docx-render";
 import { buildDocumentModel } from "../src/domain/document-model";
 import { documentInputFor } from "../src/domain/document-input";
@@ -73,7 +73,9 @@ const approvedValuation: Valuation = {
   id: "v1",
   address: "Testowa 1",
   area: 40,
-  wr: 400000,
+  // I-21: the amount must be the one this snapshot produces — a fixture that
+  // invents a number now trips `documentInputFor` (ADR-016).
+  wr: approvableWr(),
   // approvableInput's KcsInput fixture (F-9: kwNumber uses the short-middle
   // form "PO1P/1/6" like every fixture in the repo — an 8-digit middle
   // matches check-no-pii.sh's KW regex and REDs CI).

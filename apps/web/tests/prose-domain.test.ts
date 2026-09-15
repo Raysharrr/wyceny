@@ -51,9 +51,25 @@ const COMPARABLES: KcsInput["comparables"] = [
   { date: "2024-12", area: 64, pricePerM2: 10725, source: "manual" },
 ];
 
+// ADR-016: Ui follows the rating's position in the DESCRIBED scale, so a
+// weighted feature reaches the engine only with its levels described.
+const SCALE = { lepsza: "opis lepszej", przecietna: "opis przeciętnej", gorsza: "opis gorszej" };
+
 const FEATURES: KcsInput["features"] = [
-  { key: "standard_wykonczenia", name: "standard wykończenia", weight: 0.5, rating: "przecietna" },
-  { key: "stan_techniczny", name: "stan techniczny budynku", weight: 0.5, rating: "lepsza" },
+  {
+    key: "standard_wykonczenia",
+    name: "standard wykończenia",
+    weight: 0.5,
+    rating: "przecietna",
+    definitions: SCALE,
+  },
+  {
+    key: "stan_techniczny",
+    name: "stan techniczny budynku",
+    weight: 0.5,
+    rating: "lepsza",
+    definitions: SCALE,
+  },
   // Weight 0 — excluded from the operat ("pancerz obronny"), so it must not
   // reach the model either.
   { key: "winda", name: "winda", weight: 0, rating: "gorsza" },

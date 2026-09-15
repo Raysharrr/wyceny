@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import type { ProseSnapshot } from "../src/domain/prose-snapshot";
-import { approvableInput, confirmedProseFor } from "./fixtures/valuation-inputs";
+import { approvableInput, approvableWr, confirmedProseFor } from "./fixtures/valuation-inputs";
 
 /**
  * Freeze (Task 7): the operat's prose is rendered from the SNAPSHOT and from
@@ -81,7 +81,9 @@ const draft: Valuation = {
   id: "valuation-freeze-1",
   address: "ul. Zamrożona 2, Poznań",
   area: 55,
-  wr: 700_000,
+  // I-21: the amount must be the one this snapshot produces — a fixture that
+  // invents a number now trips `documentInputFor` (ADR-016).
+  wr: approvableWr(),
   inputs: { ...approvableInput("test-user").inputs!, prose: PROSE },
   amountInWords: null,
   docUrl: null,
