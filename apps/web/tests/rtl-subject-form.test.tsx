@@ -289,7 +289,10 @@ describe("step1DefaultsFromInputs", () => {
     expect(defaults.subject?.kondygnacjeNadziemne).toBe("4");
     expect(defaults.subject?.kondygnacjePodziemne).toBe("1");
     expect(defaults.subject?.rokBudowy).toBe("1965");
-    expect(defaults.kw).toEqual(inputs.kw);
+    // A pre-ADR-018 snapshot comes back with the three new fields materialised
+    // as nulls — `coerceLegacyKw`'s whole job. "Nobody recorded a date" and
+    // "the field did not exist yet" have to look the same to the form.
+    expect(defaults.kw).toEqual({ ...inputs.kw, dataBadania: null, nrLokalu: null, akt: null });
     expect(defaults.kwMeta).toEqual(inputs.kwMeta);
   });
 

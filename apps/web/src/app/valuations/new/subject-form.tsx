@@ -24,7 +24,7 @@ import { extractKw } from "@/lib/kw-extract-client";
 import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
 import { cn } from "@/lib/utils";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
-import { KwSection, type KwFetchState, type KwSource } from "./kw-section";
+import { KwSection, localToday, type KwFetchState, type KwSource } from "./kw-section";
 import { PROPERTY_RIGHT_LABEL } from "@/domain/property-right";
 import {
   MapPreview,
@@ -294,7 +294,12 @@ export function SubjectForm({
       setKwState({ status: "error", message: result.message });
       return;
     }
-    setValue("kw", result.extract, { shouldDirty: true });
+    // A successful read of a KW excerpt IS the examination, and it happened
+    // today — the worker cannot supply the date because no book prints it.
+    // Without this the card sat at "Do zbadania" after a perfectly good PDF and
+    // step 7 blocked on B-06 with nothing left to fill in (a deed is not a
+    // book, so `akt` stays unexamined either way).
+    setValue("kw", { ...result.extract, dataBadania: localToday() }, { shouldDirty: true });
     setValue("kwMeta", result.meta, { shouldDirty: true });
     // Clear a stale kwNumber error left over from a prior empty upload-mode
     // submit (W4) — now that an extract exists, the manual number isn't

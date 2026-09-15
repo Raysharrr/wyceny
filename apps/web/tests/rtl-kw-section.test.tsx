@@ -2,10 +2,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import type { z } from "zod";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 import { KwSection, type KwFetchState, type KwSource } from "@/app/valuations/new/kw-section";
+import { encumbranceDecisionNeeded } from "@/domain/kw-requirements";
+import type { EncumbranceTreatment } from "@/domain/kw-snapshot";
 
 // vitest doesn't expose globals, so @testing-library/react's afterEach
 // auto-cleanup never registers — without this each render leaks into the next
@@ -78,6 +81,24 @@ const OK_EXTRACT = {
     docTypeDeclared: "akt" as const,
   },
   typeMismatch: false,
+};
+
+/**
+ * The same read, but of a KW excerpt rather than a deed — the only path where
+ * the document itself answers both dzialy, and therefore the only upload that
+ * can leave a book EXAMINED. `dataBadania` is deliberately absent: no book
+ * prints the day someone read it, so the worker cannot supply it.
+ */
+const OK_ODPIS: KwExtractResult = {
+  ...OK_EXTRACT,
+  kind: "ok",
+  extract: {
+    ...OK_EXTRACT.extract,
+    source: "odpis_kw",
+    dzial3: { wpisy: false, tresc: [] },
+    dzial4: { wpisy: false, tresc: [] },
+  },
+  meta: { ...OK_EXTRACT.meta, docTypeDetected: "odpis_kw", docTypeDeclared: "odpis_kw" },
 };
 
 // ---------------------------------------------------------------------------
@@ -153,29 +174,46 @@ function Dzial3Harness() {
 }
 
 /**
- * Exposes the live `kwGrunt` snapshot — the grunt card DISPLAYS the lokal
- * card's "Numer księgi gruntu" as a suggestion, and what matters is whether
- * that suggestion is also what gets SAVED.
+ * Exposes the live FORM STATE for the three KW fields. Every defect this
+ * harness exists for is the same shape — the screen shows one thing and the
+ * form holds another — so the assertions read the values that will be
+ * submitted, never the DOM that displays them. Seeds nothing by default: a
+ * test that pre-fills `kw` cannot tell "the control writes it" from "the
+ * default was already there".
  */
-function KwGruntHarness() {
+function StateHarness(props: {
+  seed?: Partial<FormInput>;
+  propertyRight?: FormInput["propertyRight"];
+}) {
   const { control } = useForm<FormInput, unknown, FormOutput>({
-    defaultValues: { kw: { source: "ekw_reczne", deweloperski: false } } as FormInput,
+    defaultValues: {
+      ...(props.propertyRight ? { propertyRight: props.propertyRight } : {}),
+      ...(props.seed ?? {}),
+    } as FormInput,
   });
+  const kw = useWatch({ control, name: "kw" });
   const kwGrunt = useWatch({ control, name: "kwGrunt" });
+  const encumbrance = useWatch({ control, name: "encumbranceTreatment" });
+  // `source` lives in the parent in production, and the developer checkbox is
+  // rendered from it — a static prop here would make the box un-untickable and
+  // hide the half of the fix that clears the flag.
+  const [source, setSource] = useState<KwSource>("reczny");
   return (
     <>
       <KwSection
         control={control}
         state={{ status: "idle" }}
-        source="reczny"
+        source={source}
         today="2026-09-15"
-        onSourceChange={() => {}}
+        onSourceChange={setSource}
         onFileSelected={() => {}}
         onRetry={() => {}}
         onUseDocumentArea={() => {}}
         areaMismatch={null}
       />
+      <output data-testid="kw-json">{JSON.stringify(kw ?? null)}</output>
       <output data-testid="kwgrunt-json">{JSON.stringify(kwGrunt ?? null)}</output>
+      <output data-testid="encumbrance-json">{JSON.stringify(encumbrance ?? null)}</output>
     </>
   );
 }
@@ -428,7 +466,11 @@ describe("KwSection", () => {
    */
   it("saves the suggested grunt book number even when it is typed after the grunt card was touched", async () => {
     const user = userEvent.setup();
-    render(<KwGruntHarness />);
+    render(
+      <StateHarness
+        seed={{ kw: { source: "ekw_reczne", deweloperski: false } } as Partial<FormInput>}
+      />,
+    );
     const json = () => JSON.parse(screen.getByTestId("kwgrunt-json").textContent || "null");
 
     // First touch of the grunt card while the lokal's "Numer księgi gruntu" is
@@ -452,6 +494,74 @@ describe("KwSection", () => {
     });
     await user.click(within(gruntDzial4).getByRole("radio", { name: "Brak wpisów" }));
     await waitFor(() => expect(json().nrKsiegi).toBe("AB1C/2/7"));
+  });
+
+  /**
+   * The checkbox used to write only the parent's `source` state, never the
+   * snapshot the gate and the operat read. With `kw.deweloperski` false, B-06
+   * demanded a lokal book whose card the checkbox had just hidden — an
+   * unreachable blocker — and §7 printed the standard variant. Nothing is
+   * seeded here on purpose: the value has to come from the click.
+   */
+  it("writes kw.deweloperski when the developer checkbox is ticked (not just the source switch)", async () => {
+    const user = userEvent.setup();
+    render(<StateHarness />);
+    const json = () => JSON.parse(screen.getByTestId("kw-json").textContent || "null");
+    expect(json()).toBeNull();
+
+    await user.click(screen.getByRole("checkbox"));
+    await waitFor(() => expect(json()?.deweloperski).toBe(true));
+
+    await user.click(screen.getByRole("checkbox"));
+    await waitFor(() => expect(json()?.deweloperski).toBe(false));
+  });
+
+  /**
+   * The suggestion runs lokal → grunt on screen; the operat reads §8.2 from
+   * `kw.kwGruntu`, so a number typed only in the grunt card printed as "—".
+   */
+  it("mirrors a grunt book number typed only in the grunt card back into kw.kwGruntu", async () => {
+    const user = userEvent.setup();
+    render(<StateHarness />);
+    await user.type(document.querySelector("#kwg-nr") as HTMLInputElement, "AB1C/2/7");
+    await waitFor(() =>
+      expect(JSON.parse(screen.getByTestId("kw-json").textContent || "null")?.kwGruntu).toBe(
+        "AB1C/2/7",
+      ),
+    );
+  });
+
+  /**
+   * Since ADR-018 "Zmiana 15.09" `b1-template` prints the encumbrance phrase on
+   * the cover and in the wyciąg. A book examined under własność left behind on
+   * a switch to the coop right would put a false legal claim in an operat about
+   * a different legal object — so the switch clears all three, not just the
+   * basement flag it cleared before.
+   */
+  it("clears both books and the encumbrance decision when the property right changes", async () => {
+    const user = userEvent.setup();
+    render(
+      <StateHarness
+        seed={
+          {
+            kw: { source: "ekw_reczne", deweloperski: false, kwLokalu: "AB1C/1/9" },
+            kwGrunt: { source: "ekw_reczne", nrKsiegi: "AB1C/2/7" },
+            encumbranceTreatment: { wariant: "bez_uwzglednienia", podstawa: "Polecenie." },
+          } as Partial<FormInput>
+        }
+      />,
+    );
+    expect(JSON.parse(screen.getByTestId("kw-json").textContent || "null")).not.toBeNull();
+
+    await user.click(
+      screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
+    );
+
+    await waitFor(() => {
+      for (const id of ["kw-json", "kwgrunt-json", "encumbrance-json"]) {
+        expect(JSON.parse(screen.getByTestId(id).textContent || "null")).toBeNull();
+      }
+    });
   });
 
   /**
@@ -516,6 +626,79 @@ describe("KwSection — full-form wiring", () => {
     const err = await screen.findByTestId("kw-upload-error");
     expect(err.textContent).toContain("Podaj numer księgi wieczystej");
     expect(createDraft).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The reviewer's WAŻNE 4: a successful read of a KW excerpt IS the
+   * examination, but nothing dated it, so the card sat at "Do zbadania" after a
+   * perfectly good PDF and step 7 blocked on B-06 with no field left to fill.
+   * The date comes from the clock at the moment of the read, not the document.
+   */
+  it("marks the lokal's book examined after a successful odpis_kw read (dates the examination)", async () => {
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+
+    expect(screen.getByText(/Zbadane księgi:/).textContent).toContain("0 z 2");
+    await fillRequiredExceptKw(user);
+    await user.click(screen.getByRole("radio", { name: "Wgraj PDF" }));
+    await user.upload(
+      screen.getByTestId("kw-file-input") as HTMLInputElement,
+      new File(["%PDF-1.4 fake"], "odpis.pdf", { type: "application/pdf" }),
+    );
+    await screen.findByText(/Odczytano/);
+
+    await waitFor(() => expect(screen.getByText(/Zbadane księgi:/).textContent).toContain("1 z 2"));
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as {
+      kw?: { dataBadania?: string | null };
+    };
+    expect(submitted.kw?.dataBadania).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  /**
+   * B-07's half-made decision, end to end. Typing the Podstawa before picking a
+   * tile used to produce `{ wariant: null }`, which `z.enum` rejected on a path
+   * no input displays — the button did nothing and said nothing. The save must
+   * go through (the draft keeps what was typed) and step 7 must still block.
+   */
+  it("submits step 1 with a basis typed before any variant was chosen (W4 class)", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+
+    await fillRequiredExceptKw(user);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
+    const [lokalDzial3] = screen.getAllByRole("radiogroup", {
+      name: "Dział III — prawa, roszczenia i ograniczenia",
+    });
+    await user.click(within(lokalDzial3).getByRole("radio", { name: "Są wpisy" }));
+    await user.type(
+      within(screen.getByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      "Zgodnie z poleceniem Zleceniodawcy.",
+    );
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const submitted = vi.mocked(createDraft).mock.calls[0][0] as {
+      encumbranceTreatment?: { wariant: string | null; podstawa: string } | null;
+    };
+    expect(submitted.encumbranceTreatment).toEqual({
+      wariant: null,
+      podstawa: "Zgodnie z poleceniem Zleceniodawcy.",
+    });
+    // …and the gate is the thing that refuses it, on a path step 1 shows.
+    expect(
+      encumbranceDecisionNeeded(
+        {
+          source: "ekw_reczne",
+          kwLokalu: "AB1C/1/9",
+          deweloperski: false,
+          dzial3: { wpisy: true, tresc: [] },
+        },
+        submitted.encumbranceTreatment as EncumbranceTreatment,
+      ),
+    ).toBe(true);
   });
 
   // D9: non-PDF is rejected client-side, before any network call.

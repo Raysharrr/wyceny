@@ -60,7 +60,7 @@ const textareaClass =
   "min-h-24 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30";
 
 /** ISO day in the appraiser's own timezone — `toISOString()` would shift it. */
-function localToday(): string {
+export function localToday(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -413,14 +413,20 @@ export function KwSection(props: KwSectionProps) {
   const kwNumberField = useController({ control, name: "kwNumber" });
   const setKwNumber = kwNumberField.field.onChange;
   const setEncumbrance = useController({ control, name: "encumbranceTreatment" }).field
-    .onChange as (value: { wariant: string | null; podstawa: string }) => void;
+    .onChange as (value: { wariant: string | null; podstawa: string } | null) => void;
 
   // Every edit writes the whole snapshot back, so the manual path builds one
   // object rather than registering a Controller per field — mounting those
   // earlier turned `kw` into a truthy-but-invalid object and swallowed the
   // schema's "no document, no number" issue (the W4 dead-end).
-  const patchKw = (patch: Record<string, unknown>) =>
-    setKw({ ...EMPTY_MANUAL_KW, dataBadania: today, ...(kw ?? {}), ...patch });
+  const patchKw = (patch: Record<string, unknown>) => {
+    const base = { ...EMPTY_MANUAL_KW, ...(kw ?? {}) };
+    // Seeded AFTER the existing snapshot, like `nrKsiegi` below: a draft saved
+    // before ADR-018 (or an extract) carries `dataBadania: null`, which would
+    // otherwise win over the default and leave the book permanently "Do
+    // zbadania" while the field on screen showed today's date.
+    setKw({ ...base, dataBadania: base.dataBadania ?? today, ...patch });
+  };
   const patchKwGrunt = (patch: Record<string, unknown>) => {
     const base = {
       source: "ekw_reczne" as const,
@@ -473,8 +479,21 @@ export function KwSection(props: KwSectionProps) {
                       aria-checked={selected}
                       variant="outline"
                       onClick={() => {
+                        // Compared against the RAW field value, not the
+                        // defaulted `propertyRight`: on a form whose value is
+                        // still undefined, the first click must set it.
+                        if (r === field.value) return;
                         field.onChange(r);
                         if (r === "wlasnosc_lokalu") setBasement(false);
+                        // A different right is a different legal object: the
+                        // books examined for the old one, and any encumbrance
+                        // decision made about them, must not ride along. Under
+                        // the coop right `b1-template` prints the encumbrance
+                        // phrase on the cover, so a leftover here is a false
+                        // legal claim in the operat, not just stale state.
+                        setKw(null);
+                        setKwGrunt(null);
+                        setEncumbrance(null);
                       }}
                       onBlur={field.onBlur}
                       className={cn(TILE, selected ? TILE_SELECTED : TILE_IDLE)}
@@ -562,7 +581,14 @@ export function KwSection(props: KwSectionProps) {
               <Checkbox
                 id="kw-deweloperski"
                 checked={deweloperski}
-                onCheckedChange={(checked) => onSourceChange(checked === true ? "akt" : "reczny")}
+                onCheckedChange={(checked) => {
+                  // BOTH: the source switch swaps the card, the snapshot field
+                  // is what the gate and the operat read. Writing only the
+                  // former left B-06 demanding a lokal book whose card is
+                  // hidden — a dead end — and §7 printing the standard variant.
+                  onSourceChange(checked === true ? "akt" : "reczny");
+                  patchKw({ deweloperski: checked === true });
+                }}
               />
               <label htmlFor="kw-deweloperski" className="text-sm">
                 Lokal bez własnej KW (zakup deweloperski) — dane z księgi macierzystej
@@ -747,7 +773,13 @@ export function KwSection(props: KwSectionProps) {
                   // Suggested from the lokal's book, which states it — retyping
                   // it is how the two come to disagree.
                   value={kwGrunt?.nrKsiegi ?? kw?.kwGruntu ?? ""}
-                  onChange={(v) => patchKwGrunt({ nrKsiegi: v })}
+                  onChange={(v) => {
+                    patchKwGrunt({ nrKsiegi: v });
+                    // Mirrored back, the way "Numer księgi lokalu" mirrors into
+                    // `kwNumber`: the operat's §8.2 reads `kw.kwGruntu`, so a
+                    // number typed only here would print as "—".
+                    patchKw({ kwGruntu: v });
+                  }}
                 />
                 <TextField
                   id="kwg-data-badania"
