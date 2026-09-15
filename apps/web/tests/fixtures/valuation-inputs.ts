@@ -106,6 +106,17 @@ export function valuationInput(ownerId: string, address: string): NewValuationIn
 }
 
 /**
+ * A described three-level scale (ADR-016): a rating on any level has a
+ * position, so a feature carrying it feeds the engine like before the rule.
+ * Fictional text (F-9).
+ */
+export const THREE_LEVEL_SCALE = {
+  lepsza: "opis poziomu lepszego",
+  przecietna: "opis poziomu przeciętnego",
+  gorsza: "opis poziomu gorszego",
+};
+
+/**
  * `KcsInput` fixture with 12 rcn comparables + geocode, both `to_verify`
  * (moved from `valuation-repo.test.ts`, F-7 Task 4). Does NOT pass the F-4
  * gate on its own: `confirmSample` must flip the sample to `confirmed`, and
@@ -123,7 +134,16 @@ export function approvableInputs(): KcsInput {
       transactionId: `tx-${i}`,
       status: "to_verify" as const,
     })),
-    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    features: [
+      {
+        name: "standard",
+        weight: 1,
+        rating: "przecietna" as const,
+        definitions: THREE_LEVEL_SCALE,
+      },
+    ],
+    // Saved under the ADR-016 rule — a draft without the marker is migrated on read.
+    featureScaleRule: 2,
     sampleMeta: {
       point: { x: 355300.15, y: 505330.31, source: "subject" as const },
       maxRadiusM: 3000,

@@ -337,7 +337,7 @@ export function StepFeatures({
                     key: entry.key as LokalFeatureKey,
                     name: entry.name,
                     weightPct: 0,
-                    rating: "przecietna",
+                    rating: null,
                     definitions: { ...entry.defaultDefinitions },
                   });
                 }}

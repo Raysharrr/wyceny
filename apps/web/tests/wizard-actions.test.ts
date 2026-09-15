@@ -346,7 +346,13 @@ describe("saveFeaturesAction", () => {
         rating: "przecietna",
         definitions: { lepsza: "b", przecietna: "  a   b  ", gorsza: "c" },
       },
-      { key: "lokalizacja", name: "lokalizacja", weightPct: 50, rating: "lepsza" },
+      {
+        key: "lokalizacja",
+        name: "lokalizacja",
+        weightPct: 50,
+        rating: "lepsza",
+        definitions: { lepsza: "d", przecietna: "e" },
+      },
     ],
   };
 
@@ -388,7 +394,7 @@ describe("saveFeaturesAction", () => {
           weight: 0.5,
           rating: "lepsza",
           key: "lokalizacja",
-          definitions: {},
+          definitions: { lepsza: "d", przecietna: "e" },
         },
       ],
       provenance: {

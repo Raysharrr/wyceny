@@ -2,6 +2,7 @@ import { z } from "zod";
 import { COMPARABLE_SOURCES, POOL_SOURCES } from "@/domain/kcs";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
+import { featureIssues } from "@/domain/feature-rules";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
 import type { CandidatePool } from "@/ports/sample";
 
@@ -402,7 +403,19 @@ export const valuationFormObject = z.object({
     .refine(
       (features) => new Set(features.map((f) => f.key)).size === features.length,
       "Każda cecha może wystąpić najwyżej raz.",
-    ),
+    )
+    // I-10 (ADR-016 reg. 4): a rating the scale does not describe, or a weighted
+    // feature with fewer than two described levels, is never saved. A missing
+    // rating is saved and blocks approval instead (B-08).
+    .superRefine((features, ctx) => {
+      features.forEach((f, index) => {
+        const weight = Number.isFinite(f.weightPct) ? f.weightPct : 0;
+        for (const issue of featureIssues({ ...f, weight })) {
+          if (issue.code === "B-08") continue;
+          ctx.addIssue({ code: "custom", path: [index], message: issue.label });
+        }
+      });
+    }),
   sampleMeta: sampleMetaSchema.optional(),
   sampleSelection: sampleSelectionSchema.optional(),
   streetView: streetViewSchema.optional(),

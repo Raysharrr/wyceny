@@ -44,13 +44,13 @@ describe("StepFeatures — bag add/remove (Slice 7, migrated Task 10)", () => {
     render(
       <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
     );
-    expect(screen.getByText("standard wykończenia")).toBeTruthy();
-    expect(screen.getByText("pomieszczenia przynależne")).toBeTruthy();
+    expect(screen.getByText("Standard wykończenia")).toBeTruthy();
+    expect(screen.getByText("Pomieszczenia przynależne")).toBeTruthy();
     const select = screen.getByTestId("add-feature-select") as HTMLSelectElement;
     const options = Array.from(select.options).map((o) => o.textContent);
-    expect(options).toContain("funkcjonalność lokalu");
-    expect(options).toContain("liczba izb");
-    expect(options).toContain("rodzaj zabudowy budynku");
+    expect(options).toContain("Funkcjonalność lokalu");
+    expect(options).toContain("Liczba izb");
+    expect(options).toContain("Rodzaj zabudowy budynku");
   });
 
   it("adding from the pool appends a row with weight 0 and removes it from the select", async () => {
@@ -60,20 +60,22 @@ describe("StepFeatures — bag add/remove (Slice 7, migrated Task 10)", () => {
     );
     const select = screen.getByTestId("add-feature-select") as HTMLSelectElement;
     await user.selectOptions(select, "rodzaj-zabudowy");
-    expect(screen.getByText("rodzaj zabudowy budynku")).toBeTruthy();
+    expect(screen.getByText("Rodzaj zabudowy budynku")).toBeTruthy();
     expect(Array.from(select.options).map((o) => o.value)).not.toContain("rodzaj-zabudowy");
 
-    // MUST-have: an appended row starts at weight 0 and rating "przecietna"
-    // (label "przeciętna"). Anchor on the remove button's testid, then walk
-    // up to the <tr> and scope queries to that row.
+    // MUST-have: an appended row starts at weight 0 and WITHOUT a rating
+    // (ADR-016 reg. 3 — no level button is active). Anchor on the remove
+    // button's testid, then walk up to the <tr> and scope queries to that row.
     const row = screen.getByTestId("remove-feature-rodzaj-zabudowy").closest("tr");
     expect(row).toBeTruthy();
     const weightInput = within(row as HTMLElement).getByRole("spinbutton") as HTMLInputElement;
     expect(weightInput.value).toBe("0");
-    const activeRatingButton = within(row as HTMLElement).getByRole("button", {
-      name: "rodzaj zabudowy budynku: przeciętna",
-    });
-    expect(activeRatingButton.getAttribute("data-variant")).toBe("default");
+    for (const label of ["gorsza", "przeciętna", "lepsza"]) {
+      const button = within(row as HTMLElement).getByRole("button", {
+        name: `Rodzaj zabudowy budynku: ${label}`,
+      });
+      expect(button.getAttribute("data-variant")).toBe("outline");
+    }
   });
 
   it("removing a feature deletes its row and returns it to the pool", async () => {
@@ -211,8 +213,14 @@ describe("StepFeatures — submit (Task 10)", () => {
   it("saves via saveFeaturesAction and navigates to step 5", async () => {
     const user = userEvent.setup();
     saveFeaturesAction.mockResolvedValue({ ok: true });
+    // A sample with areas gives powierzchnia its median scale (two described levels).
     render(
-      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={placeholderComparables([50, 60, 70])}
+        area={PLACEHOLDER_AREA}
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: /zatwierdź cechy i dalej/i }));
@@ -230,8 +238,14 @@ describe("StepFeatures — submit (Task 10)", () => {
     saveFeaturesAction.mockResolvedValue({
       error: "Nie udało się zapisać cech — spróbuj ponownie.",
     });
+    // A sample with areas gives powierzchnia its median scale (two described levels).
     render(
-      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={placeholderComparables([50, 60, 70])}
+        area={PLACEHOLDER_AREA}
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: /zatwierdź cechy i dalej/i }));

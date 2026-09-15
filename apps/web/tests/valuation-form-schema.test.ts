@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { step1Schema } from "../src/app/actions/wizard-schemas";
+import { powierzchniaDefinitions } from "../src/domain/feature-presets";
 import {
   DEFAULT_FEATURES,
   subjectSchema,
@@ -11,6 +12,13 @@ import {
   streetViewSchema,
 } from "../src/lib/valuation-form-schema";
 
+/** Three described levels — every feature of `valid` rates on its own scale (ADR-016). */
+const THREE_LEVELS = {
+  lepsza: "opis lepszej",
+  przecietna: "opis przeciętnej",
+  gorsza: "opis gorszej",
+};
+
 const valid = {
   address: "ul. Kościelna 33A, Poznań",
   area: 71.63,
@@ -20,23 +28,55 @@ const valid = {
     { date: "2024-04", area: 76.41, pricePerM2: 12629.24 },
   ],
   features: [
-    { key: "standard-wykonczenia", name: "standard wykończenia", weightPct: 40, rating: "lepsza" },
-    { key: "polozenie-na-pietrze", name: "położenie na piętrze", weightPct: 30, rating: "lepsza" },
-    { key: "lokalizacja", name: "lokalizacja", weightPct: 10, rating: "przecietna" },
+    {
+      key: "standard-wykonczenia",
+      name: "standard wykończenia",
+      weightPct: 40,
+      rating: "lepsza",
+      definitions: THREE_LEVELS,
+    },
+    {
+      key: "polozenie-na-pietrze",
+      name: "położenie na piętrze",
+      weightPct: 30,
+      rating: "lepsza",
+      definitions: THREE_LEVELS,
+    },
+    {
+      key: "lokalizacja",
+      name: "lokalizacja",
+      weightPct: 10,
+      rating: "przecietna",
+      definitions: THREE_LEVELS,
+    },
     {
       key: "powierzchnia-uzytkowa",
       name: "powierzchnia użytkowa",
       weightPct: 10,
       rating: "gorsza",
+      definitions: THREE_LEVELS,
     },
     {
       key: "pomieszczenia-przynalezne",
       name: "pomieszczenia przynależne",
       weightPct: 4,
       rating: "przecietna",
+      definitions: THREE_LEVELS,
     },
-    { key: "dodatkowe", name: "dodatkowe", weightPct: 6, rating: "przecietna" },
-  ],
+    {
+      key: "dodatkowe",
+      name: "dodatkowe",
+      weightPct: 6,
+      rating: "przecietna",
+      definitions: THREE_LEVELS,
+    },
+  ] as Array<{
+    key: string;
+    name: string;
+    weightPct: number;
+    rating: string | null;
+    definitions?: Partial<typeof THREE_LEVELS>;
+  }>,
   purpose: "sprzedaz",
   kwNumber: "KW-TEST-1",
   client: "p. Jan Testowy",
@@ -71,9 +111,39 @@ describe("valuationFormSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts optional per-level definitions and DEFAULT_FEATURES parses", () => {
+  it("DEFAULT_FEATURES parses once powierzchnia carries its median-derived scale", () => {
     const values = validPayload();
-    values.features = DEFAULT_FEATURES.map((f) => ({ ...f })) as typeof values.features;
+    values.features = DEFAULT_FEATURES.map((f) =>
+      f.key === "powierzchnia-uzytkowa" ? { ...f, definitions: powierzchniaDefinitions(60) } : f,
+    );
+    expect(valuationFormSchema.safeParse(values).success).toBe(true);
+  });
+
+  // I-10 (ADR-016 reg. 4): the save refuses a rating the scale does not describe
+  // and a weighted feature with fewer than two described levels.
+  it("I-10: rejects a rating on an undescribed level", () => {
+    const values = validPayload();
+    values.features[2].definitions = { lepsza: "opis lepszej", gorsza: "opis gorszej" };
+    const result = valuationFormSchema.safeParse(values);
+    expect(result.success).toBe(false);
+    expect(result.error!.issues.map((i) => i.message)).toContain(
+      "Ocena „przeciętna” cechy „lokalizacja” nie ma opisu w skali — opisz ten poziom albo zmień ocenę.",
+    );
+  });
+
+  it("I-10: rejects a weighted feature with fewer than two described levels", () => {
+    const values = validPayload();
+    values.features[0].definitions = { lepsza: "opis lepszej" };
+    const result = valuationFormSchema.safeParse(values);
+    expect(result.success).toBe(false);
+    expect(result.error!.issues.map((i) => i.message)).toContain(
+      "Cecha „standard wykończenia” musi mieć opisane co najmniej dwa poziomy.",
+    );
+  });
+
+  it("accepts a feature without a rating — the approval gate blocks it, not the save (B-08)", () => {
+    const values = validPayload();
+    values.features[0].rating = null;
     expect(valuationFormSchema.safeParse(values).success).toBe(true);
   });
 
@@ -109,7 +179,15 @@ describe("valuationFormSchema — document fields (Slice 4)", () => {
     address: "ul. Testowa 1",
     area: 50,
     comparables: [{ pricePerM2: 10000 }, { pricePerM2: 11000 }, { pricePerM2: 12000 }],
-    features: [{ key: "dodatkowe", name: "cecha", weightPct: 100, rating: "przecietna" }],
+    features: [
+      {
+        key: "dodatkowe",
+        name: "cecha",
+        weightPct: 100,
+        rating: "przecietna",
+        definitions: THREE_LEVELS,
+      },
+    ],
   };
 
   it("requires the four document fields with Polish messages", () => {

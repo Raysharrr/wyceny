@@ -118,6 +118,8 @@ describe("valuationRepo (integration, real Postgres)", () => {
         area: 71.63,
         comparables: [{ date: "2024-07", area: 63.27, pricePerM2: 14698.91 }],
         features: [{ name: "standard wykończenia", weight: 1, rating: "lepsza" }],
+        // Saved under the ADR-016 rule — the draft read returns it as stored.
+        featureScaleRule: 2,
       },
       amountInWords: null,
       docUrl: null,

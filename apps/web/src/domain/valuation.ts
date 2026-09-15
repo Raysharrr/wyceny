@@ -1,6 +1,6 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers } from "./document-model";
-import { computeKcsOnScale, kcsReady } from "./feature-rules";
+import { FEATURE_SCALE_RULE, computeKcsOnScale, describedLevels, kcsReady } from "./feature-rules";
 import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
@@ -641,7 +641,43 @@ export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation 
   const provenance = sameJson(v.inputs.features, u.features)
     ? carryGroupStatuses(v.inputs.provenance, reassigned, FEATURES_GROUP_KEYS)
     : reassigned;
-  return { ...v, wr: null, inputs: { ...v.inputs, features: u.features, provenance } };
+  return {
+    ...v,
+    wr: null,
+    // The save IS the confirmation under the current rule (ADR-016, B-11).
+    inputs: {
+      ...v.inputs,
+      features: u.features,
+      provenance,
+      featureScaleRule: FEATURE_SCALE_RULE,
+    },
+  };
+}
+
+/**
+ * A draft read after the ADR-016 change („Migracja danych”, no SQL): without
+ * the rule marker its step-4 ratings were confirmed under the fixed-key rule,
+ * and a chosen rating cannot be told from the old default. A rating on a
+ * described level stays and waits for a new confirmation (B-11); one on an
+ * undescribed level is cleared to an explicit `null` (B-08 — jsonb would drop
+ * `undefined`); `wr` goes, since the number behind it may move. Approved and
+ * signed valuations keep what they were issued with, and a draft with no
+ * features has nothing to confirm. Pure and idempotent —
+ * applied on every read until the step-4 save stamps the marker.
+ */
+export function readFeatureScale(v: Valuation): Valuation {
+  if (
+    v.status !== "in_progress" ||
+    !v.inputs ||
+    v.inputs.features.length === 0 ||
+    v.inputs.featureScaleRule === FEATURE_SCALE_RULE
+  ) {
+    return v;
+  }
+  const features = v.inputs.features.map((f) =>
+    f.rating != null && !describedLevels(f).includes(f.rating) ? { ...f, rating: null } : f,
+  );
+  return { ...v, wr: null, inputs: { ...v.inputs, features } };
 }
 
 export class CalculationNotReadyError extends Error {

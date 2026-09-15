@@ -17,6 +17,7 @@ import { assignSampleProvenance, assignSubjectProvenance } from "../src/lib/assi
 import { isEmptySubject, step1DefaultsFromInputs } from "../src/lib/subject-form";
 import { sampleStepSchema, step1Schema } from "../src/app/actions/wizard-schemas";
 import {
+  THREE_LEVEL_SCALE,
   approvableInput,
   partialDraftInputs,
   valuationInput,
@@ -104,7 +105,10 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
     expect(afterSample!.inputs!.comparables).toEqual(comparables);
 
     const featuresUpdate: FeaturesUpdate = {
-      features: [{ name: "standard", weight: 1, rating: "przecietna" }],
+      // A rating the engine can place: its level is described (ADR-016).
+      features: [
+        { name: "standard", weight: 1, rating: "przecietna", definitions: THREE_LEVEL_SCALE },
+      ],
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -391,7 +395,9 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
       sampleMeta: null,
     });
     await repo.saveFeatures(created.id, appraiserA, {
-      features: [{ name: "standard", weight: 1, rating: "przecietna" }],
+      features: [
+        { name: "standard", weight: 1, rating: "przecietna", definitions: THREE_LEVEL_SCALE },
+      ],
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },

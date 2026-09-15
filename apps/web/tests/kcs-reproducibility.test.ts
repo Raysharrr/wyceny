@@ -39,7 +39,9 @@ describe("F-3: stored inputs snapshot reproduces the stored WR", () => {
       address: "ul. Kościelna 33A, Poznań",
       area: fixture.input.area,
       wr,
-      inputs: fixture.input,
+      // Stored under the ADR-016 marker, so the draft read keeps its ratings
+      // and wr as written — what F-3 checks is the jsonb round trip.
+      inputs: { ...fixture.input, featureScaleRule: 2 },
       amountInWords: null,
       docUrl: null,
       ownerId: owner.id,
@@ -110,7 +112,7 @@ describe("F-5: sample snapshot provenance round-trips (RCN comparables + sampleM
       ratings: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       geocode: { source: "geokoder" as const, status: "to_verify" as const },
     };
-    const input: KcsInput = { ...fixture.input, comparables, provenance };
+    const input: KcsInput = { ...fixture.input, comparables, provenance, featureScaleRule: 2 };
 
     const created = await repo.create({
       address: "ul. Kościelna 33A, Poznań",
