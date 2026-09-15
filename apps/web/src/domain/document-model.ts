@@ -290,20 +290,51 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
  * transcribed dzialy, or, on the manual path, the dział III/IV sentences, which
  * exist because `kwRequirements` refuses a book whose dzialy are unanswered.
  *
- * Returns "" when either fact is missing — a protocol that cannot say WHICH
- * book was read WHEN is not a protocol, and the examination gate has already
- * refused such a valuation.
+ * `zrodlo` is a PARAMETER, not the constant of the first cut. All 22 protocol
+ * sentences in the office's operats do name the eKW browser — but none of those
+ * operats could have gone the upload path, because the program had no such
+ * path: the set simply contains no instance of the case in question. What we
+ * know about an `odpis_kw` valuation is that the appraiser uploaded an odpis,
+ * NOT where they obtained it (an odpis can be paper, from the court). Naming a
+ * specific domain there would state something we do not know, in the most
+ * credible-sounding form a falsehood can take (review PR #59).
+ *
+ * Returns "" when `zbadana` is false or a fact is missing. `zbadana` is the
+ * whole point: number-and-date alone printed an examination protocol for a
+ * valuation whose book was NEVER examined — an uploaded deed states the book's
+ * number and gets a `dataBadania` from the developer checkbox, while
+ * `kwRequirements` rightly refuses to call it examined (I-13, review PR #59).
  */
 function protokolBadania(
+  zbadana: boolean,
   numer: string | null | undefined,
   dataBadania: string | null | undefined,
   rodzaj: string,
+  zrodlo: string,
 ): string {
-  if (!numer || !dataBadania) return "";
+  if (!zbadana || !numer || !dataBadania) return "";
   return (
     `W dniu ${formatDatePl(dataBadania)}r. dokonano badania księgi wieczystej ` +
-    `${rodzaj} nr ${numer} (źródło: przegladarka-ekw.ms.gov.pl):`
+    `${rodzaj} nr ${numer} (źródło: ${zrodlo}):`
   );
+}
+
+/** The eKW browser, spelled as the office's operats spell it — no diacritics. */
+const EKW_DOMENA = "przegladarka-ekw.ms.gov.pl";
+
+/**
+ * What the protocol names as the source of the LOKAL book's reading. A deed
+ * needs no entry: `kwRequirements` never calls such a valuation examined, so
+ * `protokolBadania` returns "" for it and the phrase is never reached — which
+ * is why this is a ternary and not a `Record` needing an `akt` key, and why the
+ * `zbadana` gate stays the SOLE guard of that case (a second guard here would
+ * make the gate's own mutation look covered when it is not).
+ *
+ * The `odpis_kw` phrasing has NO precedent in the office's operats — it mirrors
+ * `KW_ZRODLO_TEXT.odpis_kw` and is flagged for the user in the PR.
+ */
+function protokolZrodlo(source: keyof typeof KW_ZRODLO_TEXT | undefined): string {
+  return source === "odpis_kw" ? "odpis księgi wieczystej" : EKW_DOMENA;
 }
 
 /** §7's deed sentence (ADR-018 reg. 5): only the parts the book actually states. */
@@ -474,14 +505,21 @@ export type DocumentModel = {
    * lokal's book. The generator must treat an empty court that way; it may not
    * print a placeholder inside the sentence.
    *
-   * So the sentence's ONLY correct gate is `nr_ksiegi_gruntu` — it is non-empty
-   * exactly when the grunt's book was examined. Not `sad_ksiegi_gruntu`, which
-   * is empty on the everyday manual path, and not `kw_badanie`, which is true
-   * for an examined lokal alone and would print the sentence with no number and
-   * no court.
+   * So the sentence's gate is `ma_ksiege_gruntu` below — NOT `kw_badanie`,
+   * which is true for an examined lokal alone and would print the sentence with
+   * no number and no court, and not `sad_ksiegi_gruntu`, which is empty on the
+   * everyday manual path.
    */
   nr_ksiegi_gruntu: string;
   sad_ksiegi_gruntu: string;
+  /**
+   * Gate for §2's grunt sentence: the grunt's book was examined, so there is a
+   * number to print. Named rather than left to `nr_ksiegi_gruntu` being falsy:
+   * a template that leans on an empty string not printing is a template that
+   * prints a half sentence the day the string stops being empty — and the
+   * office's §2 already lost its number that way (check dryfu D-3).
+   */
+  ma_ksiege_gruntu: boolean;
   /**
    * The lokal book's five dzialy, FLATTENED into table rows for §8.2 — the
    * generator gets one loop rather than four nested ones. Order is eKW's own:
@@ -727,6 +765,26 @@ export function buildDocumentModel(
    */
   const kwBadanie = kwReq.lokalZbadana || kwReq.gruntZbadana;
   const kwDeweloperski = kwBadanie && kw?.deweloperski === true;
+  // Gated on the EXAMINATION, not on number-and-date: an uploaded deed also
+  // carries a `dataBadania`, and printing "dokonano badania księgi wieczystej"
+  // for it is the I-13 class of false statement this whole block exists to stop
+  // (review PR #59). `lokalZbadana` already encodes source + number + date +
+  // answered dzialy, so one flag replaces four checks.
+  const protokolLokalu = protokolBadania(
+    kwReq.lokalZbadana,
+    kw?.kwLokalu,
+    kw?.dataBadania,
+    "nieruchomości lokalowej",
+    protokolZrodlo(kw?.source),
+  );
+  // The grunt's book is manual-only in paczka 1, so its reading IS the browser.
+  const protokolGruntu = protokolBadania(
+    kwReq.gruntZbadana,
+    kwGrunt?.nrKsiegi,
+    kwGrunt?.dataBadania,
+    "nieruchomości gruntowej",
+    EKW_DOMENA,
+  );
   const encumbrance = inputs.encumbranceTreatment ?? null;
   // Only the LOKAL's dział III encumbers this lokal. An entry in the grunt's is
   // described in §8.2 but raises no question here (D-02, kw-requirements).
@@ -813,20 +871,10 @@ export function buildDocumentModel(
     // Legacy/manual (kw == null) and odpis_kw source keep the sentence (accurate);
     // an akt (deed) source hides it — no false claim of holding a KW excerpt.
     kw_stub_odpis: kw == null || kw.source === "odpis_kw",
-    protokol_ksiegi_lokalu: protokolBadania(
-      kw?.kwLokalu,
-      kw?.dataBadania,
-      "nieruchomości lokalowej",
-    ),
-    ma_protokol_ksiegi_lokalu:
-      protokolBadania(kw?.kwLokalu, kw?.dataBadania, "nieruchomości lokalowej") !== "",
-    protokol_ksiegi_gruntu: protokolBadania(
-      kwGrunt?.nrKsiegi,
-      kwGrunt?.dataBadania,
-      "nieruchomości gruntowej",
-    ),
-    ma_protokol_ksiegi_gruntu:
-      protokolBadania(kwGrunt?.nrKsiegi, kwGrunt?.dataBadania, "nieruchomości gruntowej") !== "",
+    protokol_ksiegi_lokalu: protokolLokalu,
+    ma_protokol_ksiegi_lokalu: protokolLokalu !== "",
+    protokol_ksiegi_gruntu: protokolGruntu,
+    ma_protokol_ksiegi_gruntu: protokolGruntu !== "",
     // D-07: the number comes from the EXAMINED grunt book, never from the lokal
     // book's `kwGruntu` alone — that number is a fact the lokal's book states,
     // not evidence anyone opened the book it names.
@@ -840,6 +888,7 @@ export function buildDocumentModel(
     // and must not substitute a dash — "Dla nieruchomości gruntowej — prowadzi
     // księgę wieczystą nr …" is a broken sentence, not a missing value.
     sad_ksiegi_gruntu: kwReq.gruntZbadana ? [kw?.sad, kw?.wydzial].filter(Boolean).join(" ") : "",
+    ma_ksiege_gruntu: kwReq.gruntZbadana,
     ksiega_lokalu_wiersze: kw?.tresc ? ksiegaRows(kw.tresc) : [],
     ma_tresc_lokalu: kw?.tresc != null,
     dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),

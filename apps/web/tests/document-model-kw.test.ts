@@ -209,6 +209,57 @@ describe("protokół badania — one dated sentence per book (D-21)", () => {
     expect(model.protokol_ksiegi_lokalu).toBe("");
     expect(model.ma_protokol_ksiegi_gruntu).toBe(false);
   });
+
+  it("says nothing when number and date are there but the dzialy are unanswered", () => {
+    // The `zbadana` gate's own path, and the only one that reaches it: the deed
+    // case below is stopped one step earlier, by `source`. Here the source is a
+    // book and both facts are present, so number-and-date alone would print an
+    // examination protocol for a book whose dzialy nobody read.
+    const model = modelOf({ kw: { ...EXAMINED_LOKAL, dzial3: null, dzial4: null } });
+    expect(model.kw_badanie).toBe(false);
+    expect(model.protokol_ksiegi_lokalu).toBe("");
+    expect(model.ma_protokol_ksiegi_lokalu).toBe(false);
+  });
+
+  it("says nothing about a grunt book whose dzialy are unanswered", () => {
+    const model = modelOf({
+      kw: EXAMINED_LOKAL,
+      kwGrunt: { ...EXAMINED_GRUNT, dzial4: null },
+    });
+    expect(model.protokol_ksiegi_gruntu).toBe("");
+    expect(model.ma_protokol_ksiegi_gruntu).toBe(false);
+  });
+
+  it("prints NO protocol for a deed, even though the deed carries a date (I-13)", () => {
+    // An `akt` upload stamps `dataBadania` too, and the deed states the book's
+    // number — so number-and-date alone printed "dokonano badania księgi
+    // wieczystej" for a valuation whose book nobody opened (review PR #59).
+    const model = modelOf({
+      kw: { ...EXAMINED_LOKAL, source: "akt", dataBadania: "2026-09-15" },
+    });
+    expect(model.kw_badanie).toBe(false);
+    expect(model.ma_protokol_ksiegi_lokalu).toBe(false);
+    expect(model.protokol_ksiegi_lokalu).toBe("");
+  });
+
+  it("names the odpis, not a domain, when the book came from an uploaded odpis", () => {
+    // We know the appraiser uploaded an odpis; we do NOT know where they got it
+    // (an odpis can be paper, from the court). Naming the eKW domain here would
+    // state the unknown in the most credible-sounding form a falsehood takes.
+    const zOdpisu = modelOf({ kw: { ...EXAMINED_LOKAL, source: "odpis_kw" } });
+    expect(zOdpisu.protokol_ksiegi_lokalu).toContain("(źródło: odpis księgi wieczystej):");
+    expect(zOdpisu.protokol_ksiegi_lokalu).not.toContain("przegladarka-ekw");
+    // The manual path keeps the office's own wording…
+    expect(modelOf({ kw: EXAMINED_LOKAL }).protokol_ksiegi_lokalu).toContain(
+      "(źródło: przegladarka-ekw.ms.gov.pl):",
+    );
+    // …and so does the grunt's book, which is manual-only in paczka 1.
+    const obie = modelOf({
+      kw: { ...EXAMINED_LOKAL, source: "odpis_kw" },
+      kwGrunt: EXAMINED_GRUNT,
+    });
+    expect(obie.protokol_ksiegi_gruntu).toContain("(źródło: przegladarka-ekw.ms.gov.pl):");
+  });
 });
 
 describe("§2 sentence about the grunt's book (D-07, check dryfu D-3)", () => {
@@ -225,6 +276,20 @@ describe("§2 sentence about the grunt's book (D-07, check dryfu D-3)", () => {
     const model = modelOf({ kw: EXAMINED_LOKAL });
     expect(model.nr_ksiegi_gruntu).toBe("");
     expect(model.sad_ksiegi_gruntu).toBe("");
+  });
+
+  it("gates the sentence on ma_ksiege_gruntu, which kw_badanie cannot do", () => {
+    // An examined lokal ALONE makes `kw_badanie` true. Were §2's grunt sentence
+    // wrapped in it — as check dryfu D-3 proposed — it would print with no
+    // number and no court. `ma_ksiege_gruntu` is the flag that separates them,
+    // and it exists so the template never has to lean on "" not printing.
+    const samLokal = modelOf({ kw: EXAMINED_LOKAL });
+    expect(samLokal.kw_badanie).toBe(true);
+    expect(samLokal.ma_ksiege_gruntu).toBe(false);
+
+    const obie = modelOf({ kw: EXAMINED_LOKAL, kwGrunt: EXAMINED_GRUNT });
+    expect(obie.ma_ksiege_gruntu).toBe(true);
+    expect(obie.nr_ksiegi_gruntu).toBe("AB1C/2/7");
   });
 
   it("leaves the court empty — never a dash — when the snapshot states none", () => {
@@ -457,6 +522,35 @@ describe("I-19 — with no KW, nothing in the model points at one", () => {
     expect(model.ma_protokol_ksiegi_gruntu).toBe(false);
     expect(model.nr_ksiegi_gruntu).toBe("");
     expect(model.ma_obciazenie).toBe(false);
+  });
+
+  /**
+   * `b1-template` steers the §8.2 block by `ma_protokol_*`, so the day those
+   * flags and `kw_badanie` disagree the operat prints an examination protocol
+   * inside a document that says no book was examined (review PR #59). They
+   * cannot disagree — both read `kwRequirements` — and this pins it across the
+   * matrix rather than leaving it a property of one reading of the code.
+   */
+  it("never lets a protocol flag outrun kw_badanie (I-13)", () => {
+    const snapshots: Array<Partial<KcsInput>> = [
+      { kw: null, kwGrunt: null },
+      { kw: EXAMINED_LOKAL },
+      { kw: EXAMINED_LOKAL, kwGrunt: EXAMINED_GRUNT },
+      { kw: null, kwGrunt: EXAMINED_GRUNT },
+      { kw: { ...EXAMINED_LOKAL, source: "akt" } },
+      { kw: { ...EXAMINED_LOKAL, dzial3: null, dzial4: null } },
+      { kw: { ...EXAMINED_LOKAL, dataBadania: null } },
+      { kw: { ...EXAMINED_LOKAL, kwLokalu: null, deweloperski: true }, kwGrunt: EXAMINED_GRUNT },
+    ];
+    for (const patch of snapshots) {
+      const m = modelOf(patch);
+      if (m.ma_protokol_ksiegi_lokalu || m.ma_protokol_ksiegi_gruntu) {
+        expect(m.kw_badanie).toBe(true);
+      }
+      // And the flag agrees with its own sentence, in both directions.
+      expect(m.ma_protokol_ksiegi_lokalu).toBe(m.protokol_ksiegi_lokalu !== "");
+      expect(m.ma_protokol_ksiegi_gruntu).toBe(m.protokol_ksiegi_gruntu !== "");
+    }
   });
 });
 
