@@ -184,25 +184,30 @@ describe("protokół badania — one dated sentence per book (D-21)", () => {
    */
   it("dates the lokal's protocol in DD.MM.YYYY, never ISO", () => {
     const model = modelOf({ kw: EXAMINED_LOKAL });
-    expect(model.ma_protokol_lokalu).toBe(true);
-    expect(model.protokol_lokalu).toContain("15.09.2026");
-    expect(model.protokol_lokalu).not.toContain("2026-09-15");
-    expect(model.protokol_lokalu).toContain("AB1C/1/9");
-    expect(model.protokol_lokalu).toContain("eKW");
+    expect(model.ma_protokol_ksiegi_lokalu).toBe(true);
+    // The whole sentence, not fragments: it is a CITATION from the office's own
+    // operats (`operat-starolecka.txt:291`, and `polanka`/`kornik` agree), so
+    // every character — the spaceless "r.", the bare domain, the closing colon
+    // — is load-bearing and a paraphrase would pass a `toContain`.
+    expect(model.protokol_ksiegi_lokalu).toBe(
+      "W dniu 15.09.2026r. dokonano badania księgi wieczystej " +
+        "nieruchomości lokalowej nr AB1C/1/9 (źródło: przegladarka-ekw.ms.gov.pl):",
+    );
+    expect(model.protokol_ksiegi_lokalu).not.toContain("2026-09-15");
   });
 
   it("dates the grunt's protocol from ITS OWN examination date, not the lokal's", () => {
     const model = modelOf({ kw: EXAMINED_LOKAL, kwGrunt: EXAMINED_GRUNT });
-    expect(model.ma_protokol_gruntu).toBe(true);
-    expect(model.protokol_gruntu).toContain("12.09.2026");
-    expect(model.protokol_gruntu).not.toContain("15.09.2026");
+    expect(model.ma_protokol_ksiegi_gruntu).toBe(true);
+    expect(model.protokol_ksiegi_gruntu).toContain("12.09.2026");
+    expect(model.protokol_ksiegi_gruntu).not.toContain("15.09.2026");
   });
 
   it("says nothing about a book that was not examined", () => {
     const model = modelOf({ kw: null });
-    expect(model.ma_protokol_lokalu).toBe(false);
-    expect(model.protokol_lokalu).toBe("");
-    expect(model.ma_protokol_gruntu).toBe(false);
+    expect(model.ma_protokol_ksiegi_lokalu).toBe(false);
+    expect(model.protokol_ksiegi_lokalu).toBe("");
+    expect(model.ma_protokol_ksiegi_gruntu).toBe(false);
   });
 });
 
@@ -448,8 +453,8 @@ describe("I-19 — with no KW, nothing in the model points at one", () => {
     expect(model.kw_gruntu).toBe("—");
     expect(model.ma_akt).toBe(false);
     expect(model.ma_tresc_lokalu).toBe(false);
-    expect(model.ma_protokol_lokalu).toBe(false);
-    expect(model.ma_protokol_gruntu).toBe(false);
+    expect(model.ma_protokol_ksiegi_lokalu).toBe(false);
+    expect(model.ma_protokol_ksiegi_gruntu).toBe(false);
     expect(model.nr_ksiegi_gruntu).toBe("");
     expect(model.ma_obciazenie).toBe(false);
   });
@@ -473,9 +478,9 @@ describe("wycena 14.09 (zanonimizowana) — warianty badania ksiąg", () => {
   it("wariant `ekw_reczne_obie_ksiegi`: protokoły obu ksiąg i zdania działów, bez tabeli", () => {
     const model = buildDocumentModel(wycena1409Anon({ kw: "ekw_reczne_obie_ksiegi" }));
     expect(model.kw_badanie).toBe(true);
-    expect(model.ma_protokol_lokalu).toBe(true);
-    expect(model.ma_protokol_gruntu).toBe(true);
-    expect(model.protokol_lokalu).toContain("14.09.2026");
+    expect(model.ma_protokol_ksiegi_lokalu).toBe(true);
+    expect(model.ma_protokol_ksiegi_gruntu).toBe(true);
+    expect(model.protokol_ksiegi_lokalu).toContain("14.09.2026");
     expect(model.ma_tresc_lokalu).toBe(false);
     expect(model.dzial3_opis).toContain("Służebność osobista mieszkania");
     expect(model.ma_akt).toBe(true);

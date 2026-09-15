@@ -277,13 +277,22 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
 }
 
 /**
- * §8.2's examination protocol for one book (D-21). The wording follows the
- * office's own operat; the date goes through `formatDatePl` because
- * `dataBadania` is stored ISO and this is the first place it is printed.
+ * §8.2's examination protocol for one book (D-21). Copied CHARACTER FOR
+ * CHARACTER from the office's own operats (`operat-starolecka.txt:291`,
+ * `operat-polanka.txt`, `operat-kornik.txt` — all three agree), including the
+ * spaceless "r.", the bare eKW domain and the closing colon. The HANDOFF
+ * paraphrased it as "(źródło: przeglądarka eKW)"; the operats say the domain,
+ * and a paraphrase is not a citation. The date goes through `formatDatePl`
+ * because `dataBadania` is stored ISO and this is the first place it is
+ * printed.
  *
- * Returns "" when any of the three facts is missing — a protocol that cannot
- * say WHICH book was read WHEN is not a protocol, and the examination gate has
- * already refused such a valuation.
+ * The colon is safe: §8.2 always has content right after this sentence — the
+ * transcribed dzialy, or, on the manual path, the dział III/IV sentences, which
+ * exist because `kwRequirements` refuses a book whose dzialy are unanswered.
+ *
+ * Returns "" when either fact is missing — a protocol that cannot say WHICH
+ * book was read WHEN is not a protocol, and the examination gate has already
+ * refused such a valuation.
  */
 function protokolBadania(
   numer: string | null | undefined,
@@ -292,8 +301,8 @@ function protokolBadania(
 ): string {
   if (!numer || !dataBadania) return "";
   return (
-    `W dniu ${formatDatePl(dataBadania)} dokonano badania księgi wieczystej ` +
-    `${rodzaj} nr ${numer} (źródło: przeglądarka eKW).`
+    `W dniu ${formatDatePl(dataBadania)}r. dokonano badania księgi wieczystej ` +
+    `${rodzaj} nr ${numer} (źródło: przegladarka-ekw.ms.gov.pl):`
   );
 }
 
@@ -448,10 +457,10 @@ export type DocumentModel = {
    * the first place it reaches paper, and "2026-09-15" on a legal document is
    * not a Polish date.
    */
-  protokol_lokalu: string;
-  ma_protokol_lokalu: boolean;
-  protokol_gruntu: string;
-  ma_protokol_gruntu: boolean;
+  protokol_ksiegi_lokalu: string;
+  ma_protokol_ksiegi_lokalu: boolean;
+  protokol_ksiegi_gruntu: string;
+  ma_protokol_ksiegi_gruntu: boolean;
   /**
    * §2's sentence about the mother book (D-07): "Dla nieruchomości gruntowej
    * Sąd Rejonowy … prowadzi księgę wieczystą nr …". Both empty when the grunt's
@@ -804,15 +813,19 @@ export function buildDocumentModel(
     // Legacy/manual (kw == null) and odpis_kw source keep the sentence (accurate);
     // an akt (deed) source hides it — no false claim of holding a KW excerpt.
     kw_stub_odpis: kw == null || kw.source === "odpis_kw",
-    protokol_lokalu: protokolBadania(kw?.kwLokalu, kw?.dataBadania, "nieruchomości lokalowej"),
-    ma_protokol_lokalu:
+    protokol_ksiegi_lokalu: protokolBadania(
+      kw?.kwLokalu,
+      kw?.dataBadania,
+      "nieruchomości lokalowej",
+    ),
+    ma_protokol_ksiegi_lokalu:
       protokolBadania(kw?.kwLokalu, kw?.dataBadania, "nieruchomości lokalowej") !== "",
-    protokol_gruntu: protokolBadania(
+    protokol_ksiegi_gruntu: protokolBadania(
       kwGrunt?.nrKsiegi,
       kwGrunt?.dataBadania,
       "nieruchomości gruntowej",
     ),
-    ma_protokol_gruntu:
+    ma_protokol_ksiegi_gruntu:
       protokolBadania(kwGrunt?.nrKsiegi, kwGrunt?.dataBadania, "nieruchomości gruntowej") !== "",
     // D-07: the number comes from the EXAMINED grunt book, never from the lokal
     // book's `kwGruntu` alone — that number is a fact the lokal's book states,

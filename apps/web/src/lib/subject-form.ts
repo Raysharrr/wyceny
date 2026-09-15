@@ -111,7 +111,7 @@ function subjectSnapshotToForm(snapshot: SubjectSnapshot): Partial<SubjectFormVa
  * Coercing at this defaults boundary fixes both render and save with no data
  * migration and no change to `normalizeKw`/the mutation/schema layer.
  */
-function coerceLegacyKw(kw: Partial<KwSnapshot>): KwSnapshot {
+function coerceLegacyKw(kw: Partial<KwSnapshot>): Required<KwSnapshot> {
   return {
     source: kw.source ?? "odpis_kw",
     kwLokalu: kw.kwLokalu ?? null,
@@ -129,11 +129,12 @@ function coerceLegacyKw(kw: Partial<KwSnapshot>): KwSnapshot {
     // save and then vanishes on the way back in — the appraiser re-opens step 1
     // and the examination they recorded is gone.
     //
-    // The enumeration does NOT make that a compile error, contrary to what this
-    // comment claimed when the three fields below were added: they are optional
-    // on `KwSnapshot`, so leaving one out still satisfies the return type. It is
-    // a checklist and has to be read as one — `tresc` was already missing from
-    // it when the round-trip was first measured (b1-kw-read).
+    // Under a plain `KwSnapshot` return type the enumeration was only a
+    // checklist — the fields below are OPTIONAL, so forgetting one still
+    // satisfied the type, and `tresc` was in fact missing from it when the
+    // round-trip was first measured (b1-kw-read). `Required<KwSnapshot>` above
+    // turns that checklist into a compile error: the return type now demands
+    // every optional field, at the cost of one word.
     dataBadania: kw.dataBadania ?? null,
     nrLokalu: kw.nrLokalu ?? null,
     akt: kw.akt ?? null,
