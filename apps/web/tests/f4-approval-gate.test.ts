@@ -9,6 +9,8 @@ import { documentFieldBlockers } from "../src/domain/document-model";
 import type { KwSnapshot } from "../src/domain/kw-snapshot";
 import { currentSectionFactsHashes } from "../src/domain/prose-hash";
 import { approvalBlockers } from "../src/domain/valuation";
+import { blockerTarget, stepForBlockerPath } from "../src/domain/wizard";
+import type { AppraiserProfile } from "../src/ports/profile";
 import type { Valuation } from "../src/ports/valuation";
 import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
 
@@ -749,5 +751,150 @@ describe("R-1: approvalBlockers — pin kolejności i kształtów blokad", () =>
     }
     // The stale case really is stale: a per-section blocker, not the missing-snapshot one.
     expect(paths.some((p) => p.startsWith("prose."))).toBe(true);
+  });
+});
+
+describe("B-15, B-16: profil autora i polisa OC (ADR-020 reg. 3, spec §4)", () => {
+  /** Fikcyjne dane — żadne nazwisko ani numer uprawnień nie jest prawdziwy (F-9, R10). */
+  const kompletnyProfil: AppraiserProfile = {
+    fullName: "Jan Testowy",
+    licenseNo: "0000",
+    officeBlock: "Biuro Wycen Testowe\nul. Przykładowa 1\n60-000 Poznań",
+    insuranceDocKey: "polisa/test-user/abc123",
+    insuranceValidUntil: "2026-12-31",
+  };
+  /** Godzina ≠ 00:00 celowo: data operatu to dzień, nie moment. */
+  const DATA_OPERATU = new Date("2026-09-15T14:30:00.000Z");
+
+  /** Wycena bez zarzutów po stronie danych — zostają same blokady profilu. */
+  const czystaWycena = (): Valuation => {
+    const input = approvableInput("test-user");
+    return {
+      id: "valuation-b15",
+      address: input.address,
+      area: input.area,
+      wr: 700_000,
+      inputs: { ...input.inputs!, prose: confirmedProseFor(input.address, input.inputs!) },
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: input.purpose ?? null,
+      propertyRight: "wlasnosc_lokalu",
+      kwNumber: input.kwNumber ?? null,
+      client: input.client ?? null,
+      inspectionDate: input.inspectionDate ?? null,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
+      mapsFrozenFor: null,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+    };
+  };
+
+  const kody = (author: AppraiserProfile | null, today = DATA_OPERATU) => {
+    const v = czystaWycena();
+    return approvalBlockers(v, {
+      requireProse: true,
+      currentSectionHashes: currentSectionFactsHashes({ address: v.address, inputs: v.inputs! }),
+      author,
+      today,
+    }).map((b) => b.code);
+  };
+
+  it("kompletny profil z ważną polisą nie wnosi żadnej blokady", () => {
+    expect(kody(kompletnyProfil)).toEqual([]);
+  });
+
+  it("brak wiersza profilu podnosi obie blokady naraz", () => {
+    expect(kody(null)).toEqual(["B-15", "B-16"]);
+  });
+
+  it.each(["fullName", "licenseNo", "officeBlock"] as const)(
+    "brak pola %s podnosi B-15 z komunikatem ze specu",
+    (pole) => {
+      const v = czystaWycena();
+      const blockers = approvalBlockers(v, {
+        requireProse: true,
+        currentSectionHashes: currentSectionFactsHashes({ address: v.address, inputs: v.inputs! }),
+        author: { ...kompletnyProfil, [pole]: null },
+        today: DATA_OPERATU,
+      });
+      expect(blockers).toEqual([
+        {
+          path: "profile.dane",
+          code: "B-15",
+          label: "Uzupełnij profil: imię i nazwisko, numer uprawnień, dane biura.",
+        },
+      ]);
+    },
+  );
+
+  it("same białe znaki w polu autora to wciąż brak (B-15)", () => {
+    expect(kody({ ...kompletnyProfil, officeBlock: "   \n  " })).toEqual(["B-15"]);
+  });
+
+  it("brak pliku polisy podnosi B-16 z datą operatu w formacie dd.mm.rrrr", () => {
+    const v = czystaWycena();
+    const blockers = approvalBlockers(v, {
+      requireProse: true,
+      currentSectionHashes: currentSectionFactsHashes({ address: v.address, inputs: v.inputs! }),
+      author: { ...kompletnyProfil, insuranceDocKey: null },
+      today: DATA_OPERATU,
+    });
+    expect(blockers).toEqual([
+      {
+        path: "profile.polisa",
+        code: "B-16",
+        label: "Dodaj polisę OC ważną na dzień 15.09.2026.",
+      },
+    ]);
+  });
+
+  it("polisa ważna do dnia PRZED datą operatu podnosi B-16", () => {
+    expect(kody({ ...kompletnyProfil, insuranceValidUntil: "2026-09-14" })).toEqual(["B-16"]);
+  });
+
+  /**
+   * Granica, o którą najłatwiej się potknąć: `insurance_valid_until` to kolumna
+   * `date`, a data operatu ma godzinę. Porównanie dat jako obiektów `Date`
+   * odrzuciłoby polisę ważną dokładnie tyle, ile trzeba.
+   */
+  it("polisa ważna dokładnie do daty operatu NIE podnosi B-16", () => {
+    expect(kody({ ...kompletnyProfil, insuranceValidUntil: "2026-09-15" })).toEqual([]);
+  });
+
+  it("nieobecny `author` w kontekście nie sprawdza profilu (precedens requireProse)", () => {
+    const v = czystaWycena();
+    const blockers = approvalBlockers(v, {
+      requireProse: true,
+      currentSectionHashes: currentSectionFactsHashes({ address: v.address, inputs: v.inputs! }),
+    });
+    expect(blockers).toEqual([]);
+  });
+
+  it("każda blokada profilu prowadzi na /profile, nie do kroku kreatora", () => {
+    for (const path of ["profile.dane", "profile.polisa"]) {
+      expect(blockerTarget(path)).toEqual({
+        kind: "page",
+        href: "/profile",
+        label: "Profil rzeczoznawcy",
+      });
+      expect(stepForBlockerPath(path)).toBeUndefined();
+    }
+  });
+
+  it("każda blokada z pustej wyceny ma cel: krok kreatora albo /profile", () => {
+    const pusta: Valuation = { ...czystaWycena(), purpose: null, client: null, wr: null };
+    const blockers = approvalBlockers(pusta, {
+      requireProse: true,
+      author: null,
+      today: DATA_OPERATU,
+    });
+    expect(blockers.length).toBeGreaterThan(0);
+    for (const b of blockers) {
+      expect(blockerTarget(b.path), `brak celu dla "${b.path}"`).toBeDefined();
+    }
   });
 });

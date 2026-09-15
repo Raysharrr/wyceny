@@ -7,6 +7,7 @@ import {
   formatPln,
 } from "../src/domain/document-model";
 import type { KwSnapshot } from "../src/domain/kw-snapshot";
+import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 
 const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
 
@@ -45,6 +46,7 @@ function goldenInput() {
     inputs,
     kcs: computeKcs(inputs),
     amountInWords: "sto tysięcy złotych zero groszy",
+    author: AUTOR_TESTOWY,
   };
 }
 
@@ -85,6 +87,7 @@ describe("F-12: professional-secrecy masking in the document model", () => {
       inputs,
       kcs: computeKcs(inputs),
       amountInWords: "słownie",
+      author: AUTOR_TESTOWY,
     });
     expect(credit.kredyt).toBe(true);
   });
