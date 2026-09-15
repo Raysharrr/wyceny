@@ -6,7 +6,13 @@ import { getSession } from "@/auth/session";
 import { recordFailure } from "@/app/actions/_record-failure";
 import { log } from "@/lib/log";
 import { errorWithCode, withTrace } from "@/lib/trace";
-import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
+import {
+  storage,
+  worker,
+  valuationRepository,
+  mapImages,
+  profileRepository,
+} from "@/app/valuations/_deps";
 import {
   ApprovalBlockedError,
   InputsChangedError,
@@ -16,7 +22,7 @@ import {
 import type { Blocker } from "@/domain/provenance";
 import { gateContextFor } from "@/lib/gate-context";
 import { buildDocumentModel } from "@/domain/document-model";
-import { documentInputFor } from "@/domain/document-input";
+import { authorFrom, documentInputFor } from "@/domain/document-input";
 import { computeKcs } from "@/domain/kcs";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -88,7 +94,17 @@ export async function approveValuation(
     // here and, through the repo, inside the write transaction (ADR-012).
     // `domain/` reads no env (F-10). Unset means enabled, like every other
     // NEXT_PUBLIC_* switch in this app.
-    const gateContext = gateContextFor(valuation);
+    // The operat's date, fixed ONCE: B-16 measures the policy against it,
+    // `approveValuation` stamps `approvedAt` with it and the title page prints
+    // it. Two separate `new Date()` calls could straddle midnight and hand the
+    // appraiser a document dated a day before the policy check it passed.
+    const now = new Date();
+    // ADR-020 cz. 1: the author block and the OC policy come from the profile
+    // of whoever is logged in, never from the template. ONE read feeds both the
+    // gate (B-15/B-16) and the render.
+    const profile = await profileRepository.get(session.user.id);
+    const author = authorFrom(profile);
+    const gateContext = gateContextFor(valuation, profile, now);
 
     // Fail fast with the first blocker before any expensive generation work.
     if (valuation.inputs) {
@@ -104,7 +120,6 @@ export async function approveValuation(
       if (!valuation.inputs) {
         return { error: "Zatwierdzenie zablokowane — brak danych wejściowych operatu." };
       }
-      const now = new Date();
       const kcs = computeKcs(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
 
@@ -195,7 +210,7 @@ export async function approveValuation(
       const maps = embedded?.maps ?? null;
 
       const model = buildDocumentModel(
-        documentInputFor(valuation, { approvedAt: now, kcs, amountInWords }),
+        documentInputFor(valuation, { approvedAt: now, kcs, amountInWords, author }),
       );
       // Keyed on "nothing embedded", never on "did not fetch". Today the two
       // coincide — every branch that produces maps sets `embedded` — but only
@@ -298,7 +313,10 @@ export async function approveValuation(
             ? { mapsFrozenFor: embedded.address }
             : undefined,
         valuation.inputs,
-        { requireProse: gateContext.requireProse },
+        // The WHOLE context, not just the prose switch: the transaction re-derives
+        // the prose half itself (ADR-012) but has no profile of its own, so B-15
+        // and B-16 would silently vanish at the one refusal that is authoritative.
+        gateContext,
       );
       if (!updated) {
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };

@@ -669,9 +669,18 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         //    transaction, exactly like the hashes. `proseEnabled()` is the one
         //    place that comparison lives; the action calls it too, for its
         //    fail-fast check before it spends anything on generation.
+        //
+        // The PROFILE half of `gate` (B-15, B-16) is taken as passed. It is a
+        // read of another table by the same server action — not a client claim
+        // — and re-reading it here would only widen the window in which the
+        // profile is complete on the screen and gone in the transaction.
+        // `today` is the exception: the operat's date is `now`, this row's own
+        // timestamp, so the policy is measured against the date the document
+        // will actually carry rather than one the caller assembled earlier.
         const requireProse = proseEnabled();
         const updated = approveValuation(valuation, now, docs, {
           ...gate,
+          today: now,
           requireProse,
           currentSectionHashes:
             requireProse && valuation.inputs

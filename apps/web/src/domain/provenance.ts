@@ -8,6 +8,7 @@ import {
 import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
+import type { AppraiserProfile } from "../ports/profile";
 
 /**
  * F-4 approval gate — the aggregate invariant from ADR-010/ADR-012.
@@ -111,6 +112,23 @@ export type GateOptions = {
    * would only ever put a false sentence in front of the appraiser.
    */
   currentSectionHashes?: Partial<Record<ProseSection, string>>;
+  /**
+   * The logged-in appraiser's profile — the source of the author block and the
+   * OC policy since ADR-020 cz. 1. `null` means "no profile row at all", which
+   * is a complete answer and raises both B-15 and B-16.
+   *
+   * ABSENT means the caller could not tell, and the profile group is then not
+   * checked — the `requireProse` precedent above. No production path can
+   * produce that: `gateContextFor` takes the profile as a required argument,
+   * so TypeScript refuses a call site that forgot it.
+   */
+  author?: AppraiserProfile | null;
+  /**
+   * The date the operat will carry — `approvedAt` at approval, today for the
+   * step-7 preview. B-16 measures the policy against it, and the blocker names
+   * it, so it cannot be derived here: the domain reads no clock (F-10).
+   */
+  today?: Date;
 };
 
 const SCALAR_KEYS = ["address", "area", "weights", "ratings"] as const;

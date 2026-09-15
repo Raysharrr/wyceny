@@ -24,6 +24,7 @@ import { StepOperat } from "@/app/valuations/[id]/steps/step-operat";
 import { ValuationActions } from "@/app/valuations/[id]/valuation-actions";
 import type { Valuation } from "@/ports/valuation";
 import { approvableInput, confirmedProseFor } from "./fixtures/valuation-inputs";
+import { PROFIL_TESTOWY } from "./fixtures/document-model-fixture";
 
 /**
  * The two halves of step 7, mounted the way `StepOperat` mounts them: the
@@ -202,7 +203,7 @@ describe("StepOperat — the wiring, not just the mechanism", () => {
     previewOperat.mockResolvedValueOnce(mapsDown);
     previewOperat.mockResolvedValueOnce({ url: "/api/podglad/valuation-step7-t12?v=abc" });
     approveValuation.mockResolvedValueOnce(undefined);
-    render(<StepOperat valuation={readyDraft} />);
+    render(<StepOperat valuation={readyDraft} profile={PROFIL_TESTOWY} />);
 
     await userEvent.click(await screen.findByTestId("preview-skip-maps"));
     await screen.findByTestId("preview-without-maps");
