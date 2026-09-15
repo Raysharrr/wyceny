@@ -52,7 +52,7 @@ vi.mock("@/app/actions/mint-kw-token", () => ({
 vi.mock("@/lib/kw-extract-client", () => ({ extractKw: vi.fn() }));
 
 import { SubjectForm } from "@/app/valuations/new/subject-form";
-import { createDraft } from "@/app/actions/wizard";
+import { createDraft, saveSubjectAction } from "@/app/actions/wizard";
 import { extractKw, type KwExtractResult } from "@/lib/kw-extract-client";
 
 const OK_EXTRACT = {
@@ -620,6 +620,7 @@ async function fillRequiredExceptKw(
 describe("KwSection — full-form wiring", () => {
   beforeEach(() => {
     vi.mocked(createDraft).mockClear();
+    vi.mocked(saveSubjectAction).mockClear();
     vi.mocked(extractKw).mockReset();
   });
 
@@ -776,6 +777,67 @@ describe("KwSection — full-form wiring", () => {
       encumbranceTreatment?: unknown;
     };
     expect(submitted.encumbranceTreatment ?? null).toBeNull();
+  });
+
+  /**
+   * BLOKER 7 — the drift only appears on the SECOND visit, which is why no
+   * create-mode test and no isolated harness could see it. `kw.deweloperski`
+   * and the section's `kwSource` were two truths about the same fact: a
+   * developer stub is saved with `source: "ekw_reczne"` (nothing was read from
+   * a document), which the section key mapped back to "reczny". Re-opening
+   * therefore showed an UNTICKED box over a snapshot that still said
+   * `deweloperski: true` — B-06 stopped asking for the lokal's book ("0 z 1"),
+   * and §8.2 would print the developer variant for a valuation the appraiser
+   * sees as an ordinary one. The snapshot is the truth; the switch follows it.
+   */
+  it("re-opens a developer draft with the box ticked and the counter agreeing (BLOKER 7)", async () => {
+    const user = userEvent.setup();
+    const developerDraft = {
+      address: "ul. Kościelna 33, Poznań",
+      area: "69.56",
+      purpose: "sprzedaz" as never,
+      client: "Jan Kowalski",
+      inspectionDate: "2026-09-15",
+      kw: {
+        source: "ekw_reczne",
+        kwLokalu: null,
+        kwGruntu: null,
+        kwInne: [],
+        deweloperski: true,
+        powUzytkowaKw: null,
+        udzial: null,
+        sad: null,
+        wydzial: null,
+        dataDokumentu: null,
+        dzial3: null,
+        dzial4: null,
+        dataBadania: "2026-09-15",
+      },
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+
+    render(<SubjectForm valuationId="val-dev" defaults={developerDraft} />);
+
+    // What the screen says must match what the gate counts.
+    expect(
+      (
+        screen.getByRole("checkbox", { name: /zakup deweloperski/i }) as HTMLInputElement
+      ).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.getByTestId("kw-developer-banner")).toBeDefined();
+    expect(screen.getByText(/Zbadane księgi:/).textContent).toContain("0 z 1");
+
+    // And unticking is a real retraction, saved as such.
+    await user.click(screen.getByRole("checkbox", { name: /zakup deweloperski/i }));
+    expect(screen.getByText(/Zbadane księgi:/).textContent).toContain("0 z 2");
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
+    const [, payload] = vi.mocked(saveSubjectAction).mock.calls[0] as unknown as [
+      string,
+      { kw?: { deweloperski?: boolean } },
+    ];
+    expect(payload.kw?.deweloperski).toBe(false);
   });
 
   // D9: non-PDF is rejected client-side, before any network call.

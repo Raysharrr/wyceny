@@ -396,7 +396,15 @@ export function KwSection(props: KwSectionProps) {
   // demanded at all. Absent (pre-block harness) reads as własność.
   const propertyRight = useWatch({ control, name: "propertyRight" }) ?? "wlasnosc_lokalu";
   const coop = propertyRight === "spoldzielcze_wlasnosciowe";
-  const deweloperski = source === "akt";
+  // ONE truth, and it is the snapshot — the thing the gate counts and the
+  // operat prints. `source` is only the bootstrap for a form that has no
+  // snapshot yet: a developer stub is saved as `ekw_reczne` (nothing was read
+  // from a document), so a section key derived from `kw.source` reopened the
+  // draft with this box UNTICKED over a snapshot that still said `true`, and
+  // §8.2 would have printed the developer variant behind the appraiser's back.
+  // Deriving instead of synchronising is deliberate: keeping two values in
+  // agreement is the same bug one step further out.
+  const deweloperski = kw?.deweloperski ?? source === "akt";
   // The one rule, asked once, for the banner's counter and both badges — the
   // same predicate the F-4 gate uses, so a card can never say "Zbadana" about a
   // book step 7 would block on (R-10).
@@ -593,11 +601,20 @@ export function KwSection(props: KwSectionProps) {
                   // would write the abandoned book straight back (W7 class),
                   // and nothing would object, because a developer purchase is
                   // exempt from the lokal-book requirement in the first place.
-                  // Only on the way IN: unticking leaves the reset alone, so
-                  // the manual path goes back to demanding a KW number.
-                  if (checked === true) {
-                    setKw({ ...EMPTY_MANUAL_KW, deweloperski: true, dataBadania: today });
-                  }
+                  // Both ways write the snapshot outright, because
+                  // `resetKwSection`'s `resetField("kw")` resets to the form's
+                  // DEFAULT — which in edit mode is the stored snapshot, not
+                  // nothing. Relying on it to clear the flag worked only on a
+                  // fresh form; re-opening a developer draft and unticking put
+                  // the saved stub straight back. `null` on the way out is the
+                  // retraction: no book examined, manual path, start over —
+                  // and it restores the "type a KW number" demand, which a
+                  // number-less snapshot would switch off.
+                  setKw(
+                    checked === true
+                      ? { ...EMPTY_MANUAL_KW, deweloperski: true, dataBadania: today }
+                      : null,
+                  );
                 }}
               />
               <label htmlFor="kw-deweloperski" className="text-sm">
