@@ -106,10 +106,13 @@ export function SubjectForm({
   // is fetched independently at approve (spec decision 1).
   const [mapPreview, setMapPreview] = useState<MapPreviewState>({ status: "idle" });
   // KW "Stan prawny" section. The UI `kwSource` (akt|odpis_kw|reczny) is the
-  // section key — distinct from the extract's own `kw.source` (akt|odpis_kw).
-  // Edit mode seeds both from `defaults.kw` when a document-sourced extract
-  // was already saved on the draft.
-  const [kwSource, setKwSource] = useState<KwSource>(defaults?.kw?.source ?? "reczny");
+  // section key — distinct from the snapshot's own `kw.source`. A snapshot
+  // saved from a manual eKW examination (`ekw_reczne`) reopens on the manual
+  // path, which is where its data was typed.
+  const [kwSource, setKwSource] = useState<KwSource>(() => {
+    const saved = defaults?.kw?.source;
+    return saved == null || saved === "ekw_reczne" ? "reczny" : saved;
+  });
   const [kwState, setKwState] = useState<KwFetchState>(() => {
     if (!defaults?.kw) return { status: "idle" };
     const kwCount = [defaults.kw.kwLokalu, defaults.kw.kwGruntu, ...defaults.kw.kwInne].filter(

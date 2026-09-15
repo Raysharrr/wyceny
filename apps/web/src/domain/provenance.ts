@@ -7,6 +7,7 @@ import {
 } from "@wyceny/shared";
 import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
 import { kwRequirements } from "./kw-requirements";
+import { kwProvenanceSource } from "./kw-snapshot";
 import type { PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 
@@ -56,7 +57,7 @@ export type GateInput = {
   sampleMeta?: unknown | null;
   subject?: unknown | null;
   kw?: {
-    source: "akt" | "odpis_kw";
+    source: "akt" | "odpis_kw" | "ekw_reczne";
     kwLokalu: string | null;
     kwGruntu: string | null;
     deweloperski: boolean;
@@ -211,7 +212,11 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
   // Manual kwNumber entry attaches no snapshot and adds no blockers here.
   if (input.kw != null) {
     const kwProv = input.provenance?.kw;
-    const sK = sourced("kw", kwProv?.source ?? input.kw.source, kwProv?.status ?? "none");
+    const sK = sourced(
+      "kw",
+      kwProv?.source ?? kwProvenanceSource(input.kw.source),
+      kwProv?.status ?? "none",
+    );
     if (isBlocking(sK)) {
       blockers.push({
         path: "provenance.kw",

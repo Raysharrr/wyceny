@@ -57,8 +57,21 @@ const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is inv
 
 const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 
-/** `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych na podstawie: …"). */
-const KW_ZRODLO_TEXT = { akt: "akt notarialny", odpis_kw: "odpis księgi wieczystej" } as const;
+/**
+ * `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych
+ * na podstawie: …"). `ekw_reczne` names what the appraiser actually did — read
+ * the book in the eKW browser — because the operat may never describe a
+ * document nobody held (ADR-018 reg. 4). Note `kw_stub_odpis` below already
+ * excludes this source from the "pełna treść odpisu pozostaje w dokumentacji"
+ * sentence, which is the whole point. The §7 wording of the examination
+ * protocol belongs to `b1-template`; this phrase is the honest minimum until
+ * it lands.
+ */
+const KW_ZRODLO_TEXT = {
+  akt: "akt notarialny",
+  odpis_kw: "odpis księgi wieczystej",
+  ekw_reczne: "badanie księgi wieczystej w systemie eKW",
+} as const;
 
 /**
  * The §1 Wyciąg cell's own area sentence — the template prints it through an
