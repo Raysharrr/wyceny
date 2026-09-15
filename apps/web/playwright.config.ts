@@ -48,6 +48,15 @@ export default defineConfig({
       dependencies: ["setup"],
       use: { storageState: STORAGE_STATE },
     },
+    // Manual, never in CI: zrzuty stanów karty KW do opisu PR (b1-kw-read).
+    // Wymaga serwera zbudowanego z NEXT_PUBLIC_WORKER_URL wskazującym na atrapę
+    // workera — patrz komentarz w e2e/kw-read-zrzuty.spec.ts.
+    {
+      name: "zrzuty",
+      testMatch: /kw-read-zrzuty\.spec\.ts/,
+      dependencies: ["setup"],
+      use: { storageState: STORAGE_STATE },
+    },
     // Manual, never in CI: `pnpm e2e:staging` — only tests tagged @staging-safe
     // (no approval, no large uploads, synthetic data with a per-run suffix).
     {
