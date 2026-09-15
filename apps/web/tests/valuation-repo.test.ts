@@ -452,6 +452,9 @@ function kwApprovableInputs(): KcsInput {
       sad: "Sąd Rejonowy Poznań-Stare Miasto",
       wydzial: "V Wydział Ksiąg Wieczystych",
       dataDokumentu: "2026-06-01",
+      // ADR-018: when the appraiser read the book, without which the excerpt is
+      // a file rather than an examination and B-06 keeps the draft shut.
+      dataBadania: "2026-06-02",
       dzial3: { wpisy: false, tresc: [] },
       dzial4: { wpisy: true, tresc: ["Hipoteka umowna na rzecz banku X"] },
     },

@@ -6,8 +6,13 @@ import {
   type Sourced,
 } from "@wyceny/shared";
 import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
-import { kwRequirements } from "./kw-requirements";
-import { kwProvenanceSource } from "./kw-snapshot";
+import { encumbranceDecisionNeeded, kwRequirements } from "./kw-requirements";
+import {
+  kwProvenanceSource,
+  type EncumbranceTreatment,
+  type KwDzialSnapshot,
+  type KwGruntSnapshot,
+} from "./kw-snapshot";
 import type { PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 
@@ -61,7 +66,16 @@ export type GateInput = {
     kwLokalu: string | null;
     kwGruntu: string | null;
     deweloperski: boolean;
+    // Optional here for the same reason they are optional on `KwSnapshot`:
+    // a draft saved before ADR-018 has none, and reads as "not examined".
+    dataBadania?: string | null;
+    dzial3?: KwDzialSnapshot | null;
+    dzial4?: KwDzialSnapshot | null;
   } | null;
+  /** Examination of the grunt's book (ADR-018) — its own snapshot, not part of `kw`. */
+  kwGrunt?: KwGruntSnapshot | null;
+  /** The appraiser's call on a dział III entry in the lokal's book (B-07). */
+  encumbranceTreatment?: EncumbranceTreatment | null;
   provenance?: InputsProvenance | null;
   /**
    * Rodzaj prawa (T-12) — a valuation column, not part of `inputs`, so the
@@ -208,8 +222,7 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
     }
   }
 
-  // KW extract (deed/excerpt upload): gated whenever a kw snapshot exists.
-  // Manual kwNumber entry attaches no snapshot and adds no blockers here.
+  // Provenance of an attached snapshot — only meaningful once there is one.
   if (input.kw != null) {
     const kwProv = input.provenance?.kw;
     const sK = sourced(
@@ -223,20 +236,31 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
         label: `Stan prawny (KW) — ${statusLabel(kwProv?.status ?? "none")}.`,
       });
     }
-    const required = kwRequirements(input.propertyRight, input.kw);
-    if (!input.kw.kwGruntu && required.kwGruntu) {
-      blockers.push({
-        path: "kw.kwGruntu",
-        label: "Numer KW gruntu (księgi macierzystej) — brak.",
-      });
-    }
-    if (!input.kw.kwLokalu && required.kwLokalu) {
-      blockers.push({
-        path: "kw.kwLokalu",
-        label:
-          "Numer KW lokalu — brak (zaznacz wariant deweloperski, jeśli lokal nie ma własnej księgi).",
-      });
-    }
+  }
+
+  // B-06 — asked OUTSIDE the `input.kw != null` guard, which is the entire
+  // point (ADR-018 reg. 3, I-13 U): the 14.09 valuation went the manual route,
+  // attached no snapshot, and so slipped past a requirement that lived inside
+  // the guard — while the operat still claimed both books had been examined.
+  // One blocker, not three: the appraiser has one thing to do, on one screen.
+  if (kwRequirements(input.propertyRight, input.kw, input.kwGrunt).brakBadania) {
+    blockers.push({
+      path: "kw.badanie",
+      code: "B-06",
+      label: "Uzupełnij badanie księgi wieczystej: KW lokalu, KW gruntu i datę badania.",
+    });
+  }
+
+  // B-07 — an encumbrance in the lokal's dział III is not a blocker because it
+  // is bad news; it is a blocker because the operat has to SAY how the figure
+  // treats it, in §2, §3, §8.2 and §10.1 (ADR-018 reg. 6).
+  if (encumbranceDecisionNeeded(input.kw, input.encumbranceTreatment)) {
+    blockers.push({
+      path: "encumbranceTreatment",
+      code: "B-07",
+      label:
+        "Księga zawiera ograniczone prawo rzeczowe — wskaż, czy wartość je uwzględnia, i podaj podstawę.",
+    });
   }
 
   // Prose (FR-6 / ADR-014): no operat leaves without descriptions the
