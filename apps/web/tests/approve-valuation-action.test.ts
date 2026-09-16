@@ -3,6 +3,7 @@ import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import {
+  FIXTURE_COVER_PHOTO_KEY,
   approvableInput,
   approvableWr,
   confirmedProse,
@@ -87,6 +88,22 @@ const generatedMedia = (buf: Buffer) =>
   Object.keys(new PizZip(buf).files).filter((f) => /^word\/media\/image_generated_/.test(f));
 
 /**
+ * Storage znający DOKŁADNIE jeden klucz — zdjęcie budynku, które fikstura
+ * `approvableInput` ma w manifeście oględzin od M-1 (B-01). Zatwierdzenie czyta
+ * bajty każdego klucza z manifestu i bez nich przerywa, więc każdy describe
+ * zatwierdzający ten szkic musi je podłożyć. Na wszystkie inne klucze
+ * odpowiadamy brakiem, bo strony polisy OC sonduje się „o jedną za dużo" —
+ * storage mówiący „mam" na cokolwiek zapętliłby to sondowanie.
+ */
+const mockCoverPhotoInStorage = () => {
+  storageGetMock.mockReset();
+  storageGetMock.mockImplementation(async (key: string) => {
+    if (key === FIXTURE_COVER_PHOTO_KEY) return JPG_1PX;
+    throw new StorageNotFoundError(key);
+  });
+};
+
+/**
  * The issued DOCX, found by shape rather than by spelling: since ADR-020 the
  * key carries this approval's `approvedAt` (`approvedOperatKeys`), so the tests
  * that only care "the operat was written" must not re-spell it. The one test
@@ -151,6 +168,7 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
       ...draft,
       mapsFrozenFor: address,
     }));
+    mockCoverPhotoInStorage();
   });
 
   // A gate-passing, document-field-complete draft — approvableInput() already
@@ -221,7 +239,10 @@ describe("approveValuation — maps fetch + freeze (Slice 9, Task 6)", () => {
 
     const docxCall = storagePutMock.mock.calls.find(([key]) => isOperatDocxKey(key, draft.id));
     const docxBytes = docxCall?.[1] as Buffer;
-    expect(generatedMedia(docxBytes)).toHaveLength(2);
+    // Dwie mapy + okładka + to samo zdjęcie budynku w §8.3: jeden klucz z
+    // manifestu fikstury daje dwa media, bo od M-1 pierwsze zdjęcie z
+    // „Budynek z zewnątrz" jest osobnym obrazem na stronie tytułowej.
+    expect(generatedMedia(docxBytes)).toHaveLength(2 + 1 + 1);
   });
 
   it("returns mapsUnavailable + Polish error BEFORE any writes; valuation stays draft", async () => {
@@ -432,7 +453,10 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
       isOperatDocxKey(key, draftWithPhotos.id),
     );
     const docxBytes = docxCall?.[1] as Buffer;
-    expect(generatedMedia(docxBytes)).toHaveLength(2 + 2 + 1); // 2 mapy + 2 zdjęcia + 1 strona polisy
+    // 2 mapy + 2 zdjęcia + okładka + 1 strona polisy. Okładka to te SAME bajty
+    // co zdjęcie z sekcji „Budynek z zewnątrz" (M-1), ale osobne media w DOCX —
+    // dlatego jeden klucz więcej niż kluczy w manifeście.
+    expect(generatedMedia(docxBytes)).toHaveLength(2 + 2 + 1 + 1);
   });
 
   it("aborts BEFORE repo.approve when a manifest photo key fails to resolve", async () => {
@@ -543,6 +567,7 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     storagePutMock.mockImplementation(async (key: string) => `/api/docs/${key}`);
     fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
     approveMock.mockResolvedValue({ ...draftBase, status: "approved" });
+    mockCoverPhotoInStorage();
   });
 
   it("approves a draft whose six sections the appraiser accepted", async () => {
@@ -809,6 +834,7 @@ describe("approveValuation — InputsChangedError (approve-window drift guard, f
       ...draftForDriftTest,
       mapsFrozenFor: address,
     }));
+    mockCoverPhotoInStorage();
   });
 
   it("returns the Polish drift message when repo.approve rejects with InputsChangedError, no crash", async () => {
@@ -964,6 +990,9 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
 
     current = { ...draftT12 };
     blobs.clear();
+    // Zdjęcie z manifestu fikstury (B-01, M-1) leży w tym samym storage co
+    // mapy — zatwierdzenie czyta je przed renderem i bez bajtów przerywa.
+    blobs.set(FIXTURE_COVER_PHOTO_KEY, JPG_1PX);
 
     getMock.mockImplementation(async () => current);
     // Faithful to the adapter (`valuation-drizzle.ts:592-613`): owner-only,
@@ -1012,7 +1041,9 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
     // Reused, not skipped: the issued operat carries the same two images the
     // appraiser saw. Asserting only the absent fetch would pass just as well
     // for an operat that quietly came out with no maps at all.
-    expect(generatedMedia(issuedDocx())).toHaveLength(2);
+    // Dwie mapy + okładka + to samo zdjęcie budynku w §8.3 (M-1); operat bez
+    // map miałby dwa media, więc liczba dalej odróżnia jedno od drugiego.
+    expect(generatedMedia(issuedDocx())).toHaveLength(2 + 1 + 1);
   });
 
   /**
@@ -1092,7 +1123,8 @@ describe("approveValuation — issuing reuses the maps the preview froze (Slice 
 
     expect(result).toBeUndefined();
     expect(fetchMapsMock).toHaveBeenCalledWith(draftT12.address);
-    expect(generatedMedia(issuedDocx())).toHaveLength(2);
+    // Jak wyżej: dwie mapy + okładka + zdjęcie budynku w §8.3 (M-1).
+    expect(generatedMedia(issuedDocx())).toHaveLength(2 + 1 + 1);
   });
 
   /**
@@ -1244,6 +1276,10 @@ describe("każde zatwierdzenie ma własne pliki (ADR-020, reguła 6)", () => {
       mapsFrozenFor: address,
     }));
     approveMock.mockResolvedValue({ ...draftKeys, status: "approved" });
+    // `vi.clearAllMocks()` wyżej czyści tylko historię wywołań, więc bez tego
+    // storage zostałby z implementacją poprzedniego describe'u — i tak, i tak
+    // trzeba tu podłożyć bajty zdjęcia z manifestu fikstury (B-01).
+    mockCoverPhotoInStorage();
   });
 
   afterEach(() => {
@@ -1349,6 +1385,7 @@ describe("approveValuation — profil autora i polisa OC (B-15, B-16)", () => {
     fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
     approveMock.mockResolvedValue({ ...draft, status: "approved" });
     getMock.mockResolvedValue(draft);
+    mockCoverPhotoInStorage();
   });
 
   it("odmawia zatwierdzenia bez profilu i bez polisy, nie generując dokumentu", async () => {

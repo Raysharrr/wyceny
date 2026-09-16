@@ -55,7 +55,9 @@ const modelWithNote = buildDocumentModel({
 describe("renderOperatDocx photos (Slice 10, F-12 media leg)", () => {
   it("embeds maps + N photos, all JPEG magic for photos, resolvable rels", () => {
     const docx = renderOperatDocx(model, { maps: MAPS, photos: PHOTOS });
-    expect(generatedMedia(docx).length).toBe(2 + 6);
+    // 2 mapy + 6 zdjęć + 1 okładka: od M-1 pierwsze zdjęcie budynku wchodzi
+    // DRUGI raz, na stronę 1 — te same bajty, osobne medium w pakiecie.
+    expect(generatedMedia(docx).length).toBe(2 + 6 + 1);
   });
   it("renders section intros only for non-empty sections", () => {
     const withPhotos = textOf(renderOperatDocx(model, { photos: PHOTOS }));
@@ -82,7 +84,22 @@ describe("renderOperatDocx photos (Slice 10, F-12 media leg)", () => {
     const approved = renderOperatDocx(model, { maps: MAPS, photos: PHOTOS });
     const signed = signOperatDocx(approved, PNG_1PX);
     expect(textOf(signed)).toBe(textOf(approved));
-    expect(generatedMedia(signed).length).toBe(9);
+    // 2 + 6 + okładka, plus jedno medium doklejone przez podpis.
+    expect(generatedMedia(signed).length).toBe(2 + 6 + 1 + 1);
+  });
+
+  // M-1 (D-01): okładka ma własne pudełko, większe niż dla dokumentacji —
+  // wzorce drukują zdjęcie na stronie 1 szerzej niż dwa w rzędzie w §8.3.
+  it("skaluje zdjęcie okładki do COVER_BOX, z zachowaniem proporcji", () => {
+    const docx = renderOperatDocx(model, {
+      photos: { otoczenie: [], budynekZewn: [SQUARE_JPG], wnetrza: [] },
+    });
+    const xml = zipOf(docx).file("word/document.xml")!.asText();
+    // Kwadrat 600×600 w pudełku 340×265 daje 265 px = 2524125 EMU po obu
+    // bokach. Rozciągnięty do pełnego pudełka dałby cx=3238500 — czego tu nie
+    // ma. Zdjęcie dokumentacji (PHOTO_BOX, 220 px) dałoby 2095500, też nie.
+    expect(xml).toContain('cx="2524125" cy="2524125"');
+    expect(xml).not.toContain('cx="3238500"');
   });
   it("sizes photos by their real aspect ratio (600x600 square -> 220x220 EMU box, not stretched)", () => {
     const docx = renderOperatDocx(model, {

@@ -84,6 +84,12 @@ Te dwie blokady **nie zależą od ścieżki**: pytamy o nie tak samo, gdy dane p
 - **B-02 — nieuzupełnione przeznaczenie terenu.** Komunikat: „Uzupełnij przeznaczenie terenu: wskaż podstawę (MPZP, plan ogólny albo studium), nazwę, uchwałę z datą i symbol.”, odsyła do [kroku 1](/pomoc/krok-1-przedmiot). Pytamy **poza** warunkiem „jeśli dołączono migawkę przedmiotu”, z tego samego powodu co przy B-06: wycena wpisana w całości ręcznie nie ma migawki, a operat i tak drukuje §7 i §9. Wymagane są wszystkie pięć części, bo §9 składa z nich jedno zdanie — zdanie nazywające dokument, którego nie potrafi wskazać, albo wskazujące dokument bez odczytanego z niego symbolu, mówi mniej niż milczenie.
 - **B-07 — wpis w dziale III bez decyzji o obciążeniu.** Komunikat: „Księga zawiera ograniczone prawo rzeczowe — wskaż, czy wartość je uwzględnia, i podaj podstawę.”, odsyła do [kroku 1](/pomoc/krok-1-przedmiot). Wyzwala go wpis w dziale III **księgi lokalu**; podstawa jest wymagana przy obu wariantach, bo operat drukuje ją jako założenie. Wpisy w dziale III księgi gruntu opisujemy, ale tej blokady nie wywołują.
 
+### Zdjęcie budynku
+
+- **B-01 — brak zdjęcia budynku z zewnątrz.** Komunikat: „Dodaj co najmniej jedno zdjęcie: Budynek z zewnątrz. Pierwsze z nich trafia na okładkę operatu.”, odsyła do [kroku 2](/pomoc/krok-2-ogledziny). Pytamy **poza** warunkiem „jeśli wypełniono oględziny”, z tego samego powodu co przy B-02 i B-06: szkic, który nigdy nie wszedł w krok 2, nie ma migawki oględzin wcale, a operat i tak drukuje okładkę. Zdjęcia z sekcji „Otoczenie i droga dojazdowa” oraz „Wnętrza” tej blokady nie zdejmują — okładka bierze zdjęcie właśnie z sekcji budynku.
+
+  Blokada znika w całości tam, gdzie wgrywanie zdjęć jest wyłączone: brama nie żąda rzeczy, której produkt nie pozwala dostarczyć. Ta sama zasada, co przy wyłączniku opisów.
+
 O tym, które z tych warunków obowiązują, rozstrzyga rodzaj prawa wybrany w kroku 1 (`apps/web/src/domain/property-right.ts`) — ta sama reguła, którą operat czyta przy składaniu tekstu, więc brama i dokument nie mogą się rozjechać.
 
 ## Domyślna odmowa

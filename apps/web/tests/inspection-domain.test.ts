@@ -10,12 +10,17 @@ import {
 } from "../src/domain/inspection";
 
 const VID = "11111111-2222-3333-4444-555555555555";
+// Szkic BEZ migawki oględzin, choć fikstura niesie ją od M-1 (B-01 wymaga
+// zdjęcia budynku). Te testy opisują sam `applyInspectionOp` liczony od zera:
+// z gotowym zdjęciem „tworzy migawkę leniwie" przechodziłoby na cudzej
+// migawce, licznik do limitu 50 startowałby od 1, a „remove_photo zdejmuje
+// klucz" zostawiałoby w sekcji zdjęcie okładkowe. Brama tu nie działa.
 const draft = (): Valuation =>
   ({
     id: VID,
     status: "in_progress",
     ownerId: "owner-1",
-    inputs: approvableInput("owner-1").inputs,
+    inputs: { ...approvableInput("owner-1").inputs!, inspection: undefined },
   }) as unknown as Valuation;
 
 describe("applyInspectionOp", () => {

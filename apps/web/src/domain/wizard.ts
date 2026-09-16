@@ -76,6 +76,9 @@ const BLOCKER_STEP: Record<string, number> = {
   client: 1,
   // Step 2 (Oględziny).
   inspectionDate: 2,
+  // B-01 (M-1): the exterior photos of the building — the first of them is the
+  // operat's cover, so the blocker has to land on the step that uploads them.
+  "inspection.photos.budynekZewn": 2,
   // Step 3 (Próba): the sample's size and every transaction in it.
   comparables: 3,
   // Step 4 (Cechy): weights, ratings and the rating-scale definitions.

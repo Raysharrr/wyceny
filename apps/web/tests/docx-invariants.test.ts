@@ -361,6 +361,37 @@ describe("expectImageInParagraph", () => {
       expectImageInParagraph(rendered, { section: "8.1. Stan otoczenia" }).length,
     ).toBeGreaterThanOrEqual(2);
   });
+
+  // M-1 (D-01). To jest DOWÓD ODBIORCZY tej poprawki, a nie formalność.
+  // Spec definiował niezmiennik I-03 jako „okładka zawiera obraz" — a okładka
+  // zawierała dwa (pasek biura i pieczęć) już przed poprawką, więc tak
+  // sformułowany test przechodził na szablonie BEZ zdjęcia i nie odróżniał
+  // naprawy od jej braku. Rozróżnia dopiero liczba i pozycja: zdjęcie
+  // nieruchomości wchodzi MIĘDZY pasek a pieczęć, dokładnie tam, gdzie mają je
+  // wszystkie operaty wzorcowe (trzy obrazy na stronie 1).
+  it("okładka renderu niesie zdjęcie nieruchomości między paskiem a pieczęcią (M-1)", () => {
+    const model = buildDocumentModel(syntheticDocumentInput(SUBJECT_WITH_MPZP));
+    const zOkladka = openDocx(
+      renderOperatDocx(model, {
+        maps: MAPS,
+        photos: { otoczenie: [], budynekZewn: [JPG_1PX], wnetrza: [] },
+      }),
+    );
+    const rIds = expectImageInParagraph(zOkladka, { before: "1. Wyciąg" }).map((i) => i.rId);
+    expect(rIds).toHaveLength(3);
+    expect(rIds[0]).toBe("rId8"); // pasek biura z szablonu
+    expect(rIds[2]).toBe("rId12"); // pieczęć rzeczoznawcy z szablonu
+    // Środkowy jest DOŁOŻONY przez render, więc nie ma go wśród relacji szablonu.
+    expect(["rId8", "rId12"]).not.toContain(rIds[1]);
+
+    // Druga strona bramki: bez zdjęcia budynku ogrodzenie zdejmuje slot i
+    // okładka wygląda jak przed poprawką — podgląd nie może się wywrócić.
+    const bezZdjecia = openDocx(renderOperatDocx(model, { maps: MAPS }));
+    expect(expectImageInParagraph(bezZdjecia, { before: "1. Wyciąg" }).map((i) => i.rId)).toEqual([
+      "rId8",
+      "rId12",
+    ]);
+  });
 });
 
 describe("paragraphsWithoutStyle", () => {

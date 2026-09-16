@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import type { ProseSnapshot } from "../src/domain/prose-snapshot";
-import { approvableInput, approvableWr, confirmedProseFor } from "./fixtures/valuation-inputs";
+import {
+  FIXTURE_COVER_PHOTO_KEY,
+  approvableInput,
+  approvableWr,
+  confirmedProseFor,
+} from "./fixtures/valuation-inputs";
 
 /**
  * Freeze (Task 7): the operat's prose is rendered from the SNAPSHOT and from
@@ -117,6 +122,10 @@ describe("prose is frozen between approve and sign (Task 7)", () => {
     vi.mocked(worker.convertToPdf).mockResolvedValue(Buffer.from("pdf-bytes"));
     // Storage that remembers: the DOCX approve writes is the one sign reads.
     const blobs = new Map<string, Buffer>();
+    // Zdjęcie z manifestu fikstury (B-01, M-1) leży w tym samym storage, bo
+    // zatwierdzenie czyta bajty każdego klucza z oględzin i bez nich przerywa —
+    // nie dochodząc do prozy, o którą tu chodzi.
+    blobs.set(FIXTURE_COVER_PHOTO_KEY, SIGNATURE_PNG);
     vi.mocked(storage.put).mockImplementation(async (key: string, bytes: string | Buffer) => {
       blobs.set(key, bytes as Buffer);
       return `/api/docs/${key}`;

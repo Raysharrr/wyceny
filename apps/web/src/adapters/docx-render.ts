@@ -47,6 +47,19 @@ export const PHOTO_BOX: [number, number] = [290, 220];
 export const POLICY_BOX: [number, number] = [567, 794];
 
 /**
+ * Print box for the cover photo, px @96dpi (≈ 9 × 7 cm) — aspect preserved inside.
+ *
+ * Every one of the ten reference operats carries three images on page 1: the
+ * office banner, the appraiser's stamp, and a photo of THIS property. Ours had
+ * only the first two (D-01) — the generator dropped the source operat's photo
+ * as someone else's data and left no slot behind. The reference photos run
+ * 7,8–11,5 cm wide with different crops, so this is a BOUND, not a size: a
+ * fixed 9×7 would stretch a portrait shot. Aneta's own correction of the 14.09
+ * operat measures 9,1 × 6,8 cm — what this box yields for a 4:3 frame.
+ */
+export const COVER_BOX: [number, number] = [340, 265];
+
+/**
  * Where the signature goes, left in the approved DOCX (ADR-020 wariant a). A
  * bookmark, not text: it prints nothing in Word or in the PDF, and the
  * appraiser's own text can never spell it — unlike a tag, which is also why
@@ -110,6 +123,13 @@ export function renderOperatDocx(
   const images: Record<string, Buffer> = maps
     ? { mapa_ewidencyjna: maps.ewidencyjna, mapa_orto: maps.orto }
     : {};
+  // M-1: the cover photo is not a field of its own — it IS the first exterior
+  // shot of the building, the same bytes §8.3 prints further down. No new
+  // upload, no picker, no snapshot field: whatever the appraiser uploaded
+  // first under „Budynek z zewnątrz" is what the operat leads with, and B-01
+  // makes sure there is one before the operat can be issued.
+  const okladka = photos?.budynekZewn?.[0];
+  if (okladka) images.foto_okladka = okladka;
   // Photo loop items are string markers too (same contract): all three photo
   // tags in the template share tagName "img", so bytes are dispatched by
   // tagVALUE (the marker) through photoMap rather than by tagName.
@@ -157,6 +177,10 @@ export function renderOperatDocx(
             const dims = jpegDimensions(buf);
             return dims ? fitBox(dims, box) : box;
           }
+          if (tagName === "foto_okladka") {
+            const dims = jpegDimensions(buf);
+            return dims ? fitBox(dims, COVER_BOX) : COVER_BOX;
+          }
           return MAP_SIZE;
         },
       }),
@@ -170,6 +194,11 @@ export function renderOperatDocx(
     ...foto,
     // Derived from bytes ACTUALLY supplied here, not the inputs manifest —
     // render truth = bytes present (manifest-to-bytes wiring is Task 8).
+    // Same rule as the sections below — the cover fence follows the BYTES, so
+    // a preview run without photos renders a cover like today's instead of
+    // asking the image module for a picture nobody supplied.
+    ma_foto_okladka: Boolean(okladka),
+    foto_okladka: okladka ? "foto_okladka" : null,
     ma_foto_otoczenie: foto.foto_otoczenie.length > 0,
     ma_foto_budynek: foto.foto_budynek.length > 0,
     ma_foto_wnetrza: foto.foto_wnetrza.length > 0,

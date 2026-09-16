@@ -5,6 +5,7 @@ import {
   type ProvenanceStatus,
   type Sourced,
 } from "@wyceny/shared";
+import type { InspectionSnapshot } from "./inspection";
 import { isRegistrySourced, REGISTRY_LABEL, type ComparableSource } from "./kcs";
 import { encumbranceDecisionNeeded, kwRequirements } from "./kw-requirements";
 import {
@@ -65,6 +66,9 @@ export type GateInput = {
   sampleMeta?: unknown | null;
   // Typed since M-10: B-02 reads the designation fields off it.
   subject?: SubjectSnapshot | null;
+  // Typed since M-1: B-01 reads the building photos off it, and the first of
+  // them is the operat's cover.
+  inspection?: InspectionSnapshot | null;
   kw?: {
     source: "akt" | "odpis_kw" | "ekw_reczne";
     kwLokalu: string | null;
@@ -110,6 +114,14 @@ export type GateOptions = {
    * indistinguishable from the world before the feature existed.
    */
   requireProse?: boolean;
+  /**
+   * Whether B-01 is asked at all (M-1). Carries `NEXT_PUBLIC_PHOTO_UPLOAD`,
+   * the same way `requireProse` carries FR-6: a build with photo upload
+   * switched off cannot satisfy the blocker, so the switch removes the
+   * requirement rather than wedging every draft. Absent means "do not ask" —
+   * default-deny belongs to the data, not to a flag the caller forgot.
+   */
+  requirePhotos?: boolean;
   /**
    * Fingerprint of the draft's CURRENT facts PER SECTION, for comparison
    * against the ones the stored prose carries. Computed by the caller, never
@@ -258,6 +270,22 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
       label:
         "Uzupełnij przeznaczenie terenu: wskaż podstawę (MPZP, plan ogólny albo studium), " +
         "nazwę, uchwałę z datą i symbol.",
+    });
+  }
+
+  // B-01, wąsko — tylko „Budynek z zewnątrz". Do 16.09 operat dawało się wydać
+  // bez ani jednego zdjęcia, a od M-1 pierwsze zdjęcie tej sekcji JEST okładką.
+  // Bez tej blokady slot okładki wychodziłby pusty i defekt D-01 wracałby po
+  // cichu — dokładnie w postaci, w jakiej zobaczyła go Aneta. Pytane POZA
+  // guardem na `inspection != null`, bo szkic, który nigdy nie dotknął kroku 2,
+  // nie ma migawki wcale (ta sama pułapka co przy B-02 i B-06).
+  if (options?.requirePhotos && !input.inspection?.photos?.budynekZewn?.length) {
+    blockers.push({
+      path: "inspection.photos.budynekZewn",
+      code: "B-01",
+      label:
+        "Dodaj co najmniej jedno zdjęcie: Budynek z zewnątrz. " +
+        "Pierwsze z nich trafia na okładkę operatu.",
     });
   }
 

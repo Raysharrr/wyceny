@@ -354,6 +354,67 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 });
 
 /**
+ * B-01 (M-1, D-01) — zdjęcie budynku z zewnątrz. Od M-1 PIERWSZE zdjęcie tej
+ * sekcji drukuje się na okładce operatu, więc szkic bez niego wydałby dokument
+ * z pustą stroną 1: dokładnie ten defekt zgłosiła Aneta. Blokada wisi na
+ * przełączniku `requirePhotos`, bo build z wyłączonym wgrywaniem zdjęć (tak
+ * chodzi pakiet e2e) nie umiałby jej spełnić — ten sam układ co FR-6
+ * i `requireProse`: wyłącznik ZDEJMUJE wymaganie, nie udaje spełnionego.
+ */
+describe("B-01: zdjęcie budynku, czyli okładka (M-1)", () => {
+  const kompletny = {
+    ...zbadaneKsiegi,
+    ...wybranePrzeznaczenie,
+    comparables: manualRows(12),
+    sampleMeta: null,
+    provenance: { ...confirmedScalars, ...przeznaczenieProv },
+  };
+  const zdjecia = (photos: {
+    otoczenie?: string[];
+    budynekZewn?: string[];
+    wnetrza?: string[];
+  }) => ({
+    inspection: {
+      note: null,
+      photos: { otoczenie: [], budynekZewn: [], wnetrza: [], ...photos },
+    },
+  });
+
+  it("blokuje szkic bez zdjęcia budynku i nazywa sekcję", () => {
+    const result = approvalGate(kompletny, { requirePhotos: true });
+    expect(result.ok).toBe(false);
+    const b01 = result.ok ? undefined : result.blockers.find((b) => b.code === "B-01");
+    expect(b01?.path).toBe("inspection.photos.budynekZewn");
+    expect(b01?.label).toContain("Budynek z zewnątrz");
+  });
+
+  it("milczy, gdy jest co najmniej jedno zdjęcie budynku", () => {
+    expect(
+      approvalGate(
+        { ...kompletny, ...zdjecia({ budynekZewn: ["budynek-1.jpg"] }) },
+        {
+          requirePhotos: true,
+        },
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("zdjęcia z pozostałych sekcji nie zastępują budynku — okładka bierze z tej jednej", () => {
+    const result = approvalGate(
+      { ...kompletny, ...zdjecia({ otoczenie: ["a.jpg"], wnetrza: ["b.jpg"] }) },
+      { requirePhotos: true },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.ok ? [] : result.blockers.map((b) => b.code)).toContain("B-01");
+  });
+
+  it("wyłącznik wgrywania zdejmuje wymaganie zamiast udawać, że jest spełnione", () => {
+    expect(approvalGate(kompletny, { requirePhotos: false })).toEqual({ ok: true });
+    expect(approvalGate(kompletny)).toEqual({ ok: true });
+  });
+});
+
+/**
  * KW group (Slice 6, rewritten for ADR-018). Until 15.09 the whole group lived
  * inside `if (input.kw != null)`, so the manual path — the one the office
  * actually uses — met no demand at all while the operat still claimed both

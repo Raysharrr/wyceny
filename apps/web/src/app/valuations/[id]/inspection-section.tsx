@@ -13,6 +13,7 @@ import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { plural } from "@/components/wizard/plural";
 import { SectionCard } from "@/components/wizard/section-card";
 import { processPhoto } from "@/lib/photo-process-client";
+import { photoUploadEnabled } from "@/lib/photo-upload-enabled";
 import {
   INSPECTION_SECTIONS,
   MAX_INSPECTION_PHOTOS,
@@ -24,7 +25,9 @@ import {
 const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? "http://localhost:8000";
 // Mirrors NEXT_PUBLIC_KW_UPLOAD: upload UI renders only when enabled; the
 // note stays editable (no worker involved) so e2e/air-gapped keep working.
-const uploadEnabled = process.env.NEXT_PUBLIC_PHOTO_UPLOAD !== "off";
+// Shared with the approval gate since M-1 — B-01 demands a building photo, and
+// the demand has to disappear wherever the upload does.
+const uploadEnabled = photoUploadEnabled();
 
 const SECTION_LABELS: Record<Section, string> = {
   otoczenie: "Otoczenie i droga dojazdowa",
