@@ -1,5 +1,5 @@
 import { REGISTRY_LABEL, type RegistrySource } from "@/domain/kcs";
-import { sameness, type Candidate, type Flag } from "@/domain/sample-selection";
+import { pietroOfFloor, sameness, type Candidate, type Flag } from "@/domain/sample-selection";
 import type { SubjectEgib } from "@/domain/egib-id";
 import { POZNAN_TERYT_PREFIX } from "@/domain/obreb-name";
 import type { StreetIndexState } from "@/ports/sample";
@@ -53,9 +53,18 @@ export function rowBadges(
       out.push({ key: "same_parcel", label: "ta sama działka", tone: "secondary" });
     else if (!s.sameObreb) out.push({ key: "other_obreb", label: "inny obręb", tone: "outline" });
   }
-  if (c.floor !== null) {
-    out.push({ key: "floor", label: `p. ${c.floor}`, tone: "outline" });
-    if (c.floor > 5) out.push({ key: "tall", label: ">5 kond.", tone: "outline" });
+  // Two different readings of the same number, so both say which one they mean.
+  // The storey badge is a PIĘTRO — it used to print the raw RCN kondygnacja
+  // under a "p." label and so claimed one storey more than §12.2 of the operat
+  // placed the same flat on. ">5 kond." stays on the kondygnacja: the criterion
+  // (ADR-015 rule 10) is about a tall building, which is what a high kondygnacja
+  // implies.
+  const pietro = pietroOfFloor(c.floor, source);
+  if (pietro !== null) {
+    out.push({ key: "floor", label: pietro === 0 ? "parter" : `p. ${pietro}`, tone: "outline" });
+  }
+  if (c.floor !== null && c.floor > 5) {
+    out.push({ key: "tall", label: ">5 kond.", tone: "outline" });
   }
   for (const f of flags) out.push(FLAG_BADGE[f]);
   return out;

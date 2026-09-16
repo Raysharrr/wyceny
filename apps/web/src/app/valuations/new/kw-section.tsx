@@ -1,6 +1,7 @@
 "use client";
 
 import { FileText } from "lucide-react";
+import { useState } from "react";
 import { Controller, useController, useWatch, type Control } from "react-hook-form";
 import type { z } from "zod";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { AutoBanner } from "@/components/wizard/auto-banner";
 import { SectionCard } from "@/components/wizard/section-card";
 import { cn } from "@/lib/utils";
+import { parseCoopNumber } from "@/domain/coop-import";
 import { kwRequirements } from "@/domain/kw-requirements";
 import { PROPERTY_RIGHT_LABEL, PROPERTY_RIGHTS } from "@/domain/property-right";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
@@ -176,20 +178,78 @@ function TextField({
   value,
   onChange,
   className,
+  placeholder,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  placeholder?: string;
 }) {
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       <label htmlFor={id} className="text-sm">
         {label}
       </label>
-      <Input id={id} autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input
+        id={id}
+        autoComplete="off"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
+  );
+}
+
+/**
+ * A numeric field whose STATE is the text that was typed, not the number it
+ * parses to. Holding the number re-rendered "44," back as "44" between two
+ * keystrokes, so the separator disappeared and "44,23" was stored as 4423
+ * (staging, 16.09) — then the form warned that it disagreed with the document.
+ * The two other numeric fields in the app (`subject-form`, the coop register)
+ * both keep text for the same reason.
+ *
+ * Parsing goes through the register's own parser, which reads "48,10" and
+ * "521 885,00" and refuses ambiguous "1.234" rather than guessing. A trailing
+ * unit is stripped first: that parser keeps every digit it finds, so "44,23 m2"
+ * pasted off a book would otherwise become 44,232 — a wrong number, quietly,
+ * which is worse than refusing the input.
+ *
+ * The draft yields to the model only on a change from OUTSIDE (a KW PDF being
+ * transcribed): after our own edit `value` already equals what the draft
+ * parses to, so the comparison leaves the text alone.
+ */
+function NumberTextField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  const asText = (n: number | null) => (n == null ? "" : String(n));
+  const [draft, setDraft] = useState(() => asText(value));
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) {
+    setSeen(value);
+    if (parseCoopNumber(draft) !== value) setDraft(asText(value));
+  }
+  return (
+    <TextField
+      id={id}
+      label={label}
+      value={draft}
+      onChange={(v) => {
+        setDraft(v);
+        const withoutUnit = v.replace(/\s*m\s*[²2]\s*$/i, "");
+        onChange(withoutUnit.trim() === "" ? null : parseCoopNumber(withoutUnit));
+      }}
+    />
   );
 }
 
@@ -855,20 +915,37 @@ export function KwSection(props: KwSectionProps) {
                     value={kw?.dataBadania ?? today}
                     onChange={(v) => patchKw({ dataBadania: v })}
                   />
+                  {/* The court the operat names in the Wyciąg and in §2. The
+                      PDF path reads it off the book's header; typed by hand it
+                      had no field at all, so the document fell back to a dash
+                      while the template printed one fixed court for everyone.
+                      Two fields, because the operats use two forms: the Wyciąg
+                      names the wydział, §2 names the court alone. */}
+                  <TextField
+                    id="kw-sad"
+                    label="Sąd prowadzący księgi"
+                    placeholder="np. Sąd Rejonowy Poznań – Stare Miasto w Poznaniu"
+                    value={kw?.sad ?? ""}
+                    onChange={(v) => patchKw({ sad: v })}
+                  />
+                  <TextField
+                    id="kw-wydzial"
+                    label="Wydział ksiąg wieczystych"
+                    placeholder="np. V Wydział Ksiąg Wieczystych"
+                    value={kw?.wydzial ?? ""}
+                    onChange={(v) => patchKw({ wydzial: v })}
+                  />
                   <TextField
                     id="kw-nr-lokalu"
                     label="Numer lokalu"
                     value={kw?.nrLokalu ?? ""}
                     onChange={(v) => patchKw({ nrLokalu: v })}
                   />
-                  <TextField
+                  <NumberTextField
                     id="kw-pow"
                     label="Powierzchnia użytkowa wg księgi"
-                    value={kw?.powUzytkowaKw == null ? "" : String(kw.powUzytkowaKw)}
-                    onChange={(v) => {
-                      const n = Number(v.replace(",", "."));
-                      patchKw({ powUzytkowaKw: v.trim() === "" || Number.isNaN(n) ? null : n });
-                    }}
+                    value={kw?.powUzytkowaKw ?? null}
+                    onChange={(powUzytkowaKw) => patchKw({ powUzytkowaKw })}
                   />
                   <TextField
                     id="kw-udzial"

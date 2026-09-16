@@ -60,7 +60,15 @@ export default async function ProfilePage() {
             <AuthorForm profile={profile} />
           </SectionCard>
 
-          <SectionCard icon={FileBadge} title="Polisa OC" sub="Załącznik nr 1 do każdego operatu">
+          {/* The operats call this attachment "Kopia polisy ubezpieczeniowej"
+              — the phrase "polisa OC" appears in none of them — and it is the
+              LAST item of the list (nr 3, 5 or 6 depending on the valuation),
+              so the card must not promise a fixed number either. */}
+          <SectionCard
+            icon={FileBadge}
+            title="Kopia polisy ubezpieczeniowej"
+            sub="załącznik do każdego operatu"
+          >
             <InsuranceForm
               hasPolicy={Boolean(profile?.insuranceDocKey)}
               validUntil={profile?.insuranceValidUntil ?? null}

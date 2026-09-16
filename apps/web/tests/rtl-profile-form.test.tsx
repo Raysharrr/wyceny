@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 
 /**
- * Ekran `/profile` po ADR-020 cz. 1 — dane autora i polisa OC obok istniejącego
+ * Ekran `/profile` po ADR-020 cz. 1 — dane autora i kopia polisy ubezpieczeniowej obok istniejącego
  * skanu podpisu. Dane w testach są FIKCYJNE (F-9).
  */
 const saveAuthorProfile = vi.hoisted(() => vi.fn());
@@ -95,7 +95,7 @@ describe("InsuranceForm", () => {
       ],
     });
     render(<InsuranceForm hasPolicy={false} validUntil={null} validUntilLabel={null} />);
-    await userEvent.upload(screen.getByLabelText(/polisa oc/i), pdfFile());
+    await userEvent.upload(screen.getByLabelText(/kopia polisy ubezpieczeniowej/i), pdfFile());
     await userEvent.type(screen.getByLabelText(/ważna do/i), "2027-06-30");
     await userEvent.click(screen.getByRole("button", { name: /zapisz polisę/i }));
 
@@ -108,7 +108,7 @@ describe("InsuranceForm", () => {
   it("odrzuca plik inny niż PDF, nie wołając workera", async () => {
     render(<InsuranceForm hasPolicy={false} validUntil={null} validUntilLabel={null} />);
     await userEvent.upload(
-      screen.getByLabelText(/polisa oc/i),
+      screen.getByLabelText(/kopia polisy ubezpieczeniowej/i),
       new File(["x"], "polisa.jpg", { type: "image/jpeg" }),
       // `accept` already stops this in the picker; the guard under test is the
       // one that catches a drag-and-drop or a file renamed to .pdf.
@@ -123,7 +123,7 @@ describe("InsuranceForm", () => {
 
   it("wymaga daty ważności", async () => {
     render(<InsuranceForm hasPolicy={false} validUntil={null} validUntilLabel={null} />);
-    await userEvent.upload(screen.getByLabelText(/polisa oc/i), pdfFile());
+    await userEvent.upload(screen.getByLabelText(/kopia polisy ubezpieczeniowej/i), pdfFile());
     await userEvent.click(screen.getByRole("button", { name: /zapisz polisę/i }));
 
     expect(await screen.findByText("Podaj datę ważności polisy.")).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe("InsuranceForm", () => {
       retryable: false,
     });
     render(<InsuranceForm hasPolicy={false} validUntil={null} validUntilLabel={null} />);
-    await userEvent.upload(screen.getByLabelText(/polisa oc/i), pdfFile());
+    await userEvent.upload(screen.getByLabelText(/kopia polisy ubezpieczeniowej/i), pdfFile());
     await userEvent.type(screen.getByLabelText(/ważna do/i), "2027-06-30");
     await userEvent.click(screen.getByRole("button", { name: /zapisz polisę/i }));
 
@@ -161,7 +161,7 @@ describe("InsuranceForm", () => {
     uploadInsurancePage.mockResolvedValueOnce(undefined);
     uploadInsurancePage.mockResolvedValueOnce({ error: "Nie udało się zapisać strony polisy." });
     render(<InsuranceForm hasPolicy validUntil="2026-01-01" validUntilLabel="01.01.2026" />);
-    await userEvent.upload(screen.getByLabelText(/polisa oc/i), pdfFile());
+    await userEvent.upload(screen.getByLabelText(/kopia polisy ubezpieczeniowej/i), pdfFile());
     await userEvent.click(screen.getByRole("button", { name: /zapisz polisę/i }));
     await waitFor(() => expect(uploadInsurancePage).toHaveBeenCalledTimes(2));
 

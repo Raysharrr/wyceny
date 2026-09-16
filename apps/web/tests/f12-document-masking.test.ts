@@ -6,6 +6,7 @@ import {
   formatNumber,
   formatPln,
   OCENA_SPOZA_REJESTRU,
+  PURPOSE_TEXT,
 } from "../src/domain/document-model";
 import type { KwSnapshot } from "../src/domain/kw-snapshot";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
@@ -93,7 +94,12 @@ describe("F-12: professional-secrecy masking in the document model", () => {
 
   it("maps purpose to Polish document text and drives the credit conditional", () => {
     const model = buildModel();
-    expect(model.cel).toBe("dla potrzeb sprzedaży");
+    expect(model.cel).toBe("sprzedaży");
+    // The template already writes "dla potrzeb {cel}." in §3 AND in the Wyciąg
+    // row, so a phrase carrying the preposition here printed "dla potrzeb dla
+    // potrzeb …" in every operat issued so far. Asserted over every purpose, so
+    // a new one cannot reintroduce it.
+    for (const text of Object.values(PURPOSE_TEXT)) expect(text).not.toContain("dla potrzeb");
     expect(model.kredyt).toBe(false);
     const inputs = syntheticInputs();
     const credit = buildDocumentModel({
