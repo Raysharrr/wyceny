@@ -11,7 +11,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { buildingKey, candidateKey, type Candidate } from "@/domain/sample-selection";
+import {
+  buildingKey,
+  candidateKey,
+  pietroOfFloor,
+  type Candidate,
+} from "@/domain/sample-selection";
 import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import type { StreetViewSnapshot } from "@/domain/street-view-snapshot";
 import { padObreb } from "@/domain/egib-id";
@@ -244,7 +249,9 @@ export function SampleTable({
         <TableCell className="num text-right">{Math.round(c.distanceM)} m</TableCell>
         <TableCell className="num text-right">{m2.format(c.area)}</TableCell>
         <TableCell className="num text-right">{pln.format(c.pricePerM2)}</TableCell>
-        <TableCell className="num text-center">{c.floor ?? "—"}</TableCell>
+        {/* The column says "Piętro", so it shows a piętro: the raw RCN value is
+            a kondygnacja and read one storey too high (`pietroOfFloor`). */}
+        <TableCell className="num text-center">{pietroOfFloor(c.floor, source) ?? "—"}</TableCell>
         <TableCell>
           <div className="flex flex-wrap gap-1">
             {includedKeys.has(key) ? <Badge variant="secondary">dodana ręcznie</Badge> : null}

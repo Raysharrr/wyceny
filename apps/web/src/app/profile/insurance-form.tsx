@@ -125,19 +125,17 @@ export function InsuranceForm({
       )}
 
       <Field data-invalid={Boolean(fieldErrors.policy)}>
-        <FieldLabel htmlFor="profile-policy">Polisa OC (PDF)</FieldLabel>
+        <FieldLabel htmlFor="profile-policy">Kopia polisy ubezpieczeniowej (PDF)</FieldLabel>
         <FileInput
           id="profile-policy"
           name="policy"
           accept="application/pdf"
           label="Wybierz plik PDF"
-          aria-label="Polisa OC (PDF)"
+          aria-label="Kopia polisy ubezpieczeniowej (PDF)"
           hint="PDF, do 10 MB i 10 stron"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
-        <FieldDescription>
-          Każda strona trafi na koniec operatu jako Załącznik nr 1.
-        </FieldDescription>
+        <FieldDescription>Każda strona trafi na koniec operatu, do załączników.</FieldDescription>
         <FieldError errors={fieldErrors.policy ? [{ message: fieldErrors.policy }] : []} />
       </Field>
 

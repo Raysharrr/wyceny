@@ -305,6 +305,49 @@ describe("KwSection", () => {
     ).toBe("2026-09-15");
   });
 
+  it("keeps the decimal separator while the area is being typed, digit by digit", async () => {
+    // Staging 16.09: the field held the NUMBER, so "44," re-rendered as "44"
+    // between keystrokes and "44,23" was stored as 4423 — then the form warned
+    // that it disagreed with the document it had just read.
+    render(<StateHarness />);
+    const field = screen.getByLabelText("Powierzchnia użytkowa wg księgi") as HTMLInputElement;
+    await userEvent.type(field, "44,23");
+    expect(field.value).toBe("44,23");
+    expect(JSON.parse(screen.getByTestId("kw-json").textContent!).powUzytkowaKw).toBe(44.23);
+  });
+
+  it("reads a pasted area with a thousands group and with the unit still attached", async () => {
+    const area = () => JSON.parse(screen.getByTestId("kw-json").textContent!).powUzytkowaKw;
+    render(<StateHarness />);
+    const field = screen.getByLabelText("Powierzchnia użytkowa wg księgi") as HTMLInputElement;
+    await userEvent.type(field, "1 234,50");
+    expect(area()).toBe(1234.5);
+    // A unit pasted off the book. The register parser keeps every digit it
+    // finds, so unstripped "44,23 m2" lands as 44,232 — a wrong number with
+    // nothing on screen to say so.
+    await userEvent.clear(field);
+    await userEvent.type(field, "44,23 m2");
+    expect(area()).toBe(44.23);
+    await userEvent.clear(field);
+    await userEvent.type(field, "44,23 m²");
+    expect(area()).toBe(44.23);
+  });
+
+  it("takes the court and its wydział by hand — the template used to print one fixed court", async () => {
+    render(<StateHarness />);
+    await userEvent.type(
+      screen.getByLabelText("Sąd prowadzący księgi"),
+      "Sąd Rejonowy w Środzie Wielkopolskiej",
+    );
+    await userEvent.type(
+      screen.getByLabelText("Wydział ksiąg wieczystych"),
+      "V Wydział Ksiąg Wieczystych",
+    );
+    const kw = JSON.parse(screen.getByTestId("kw-json").textContent!);
+    expect(kw.sad).toBe("Sąd Rejonowy w Środzie Wielkopolskiej");
+    expect(kw.wydzial).toBe("V Wydział Ksiąg Wieczystych");
+  });
+
   it("asks for the deed in three fields (decyzja usera 15.09), under the mockup's group label", () => {
     render(<Harness />);
     expect(screen.getByText("Podstawa nabycia — dział II")).toBeDefined();

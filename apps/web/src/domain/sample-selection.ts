@@ -26,6 +26,7 @@
  */
 import { padObreb } from "./egib-id";
 import type { Egib, SubjectEgib } from "./egib-id";
+import type { ComparableSource } from "./kcs";
 import type { PropertyRight } from "./property-right";
 export { padObreb } from "./egib-id";
 export type { Egib, SubjectEgib };
@@ -56,7 +57,7 @@ export type Candidate = {
   buildingRef?: string | null;
   /** Planar distance from the subject point, EPSG:2180 metres. */
   distanceM: number;
-  /** lok_nr_kond */
+  /** lok_nr_kond — a KONDYGNACJA, not a piętro. Read it through `pietroOfFloor`. */
   floor: number | null;
   /** lok_liczba_izb */
   rooms: number | null;
@@ -265,6 +266,35 @@ export function buildingKey(c: Candidate): string | null {
 /** Flag/snapshot key — one notarial act (transactionId) can carry several lokale. */
 export function candidateKey(c: Pick<Candidate, "transactionId" | "lokalId">): string {
   return `${c.transactionId}|${c.lokalId}`;
+}
+
+/**
+ * A row's PIĘTRO (parter = 0) — the unit the piętro scale's bands and the
+ * subject's own `pietro` are in, which is not the unit either register stores.
+ * The ONE place that conversion happens: §12.2 of the operat and step 3's
+ * badges must not disagree about which storey a transaction sits on, and they
+ * did — the badge read "p. 4" for a flat the operat placed on piętro 3.
+ *
+ * RCN's `floor` is `lok_nr_kond`, a kondygnacja numbered from 1, so it loses
+ * one. Measured, not assumed: across the 8 snapshot fixtures (80 000 rows)
+ * `handlowoUslugowa` sits at 1 (839 of 976) and `garaz` at −1 (10 117 of
+ * 11 779) — retail on the ground floor and garages one level below only line up
+ * if parter is 1. Underground rows then come out negative and no band covers
+ * them, which is the honest answer for a garage.
+ *
+ * The cooperative register's `floor` is hand-typed by the office under a
+ * "Piętro" label, so it is taken as a piętro and NOT converted. That is a
+ * reading of the label, not a measurement: every floor-bearing row in the
+ * database belongs to our own E2E fixtures, so there is nothing to measure
+ * (PR #58). An absent `source` is not treated as RCN — rows saved before the
+ * field existed must not be silently shifted.
+ */
+export function pietroOfFloor(
+  floor: number | null | undefined,
+  source: ComparableSource | undefined,
+): number | null {
+  if (floor == null) return null;
+  return source === "rcn" ? floor - 1 : floor;
 }
 
 export function scoreCandidate(c: Candidate, s: SubjectEgib | undefined, w: ScoreWeights): number {

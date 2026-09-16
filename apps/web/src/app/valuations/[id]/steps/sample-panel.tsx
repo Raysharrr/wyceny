@@ -18,7 +18,7 @@ import { PROPERTY_RIGHT_LABEL } from "@/domain/property-right";
 import { cooperativeLabel } from "./sample-badges";
 import type { StreetIndexState } from "@/ports/sample";
 import { streetMissingReason, streetMissingTitle } from "./sample-badges";
-import { candidateKey, DEFAULTS, type Candidate } from "@/domain/sample-selection";
+import { candidateKey, DEFAULTS, pietroOfFloor, type Candidate } from "@/domain/sample-selection";
 import type { StreetViewEntry } from "@/domain/street-view-snapshot";
 import { kiegWmsUrl, mapEmbedUrl, ortoWmsUrl, streetViewEmbedUrl } from "./embed-urls";
 
@@ -412,7 +412,8 @@ export function SamplePanel({
             <Field label="Cena za m²">{pln.format(candidate.pricePerM2)} zł/m²</Field>
             <Field label="Powierzchnia">{m2.format(candidate.area)} m²</Field>
             <Field label="Piętro / izby">
-              {candidate.floor ?? "—"} / {candidate.rooms ?? "—"}
+              {/* A piętro, like the column and the badge — not RCN's kondygnacja. */}
+              {pietroOfFloor(candidate.floor, source) ?? "—"} / {candidate.rooms ?? "—"}
             </Field>
             <Field label="Rynek">{marketLabel(candidate.market)}</Field>
             <Field label="Sprzedający">{sellerLabel(candidate.seller)}</Field>

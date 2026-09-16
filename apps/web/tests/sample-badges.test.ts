@@ -65,12 +65,27 @@ describe("rowBadges", () => {
       ]),
     );
   });
-  it("floor > 5 → '>5 kond.' in addition to 'p. N'; null floor → no floor badge", () => {
-    expect(rowBadges(c({ floor: 7 }), [], subject).map((x) => x.label)).toEqual(
-      expect.arrayContaining(["p. 7", ">5 kond."]),
+  it("floor > 5 → '>5 kond.' in addition to the piętro badge; null floor → no floor badge", () => {
+    // RCN kondygnacja 7 is piętro 6. ">5 kond." keeps reading the raw
+    // kondygnacja: that criterion is about a tall BUILDING, not about the flat.
+    expect(rowBadges(c({ floor: 7 }), [], subject, "rcn").map((x) => x.label)).toEqual(
+      expect.arrayContaining(["p. 6", ">5 kond."]),
     );
     expect(rowBadges(c({ floor: null }), [], subject).map((x) => x.label)).not.toContain(
       expect.stringMatching(/^p\. /),
+    );
+  });
+  it("the badge is a PIĘTRO, so an RCN row drops its kondygnacja offset and parter is named", () => {
+    // §12.2 of the operat places the same flat through `pietroOfFloor`; until
+    // 16.09 the badge printed the raw kondygnacja and claimed one storey more,
+    // so the table and the document disagreed about the same transaction.
+    expect(rowBadges(c({ floor: 3 }), [], undefined, "rcn").map((x) => x.label)).toEqual(["p. 2"]);
+    expect(rowBadges(c({ floor: 1 }), [], undefined, "rcn").map((x) => x.label)).toEqual([
+      "parter",
+    ]);
+    // The cooperative register types a piętro under a "Piętro" label — no shift.
+    expect(rowBadges(c({ floor: 3 }), [], undefined, "rejestr_sm").map((x) => x.label)).toContain(
+      "p. 3",
     );
   });
   it("no subjectEgib → no identity badges at all", () => {
@@ -85,7 +100,9 @@ describe("rowBadges — źródło puli (S3)", () => {
       "Rejestr SM — do weryfikacji",
       "p. 3",
     ]);
-    expect(rowBadges(c(), [], undefined, "rcn").map((x) => x.label)).toEqual(["p. 3"]);
+    // kondygnacja 3 → piętro 2 on the RCN path; an absent source is never
+    // treated as RCN, so the value is shown as stored.
+    expect(rowBadges(c(), [], undefined, "rcn").map((x) => x.label)).toEqual(["p. 2"]);
     expect(rowBadges(c(), [], undefined).map((x) => x.label)).toEqual(["p. 3"]);
   });
   it("registryBadge mówi jednym głosem z REGISTRY_LABEL", () => {

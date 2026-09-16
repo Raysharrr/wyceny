@@ -48,7 +48,7 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * binarka w repo jest tą PRZEJRZANĄ, a nie że da się ją odtworzyć bajtowo;
  * odtwarzalność sprawdza się porównaniem rozpakowanych części.
  */
-const TEMPLATE_SHA256 = "9ca0f2cc4cae9620b3a71babef0dea9b2d27eccf80d359d3ddf4420008bf2477";
+const TEMPLATE_SHA256 = "14aea988339c387ec61e95f905b434fd5b36023e06bde5e82864042e3ba5887f";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));

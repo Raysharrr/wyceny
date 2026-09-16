@@ -9,7 +9,7 @@ import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
 import { DASH, operatStreet } from "./street-name";
-import { candidateKey, type Candidate } from "./sample-selection";
+import { candidateKey, pietroOfFloor, type Candidate } from "./sample-selection";
 
 /**
  * Operat document model + professional-secrecy masking (F-12).
@@ -23,11 +23,23 @@ import { candidateKey, type Candidate } from "./sample-selection";
 
 export type OperatPurpose = "sprzedaz" | "zabezpieczenie_kredytu" | "informacyjny";
 
-/** Document phrase per purpose ("Operat sporządzono {cel}"). */
+/**
+ * The GENITIVE that follows "dla potrzeb" in §3 and in the Wyciąg's "Cel
+ * wyceny" row. The template writes the preposition itself ("dla potrzeb
+ * {cel}."), so this must not repeat it — carrying it here printed "dla potrzeb
+ * dla potrzeb …" in every operat issued so far.
+ *
+ * Wording from the operats, where "dla potrzeb" appears exactly once, at the
+ * very end of the sentence: "…dla potrzeb sprzedaży." (Kościelna, Wojska
+ * Polskiego, Polanka, Folwarczna), "…dla potrzeb zabezpieczenia wierzytelności
+ * kredytodawcy." (Meissnera, Starołęcka, Milczańska, Kaźmierz),
+ * "…dla potrzeb informacyjnych Zleceniodawcy." (Kórnik — not "dla celów
+ * informacyjnych", which no operat uses).
+ */
 export const PURPOSE_TEXT: Record<OperatPurpose, string> = {
-  sprzedaz: "dla potrzeb sprzedaży",
-  zabezpieczenie_kredytu: "dla potrzeb zabezpieczenia wierzytelności kredytodawcy",
-  informacyjny: "dla celów informacyjnych",
+  sprzedaz: "sprzedaży",
+  zabezpieczenie_kredytu: "zabezpieczenia wierzytelności kredytodawcy",
+  informacyjny: "informacyjnych Zleceniodawcy",
 };
 
 /** Polish UI labels for the create-form select. */
@@ -489,9 +501,13 @@ export type DocumentModel = {
   kw_zrodlo: string;
   kw_lokalu: string;
   kw_gruntu: string;
+  /** Court and wydział for the Wyciąg (with) and §2 (without); "" when unknown. */
   kw_sad: string;
   kw_wydzial: string;
+  ma_kw_data_dok: boolean;
   kw_data_dok: string;
+  /** §7's KW bullet, as DD.MM.YYYY — the template adds the "r.". */
+  kw_data_badania: string;
   /**
    * §8.2's examination protocol, one dated sentence per book (D-21) — what the
    * 14.09 operat said instead of "Pełna treść odpisu KW pozostaje w
@@ -591,6 +607,7 @@ export type DocumentModel = {
   // enforced here (never both, never neither, when a subject is present).
   mpzp: MpzpBlock | null;
   mpzp_brak: boolean;
+  ma_przeznaczenie_studium: boolean;
   przeznaczenie_studium: string;
   // Property right (T-12, S4) — the four mechanisms of the Piastowskie diff:
   // `prawo_wlasnosc`/`prawo_spoldzielcze` are a mutually exclusive pair (exactly
@@ -644,11 +661,11 @@ export type DocumentModel = {
    * the flat `opis_cmin`/`opis_cmax` that carried only the FIRST flat's lines
    * went out with the loop that read them (b1-template, TP.4).
    *
-   * The piętro behind these lines is normalised per source
-   * (`pietroOfCandidate`): RCN's kondygnacja loses one, the cooperative
-   * register's hand-typed "Piętro" does not. Step 3's table still LABELS the
-   * raw RCN kondygnacja "Piętro", so it shows one more than these sentences do
-   * — the label fix is a follow-up of PR #58, not a defect of this value.
+   * The piętro behind these lines is normalised per source (`pietroOfFloor`):
+   * RCN's kondygnacja loses one, the cooperative register's hand-typed
+   * "Piętro" does not. Step 3's badges read the SAME function, so the storey a
+   * row shows in the table is the storey these sentences place it on — until
+   * 16.09 the badge printed the raw kondygnacja and disagreed by one.
    */
   lokale_cmin: ComparableDescription[];
   lokale_cmax: ComparableDescription[];
@@ -820,41 +837,13 @@ export function candidateOf(
 }
 
 /**
- * The transaction's PIĘTRO (parter = 0) — the unit the scale's bands and the
- * subject's own `pietro` are in, which is not the unit either register stores.
- *
- * RCN's `floor` is `lok_nr_kond`, a kondygnacja numbered from 1, so it loses
- * one. Measured, not assumed: across the 8 snapshot fixtures (80 000 rows)
- * `handlowoUslugowa` sits at 1 (839 of 976) and `garaz` at −1 (10 117 of
- * 11 779) — retail on the ground floor and garages one level below only line up
- * if parter is 1. Underground rows then come out negative and no band covers
- * them, which is the honest answer for a garage.
- *
- * The cooperative register's `floor` is hand-typed by the office under a
- * "Piętro" label, so it is taken as a piętro and NOT converted. That is a
- * reading of the label, not a measurement: every floor-bearing row in the
- * database belongs to our own E2E fixtures, so there is nothing to measure
- * (PR #58). An absent `source` is not treated as RCN — rows saved before the
- * field existed must not be silently shifted.
- */
-function pietroOfCandidate(
-  source: Comparable["source"],
-  candidate: Candidate | null,
-): number | null {
-  const floor = candidate?.floor;
-  if (floor == null) return null;
-  return source === "rcn" ? floor - 1 : floor;
-}
-
-/**
  * §12.2 wording of ONE feature for ONE comparable flat (D-52). A measurable
  * feature is placed by the SAME thresholds the subject is placed by, reading
  * the transaction's own piętro or powierzchnia; everything else says outright
  * that the register does not carry the answer.
  *
- * The piętro comes from `pietroOfCandidate`, which converts the RCN
- * kondygnacja; the area comes from the row itself, falling back to the
- * candidate.
+ * The piętro comes from `pietroOfFloor`, which converts the RCN kondygnacja;
+ * the area comes from the row itself, falling back to the candidate.
  */
 function comparableFeatureText(
   feature: Feature,
@@ -865,7 +854,7 @@ function comparableFeatureText(
   if (!measure) return OCENA_SPOZA_REJESTRU;
   const value =
     measure.kind === "floor"
-      ? pietroOfCandidate(comparable.source, candidate)
+      ? pietroOfFloor(candidate?.floor, comparable.source)
       : (comparable.area ?? candidate?.area ?? null);
   const level = levelForValue(measure, value);
   if (!level) return OCENA_SPOZA_REJESTRU;
@@ -1048,9 +1037,21 @@ export function buildDocumentModel(
     kw_zrodlo: kw ? KW_ZRODLO_TEXT[kw.source] : DASH,
     kw_lokalu: kw?.kwLokalu ?? DASH,
     kw_gruntu: kw?.kwGruntu ?? DASH,
-    kw_sad: kw?.sad ?? DASH,
-    kw_wydzial: kw?.wydzial ?? DASH,
-    kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : DASH,
+    // The court and its wydział decide which sentence the Wyciąg and §2 print,
+    // so an absent one has to be EMPTY, not a dash: the template's `{#kw_sad}`
+    // reads "—" as a court and writes it into the sentence. The template used
+    // to carry one fixed court as a literal, which is how every operat this
+    // program issued named the Poznań Stare Miasto court whatever the property.
+    kw_sad: kw?.sad ?? "",
+    kw_wydzial: kw?.wydzial ?? "",
+    // Same reasoning for the document's date, which now sits inside its own tag
+    // in §8.2: an akt and an odpis have one, the manual eKW path has none, and
+    // "(data dokumentu: —)" is a hole no operat has.
+    ma_kw_data_dok: Boolean(kw?.dataDokumentu),
+    kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : "",
+    // §7 dates its KW bullet in every reference operat ("… w dniu 22.04.2026r.,").
+    // The template writes the "r." itself, so this is the bare date.
+    kw_data_badania: kw?.dataBadania ? formatDatePl(kw.dataBadania) : "",
     protokol_ksiegi_lokalu: protokolLokalu,
     ma_protokol_ksiegi_lokalu: protokolLokalu !== "",
     protokol_ksiegi_gruntu: protokolGruntu,
@@ -1100,7 +1101,12 @@ export function buildDocumentModel(
         }
       : null,
     mpzp_brak: subject?.mpzpAbsent === true,
-    przeznaczenie_studium: subject?.przeznaczenieStudium || DASH,
+    // No operat writes a dash where the designation is missing: it names the
+    // source it did read (MPZP, plan ogólny, studium) or says nothing at all.
+    // The sentence is therefore gated, and printed "…decyzji o warunkach
+    // zabudowy: —." until 16.09.
+    ma_przeznaczenie_studium: Boolean(subject?.przeznaczenieStudium),
+    przeznaczenie_studium: subject?.przeznaczenieStudium ?? "",
     prawo_wlasnosc: input.propertyRight === "wlasnosc_lokalu",
     prawo_spoldzielcze: input.propertyRight === "spoldzielcze_wlasnosciowe",
     przedmiot_m: rightDoc.przedmiot.mianownik,
