@@ -37,6 +37,10 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * Załącznik nr 1), 14 (§8.2 w kolejności wzorca) oraz 5e (§12.2 z danych lokali).
  * Cały pipeline uruchamia jedno polecenie: `pnpm --filter web template:build`.
  *
+ * TP.6 (zrzuty z Worda): pasek kontaktowy okładki podniesiony do 88 pt bez
+ * pustych akapitów odstępu (blok biura był ucinany) i §4 z łańcuchem keepNext
+ * plus zwartą interlinią bloku adresowego.
+ *
  * UWAGA o tym pinie (zmierzone 15.09): pipeline jest odtwarzalny co do
  * ZAWARTOŚCI, ale nie bajtowo — post-processy zipa zapisują wpisy bieżącym
  * czasem, więc SHA pliku zmienia się przy każdym przebiegu, nawet gdy
@@ -44,7 +48,7 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * binarka w repo jest tą PRZEJRZANĄ, a nie że da się ją odtworzyć bajtowo;
  * odtwarzalność sprawdza się porównaniem rozpakowanych części.
  */
-const TEMPLATE_SHA256 = "b82777ce906b6bf9775bcea93e402f08d511a3d8f92b67167c1e691c02fabc31";
+const TEMPLATE_SHA256 = "9ca0f2cc4cae9620b3a71babef0dea9b2d27eccf80d359d3ddf4420008bf2477";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -460,5 +464,61 @@ describe("F-12: Table 1 follows the reference operat's layout (Slice 3d)", () =>
       afterTable1.includes("{obreb}") ||
         text.slice(0, text.indexOf("Tabela 1")).includes("{obreb}"),
     ).toBe(true);
+  });
+});
+
+/**
+ * Dwa defekty, których nie widać w TEKŚCIE dokumentu — złapane dopiero zrzutem
+ * z Worda (TP.6, 15.09). Oba dotyczą akapitów, które paczka 1 sama wstawiła,
+ * więc asercje siedzą na SZABLONIE, nie na renderze: w renderze tekst jest
+ * kompletny w obu przypadkach, a błędem jest to, czego Word z nim robi.
+ */
+describe("F-12: geometria miejsc dołożonych w paczce 1 (TP.6)", () => {
+  it("pasek kontaktowy okładki mieści blok biura zamiast go uciąć", () => {
+    const xml = templateXml();
+    // Kształt był wymiarowany pod jedną linijkę „tel. … e-mail … www”: przy
+    // 83,85 pt (cy=1064895) i dwóch pustych akapitach odstępu trzyliniowy blok
+    // urywał się w połowie trzeciej linii, bez śladu w XML.
+    expect(xml, "stara wysokość paska kontaktowego").not.toContain('cy="1064895"');
+    expect(xml.match(/cy="1117600"/g) ?? [], "wysokość w obu wymiarach DrawingML").toHaveLength(2);
+    expect(xml, "kopia VML paska").toContain("height:88.0pt");
+    // Samo autofit nie wystarcza (Word ufa zapisanej wysokości przy otwarciu),
+    // ale zostaje, żeby ręczna edycja u rzeczoznawcy rosła z treścią.
+    expect(xml, "autofit DrawingML").toContain("<a:spAutoFit/>");
+    expect(xml, "autofit VML").toContain("mso-fit-shape-to-text:t");
+    expect(xml, "stare noAutofit").not.toContain("<a:noAutofit/>");
+
+    // W obu kopiach pola (I-18) zostają dokładnie dwa akapity: logo i {biuro}.
+    const boxes = [...xml.matchAll(/<w:txbxContent>([\s\S]*?)<\/w:txbxContent>/g)];
+    expect(boxes, "dwie kopie pola tekstowego").toHaveLength(2);
+    for (const [, box] of boxes) {
+      expect(box.match(/<w:p[ >]/g) ?? [], "akapity w pasku kontaktowym").toHaveLength(2);
+      expect(box, "logo zostaje").toContain("<w:drawing>");
+      expect(box, "blok biura zostaje").toContain("{biuro}");
+    }
+  });
+
+  it("§4: blok biura trzyma się zdania i nagłówka, i ma zwartą interlinię", () => {
+    const xml = templateXml();
+    // Od POCZĄTKU akapitu nagłówka (jego `pPr` z keepNext stoi przed tekstem),
+    // nie od samego napisu — pierwsze wystąpienie obu tytułów to spis treści.
+    const naglowek = xml.indexOf(
+      "Podstawa formalna wyceny",
+      xml.indexOf("Podstawa formalna wyceny") + 1,
+    );
+    const sec4 = xml.slice(
+      xml.lastIndexOf("<w:p ", naglowek),
+      xml.indexOf("Podstawy prawne", xml.indexOf("Podstawy prawne") + 1),
+    );
+    expect(sec4, "zakres §4 znaleziony").toContain("{biuro}");
+    // Łańcuch keepNext: nagłówek → pusty akapit odstępu → zdanie o zleceniu.
+    // Bez ogniwa pośredniego Word zostawiał nagłówek z pustką na poprzedniej
+    // stronie, a zdanie z adresem przenosił na następną.
+    expect(sec4.match(/<w:keepNext[ /]/g) ?? [], "ogniwa keepNext w §4").toHaveLength(3);
+    // Adres to nie proza: bez własnego `spacing` dziedziczy interlinię 276
+    // i pięciolinijkowy blok rozłazi się na pół strony.
+    const blok = sec4.slice(sec4.lastIndexOf("<w:p ", sec4.indexOf("{biuro}")));
+    expect(blok).toContain('w:line="240"');
+    expect(blok).toContain('w:after="0"');
   });
 });
