@@ -48,7 +48,7 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * binarka w repo jest tą PRZEJRZANĄ, a nie że da się ją odtworzyć bajtowo;
  * odtwarzalność sprawdza się porównaniem rozpakowanych części.
  */
-const TEMPLATE_SHA256 = "6b86d098da3f723b968ea63189dc9e2e5d125ee723831a6cc56a4af701569c2b";
+const TEMPLATE_SHA256 = "9f04042e45bae9a0716db4a0c22ecace2ff2fe854394213e94e171951cac3a0f";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -505,6 +505,37 @@ describe("F-12: Table 1 follows the reference operat's layout (Slice 3d)", () =>
  * Placeholder ZOSTAJE jako gałąź odwrotna, więc nie da się go zakazać literałem;
  * broni tu liczność tagów, a treści broni render w `f12-document-sections`.
  */
+/**
+ * D-30 jako KLASA, nie pojedynczy akapit. Word rozciąga do pełnej szerokości
+ * każdą linię akapitu justowanego, która kończy się miękkim łamaniem — także
+ * tę, która normalnie byłaby ostatnią i poszłaby do lewej. Tak wyglądało §11
+ * („Cechy   analizowanego   rynku:") i tak nadal wyglądało §12.1 po naprawie
+ * M-11: „jednostkowe   ceny   transakcyjne   nieruchomości   podobnych."
+ * Zmierzone na operacie wydanym na stagingu 16.09: dziewięć takich akapitów
+ * w §1, §2, §12.1, §13 i §14.
+ */
+describe("F-12: twarde łamania tylko tam, gdzie mają sens", () => {
+  it("żaden akapit justowany nie niesie <w:br/>", () => {
+    const xml = templateXml();
+    const winne = (xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).filter(
+      (p) => p.includes('<w:jc w:val="both"/>') && /<w:br\s*\/>/.test(p),
+    );
+    expect(winne).toEqual([]);
+  });
+
+  it("zostawia łamania w akapitach NIEjustowanych — tam niosą treść", () => {
+    // Dwuwierszowy nagłówek Tabeli 1 („Pow. uż. [m2]") jest wyśrodkowany, więc
+    // reguła go omija bez wyjątku wpisanego z ręki. Tym samym mechanizmem
+    // ocalony jest blok biura na okładce: {biuro} dostaje swoje łamania
+    // dopiero przy renderze i też nie jest justowany.
+    const xml = templateXml();
+    const zLamaniem = (xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).filter((p) =>
+      /<w:br\s*\/>/.test(p),
+    );
+    expect(zLamaniem.length).toBeGreaterThan(0);
+  });
+});
+
 describe("F-12: identyfikacja geodezyjna w Wyciągu i §2 (M-2)", () => {
   it("prints the same composed sentence in both places, each behind the same fence", () => {
     const text = templateText();
