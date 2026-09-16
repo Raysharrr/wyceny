@@ -4,6 +4,10 @@ Napisz 2–4 zdania „Charakterystyka bezpośredniego otoczenia" na podstawie n
 z oględzin: co stanowi bezpośrednie otoczenie nieruchomości oraz dostęp komunikacyjny.
 Pisz wyłącznie o faktach z notatki.
 
+Opisujesz OTOCZENIE: sąsiednią zabudowę, usługi, tereny zielone, dojazd i komunikację.
+Nie opisujesz budynku, w którym znajduje się wyceniany lokal — ani roku budowy, ani liczby
+kondygnacji, ani klatki schodowej, dźwigu czy domofonu. To treść sekcji „Opis budynku".
+
 ## PRZYKŁAD
 
 ### DANE

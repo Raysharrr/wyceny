@@ -87,7 +87,7 @@ def test_liczba_przebadanych_transakcji_jest_slowem_nie_sztuka():
 
 class TestParseSectionFile:
     def test_all_production_sections_parse(self):
-        # The 6 committed prompts are the parser's contract: task + >=1 example,
+        # The 7 committed prompts are the parser's contract: task + >=1 example,
         # every example a DANE dict plus a non-empty TEKST.
         for section in SECTIONS:
             task, examples = parse_section_file(PROMPTS_DIR / f"{section}.md")
@@ -100,6 +100,7 @@ class TestParseSectionFile:
     def test_section_files_exist_for_every_declared_section(self):
         assert SECTIONS == (
             "analiza_rynku",
+            "opis_budynku",
             "opis_lokalu",
             "otoczenie",
             "zagospodarowanie",
@@ -108,6 +109,29 @@ class TestParseSectionFile:
         )
         for section in SECTIONS:
             assert (PROMPTS_DIR / f"{section}.md").is_file()
+
+    def _shown_keys(self, section: str) -> set[str]:
+        """Klucze faktów, które few-shoty sekcji pokazują modelowi. To NIE jest
+        dokumentacja: model dostaje pełny słownik faktów, a bloki DANE są
+        jedynym sygnałem, z czego sekcja ma pisać (spike 2026-08-18 zmierzył,
+        że trzyma się swojego podzbioru)."""
+        _, examples = parse_section_file(PROMPTS_DIR / f"{section}.md")
+        return {key for data, _ in examples for key in data}
+
+    def test_each_inspection_note_field_feeds_exactly_one_section(self):
+        """ADR-017 reg. 2: jedno pole notatki zasila dokładnie jedną sekcję.
+
+        Współdzielony klucz jest przyczyną D-15 — gdy `notatka_otoczenie`
+        niosła całą notatkę z oględzin, sekcja otoczenia wyciągała z niej wątek
+        budynku i par. 8.1 opisywał rok budowy oraz kondygnacje.
+        """
+        owners: dict[str, set[str]] = {}
+        for section in SECTIONS:
+            for key in self._shown_keys(section):
+                if key.startswith("notatka_"):
+                    owners.setdefault(key, set()).add(section)
+        shared = {key: sorted(s) for key, s in owners.items() if len(s) > 1}
+        assert not shared, f"pole notatki zasila wiecej niz jedna sekcje: {shared}"
 
     def test_example_data_is_parsed_json(self):
         _, examples = parse_section_file(PROMPTS_DIR / "analiza_rynku.md")

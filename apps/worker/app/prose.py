@@ -17,6 +17,11 @@ PROMPTS_DIR = Path(__file__).parent / "prompts" / "prose"
 
 SECTIONS: tuple[str, ...] = (
     "analiza_rynku",
+    # Przed "opis_lokalu": operat opisuje najpierw budynek, potem lokal w nim.
+    # Kolejność pozostałych sekcji bez zmian — lustro `PROSE_SECTIONS` po
+    # stronie web. Nowa nazwa MUSI dotrzeć na produkcję przed webem, bo
+    # `_validated_sections` odrzuca całe żądanie przy nieznanej sekcji.
+    "opis_budynku",
     "opis_lokalu",
     "otoczenie",
     "zagospodarowanie",
