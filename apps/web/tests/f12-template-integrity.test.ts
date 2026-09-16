@@ -48,7 +48,7 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * binarka w repo jest tą PRZEJRZANĄ, a nie że da się ją odtworzyć bajtowo;
  * odtwarzalność sprawdza się porównaniem rozpakowanych części.
  */
-const TEMPLATE_SHA256 = "5b74d868091876a41e847c90d5649b6b3406ea371a495d0822f750dc3b72deec";
+const TEMPLATE_SHA256 = "6b86d098da3f723b968ea63189dc9e2e5d125ee723831a6cc56a4af701569c2b";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -366,12 +366,18 @@ const REQUIRED_PLACEHOLDERS = [
   // keeps its own address sentence, so an empty value already renders as
   // silence; the four that OWN their paragraph carry a {#ma_proza_*} wrap so a
   // draft without prose shows no heading over emptiness.
-  "{proza_analiza_rynku}",
+  // M-11 (D-36): cztery samodzielne sloty prozy to PĘTLE po akapitach, więc
+  // gołego tagu już nie mają — dokument dostaje osobne `<w:p>` zamiast jednego
+  // bloku rozciąganego przez justowanie. `{proza_opis_lokalu}` zostaje, bo
+  // niesie je jeszcze komórka Wyciągu, gdzie kontynuuje literał.
+  "{#proza_analiza_rynku_ak}",
+  "{#proza_opis_lokalu_ak}",
+  "{#proza_standard_ak}",
+  "{#proza_uzasadnienie_ak}",
+  "{tekst}",
   "{proza_otoczenie}",
   "{proza_zagospodarowanie}",
   "{proza_opis_lokalu}",
-  "{proza_standard}",
-  "{proza_uzasadnienie}",
   "{#ma_proza_analiza_rynku}",
   "{/ma_proza_analiza_rynku}",
   "{#ma_proza_opis_lokalu}",

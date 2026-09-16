@@ -73,11 +73,24 @@ describe("renderOperatDocx photos (Slice 10, F-12 media leg)", () => {
     expect(without).not.toContain("Dokumentacja fotograficzna i kartograficzna");
     expect(without).not.toContain("{%img}");
   });
-  it("renders the note block only when a note exists", () => {
+  /**
+   * D-28 (M-9) — ODWRÓCONE 16.09, i to jest teraz bronione.
+   *
+   * Do dziś surowa notatka z oględzin lądowała po galerii wnętrz pod nagłówkiem
+   * „Uwagi z oględzin:" — ze swoimi łamaniami, punktorami i tabulatorami,
+   * i po raz TRZECI z opisem budynku, układu lokalu i wykończenia, które
+   * dokument podaje już w §8.1, §8.3 i §8.4. Żaden z 10 operatów wzorcowych
+   * takiej sekcji nie ma, a Aneta usunęła ją ze swojej poprawki.
+   *
+   * Blok został w szablonie (ADR-017 reg. 4) — jest slotem na przyszłe pole
+   * `uwagi` notatki strukturalnej, czyli UWAGI rzeczoznawcy, a nie całą
+   * notatkę. Dopóki tego pola nie ma, sekcja milczy.
+   */
+  it("nigdy nie drukuje surowej notatki z oględzin (D-28)", () => {
     const withNote = textOf(renderOperatDocx(modelWithNote));
     const without = textOf(renderOperatDocx(model));
-    expect(withNote).toContain("Uwagi z oględzin:");
-    expect(withNote).toContain("Lokal po remoncie.");
+    expect(withNote).not.toContain("Uwagi z oględzin:");
+    expect(withNote).not.toContain("Lokal po remoncie.");
     expect(without).not.toContain("Uwagi z oględzin:");
   });
   it("keeps approve/sign text identical with photos and adds exactly one medium on sign", () => {

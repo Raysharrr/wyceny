@@ -8,6 +8,7 @@ import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { isPrzeznaczenieComplete } from "./przeznaczenie";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import { deriveSubjectEgib } from "./egib-id";
+import { toInlineText, toParagraphs } from "./paragraphs";
 import type { SubjectSnapshot } from "./subject-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
@@ -352,6 +353,16 @@ function protokolBadania(
     `${rodzaj} nr ${numer} (źródło: przegladarka-ekw.ms.gov.pl):`
   );
 }
+
+/**
+ * One paragraph of a prose section as the template loop consumes it (M-11).
+ * A record, not a bare string, because docxtemplater's paragraph loop reads a
+ * named tag from each item — `{#proza_x}{tekst}{/proza_x}`.
+ */
+export type ProseParagraph = { tekst: string };
+
+const prozaAkapity = (text: string): ProseParagraph[] =>
+  toParagraphs(text).map((tekst) => ({ tekst }));
 
 /** §7's deed sentence (ADR-018 reg. 5): only the parts the book actually states. */
 function aktOpis(akt: KwAkt | null | undefined): string {
@@ -752,12 +763,29 @@ export type DocumentModel = {
   // …in the ISSUED document. Under `opts.preview` an absent section carries
   // `previewMarker(section)` instead, so the appraiser reading the preview
   // sees what is still missing (spec §C).
-  proza_analiza_rynku: string;
+  /**
+   * M-11 — every section in TWO shapes, because the template uses it in two
+   * shapes and pretending otherwise is what produced D-36.
+   *
+   * `proza_x` is the joined text, and only the three slots that CONTINUE a
+   * literal sentence still have one: §8.1 and §8.4 ("…pod adresem: {adres}.
+   * {proza_otoczenie}") plus the Wyciąg's own cell for the flat description.
+   * It carries no newline any more, so `linebreaks` has nothing to turn into
+   * `<w:br/>` there.
+   */
   proza_otoczenie: string;
   proza_zagospodarowanie: string;
   proza_opis_lokalu: string;
-  proza_standard: string;
-  proza_uzasadnienie: string;
+  /**
+   * `proza_x_ak` is the same text as real paragraphs, for the four slots that
+   * stand alone — the template loops them into separate `<w:p>` elements, so a
+   * justified section can no longer come out as one block whose every line
+   * Word stretches to the column width.
+   */
+  proza_analiza_rynku_ak: ProseParagraph[];
+  proza_opis_lokalu_ak: ProseParagraph[];
+  proza_standard_ak: ProseParagraph[];
+  proza_uzasadnienie_ak: ProseParagraph[];
   // Honest silence, `ma_uwagi_ogledzin`'s pattern: the four sections that own
   // their paragraph in the template are wrapped in {#ma_proza_*}, so an empty
   // one leaves no blank line under its heading. `otoczenie` and
@@ -1245,17 +1273,32 @@ export function buildDocumentModel(
     ),
     liczba_atrybutow_fraza: `${activeFeatures.length} ${activeFeatures.length === 1 ? "atrybutu" : "atrybutów"}`,
     ma_skale: skalaOcen.length > 0,
-    ma_uwagi_ogledzin: Boolean(input.inputs.inspection?.note),
-    uwagi_ogledzin: input.inputs.inspection?.note ?? "",
-    proza_analiza_rynku: proza.analiza_rynku,
-    proza_otoczenie: proza.otoczenie,
-    proza_zagospodarowanie: proza.zagospodarowanie,
-    proza_opis_lokalu: proza.opis_lokalu,
-    proza_standard: proza.standard,
-    proza_uzasadnienie: proza.uzasadnienie,
-    ma_proza_analiza_rynku: proza.analiza_rynku !== "",
-    ma_proza_opis_lokalu: proza.opis_lokalu !== "",
-    ma_proza_standard: proza.standard !== "",
-    ma_proza_uzasadnienie: proza.uzasadnienie !== "",
+    // D-28 (M-9): the raw inspection note is NOT printed. Until 16.09 it was
+    // dumped here verbatim, after the interior photos, under „Uwagi
+    // z oględzin:" — with its own line breaks, bullets and tab stops, and for
+    // the third time the same description of the building, the flat and the
+    // finish. No reference operat has that section at all (0 of 10), and Aneta
+    // deleted it from her corrected file.
+    //
+    // The template block stays (ADR-017 reg. 4): it is the slot for the
+    // structured note's future `uwagi` field, which is the appraiser's REMARKS
+    // rather than the whole note. Until that field exists there is nothing
+    // honest to put here, so the section stays silent instead of reprinting
+    // facts the document already states in §8.1, §8.3 and §8.4.
+    ma_uwagi_ogledzin: false,
+    uwagi_ogledzin: "",
+    proza_otoczenie: toInlineText(proza.otoczenie),
+    proza_zagospodarowanie: toInlineText(proza.zagospodarowanie),
+    proza_opis_lokalu: toInlineText(proza.opis_lokalu),
+    proza_analiza_rynku_ak: prozaAkapity(proza.analiza_rynku),
+    proza_opis_lokalu_ak: prozaAkapity(proza.opis_lokalu),
+    proza_standard_ak: prozaAkapity(proza.standard),
+    proza_uzasadnienie_ak: prozaAkapity(proza.uzasadnienie),
+    // Honest silence follows the PARAGRAPHS, not the raw string: prose that is
+    // nothing but whitespace would otherwise open a section and print nothing.
+    ma_proza_analiza_rynku: prozaAkapity(proza.analiza_rynku).length > 0,
+    ma_proza_opis_lokalu: prozaAkapity(proza.opis_lokalu).length > 0,
+    ma_proza_standard: prozaAkapity(proza.standard).length > 0,
+    ma_proza_uzasadnienie: prozaAkapity(proza.uzasadnienie).length > 0,
   };
 }
