@@ -26,7 +26,7 @@ Pobieranie startuje po wpisaniu adresu i opuszczeniu tego pola — nie ma osobne
 Wypełniane pola:
 
 - z ewidencji gruntów i budynków: obręb, arkusz mapy, nr działki, pow. ewidencyjna działki [ha], użytek, rodzaj budynku, kondygnacje nadziemne i podziemne,
-- z planu miejscowego: symbol MPZP, nazwa planu, uchwała, data uchwały i publikator.
+- z planu miejscowego: symbol i opis przeznaczenia, nazwa planu, uchwała, data uchwały i publikator.
 
 Każde pobrane pole zostaje edytowalne — to propozycja do potwierdzenia, nie zapis nie do ruszenia. Z jakich rejestrów pochodzą te dane i dokąd sięga zasięg pobrania, opisują [Źródła danych o przedmiocie wyceny](/pomoc/zrodla-danych-przedmiotu).
 
@@ -42,7 +42,17 @@ Dwa pierwsze wyglądają na ekranie tak samo — neutralne ℹ bez żadnego przy
 
 Rok budowy nie występuje w publicznej ewidencji — to pole zostaje puste i uzupełniasz je z dokumentacji albo z oględzin. Tak samo **piętro**, obok powierzchni w karcie „Dane przedmiotu”: ewidencja podaje liczbę kondygnacji budynku, a nie kondygnację, na której leży lokal. Parter wpisuje się jako 0. Piętro wchodzi do podpowiedzi oceny cechy „położenie na piętrze” w [kroku 4](/pomoc/krok-4-cechy) — bez niego podpowiedzi po prostu nie ma; nie blokuje natomiast ani zapisu kroku, ani zatwierdzenia operatu.
 
-Gdy dla działki nie ma żadnego planu miejscowego, pobranie samo zaznacza **„Brak obowiązującego MPZP”**, a pięć pól planu ustępuje wtedy miejsca jednemu polu „Przeznaczenie wg studium/decyzji WZ”. Nie jest to więc pole wyłącznie ręczne — zaznaczasz je sam tylko wtedy, gdy pobranie tego nie zrobiło.
+### Co określa przeznaczenie terenu
+
+Po reformie planistycznej z 2023 r. brak planu miejscowego nie jest jednym stanem, tylko dwoma, i operat musi nazwać ten dokument, który faktycznie przeczytałeś. Dlatego wskazujesz jedną z trzech podstaw:
+
+- **miejscowy plan zagospodarowania przestrzennego** — gdy plan obowiązuje; pobranie wybiera tę opcję samo, jeśli znalazło plan dla działki,
+- **plan ogólny gminy** — gdy planu miejscowego nie ma, a gmina uchwaliła plan ogólny (w Poznaniu obowiązuje od 14 stycznia 2026 r.),
+- **studium** — gdy gmina planu ogólnego jeszcze nie ma; do dnia jego wejścia w życie plan ogólny zastępuje studium (art. 64 ust. 2 ustawy z 7 lipca 2023 r.). §9 operatu cytuje wtedy ten przepis w całości.
+
+Pobranie nie wybiera za Ciebie między planem ogólnym a studium: wie, że planu miejscowego nie ma, ale nie wie, co stoi na jego miejscu. Po wskazaniu **planu ogólnego** przy adresie w Poznaniu uchwała miasta podpowiada się sama — do nadpisania, gdy miasto uchwali nową. Symbol strefy nie jest nigdy podpowiadany: odczytujesz go z mapy dla tej konkretnej działki.
+
+Wskazana podstawa wchodzi w dwa miejsca operatu naraz — w §7 („Źródła danych o nieruchomości”) i w §9 — i zawsze nazywa tam ten sam dokument.
 
 ### Podgląd map
 
@@ -114,7 +124,7 @@ Podobnie działa zmiana **rodzaju prawa**: inne prawo to inny przedmiot, więc z
 - **Numer księgi wieczystej** — gdy wybrałeś „Wpisz ręcznie” i wyceniasz własność lokalu; przy spółdzielczym prawie pole może zostać puste.
 - **Piętro** — pole liczbowe obok powierzchni; parter to 0.
 - Pola, których źródła nie zwróciły — najczęściej rok budowy.
-- **Brak obowiązującego MPZP** — do zaznaczenia, gdy planu nie ma, a pobranie samo go nie zaznaczyło; pola planu ustąpią wtedy miejsca polu „Przeznaczenie wg studium/decyzji WZ”.
+- **Co określa przeznaczenie terenu** — wybór podstawy (plan miejscowy / plan ogólny / studium) wraz z nazwą, uchwałą, datą i symbolem. Pobranie wypełnia tylko gałąź planu miejscowego.
 
 ## Co blokuje przejście dalej
 

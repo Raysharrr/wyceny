@@ -62,6 +62,8 @@ const BLOCKER_STEP: Record<string, number> = {
   "provenance.geocode": 1,
   "provenance.ewidencja": 1,
   "provenance.mpzp": 1,
+  // B-02 (M-10): the designation is chosen on the same step-1 form.
+  "subject.przeznaczenieRodzaj": 1,
   "provenance.kw": 1,
   kw: 1,
   // Spelled out rather than left to the `kw` prefix: B-06 and B-07 are the

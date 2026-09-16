@@ -46,10 +46,11 @@ Wynik planistyczny powstaje, gdy zadziała **którakolwiek** z tych dwóch dróg
 Pusta odpowiedź warstw planistycznych jest **poprawną odpowiedzią**, a nie błędem pobrania: znacznej części Poznania żaden plan miejscowy nie obejmuje (ustalenie ze spike'u, odnotowane w nagłówku modułu `apps/worker/app/subject.py`). Wtedy:
 
 - worker zwraca dane przedmiotu bez części planistycznej i odnotowuje brak planu w metryce pobrania,
-- formularz zaznacza „Brak obowiązującego MPZP” i w miejsce pięciu pól planu pokazuje jedno pole „Przeznaczenie wg studium/decyzji WZ”, które wypełnia rzeczoznawca,
-- operat drukuje zdanie o braku planu zamiast bloku planistycznego.
+- formularz zostawia wybór podstawy przeznaczenia **pusty** — pobranie wie, że planu miejscowego nie ma, ale nie wie, co po reformie z 2023 r. stoi na jego miejscu: plan ogólny gminy czy jeszcze studium,
+- rzeczoznawca wskazuje jedną z tych dwóch podstaw w kroku 1 i uzupełnia nazwę, uchwałę, datę i symbol; w Poznaniu uchwała planu ogólnego podpowiada się sama,
+- operat drukuje zdanie o braku planu miejscowego (wraz z informacją, że nie ujawniono decyzji o warunkach zabudowy), a niżej — zdanie nazywające wskazaną podstawę.
 
-Dokument stosuje przy tym własny, ostrzejszy warunek: blok planistyczny pojawia się tylko wtedy, gdy dane przedmiotu w ogóle istnieją, brak planu nie jest zaznaczony **i** wypełniony jest przynajmniej jeden z trzech elementów — symbol, nazwa planu albo uchwała (`apps/web/src/domain/document-model.ts`). Samo pobranie z pustym symbolem i pustą metryką nie wystarczy, by operat twierdził cokolwiek o planie.
+Dokument stosuje przy tym warunek „wszystko albo nic”: zdanie o przeznaczeniu drukuje się tylko wtedy, gdy wskazana jest podstawa **i** wypełnione są nazwa, uchwała, data oraz symbol (`isPrzeznaczenieComplete` w `apps/web/src/domain/przeznaczenie.ts`). Tę samą regułę czyta brama zatwierdzania jako blokadę B-02, więc operat nie wydrukuje zdania, którego brama by nie przepuściła, ani nie przemilczy czegoś, co brama przepuściła.
 
 ## Mapy do operatu
 

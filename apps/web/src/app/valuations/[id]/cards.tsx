@@ -11,6 +11,7 @@ import {
 } from "@/domain/kcs";
 import type { KwDzialSnapshot } from "@/domain/kw-snapshot";
 import { formatNumber } from "@/domain/document-model";
+import { PRZEZNACZENIE_LABEL, PRZEZNACZENIE_NAZWA_LABEL } from "@/domain/przeznaczenie";
 
 export const currencyFormatter = new Intl.NumberFormat("pl-PL", {
   style: "currency",
@@ -230,38 +231,41 @@ export function SubjectCard({ inputs }: { inputs: KcsInput }) {
             <dd>{subject.rokBudowy ?? "b.d."}</dd>
           </div>
         </dl>
-        {subject.mpzpAbsent ? (
-          <div className="flex flex-col gap-0.5 text-sm">
-            <p className="font-medium text-foreground">Brak obowiązującego MPZP</p>
-            {subject.przeznaczenieStudium ? (
-              <p className="text-muted-foreground">
-                Przeznaczenie wg studium/WZ: {subject.przeznaczenieStudium}
-              </p>
-            ) : null}
-          </div>
-        ) : (
+        {subject.przeznaczenieRodzaj ? (
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-xs text-muted-foreground">Symbol MPZP</dt>
-              <dd>{subject.mpzpSymbol ?? "—"}</dd>
+              <dt className="text-xs text-muted-foreground">Podstawa przeznaczenia</dt>
+              <dd>{PRZEZNACZENIE_LABEL[subject.przeznaczenieRodzaj]}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Nazwa MPZP</dt>
-              <dd>{subject.mpzpNazwa ?? "—"}</dd>
+              <dt className="text-xs text-muted-foreground">Symbol i opis</dt>
+              <dd>{subject.przeznaczenieSymbol ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">
+                {PRZEZNACZENIE_NAZWA_LABEL[subject.przeznaczenieRodzaj]}
+              </dt>
+              <dd>{subject.przeznaczenieNazwa ?? "—"}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Uchwała</dt>
-              <dd>{subject.mpzpUchwala ?? "—"}</dd>
+              <dd>{subject.przeznaczenieUchwala ?? "—"}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Data uchwały</dt>
-              <dd>{subject.mpzpData ?? "—"}</dd>
+              <dd>{subject.przeznaczenieData ?? "—"}</dd>
             </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Publikator</dt>
-              <dd>{subject.mpzpPubl ?? "—"}</dd>
-            </div>
+            {subject.przeznaczenieRodzaj === "plan_ogolny" ? (
+              <div>
+                <dt className="text-xs text-muted-foreground">Status dokumentu</dt>
+                <dd>{subject.przeznaczeniePublikator ?? "—"}</dd>
+              </div>
+            ) : null}
           </dl>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Podstawa przeznaczenia terenu nie została wskazana — uzupełnij w kroku 1.
+          </p>
         )}
       </div>
     </SectionCard>

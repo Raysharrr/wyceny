@@ -391,16 +391,17 @@ export const subjectSchema = z.object({
     .min(0, "Piętro nie może być ujemne — parter to 0.")
     .max(100, "Piętro wygląda na błędne.")
     .nullish(),
-  mpzpAbsent: z.boolean().optional(),
-  mpzpSymbol: z.string().optional(),
-  mpzpNazwa: z.string().optional(),
-  mpzpUchwala: z.string().optional(),
-  mpzpData: z
+  // M-10 / D-34 — the designation source, nullish so a pre-M-10 draft still
+  // parses and opens; B-02 is what refuses to approve it unselected.
+  przeznaczenieRodzaj: z.enum(["mpzp", "plan_ogolny", "studium"]).nullish(),
+  przeznaczenieNazwa: z.string().optional(),
+  przeznaczenieUchwala: z.string().optional(),
+  przeznaczenieData: z
     .string()
     .optional()
     .refine((v) => !v || /^\d{4}-\d{2}-\d{2}$/.test(v), "Podaj datę w formacie RRRR-MM-DD."),
-  mpzpPubl: z.string().optional(),
-  przeznaczenieStudium: z.string().optional(),
+  przeznaczenieSymbol: z.string().optional(),
+  przeznaczeniePublikator: z.string().optional(),
 });
 
 /** Mirrors `SubjectMetaSnapshot` from `@/domain/subject-snapshot` — the fetch's provenance for the subject snapshot (F-5). */
