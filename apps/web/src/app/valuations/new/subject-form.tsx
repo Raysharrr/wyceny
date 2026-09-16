@@ -485,9 +485,9 @@ export function SubjectForm({
           className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-500"
         >
           Zmiana powierzchni kasuje zatwierdzoną kalkulację: wartość rynkową trzeba będzie ponownie
-          wyliczyć w kroku 5. Poprawka adresu, powierzchni albo danych przedmiotu wymaga też
-          ponownego zatwierdzenia opisów w kroku 6 — sama zmiana zamawiającego, celu wyceny albo
-          numeru księgi nie rusza ani kwoty, ani opisów.
+          wyliczyć w kroku 5. Poprawka powierzchni, miasta albo danych przedmiotu wymaga też
+          ponownego zatwierdzenia opisów w kroku 6 — sama zmiana zamawiającego, celu wyceny, numeru
+          księgi albo ulicy i numeru w tym samym mieście nie rusza ani kwoty, ani opisów.
         </p>
       ) : null}
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">

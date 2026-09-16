@@ -107,12 +107,17 @@ describe("what a step-1 save costs the descriptions", () => {
   };
 
   it.each([
-    ["adres", () => staleAfter("ul. Klonowa 9, m. Nowogród", baseInputs()), ["analiza_rynku"]],
+    // M-12: §11 is composed from the data and names only the CITY from the
+    // address, and the selection's own subject area (the band it applied), not
+    // today's `area` — a corrected house number or area no longer re-flags it.
+    // A corrected area still stales the sample through step 3, not here.
     [
-      "powierzchnia",
-      () => staleAfter(ADDRESS, { ...baseInputs(), area: 99 }),
-      ["analiza_rynku", "opis_lokalu"],
+      "adres (ta sama miejscowość)",
+      () => staleAfter("ul. Klonowa 9, m. Nowogród", baseInputs()),
+      [],
     ],
+    ["miasto", () => staleAfter("ul. Klonowa 4, m. Zielonka", baseInputs()), ["analiza_rynku"]],
+    ["powierzchnia", () => staleAfter(ADDRESS, { ...baseInputs(), area: 99 }), ["opis_lokalu"]],
     [
       "obręb",
       () => staleAfter(ADDRESS, editSubject({ obreb: "Inny" })),

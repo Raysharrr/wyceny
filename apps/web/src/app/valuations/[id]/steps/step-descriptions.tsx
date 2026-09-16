@@ -173,9 +173,18 @@ function worthGenerating(
  * own text with its confirmation reset (`newVersionOf`, T7), and a badge
  * reading "potwierdzone" there would contradict the blocker on step 7.
  */
-function ProseProvenanceBadge({ provenance }: { provenance: Provenance | undefined }) {
+function ProseProvenanceBadge({
+  section,
+  provenance,
+}: {
+  section: ProseSection;
+  provenance: Provenance | undefined;
+}) {
   if (!provenance) return null;
-  const who = provenance.source === "ai" ? "AI" : "Rzeczoznawca";
+  // `ai` marks the automat's text; §11 is composed from the data, not by a
+  // model (M-12), and the badge must not say otherwise.
+  const who =
+    provenance.source !== "ai" ? "Rzeczoznawca" : section === "analiza_rynku" ? "Z danych" : "AI";
   if (provenance.status !== "confirmed") {
     return (
       <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-500">
@@ -490,7 +499,7 @@ function ProseEditors({
                     {PROSE_SECTION_LABEL[section]}
                   </label>
                   <span data-testid={`prose-badge-${section}`}>
-                    <ProseProvenanceBadge provenance={entry?.provenance} />
+                    <ProseProvenanceBadge section={section} provenance={entry?.provenance} />
                   </span>
                 </div>
                 <textarea

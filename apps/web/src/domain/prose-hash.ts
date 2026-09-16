@@ -21,6 +21,7 @@ import {
   type ProseFactsInput,
 } from "./prose";
 import { PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
+import { composeMarketAnalysis } from "./market-analysis";
 
 /**
  * JSON with keys sorted recursively. Plain `JSON.stringify` preserves
@@ -68,10 +69,18 @@ export function proseFactsHash(facts: ProseFacts): string {
  * files pin.
  */
 export function currentSectionFactsHash(section: ProseSection, input: ProseFactsInput): string {
-  const facts = buildProseFacts(input);
-  const subset: Partial<ProseFacts> = {};
-  for (const key of PROSE_SECTION_FACTS[section]) {
-    if (facts[key] !== undefined) (subset as Record<string, unknown>)[key] = facts[key];
+  const subset: Record<string, unknown> = {};
+  if (section === "analiza_rynku") {
+    // §11 is composed from the data (M-12), so what it is written from is the
+    // composed text itself: criteria, the collected set and the sample — none
+    // of which the old facts subset covered. The transactions stay on top, as
+    // for every sample section: the appraiser may add a sentence of their own.
+    subset.composed = composeMarketAnalysis(input);
+  } else {
+    const facts = buildProseFacts(input);
+    for (const key of PROSE_SECTION_FACTS[section]) {
+      if (facts[key] !== undefined) subset[key] = facts[key];
+    }
   }
   return sha256Canonical({
     facts: subset,
