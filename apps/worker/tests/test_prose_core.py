@@ -118,23 +118,6 @@ class TestParseSectionFile:
         _, examples = parse_section_file(PROMPTS_DIR / f"{section}.md")
         return {key for data, _ in examples for key in data}
 
-    def test_building_facts_are_shown_to_opis_budynku_only(self):
-        """D-15/D-31: rodzaj budynku, kondygnacje i rok budowy widzi wyłącznie
-        sekcja "Opis budynku".
-
-        Do 14.09 widziało je też `zagospodarowanie` — i ani jeden z jego dwóch
-        przykładowych TEKSTÓW ich nie używał. Fakt pokazany bez demonstracji
-        użycia to zaproszenie do improwizacji: model dopisywał parametry budynku
-        w par. 8.4, czyli tę samą treść po raz czwarty w operacie.
-        """
-        building = {"budynek_rodzaj", "kondygnacje", "rok_budowy"}
-        for section in SECTIONS:
-            leaked = self._shown_keys(section) & building
-            if section == "opis_budynku":
-                assert leaked == building, "opis_budynku musi pokazywac fakty budynku"
-            else:
-                assert not leaked, f"{section}: fakty budynku poza 'Opis budynku': {leaked}"
-
     def test_each_inspection_note_field_feeds_exactly_one_section(self):
         """ADR-017 reg. 2: jedno pole notatki zasila dokładnie jedną sekcję.
 

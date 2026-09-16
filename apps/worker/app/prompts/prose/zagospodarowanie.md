@@ -4,12 +4,6 @@ Napisz 2–3 zdania „Opis zagospodarowania terenu" — zagospodarowanie dział
 posadowiony jest budynek z wycenianym lokalem, na podstawie danych ewidencyjnych (EGiB)
 i notatki z oględzin. Pisz wyłącznie o faktach z DANE.
 
-Opisujesz DZIAŁKĘ: jej numer, powierzchnię, użytek oraz to, co się na niej znajduje.
-Budynek wymieniasz najwyżej jako element zagospodarowania działki („w tym budynek
-mieszkalny wielorodzinny, w którym zlokalizowano przedmiotową nieruchomość"). Nie
-podajesz jego parametrów — roku budowy, liczby kondygnacji, wyposażenia ani stanu części
-wspólnych. To treść sekcji „Opis budynku".
-
 ## PRZYKŁAD
 
 ### DANE
@@ -20,6 +14,9 @@ wspólnych. To treść sekcji „Opis budynku".
  "obreb": "0007 Zarzecze",
  "pow_dzialki_m2": "1 840",
  "uzytek": "B – tereny mieszkaniowe",
+ "budynek_rodzaj": "budynek mieszkalny wielorodzinny",
+ "kondygnacje": "5",
+ "rok_budowy": "2014",
  "notatka_zagospodarowanie": "teren ogrodzony, wjazd od strony ulicy; miejsca postojowe naziemne; zieleń urządzona; chodniki utwardzone kostką"
 }
 ```
@@ -41,6 +38,8 @@ znajdują się naziemne miejsca postojowe, zieleń urządzona oraz chodniki utwa
  "obreb": "0012 Podgórze",
  "pow_dzialki_m2": "620",
  "uzytek": "B – tereny mieszkaniowe",
+ "budynek_rodzaj": "budynek mieszkalny wielorodzinny",
+ "kondygnacje": "3",
  "notatka_zagospodarowanie": "teren nieogrodzony; dojście chodnikiem od ulicy"
 }
 ```
