@@ -337,6 +337,30 @@ describe("T11: the preview marks what is missing; the issued operat stays silent
     }
   });
 
+  // Since M-7 the finish (`standard`) has its own fence AFTER the layout block,
+  // while the "Opis lokalu mieszkalnego" heading lives inside the LAYOUT fence.
+  // A finish without a layout description would therefore print with no
+  // heading, straight under the building photos — D-26 again, visually.
+  //
+  // It cannot reach a client: the F-4 prose gate refuses approval while any
+  // section is empty, and the preview marks an empty section, which opens its
+  // fence. This pins the second half — the only path where the combination is
+  // on screen at all. The remaining gap is the prose kill-switch
+  // (`requireProse` off), recorded as a follow-up rather than restructured here.
+  it("a finish without a layout still prints under „Opis lokalu mieszkalnego” in the preview", () => {
+    const prose = proseWith({ opis_lokalu: undefined });
+    const preview = docText(
+      renderOperatDocx(
+        buildDocumentModel({ ...bare, inputs: { ...goldenInputs(), prose } }, { preview: true }),
+      ),
+    );
+    const heading = preview.indexOf("Opis lokalu mieszkalnego");
+    const finish = preview.indexOf(prose.sections.standard!.value);
+
+    expect(heading).toBeGreaterThan(preview.indexOf("Opis budynku"));
+    expect(finish).toBeGreaterThan(heading);
+  });
+
   // The §1 Wyciąg cell states the area through an INVERTED wrap
   // ({^ma_proza_opis_lokalu}), so opening that wrap silences it. Marking the
   // section must not cost the preview a true sentence the issued operat does
