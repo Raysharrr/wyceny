@@ -6,7 +6,8 @@ import type { KwAkt, KwDzialSnapshot } from "./kw-snapshot";
 import type { KsiegaTresc } from "./kw-tresc";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { isPrzeznaczenieComplete } from "./przeznaczenie";
-import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
+import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
+import { noteField } from "./inspection";
 import { deriveSubjectEgib } from "./egib-id";
 import { toInlineText, toParagraphs } from "./paragraphs";
 import type { SubjectSnapshot } from "./subject-snapshot";
@@ -783,6 +784,7 @@ export type DocumentModel = {
    * Word stretches to the column width.
    */
   proza_analiza_rynku_ak: ProseParagraph[];
+  proza_opis_budynku_ak: ProseParagraph[];
   proza_opis_lokalu_ak: ProseParagraph[];
   proza_standard_ak: ProseParagraph[];
   proza_uzasadnienie_ak: ProseParagraph[];
@@ -800,6 +802,7 @@ export type DocumentModel = {
   // opens and the block prints, with no second code path and no template
   // change.
   ma_proza_analiza_rynku: boolean;
+  ma_proza_opis_budynku: boolean;
   ma_proza_opis_lokalu: boolean;
   ma_proza_standard: boolean;
   ma_proza_uzasadnienie: boolean;
@@ -1037,14 +1040,17 @@ export function buildDocumentModel(
       ? `${lokalAreaSentence(input.area)} ${previewMarker(section)}`
       : previewMarker(section);
   };
-  const proza: Record<ProseSection, string> = {
-    analiza_rynku: proseText("analiza_rynku"),
-    opis_lokalu: proseText("opis_lokalu"),
-    otoczenie: proseText("otoczenie"),
-    zagospodarowanie: proseText("zagospodarowanie"),
-    standard: proseText("standard"),
-    uzasadnienie: proseText("uzasadnienie"),
-  };
+  // Built by looping the catalogue (R-9). A hand-written literal per section
+  // silently omits a newly added one, and `opis_budynku` is exactly that case:
+  // the operat would print the "Opis budynku" heading over nothing.
+  const proza = Object.fromEntries(
+    PROSE_SECTIONS.map((section) => [section, proseText(section)]),
+  ) as Record<ProseSection, string>;
+
+  // §8.3 "Uwagi z oględzin" — the appraiser's own remarks, the one note field
+  // the operat prints verbatim. Paragraph-joined like every other note text so
+  // no hard break reaches a justified paragraph (D-30/D-36).
+  const uwagi = toInlineText(noteField(inputs.inspection, "uwagi"));
 
   // Weight-0 features stay out of the legal document entirely (workshop
   // decision: "pancerz obronny" — a zero-weight row invites challenge).
@@ -1280,23 +1286,25 @@ export function buildDocumentModel(
     // finish. No reference operat has that section at all (0 of 10), and Aneta
     // deleted it from her corrected file.
     //
-    // The template block stays (ADR-017 reg. 4): it is the slot for the
-    // structured note's future `uwagi` field, which is the appraiser's REMARKS
-    // rather than the whole note. Until that field exists there is nothing
-    // honest to put here, so the section stays silent instead of reprinting
-    // facts the document already states in §8.1, §8.3 and §8.4.
-    ma_uwagi_ogledzin: false,
-    uwagi_ogledzin: "",
+    // The block now takes the structured note's `uwagi` field (ADR-017 reg. 4)
+    // — the appraiser's own REMARKS, the one part of the note meant to be read
+    // by the reader of the operat. It is deliberately NOT fed from the old
+    // single `note`: that would reprint facts §8.1, §8.3 and §8.4 already
+    // state and recreate D-28 in every legacy draft (ADR-017 reg. 5).
+    ma_uwagi_ogledzin: uwagi !== "",
+    uwagi_ogledzin: uwagi,
     proza_otoczenie: toInlineText(proza.otoczenie),
     proza_zagospodarowanie: toInlineText(proza.zagospodarowanie),
     proza_opis_lokalu: toInlineText(proza.opis_lokalu),
     proza_analiza_rynku_ak: prozaAkapity(proza.analiza_rynku),
+    proza_opis_budynku_ak: prozaAkapity(proza.opis_budynku),
     proza_opis_lokalu_ak: prozaAkapity(proza.opis_lokalu),
     proza_standard_ak: prozaAkapity(proza.standard),
     proza_uzasadnienie_ak: prozaAkapity(proza.uzasadnienie),
     // Honest silence follows the PARAGRAPHS, not the raw string: prose that is
     // nothing but whitespace would otherwise open a section and print nothing.
     ma_proza_analiza_rynku: prozaAkapity(proza.analiza_rynku).length > 0,
+    ma_proza_opis_budynku: prozaAkapity(proza.opis_budynku).length > 0,
     ma_proza_opis_lokalu: prozaAkapity(proza.opis_lokalu).length > 0,
     ma_proza_standard: prozaAkapity(proza.standard).length > 0,
     ma_proza_uzasadnienie: prozaAkapity(proza.uzasadnienie).length > 0,

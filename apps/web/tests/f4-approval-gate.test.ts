@@ -554,7 +554,7 @@ describe("prose group (FR-6, Task 7)", () => {
     expect(approvalGate(passing())).toEqual({ ok: true });
   });
 
-  it("blocks a draft with no prose snapshot at all — ONE blocker, not six", () => {
+  it("blocks a draft with no prose snapshot at all — ONE blocker, not seven", () => {
     const result = approvalGate(passing(), { requireProse: true });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -564,7 +564,7 @@ describe("prose group (FR-6, Task 7)", () => {
     }
   });
 
-  it("passes with all six sections confirmed by the appraiser", () => {
+  it("passes with all seven sections confirmed by the appraiser", () => {
     expect(approvalGate({ ...passing(), prose: confirmedProse() }, { requireProse: true })).toEqual(
       {
         ok: true,
@@ -639,7 +639,7 @@ describe("prose group (FR-6, Task 7)", () => {
    * prose contradicts its own tables is the failure this slice exists to
    * prevent, so a fingerprint that no longer matches the draft BLOCKS — but
    * only for the sections whose OWN facts moved. One global blocker sent the
-   * appraiser back to step 6 to re-read six sections when a single corrected
+   * appraiser back to step 6 to re-read every section when a single corrected
    * transaction price could have touched two of them.
    */
   it("blocks only the sections whose facts moved, and names them", () => {
@@ -705,7 +705,7 @@ describe("prose group (FR-6, Task 7)", () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.blockers).toHaveLength(6);
+      expect(result.blockers).toHaveLength(7);
       expect(result.blockers.every((b) => b.label.includes("dane się zmieniły"))).toBe(true);
     }
   });

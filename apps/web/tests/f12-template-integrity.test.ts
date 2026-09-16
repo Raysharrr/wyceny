@@ -48,7 +48,7 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * binarka w repo jest tą PRZEJRZANĄ, a nie że da się ją odtworzyć bajtowo;
  * odtwarzalność sprawdza się porównaniem rozpakowanych części.
  */
-const TEMPLATE_SHA256 = "9f04042e45bae9a0716db4a0c22ecace2ff2fe854394213e94e171951cac3a0f";
+const TEMPLATE_SHA256 = "28b5c23028e530963f5a51096cb9053f60dbb5b55ad14f52ce249f93ea5f8b66";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -533,6 +533,66 @@ describe("F-12: twarde łamania tylko tam, gdzie mają sens", () => {
       /<w:br\s*\/>/.test(p),
     );
     expect(zLamaniem.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * I-05 as a PLACEMENT map, not a presence check. Both tags have existed in the
+ * template all along — `{proza_standard}` was simply under the wrong heading,
+ * so a test asking "is the tag there?" passed on the broken 14.09 operat. What
+ * Aneta reported (M-7, D-26) is WHERE the text prints, so that is what is
+ * pinned: for each §8.3 heading, the exact prose loops between it and the next.
+ */
+describe("F-12: każda sekcja opisowa §8.3 pod swoim nagłówkiem (M-7, D-26, I-05)", () => {
+  /** Paragraph texts in document order — `<w:t>` runs only, never `<w:tab>`. */
+  function paragraphTexts(): string[] {
+    return (templateXml().match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).map((p) =>
+      (p.match(/<w:t(?:\s[^>]*)?>[^<]*<\/w:t>/g) ?? [])
+        .map((run) => run.replace(/<[^>]+>/g, ""))
+        .join("")
+        .trim(),
+    );
+  }
+
+  /** The prose loops opened between `heading` and the next paragraph starting with `until`. */
+  function proseLoopsUnder(heading: string, until: string): string[] {
+    const texts = paragraphTexts();
+    const from = texts.indexOf(heading);
+    expect(from, `heading "${heading}" not found`).toBeGreaterThanOrEqual(0);
+    const to = texts.findIndex((t, i) => i > from && t.startsWith(until));
+    expect(to, `no "${until}" after "${heading}"`).toBeGreaterThan(from);
+    return texts.slice(from + 1, to).flatMap((t) => t.match(/\{#proza_[a-z_]+_ak\}/g) ?? []);
+  }
+
+  it("pod „Opis budynku” stoi wyłącznie opis budynku — nie wykończenie lokalu", () => {
+    expect(proseLoopsUnder("Opis budynku", "Opis lokalu mieszkalnego")).toEqual([
+      "{#proza_opis_budynku_ak}",
+    ]);
+  });
+
+  it("pod „Opis lokalu mieszkalnego” stoją układ i wykończenie, w tej kolejności", () => {
+    expect(proseLoopsUnder("Opis lokalu mieszkalnego", "8.4.")).toEqual([
+      "{#proza_opis_lokalu_ak}",
+      "{#proza_standard_ak}",
+    ]);
+  });
+
+  it("galeria wnętrz idzie po CAŁYM opisie lokalu, a klauzula piwnicy na końcu §8.3", () => {
+    // Stage 9d and stage 13 insert right after their anchor, so the later one
+    // lands closest. Anchored on the layout block they put the photos between
+    // the layout and the finish — the order is the thing to pin.
+    //
+    // Searched from the "Opis budynku" heading on: `{#ma_piwnice}` also opens a
+    // block in the §1 Wyciąg, and a document-wide `indexOf` would compare §8.3
+    // against the summary table — the same trap stage 13 once guarded against
+    // with a `rindex`.
+    const texts = paragraphTexts();
+    const from = texts.indexOf("Opis budynku");
+    const at = (tag: string) => texts.indexOf(tag, from);
+    expect(at("{/ma_proza_opis_lokalu}")).toBeGreaterThan(from);
+    expect(at("{/ma_proza_opis_lokalu}")).toBeLessThan(at("{#ma_proza_standard}"));
+    expect(at("{/ma_proza_standard}")).toBeLessThan(at("{#ma_foto_wnetrza}"));
+    expect(at("{/ma_foto_wnetrza}")).toBeLessThan(at("{#ma_piwnice}"));
   });
 });
 

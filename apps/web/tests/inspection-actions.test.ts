@@ -34,7 +34,7 @@ vi.mock("next/navigation", () => ({
 
 import {
   removeInspectionPhoto,
-  saveInspectionNote,
+  saveInspectionNoteField,
   uploadInspectionPhoto,
 } from "../src/app/actions/inspection";
 import { storage, valuationRepository } from "@/app/valuations/_deps";
@@ -192,23 +192,28 @@ describe("removeInspectionPhoto", () => {
   });
 });
 
-describe("saveInspectionNote", () => {
-  it("note over 5000 chars -> error, never touches the repo", async () => {
-    const result = await saveInspectionNote(VALUATION_ID, "a".repeat(5001));
+describe("saveInspectionNoteField", () => {
+  it("field over 5000 chars -> error, never touches the repo", async () => {
+    const result = await saveInspectionNoteField(VALUATION_ID, "budynek", "a".repeat(5001));
 
-    expect(result).toEqual({ error: "Notatka może mieć najwyżej 5000 znaków." });
+    expect(result).toEqual({ error: "Pole notatki może mieć najwyżej 5000 znaków." });
     expect(updateInspectionMock).not.toHaveBeenCalled();
   });
 
-  it("happy path -> repo op set_note", async () => {
+  it("happy path -> repo op set_note_field carrying the field name", async () => {
     updateInspectionMock.mockResolvedValueOnce(draftValuation);
 
-    const result = await saveInspectionNote(VALUATION_ID, "Klatka schodowa po remoncie.");
+    const result = await saveInspectionNoteField(
+      VALUATION_ID,
+      "budynek",
+      "Klatka schodowa po remoncie.",
+    );
 
     expect(result).toBeUndefined();
     expect(updateInspectionMock).toHaveBeenCalledWith(VALUATION_ID, SESSION_USER, {
-      kind: "set_note",
-      note: "Klatka schodowa po remoncie.",
+      kind: "set_note_field",
+      field: "budynek",
+      text: "Klatka schodowa po remoncie.",
     });
   });
 });

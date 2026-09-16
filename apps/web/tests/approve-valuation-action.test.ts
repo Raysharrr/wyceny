@@ -570,7 +570,7 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     mockCoverPhotoInStorage();
   });
 
-  it("approves a draft whose six sections the appraiser accepted", async () => {
+  it("approves a draft whose seven sections the appraiser accepted", async () => {
     getMock.mockResolvedValue(draftBase);
 
     expect(await approveValuation(draftBase.id)).toBeUndefined();
@@ -627,12 +627,12 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
   });
 
   it("refuses the SECTION that describes a superseded sample, naming only it (T4)", async () => {
-    // The appraiser confirmed six sections, then went back and edited the
+    // The appraiser confirmed seven sections, then went back and edited the
     // sample. Nothing about the snapshot's provenance changed — only the
     // facts underneath it did, which is exactly what the stored fingerprint
     // stops matching. The refusal has to name the section whose facts moved,
-    // not the whole block: five of these six still describe the draft in
-    // front of the appraiser, and sending them back to re-read all six turns
+    // not the whole block: six of these seven still describe the draft in
+    // front of the appraiser, and sending them back to re-read all seven turns
     // the check into a ritual.
     const prose = currentProse();
     prose.factsHashes.uzasadnienie = "f".repeat(64);
@@ -648,9 +648,9 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     expect(storagePutMock).not.toHaveBeenCalled();
   });
 
-  it("refuses a pre-fingerprint snapshot, naming ALL six stale sections (the migration path)", async () => {
+  it("refuses a pre-fingerprint snapshot, naming ALL seven stale sections (the migration path)", async () => {
     // A draft persisted before per-section fingerprints existed: the adapter
-    // normalizes it to an empty map on read, so all six read stale and the
+    // normalizes it to an empty map on read, so all seven read stale and the
     // appraiser makes one pass through step 6. `confirmedProse()` carries a
     // fingerprint from some earlier state of the draft, which is the same
     // thing from the gate's point of view.
@@ -666,6 +666,7 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
     );
     expect(result!.blockers!.map((b) => b.path)).toEqual([
       "prose.analiza_rynku",
+      "prose.opis_budynku",
       "prose.opis_lokalu",
       "prose.otoczenie",
       "prose.zagospodarowanie",
@@ -757,7 +758,7 @@ describe("approveValuation — prose gate + tampering (FR-6, Task 7)", () => {
    * written; the ISSUED operat must stay silent about it. The kill switch is
    * the one way a prose-less draft reaches the render at all, which makes
    * this the only place the issued path can be tested against the worst case
-   * — all six sections empty. The template contains no "brak treści" of its
+   * — all seven sections empty. The template contains no "brak treści" of its
    * own, so the assertion cannot pass on static text.
    */
   it("the issued operat carries no preview marker, not even with the prose requirement off (Task 11)", async () => {

@@ -901,21 +901,26 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
     const approved = await repo.approve(created.id, appraiserA);
     expect(approved!.status).toBe("approved");
     await expect(
-      repo.updateInspection(created.id, appraiserA, { kind: "set_note", note: "x" }),
+      repo.updateInspection(created.id, appraiserA, {
+        kind: "set_note_field",
+        field: "uwagi",
+        text: "x",
+      }),
     ).rejects.toThrow(/not a draft/i);
   });
 
-  it("set_note persists the trimmed note", async () => {
+  it("set_note_field persists the trimmed field", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 4"),
       wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const updated = await repo.updateInspection(created.id, appraiserA, {
-      kind: "set_note",
-      note: " N ",
+      kind: "set_note_field",
+      field: "budynek",
+      text: " N ",
     });
-    expect(updated!.inputs!.inspection!.note).toBe("N");
+    expect(updated!.inputs!.inspection!.notes!.budynek).toBe("N");
   });
 
   it("set_date persists inspectionDate (column), audits 'date_updated', and survives a re-read", async () => {

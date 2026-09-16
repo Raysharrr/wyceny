@@ -66,7 +66,7 @@ const snapshot = (over: Partial<ProseSnapshot> = {}): ProseSnapshot => ({
   ...over,
 });
 
-/** All six sections written by the automat and fingerprinted against today's facts. */
+/** All seven sections written by the automat and fingerprinted against today's facts. */
 const allSixFresh = (over: Partial<ProseSnapshot> = {}): ProseSnapshot =>
   snapshot({
     sections: Object.fromEntries(
@@ -298,14 +298,22 @@ describe("sections the automat cannot fill — honest silence", () => {
       generatableSections: ["analiza_rynku"],
     });
 
+    // ADR-017: each section is fed by its own note field, so the hint names
+    // THAT field — not "the note", which may well be filled in elsewhere.
     expect(screen.getByTestId("prose-hint-opis_lokalu")).toHaveTextContent(
-      "Brak notatki z oględzin",
+      "Brak pola „Lokal — układ” w notatce z oględzin",
+    );
+    expect(screen.getByTestId("prose-hint-opis_budynku")).toHaveTextContent(
+      "Brak pola „Budynek” w notatce i danych ewidencyjnych budynku",
+    );
+    expect(screen.getByTestId("prose-hint-otoczenie")).toHaveTextContent("Brak pola „Otoczenie”");
+    expect(screen.getByTestId("prose-hint-standard")).toHaveTextContent("Brak pola „Wykończenie”");
+    expect(screen.getByTestId("prose-hint-zagospodarowanie")).toHaveTextContent(
+      "Brak pola „Zagospodarowanie działki”",
     );
     // A section the facts CAN back carries no missing-DATA hint — it was asked
     // for. It still owes an explanation, though (next test).
-    expect(screen.getByTestId("prose-hint-analiza_rynku")).not.toHaveTextContent(
-      "Brak notatki z oględzin",
-    );
+    expect(screen.getByTestId("prose-hint-analiza_rynku")).not.toHaveTextContent("Brak pola");
   });
 
   it("a requested section that came back with neither text nor a reason still explains itself", async () => {
@@ -338,7 +346,7 @@ describe("the appraiser's responsibility", () => {
     );
   });
 
-  it("submit sends all six fields as plain text and moves on to step 7", async () => {
+  it("submit sends all seven fields as plain text and moves on to step 7", async () => {
     renderStep({ prose: snapshot(), upToDate: true });
 
     fireEvent.change(screen.getByLabelText(/Opis lokalu/), { target: { value: HUMAN_TEXT } });
@@ -347,6 +355,7 @@ describe("the appraiser's responsibility", () => {
     await waitFor(() => expect(confirmProseMock).toHaveBeenCalledTimes(1));
     expect(confirmProseMock).toHaveBeenCalledWith(VID, {
       analiza_rynku: "",
+      opis_budynku: "",
       opis_lokalu: HUMAN_TEXT,
       otoczenie: "",
       zagospodarowanie: "",
@@ -384,7 +393,7 @@ describe("the appraiser's responsibility", () => {
 
 describe("what went stale, and what regenerating it costs (T5)", () => {
   /**
-   * All six written by the automat, then the sample edited underneath one of
+   * All seven written by the automat, then the sample edited underneath one of
    * them. The section is stale AND still the automat's — which is the state
    * an earlier version of this block could not reach, because every stale
    * section it built was `rzeczoznawca`/`confirmed` and therefore dropped by
@@ -451,7 +460,7 @@ describe("what went stale, and what regenerating it costs (T5)", () => {
     expect(screen.queryByTestId("prose-stale-analiza_rynku")).toBeNull();
   });
 
-  it("the counted button asks for the missing-or-stale set, not for all six", async () => {
+  it("the counted button asks for the missing-or-stale set, not for all seven", async () => {
     renderStep({
       prose: oneStale(),
       upToDate: false,
@@ -468,7 +477,7 @@ describe("what went stale, and what regenerating it costs (T5)", () => {
     // appraiser ASKING, which lifts the bound the automatic call carries
     // (fix round 2). Without it this click would silently do nothing on a
     // draft whose stale sections were all attempted already, and the only
-    // retry left for one refused section would be paying for all six.
+    // retry left for one refused section would be paying for all seven.
     await waitFor(() =>
       expect(proposeProseMock).toHaveBeenCalledWith(VID, { includeAttempted: true }),
     );
@@ -505,7 +514,7 @@ describe("what went stale, and what regenerating it costs (T5)", () => {
     await waitFor(() => expect(proposeProseMock).toHaveBeenCalledWith(VID));
   });
 
-  it("'Wygeneruj wszystkie od nowa' names all six explicitly", async () => {
+  it("'Wygeneruj wszystkie od nowa' names all seven explicitly", async () => {
     renderStep({ prose: allSixFresh(), upToDate: true });
 
     fireEvent.click(screen.getByRole("button", { name: "Wygeneruj wszystkie od nowa" }));

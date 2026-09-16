@@ -61,17 +61,47 @@ describe("applyInspectionOp", () => {
       applyInspectionOp(v, { kind: "remove_photo", section: "budynekZewn", key: "nope" }),
     ).not.toThrow();
   });
-  it("set_note trims and stores null for the empty string", () => {
-    const v = applyInspectionOp(draft(), { kind: "set_note", note: "  Lokal po remoncie.  " });
-    expect(v.inputs!.inspection!.note).toBe("Lokal po remoncie.");
-    const cleared = applyInspectionOp(v, { kind: "set_note", note: "   " });
-    expect(cleared.inputs!.inspection!.note).toBeNull();
+  it("set_note_field trims and REMOVES the key for the empty string", () => {
+    // Removal, not "": `noteField` and `selectProseSections` read presence, so a
+    // blank field stored as a present key would offer a section with nothing to
+    // write from (ADR-017 reg. 2).
+    const v = applyInspectionOp(draft(), {
+      kind: "set_note_field",
+      field: "budynek",
+      text: "  Klatka po remoncie.  ",
+    });
+    expect(v.inputs!.inspection!.notes!.budynek).toBe("Klatka po remoncie.");
+    const cleared = applyInspectionOp(v, { kind: "set_note_field", field: "budynek", text: "   " });
+    expect(cleared.inputs!.inspection!.notes!.budynek).toBeUndefined();
+  });
+
+  it("keeps the other fields and never writes the legacy note", () => {
+    const v = applyInspectionOp(draft(), {
+      kind: "set_note_field",
+      field: "otoczenie",
+      text: "Zabudowa wielorodzinna.",
+    });
+    const both = applyInspectionOp(v, {
+      kind: "set_note_field",
+      field: "budynek",
+      text: "Winda i domofon.",
+    });
+    expect(both.inputs!.inspection!.notes).toEqual({
+      otoczenie: "Zabudowa wielorodzinna.",
+      budynek: "Winda i domofon.",
+    });
+    // ADR-017 reg. 5: the old single note is read-only from here on.
+    expect(both.inputs!.inspection!.note).toBe(draft().inputs!.inspection?.note ?? null);
   });
   it("refuses non-draft and missing inputs (F-7 siblings' contract)", () => {
     const signed = { ...draft(), status: "signed" } as Valuation;
-    expect(() => applyInspectionOp(signed, { kind: "set_note", note: "x" })).toThrow(/not a draft/);
+    expect(() =>
+      applyInspectionOp(signed, { kind: "set_note_field", field: "uwagi", text: "x" }),
+    ).toThrow(/not a draft/);
     const noInputs = { ...draft(), inputs: null } as Valuation;
-    expect(() => applyInspectionOp(noInputs, { kind: "set_note", note: "x" })).toThrow(/no inputs/);
+    expect(() =>
+      applyInspectionOp(noInputs, { kind: "set_note_field", field: "uwagi", text: "x" }),
+    ).toThrow(/no inputs/);
   });
 });
 

@@ -210,7 +210,7 @@ describe("T8: the prose prints in the rendered operat", () => {
 describe("T8: honest silence when the draft carries no prose", () => {
   const bare = goldenInputs();
 
-  it("prints no stub, no empty heading — the four wrapped paragraphs are GONE, not blank", () => {
+  it("prints no stub, no empty heading — the five wrapped paragraphs are GONE, not blank", () => {
     const withProse = renderOperatDocx(
       buildDocumentModel({
         ...syntheticDocumentInput(),
@@ -219,12 +219,14 @@ describe("T8: honest silence when the draft carries no prose", () => {
     );
     const without = renderOperatDocx(buildDocumentModel({ ...syntheticDocumentInput() }));
 
-    // Six: the four {#ma_proza_*}-wrapped prose paragraphs (§11, §8.3 opis
-    // lokalu, §8.3 standard, §13) plus the §8.3 "Opis lokalu mieszkalnego"
-    // sub-label and its spacer, which the wrap now opens BEFORE. The other two
-    // tags are trailing clauses of paragraphs that keep their address sentence
-    // either way.
-    expect(paragraphCount(withProse) - paragraphCount(without)).toBe(6);
+    // Seven: the five {#ma_proza_*}-wrapped prose paragraphs (§11, §8.3 opis
+    // budynku, §8.3 opis lokalu, §8.3 standard, §13) plus the §8.3 "Opis lokalu
+    // mieszkalnego" sub-label and its spacer, which the wrap opens BEFORE. The
+    // "Opis budynku" heading is deliberately NOT wrapped: the factual sentence
+    // with the address always follows it, so it never stands over nothing. The
+    // other two tags are trailing clauses of paragraphs that keep their address
+    // sentence either way.
+    expect(paragraphCount(withProse) - paragraphCount(without)).toBe(7);
     expect(docText(without)).not.toContain("zostanie uzupełniony po oględzinach");
     expect(docText(without)).not.toMatch(/\{[a-z_#/.]+\}/i);
   });
@@ -333,6 +335,30 @@ describe("T11: the preview marks what is missing; the issued operat stays silent
       );
       expect(preview, section).toContain(prose.sections[section]!.value);
     }
+  });
+
+  // Since M-7 the finish (`standard`) has its own fence AFTER the layout block,
+  // while the "Opis lokalu mieszkalnego" heading lives inside the LAYOUT fence.
+  // A finish without a layout description would therefore print with no
+  // heading, straight under the building photos — D-26 again, visually.
+  //
+  // It cannot reach a client: the F-4 prose gate refuses approval while any
+  // section is empty, and the preview marks an empty section, which opens its
+  // fence. This pins the second half — the only path where the combination is
+  // on screen at all. The remaining gap is the prose kill-switch
+  // (`requireProse` off), recorded as a follow-up rather than restructured here.
+  it("a finish without a layout still prints under „Opis lokalu mieszkalnego” in the preview", () => {
+    const prose = proseWith({ opis_lokalu: undefined });
+    const preview = docText(
+      renderOperatDocx(
+        buildDocumentModel({ ...bare, inputs: { ...goldenInputs(), prose } }, { preview: true }),
+      ),
+    );
+    const heading = preview.indexOf("Opis lokalu mieszkalnego");
+    const finish = preview.indexOf(prose.sections.standard!.value);
+
+    expect(heading).toBeGreaterThan(preview.indexOf("Opis budynku"));
+    expect(finish).toBeGreaterThan(heading);
   });
 
   // The §1 Wyciąg cell states the area through an INVERTED wrap

@@ -56,6 +56,7 @@ describe("confirmProse", () => {
 
     expect(confirmProseMock).toHaveBeenCalledWith(VALUATION_ID, SESSION_USER, {
       analiza_rynku: "",
+      opis_budynku: "",
       opis_lokalu: TEXT,
       otoczenie: "",
       zagospodarowanie: "",
@@ -64,7 +65,7 @@ describe("confirmProse", () => {
     });
   });
 
-  it("keeps only the six known sections — an unknown key never reaches the repo", async () => {
+  it("keeps only the seven known sections — an unknown key never reaches the repo", async () => {
     await confirmProse(VALUATION_ID, {
       opis_lokalu: TEXT,
       __proto__: "x",
@@ -74,6 +75,7 @@ describe("confirmProse", () => {
     const payload = confirmProseMock.mock.calls[0][2];
     expect(Object.keys(payload).sort()).toEqual([
       "analiza_rynku",
+      "opis_budynku",
       "opis_lokalu",
       "otoczenie",
       "standard",

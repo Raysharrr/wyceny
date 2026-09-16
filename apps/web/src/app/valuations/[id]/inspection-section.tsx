@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FileInput } from "@/components/ui/file-input";
 import {
   removeInspectionPhoto,
-  saveInspectionNote,
+  saveInspectionNoteField,
   uploadInspectionPhoto,
 } from "@/app/actions/inspection";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
@@ -18,8 +18,11 @@ import {
   INSPECTION_SECTIONS,
   MAX_INSPECTION_PHOTOS,
   totalInspectionPhotos,
+  NOTE_FIELDS,
+  type InspectionNotes,
   type InspectionSection as Section,
   type InspectionSnapshot,
+  type NoteField,
 } from "@/domain/inspection";
 
 const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? "http://localhost:8000";
@@ -35,6 +38,31 @@ const SECTION_LABELS: Record<Section, string> = {
   wnetrza: "Wnętrza",
 };
 
+/**
+ * Field labels mirror the operat's own headings, and the hints say which part
+ * of the document the field ends up in. Both matter: until 16.09 one note fed
+ * four sections at once, and the appraiser had no way to tell where a sentence
+ * would surface — the building's age typed once came out in §8.1, §8.3 and
+ * §8.4 (D-15, D-31).
+ */
+const NOTE_FIELD_LABEL: Record<NoteField, string> = {
+  otoczenie: "Otoczenie",
+  budynek: "Budynek",
+  lokalUklad: "Lokal — układ",
+  wykonczenie: "Wykończenie",
+  zagospodarowanie: "Zagospodarowanie działki",
+  uwagi: "Uwagi",
+};
+
+const NOTE_FIELD_HINT: Record<NoteField, string> = {
+  otoczenie: "Sąsiedztwo, usługi, tereny zielone, dojazd i komunikacja. → §8.1 Położenie",
+  budynek: "Stan części wspólnych: klatka, dźwig, domofon, elewacja. → §8.3 Opis budynku",
+  lokalUklad: "Liczba i układ pomieszczeń, kondygnacja lokalu. → §8.3 Opis lokalu",
+  wykonczenie: "Podłogi, ściany, stolarka, instalacje, stan łazienki i kuchni. → §8.3 Opis lokalu",
+  zagospodarowanie: "Co jest na działce: ogrodzenie, parking, zieleń, chodniki. → §8.4",
+  uwagi: "Twoje uwagi do operatu. Jedyne pole drukowane dosłownie. → §8.3 Uwagi z oględzin",
+};
+
 export function InspectionSection({
   valuationId,
   inspection,
@@ -44,7 +72,12 @@ export function InspectionSection({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null); // "2/5" progress
-  const [note, setNote] = useState(inspection?.note ?? "");
+  const [notes, setNotes] = useState<InspectionNotes>(inspection?.notes ?? {});
+  // Read-only (ADR-017 reg. 5): the pre-split note stays visible so nothing the
+  // appraiser typed is lost, but it is no longer writable, no longer a prose
+  // fact and no longer printed. Copying it into the six fields was considered
+  // and rejected — it would put the same text back into every section.
+  const legacyNote = inspection?.note?.trim() ?? "";
   const [isPending, startTransition] = useTransition();
   const inputRefs = useRef<Partial<Record<Section, HTMLInputElement | null>>>({});
 
@@ -168,29 +201,49 @@ export function InspectionSection({
         </p>
       ) : null}
       <SectionCard title="Notatka z wizyty">
-        <div className="flex flex-col gap-2">
-          <label htmlFor="inspection-note" className="text-sm font-medium">
-            Notatka z oględzin
-          </label>
-          <textarea
-            id="inspection-note"
-            className="min-h-24 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base md:text-sm"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isPending}
-            onClick={() =>
-              startTransition(async () => {
-                const r = await saveInspectionNote(valuationId, note);
-                if (r?.error) setError(r.error);
-              })
-            }
-          >
-            Zapisz notatkę
-          </Button>
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-muted-foreground">
+            Każde pole zasila jedną sekcję opisu w kroku 6. Pisz w nim tylko to, czego dotyczy —
+            wątek wpisany nie tam trafi do niewłaściwej części operatu.
+          </p>
+          {NOTE_FIELDS.map((field) => (
+            <div key={field} className="flex flex-col gap-2">
+              <label htmlFor={`note-${field}`} className="text-sm font-medium">
+                {NOTE_FIELD_LABEL[field]}
+              </label>
+              <p className="text-xs text-muted-foreground">{NOTE_FIELD_HINT[field]}</p>
+              <textarea
+                id={`note-${field}`}
+                className="min-h-24 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base md:text-sm"
+                value={notes[field] ?? ""}
+                onChange={(e) => setNotes((prev) => ({ ...prev, [field]: e.target.value }))}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="self-start"
+                disabled={isPending}
+                onClick={() =>
+                  startTransition(async () => {
+                    const r = await saveInspectionNoteField(valuationId, field, notes[field] ?? "");
+                    if (r?.error) setError(r.error);
+                  })
+                }
+              >
+                Zapisz: {NOTE_FIELD_LABEL[field]}
+              </Button>
+            </div>
+          ))}
+          {legacyNote ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-dashed border-input p-3">
+              <p className="text-sm font-medium">Dawna notatka — rozdziel na pola</p>
+              <p className="text-xs text-muted-foreground">
+                Notatka sprzed podziału na pola. Nie trafia już do operatu ani do opisów — przenieś
+                z niej treść do właściwych pól powyżej.
+              </p>
+              <p className="whitespace-pre-wrap text-sm text-muted-foreground">{legacyNote}</p>
+            </div>
+          ) : null}
         </div>
       </SectionCard>
       {error ? (

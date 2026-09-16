@@ -254,6 +254,8 @@ export function trescSyntetycznejKsiegi(): KsiegaTresc {
 const PROSE_TEXT: Record<ProseSection, string> = {
   analiza_rynku:
     "Analizą objęto rynek lokali mieszkalnych w budynkach wielorodzinnych w bezpośrednim sąsiedztwie przedmiotu wyceny. Dane fikcyjne.",
+  opis_budynku:
+    "Budynek mieszkalny wielorodzinny wyposażony w dźwig osobowy oraz instalację domofonową; klatka schodowa po remoncie. Dane fikcyjne.",
   opis_lokalu:
     "Lokal składa się z dwóch pokoi, kuchni, łazienki i przedpokoju; układ funkcjonalny jest typowy dla budynku.",
   otoczenie:

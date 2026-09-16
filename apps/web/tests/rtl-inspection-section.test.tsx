@@ -20,11 +20,11 @@ afterEach(() => {
 });
 
 const removeInspectionPhoto = vi.fn();
-const saveInspectionNote = vi.fn();
+const saveInspectionNoteField = vi.fn();
 const uploadInspectionPhoto = vi.fn();
 vi.mock("@/app/actions/inspection", () => ({
   removeInspectionPhoto: (...args: unknown[]) => removeInspectionPhoto(...args),
-  saveInspectionNote: (...args: unknown[]) => saveInspectionNote(...args),
+  saveInspectionNoteField: (...args: unknown[]) => saveInspectionNoteField(...args),
   uploadInspectionPhoto: (...args: unknown[]) => uploadInspectionPhoto(...args),
 }));
 
@@ -42,8 +42,18 @@ import { InspectionSection } from "@/app/valuations/[id]/inspection-section";
 
 const VID = "11111111-2222-3333-4444-555555555555";
 
+/** ADR-017: the six note fields, labelled as the appraiser sees them. */
+const NOTE_FIELD_LABELS = [
+  ["otoczenie", "Otoczenie"],
+  ["budynek", "Budynek"],
+  ["lokalUklad", "Lokal — układ"],
+  ["wykonczenie", "Wykończenie"],
+  ["zagospodarowanie", "Zagospodarowanie działki"],
+  ["uwagi", "Uwagi"],
+] as const;
+
 const snapshotWithPhotos = (): InspectionSnapshot => ({
-  note: "istniejąca notatka",
+  note: null,
   photos: {
     otoczenie: [`ogledziny-otoczenie-aaa-${VID}.jpg`],
     budynekZewn: [`ogledziny-budynek-bbb-${VID}.jpg`],
@@ -52,12 +62,18 @@ const snapshotWithPhotos = (): InspectionSnapshot => ({
 });
 
 describe("InspectionSection", () => {
-  it("renders 3 sections, the note textarea, and the amber hint when total is 0", () => {
+  it("renders 3 sections, the six note fields, and the amber hint when total is 0", () => {
     render(<InspectionSection valuationId={VID} inspection={null} />);
     expect(screen.getByRole("heading", { name: "Otoczenie i droga dojazdowa" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Budynek z zewnątrz" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Wnętrza" })).toBeDefined();
-    expect(screen.getByLabelText(/notatka z oględzin/i)).toBeDefined();
+    for (const [, label] of NOTE_FIELD_LABELS) {
+      expect((screen.getByLabelText(label) as HTMLElement).tagName).toBe("TEXTAREA");
+      expect(screen.getByRole("button", { name: `Zapisz: ${label}` })).toBeDefined();
+    }
+    // No single-note editor any more (ADR-017).
+    expect(screen.queryByRole("button", { name: /zapisz notatkę/i })).toBeNull();
+    expect(screen.queryByText("Dawna notatka — rozdziel na pola")).toBeNull();
     const hint = screen.getByTestId("inspection-hint");
     expect(hint.textContent).toMatch(/operat bez dokumentacji fotograficznej/i);
   });
@@ -90,21 +106,59 @@ describe("InspectionSection", () => {
     expect(lastCall).toEqual([VID, "otoczenie", inspection.photos.otoczenie[0]]);
   });
 
-  it("note save button calls saveInspectionNote(id, value)", async () => {
-    saveInspectionNote.mockResolvedValue(undefined);
-    render(<InspectionSection valuationId={VID} inspection={null} />);
-    const user = userEvent.setup();
-    const textarea = screen.getByLabelText(/notatka z oględzin/i);
-    await user.type(textarea, "nowa notatka");
-    await user.click(screen.getByRole("button", { name: /zapisz notatkę/i }));
-    await waitFor(() => expect(saveInspectionNote).toHaveBeenCalledWith(VID, "nowa notatka"));
+  it.each(NOTE_FIELD_LABELS)(
+    "field %s: its save button calls saveInspectionNoteField(id, field, value)",
+    async (field, label) => {
+      saveInspectionNoteField.mockResolvedValue(undefined);
+      render(<InspectionSection valuationId={VID} inspection={null} />);
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText(label), "nowa treść");
+      await user.click(screen.getByRole("button", { name: `Zapisz: ${label}` }));
+      await waitFor(() =>
+        expect(saveInspectionNoteField).toHaveBeenCalledWith(VID, field, "nowa treść"),
+      );
+      expect(saveInspectionNoteField).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("prefills each field from inspection.notes", () => {
+    render(
+      <InspectionSection
+        valuationId={VID}
+        inspection={{
+          ...snapshotWithPhotos(),
+          notes: { budynek: "Dźwig osobowy.", uwagi: "Właściciel obecny." },
+        }}
+      />,
+    );
+    expect((screen.getByLabelText("Budynek") as HTMLTextAreaElement).value).toBe("Dźwig osobowy.");
+    expect((screen.getByLabelText("Uwagi") as HTMLTextAreaElement).value).toBe(
+      "Właściciel obecny.",
+    );
+    expect((screen.getByLabelText("Otoczenie") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("an old single note is shown read-only as 'Dawna notatka — rozdziel na pola', not copied into a field", () => {
+    render(
+      <InspectionSection
+        valuationId={VID}
+        inspection={{ ...snapshotWithPhotos(), note: "istniejąca dawna notatka" }}
+      />,
+    );
+    expect(screen.getByText("Dawna notatka — rozdziel na pola")).toBeDefined();
+    expect(screen.getByText("istniejąca dawna notatka")).toBeDefined();
+    for (const [, label] of NOTE_FIELD_LABELS) {
+      expect((screen.getByLabelText(label) as HTMLTextAreaElement).value).toBe("");
+    }
+    // Read-only: the old text is not in any editable control.
+    expect(screen.queryByDisplayValue("istniejąca dawna notatka")).toBeNull();
   });
 
   // Module-level `uploadEnabled` is read once at import time (mirrors
   // kw-section.tsx's `uploadEnabled`), so a plain vi.stubEnv AFTER the
   // static top-of-file import has no effect — reset the module registry and
   // re-import under the stubbed env, scoped to this one test.
-  it("NEXT_PUBLIC_PHOTO_UPLOAD=off hides ALL file inputs, note stays editable", async () => {
+  it("NEXT_PUBLIC_PHOTO_UPLOAD=off hides ALL file inputs, note fields stay editable", async () => {
     vi.resetModules();
     vi.stubEnv("NEXT_PUBLIC_PHOTO_UPLOAD", "off");
     try {
@@ -112,7 +166,7 @@ describe("InspectionSection", () => {
         await import("@/app/valuations/[id]/inspection-section");
       render(<OffSection valuationId={VID} inspection={null} />);
       expect(screen.queryAllByLabelText(/dodaj zdjęcia/i)).toHaveLength(0);
-      const textarea = screen.getByLabelText(/notatka z oględzin/i) as HTMLTextAreaElement;
+      const textarea = screen.getByLabelText("Budynek") as HTMLTextAreaElement;
       expect(textarea.disabled).toBe(false);
       await userEvent.setup().type(textarea, "x");
       expect(textarea.value).toBe("x");

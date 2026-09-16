@@ -24,6 +24,7 @@
 
 import { cityFromAddress, formatNumber, formatPln, LEVEL_LABEL } from "./document-model";
 import { computeKcsOnScale, kcsReady } from "./feature-rules";
+import { noteField, type InspectionSnapshot, type NoteField } from "./inspection";
 import type { Comparable, KcsInput, KcsResult } from "./kcs";
 import { obrebName } from "./obreb-name";
 import { effectiveSelection } from "./sample-snapshot";
@@ -102,11 +103,34 @@ export type ProseFacts = {
   rok_budowy?: string;
   notatka_uklad?: string;
   notatka_otoczenie?: string;
+  notatka_budynek?: string;
   notatka_standard?: string;
   notatka_zagospodarowanie?: string;
   oceny_cech?: Record<string, string>;
   pozycja_wyniku?: string;
 };
+
+/**
+ * Note field -> fact key. `uwagi` is absent on purpose: it is the appraiser's
+ * own remark, printed verbatim in §8.3, and never an input to the model
+ * (ADR-017 reg. 2 and 4).
+ */
+const NOTE_FACT_KEY = {
+  otoczenie: "notatka_otoczenie",
+  budynek: "notatka_budynek",
+  lokalUklad: "notatka_uklad",
+  wykonczenie: "notatka_standard",
+  zagospodarowanie: "notatka_zagospodarowanie",
+} as const satisfies Partial<Record<NoteField, keyof ProseFacts>>;
+
+function noteFacts(inspection: InspectionSnapshot | null): Partial<ProseFacts> {
+  return Object.fromEntries(
+    Object.entries(NOTE_FACT_KEY).flatMap(([field, key]) => {
+      const text = noteField(inspection, field as NoteField);
+      return text ? [[key, text]] : [];
+    }),
+  );
+}
 
 /**
  * What each section may write from — the subset of facts its few-shot shows
@@ -122,18 +146,14 @@ export type ProseFacts = {
  */
 export const PROSE_SECTION_FACTS: Record<ProseSection, readonly (keyof ProseFacts)[]> = {
   analiza_rynku: ["adres", "obreb", "pow_uzytkowa", "rynek", "proba"],
+  // The building's own parameters live here and NOWHERE else (D-15, D-31).
+  // They used to sit in `zagospodarowanie` below — shown to it in both
+  // few-shots and used by neither, which is precisely what let the model
+  // improvise them into §8.4 a fourth time.
+  opis_budynku: ["budynek_rodzaj", "kondygnacje", "rok_budowy", "notatka_budynek"],
   opis_lokalu: ["pow_uzytkowa", "notatka_uklad"],
   otoczenie: ["notatka_otoczenie"],
-  zagospodarowanie: [
-    "nr_dzialki",
-    "obreb",
-    "pow_dzialki_m2",
-    "uzytek",
-    "budynek_rodzaj",
-    "kondygnacje",
-    "rok_budowy",
-    "notatka_zagospodarowanie",
-  ],
+  zagospodarowanie: ["nr_dzialki", "obreb", "pow_dzialki_m2", "uzytek", "notatka_zagospodarowanie"],
   standard: ["notatka_standard", "oceny_cech"],
   uzasadnienie: ["pozycja_wyniku", "proba"],
 };
@@ -255,7 +275,7 @@ export function resultPosition(kcs: KcsResult): string {
 export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFacts {
   const kcs = proseKcs(inputs);
   const subject = inputs.subject ?? null;
-  const note = inputs.inspection?.note ?? null;
+  const inspection = inputs.inspection ?? null;
 
   // ALL-OR-NOTHING, for the months here and for the areas below. `date` and
   // `area` are both OPTIONAL on a manually entered comparable, so a mixed
@@ -378,17 +398,12 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
       ? { kondygnacje: String(subject.kondygnacjeNadziemne) }
       : {}),
     ...(subject?.rokBudowy != null ? { rok_budowy: String(subject.rokBudowy) } : {}),
-    // ONE inspection note under four keys: `InspectionSnapshot` carries a
-    // single `note`, and the key names are part of the validated few-shot —
-    // each section's task cuts its own thread out of the note.
-    ...(note
-      ? {
-          notatka_uklad: note,
-          notatka_otoczenie: note,
-          notatka_standard: note,
-          notatka_zagospodarowanie: note,
-        }
-      : {}),
+    // One note FIELD -> one fact key -> one section (ADR-017 reg. 2). Until
+    // 16.09 a single note was copied under four identical keys, so every
+    // section saw the whole thing and cut a neighbour's thread out of it —
+    // the cause of D-15 and D-31. The old `note` is deliberately absent here:
+    // it is no longer a prose fact (ADR-017 reg. 5).
+    ...noteFacts(inspection),
     ...(rated.length > 0
       ? {
           oceny_cech: Object.fromEntries(
@@ -432,16 +447,17 @@ export function selectProseSections(facts: ProseFacts): ProseSection[] {
     // case, not the edge. Worst case now is a section the guard rejects, which
     // lands in exactly the same empty editor as before.
     analiza_rynku: Boolean(facts.proba),
+    // Each note-backed section is gated on ITS OWN field (ADR-017 reg. 2).
+    // Gating `zagospodarowanie` on the building facts — as it was until
+    // 16.09 — meant the section ran on every valuation with EGiB data and
+    // wrote the building up again in §8.4 (D-31).
+    opis_budynku: Boolean(
+      facts.notatka_budynek || facts.budynek_rodzaj || facts.kondygnacje || facts.rok_budowy,
+    ),
     opis_lokalu: Boolean(facts.notatka_uklad),
     otoczenie: Boolean(facts.notatka_otoczenie),
     zagospodarowanie: Boolean(
-      facts.notatka_zagospodarowanie ||
-      facts.nr_dzialki ||
-      facts.pow_dzialki_m2 ||
-      facts.uzytek ||
-      facts.budynek_rodzaj ||
-      facts.kondygnacje ||
-      facts.rok_budowy,
+      facts.notatka_zagospodarowanie || facts.nr_dzialki || facts.pow_dzialki_m2 || facts.uzytek,
     ),
     standard: Boolean(facts.notatka_standard || facts.oceny_cech),
     uzasadnienie: Boolean(facts.pozycja_wyniku && facts.proba),

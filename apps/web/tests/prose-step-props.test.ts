@@ -42,7 +42,10 @@ const INPUTS: KcsInput = {
     },
   ],
   inspection: {
-    note: "Układ: 2 pokoje, kuchnia, łazienka; otoczenie: zabudowa wielorodzinna.",
+    note: null,
+    // ADR-017: the note is split into fields; these two back opis_lokalu and
+    // otoczenie.
+    notes: { lokalUklad: "2 pokoje, kuchnia, łazienka.", otoczenie: "Zabudowa wielorodzinna." },
     photos: { otoczenie: [], budynekZewn: [], wnetrza: [] },
   },
 };
@@ -132,7 +135,7 @@ describe("proseStepProps", () => {
     // Missing and stale are different states, and only one of them belongs in
     // `staleSections` — yet both must keep `upToDate` false. A no-opts
     // `proposeProse` would happily generate the missing section, and the F-4
-    // gate blocks approval on every one of the six that has no text, so a
+    // gate blocks approval on every one of the seven that has no text, so a
     // screen reading "up to date" here would disagree with both.
     const allButOne = (await generatableOf(INPUTS)).filter((s) => s !== "analiza_rynku");
 
@@ -168,6 +171,18 @@ describe("proseStepProps", () => {
     const noNote = { ...INPUTS, inspection: undefined };
 
     expect(await generatableOf(noNote)).toEqual(["analiza_rynku", "standard", "uzasadnienie"]);
+  });
+
+  it("the old single note backs no section — only the split fields do (ADR-017)", async () => {
+    const legacyNote = {
+      ...INPUTS,
+      inspection: {
+        note: "Układ: 2 pokoje, kuchnia, łazienka; otoczenie: zabudowa wielorodzinna.",
+        photos: { otoczenie: [], budynekZewn: [], wnetrza: [] },
+      },
+    };
+
+    expect(await generatableOf(legacyNote)).toEqual(["analiza_rynku", "standard", "uzasadnienie"]);
   });
 
   it("names every stale section, not just the first, in the operat's own order", async () => {

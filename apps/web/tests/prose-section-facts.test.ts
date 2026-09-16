@@ -1,8 +1,15 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PROSE_SECTIONS, type ProseSection } from "@/domain/prose-snapshot";
-import { PROSE_SECTION_FACTS, SECTIONS_USING_TRANSACTIONS } from "@/domain/prose";
-import { currentSectionFactsHashes } from "@/domain/prose-hash";
+import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "@/domain/prose-snapshot";
+import {
+  buildProseFacts,
+  PROSE_SECTION_FACTS,
+  SECTIONS_USING_TRANSACTIONS,
+  staleProseSections,
+  type ProseFactsInput,
+} from "@/domain/prose";
+import { currentSectionFactsHash, currentSectionFactsHashes } from "@/domain/prose-hash";
 import type { KcsInput } from "@/domain/kcs";
 import { approvableInput } from "./fixtures/valuation-inputs";
 
@@ -117,10 +124,15 @@ describe("what a step-1 save costs the descriptions", () => {
       ["zagospodarowanie"],
     ],
     ["użytek", () => staleAfter(ADDRESS, editSubject({ uzytek: "Bi" })), ["zagospodarowanie"]],
+    // D-31: the building's own parameters invalidate the BUILDING description.
+    // Until 16.09 all three below said ["zagospodarowanie"] — the map pinned
+    // the defect: a change to the building's age re-flagged the description of
+    // the land it stands on, because that section was where the building got
+    // written up.
     [
       "rodzaj budynku",
       () => staleAfter(ADDRESS, editSubject({ budynekRodzaj: "usługowy" })),
-      ["zagospodarowanie"],
+      ["opis_budynku"],
     ],
     [
       "pow. działki",
@@ -130,17 +142,13 @@ describe("what a step-1 save costs the descriptions", () => {
     [
       "kondygnacje nadziemne",
       () => staleAfter(ADDRESS, editSubject({ kondygnacjeNadziemne: 9 })),
-      ["zagospodarowanie"],
+      ["opis_budynku"],
     ],
-    [
-      "rok budowy",
-      () => staleAfter(ADDRESS, editSubject({ rokBudowy: 2001 })),
-      ["zagospodarowanie"],
-    ],
+    ["rok budowy", () => staleAfter(ADDRESS, editSubject({ rokBudowy: 2001 })), ["opis_budynku"]],
     [
       "odłączenie przedmiotu",
       () => staleAfter(ADDRESS, { ...baseInputs(), subject: null }),
-      ["analiza_rynku", "zagospodarowanie"],
+      ["analiza_rynku", "opis_budynku", "zagospodarowanie"],
     ],
   ])("%s unieważnia: %o", (_label, measure, expected) => {
     expect([...measure()].sort()).toEqual([...expected].sort());
@@ -172,5 +180,138 @@ describe("what a step-1 save costs the descriptions", () => {
     ],
   ])("%s nie unieważnia żadnego opisu", (_label, measure) => {
     expect(measure()).toEqual([]);
+  });
+});
+
+/**
+ * The migration promise of ADR-017 (Opcja A), MEASURED rather than reasoned.
+ *
+ * A draft saved before 16.09 carries one `note` and a prose snapshot whose
+ * fingerprints were computed by the OLD code, when that note sat under four
+ * fact keys. After the split, the note is no longer a fact. The PR promises
+ * those drafts go to "przejrzyj ponownie" for exactly the note-backed sections
+ * — and nothing else. A promise to 27 drafts is worth one assertion.
+ *
+ * The old fingerprints cannot come from today's code (the subsets changed), so
+ * they are rebuilt here from the stored format: sha256 over key-sorted JSON of
+ * `{ facts: <old subset>, transactions }`. The control test below proves the
+ * reconstruction reproduces production hashing byte for byte — without it,
+ * "stale" could just mean "my hash is different from theirs", which is always
+ * true and proves nothing.
+ */
+describe("migracja szkiców sprzed podziału notatki (ADR-017, Opcja A)", () => {
+  const NOTE = "Klatka po remoncie, winda. Otoczenie: zabudowa wielorodzinna. Lokal 2 pokoje.";
+
+  /** Subsets as they stood until 16.09 — the four note-backed sections only. */
+  const OLD_SUBSET: Partial<Record<ProseSection, readonly string[]>> = {
+    opis_lokalu: ["pow_uzytkowa", "notatka_uklad"],
+    otoczenie: ["notatka_otoczenie"],
+    zagospodarowanie: [
+      "nr_dzialki",
+      "obreb",
+      "pow_dzialki_m2",
+      "uzytek",
+      "budynek_rodzaj",
+      "kondygnacje",
+      "rok_budowy",
+      "notatka_zagospodarowanie",
+    ],
+    standard: ["notatka_standard", "oceny_cech"],
+  };
+
+  const canonical = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(canonical)
+      : v && typeof v === "object"
+        ? Object.fromEntries(
+            Object.entries(v)
+              .filter(([, x]) => x !== undefined)
+              .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+              .map(([k, x]) => [k, canonical(x)]),
+          )
+        : v;
+
+  const storedHash = (facts: Record<string, unknown>, keys: readonly string[]): string =>
+    createHash("sha256")
+      .update(
+        JSON.stringify(
+          canonical({
+            facts: Object.fromEntries(
+              keys.filter((k) => facts[k] !== undefined).map((k) => [k, facts[k]]),
+            ),
+            transactions: [],
+          }),
+        ),
+      )
+      .digest("hex");
+
+  const legacyInput = (): ProseFactsInput => {
+    const base = approvableInput("test-user");
+    return {
+      address: base.address,
+      inputs: {
+        ...base.inputs!,
+        subject: {
+          ...base.inputs!.subject!,
+          budynekRodzaj: "mieszkalny",
+          kondygnacjeNadziemne: 11,
+          rokBudowy: 1983,
+          nrDzialki: "12",
+          powEwidHa: 0.25,
+          uzytek: "B",
+        },
+        // The pre-split shape: one note, no fields.
+        inspection: { ...base.inputs!.inspection!, note: NOTE, notes: undefined },
+      },
+    };
+  };
+
+  /** Facts as the OLD code built them for that draft: today's facts + the note under four keys. */
+  const oldFacts = (input: ProseFactsInput): Record<string, unknown> => ({
+    ...buildProseFacts(input),
+    notatka_uklad: NOTE,
+    notatka_otoczenie: NOTE,
+    notatka_standard: NOTE,
+    notatka_zagospodarowanie: NOTE,
+  });
+
+  it("kontrola: odtworzony odcisk jest bajt w bajt tym, co liczy produkcja", () => {
+    // `otoczenie` has the same subset before and after, so a NEW-shape draft
+    // whose "Otoczenie" field holds the note must fingerprint identically to
+    // the reconstruction. If this fails, every assertion below is vacuous.
+    const input = legacyInput();
+    const withField: ProseFactsInput = {
+      ...input,
+      inputs: {
+        ...input.inputs,
+        inspection: { ...input.inputs.inspection!, note: null, notes: { otoczenie: NOTE } },
+      },
+    };
+    expect(currentSectionFactsHash("otoczenie", withField)).toBe(
+      storedHash(oldFacts(input), OLD_SUBSET.otoczenie!),
+    );
+  });
+
+  it("stary szkic idzie do „przejrzyj ponownie” dokładnie dla sekcji opartych na notatce", () => {
+    const input = legacyInput();
+    const old = oldFacts(input);
+    const factsHashes: Partial<Record<ProseSection, string>> = {};
+    for (const section of PROSE_SECTIONS) {
+      if (section === "opis_budynku") continue; // did not exist before 16.09
+      const keys = OLD_SUBSET[section];
+      // analiza_rynku / uzasadnienie: subset unchanged, so today's function IS
+      // the stored value — including their transaction fingerprint.
+      factsHashes[section] = keys ? storedHash(old, keys) : currentSectionFactsHash(section, input);
+    }
+    const sections = Object.fromEntries(
+      PROSE_SECTIONS.filter((s) => s !== "opis_budynku").map((s) => [s, { value: "tekst" }]),
+    ) as unknown as ProseSnapshot["sections"];
+
+    expect(staleProseSections({ sections, factsHashes }, input, currentSectionFactsHash)).toEqual([
+      "opis_lokalu",
+      "otoczenie",
+      "zagospodarowanie",
+      "standard",
+    ]);
   });
 });
