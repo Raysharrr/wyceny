@@ -5,6 +5,7 @@ import { kwRequirements } from "./kw-requirements";
 import type { KwAkt, KwDzialSnapshot } from "./kw-snapshot";
 import type { KsiegaTresc } from "./kw-tresc";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
+import { isPrzeznaczenieComplete } from "./przeznaczenie";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
@@ -435,15 +436,6 @@ export type ComparableDescription = {
   cechy: Array<{ nazwa: string; opis: string }>;
 };
 
-/** Section 9 MPZP block (§`{#mpzp}`) — only present when a plan resolved. */
-export type MpzpBlock = {
-  symbol: string;
-  nazwa: string;
-  uchwala: string;
-  data: string;
-  publ: string;
-};
-
 export type DocumentModel = {
   adres: string;
   powierzchnia: string;
@@ -603,12 +595,22 @@ export type DocumentModel = {
   udzial_kw: string;
   pow_kw_present: boolean;
   pow_uzytkowa_kw: string;
-  // Section 9 MPZP variants — `{#mpzp}`/`{#mpzp_brak}` are mutually exclusive,
-  // enforced here (never both, never neither, when a subject is present).
-  mpzp: MpzpBlock | null;
-  mpzp_brak: boolean;
-  ma_przeznaczenie_studium: boolean;
-  przeznaczenie_studium: string;
+  // Section 9 designation (M-10) — `prz_mpzp`/`prz_plan_ogolny`/`prz_studium`
+  // are mutually exclusive and at most one is true; all three false means the
+  // appraiser has not chosen yet and §9 prints neither deciding sentence.
+  // `prz_brak_mpzp` is the union of the two no-MPZP branches; the same fields
+  // feed §7's source bullet, which must never name a different document.
+  prz_mpzp: boolean;
+  prz_plan_ogolny: boolean;
+  prz_studium: boolean;
+  prz_brak_mpzp: boolean;
+  ma_przeznaczenie: boolean;
+  prz_nazwa: string;
+  prz_uchwala: string;
+  prz_data: string;
+  prz_symbol: string;
+  ma_publikator: boolean;
+  prz_publikator: string;
   // Property right (T-12, S4) — the four mechanisms of the Piastowskie diff:
   // `prawo_wlasnosc`/`prawo_spoldzielcze` are a mutually exclusive pair (exactly
   // one true) switching the template's inline alternatives and fenced blocks;
@@ -881,13 +883,13 @@ export function buildDocumentModel(
 ): DocumentModel {
   const { kcs, inputs } = input;
   const subject = inputs.subject ?? null;
-  // `{#mpzp}` only when a subject was fetched, MPZP isn't flagged absent, and
-  // at least one plan field resolved — keeps it mutually exclusive with
-  // `mpzp_brak` (Task 7 review note: the template doesn't enforce this itself).
-  const hasMpzp =
-    subject != null &&
-    subject.mpzpAbsent !== true &&
-    Boolean(subject.mpzpSymbol || subject.mpzpNazwa || subject.mpzpUchwala);
+  // §9 source sentence (M-10). It prints only when EVERY part of it resolved:
+  // a sentence naming a plan it cannot identify, or identifying one without the
+  // symbol read out of it, says less than nothing — that is the 14.09 defect.
+  // B-02 makes the appraiser complete it before approval; the preview is the
+  // only place an incomplete one is reachable, and there it stays silent.
+  const przeznaczenie = subject?.przeznaczenieRodzaj ?? null;
+  const maPrzeznaczenie = isPrzeznaczenieComplete(subject);
   const kw = inputs.kw ?? null;
   const kwGrunt = inputs.kwGrunt ?? null;
   /**
@@ -1095,22 +1097,22 @@ export function buildDocumentModel(
     udzial_kw: kw?.udzial ?? DASH,
     pow_kw_present: kw?.powUzytkowaKw != null,
     pow_uzytkowa_kw: kw?.powUzytkowaKw != null ? formatNumber(kw.powUzytkowaKw, 2) : DASH,
-    mpzp: hasMpzp
-      ? {
-          symbol: subject.mpzpSymbol ?? "",
-          nazwa: subject.mpzpNazwa ?? "",
-          uchwala: subject.mpzpUchwala ?? "",
-          data: subject.mpzpData ? formatDatePl(subject.mpzpData) : "",
-          publ: subject.mpzpPubl ?? "",
-        }
-      : null,
-    mpzp_brak: subject?.mpzpAbsent === true,
-    // No operat writes a dash where the designation is missing: it names the
-    // source it did read (MPZP, plan ogólny, studium) or says nothing at all.
-    // The sentence is therefore gated, and printed "…decyzji o warunkach
-    // zabudowy: —." until 16.09.
-    ma_przeznaczenie_studium: Boolean(subject?.przeznaczenieStudium),
-    przeznaczenie_studium: subject?.przeznaczenieStudium ?? "",
+    prz_mpzp: przeznaczenie === "mpzp",
+    prz_plan_ogolny: przeznaczenie === "plan_ogolny",
+    prz_studium: przeznaczenie === "studium",
+    // The deciding sentence's negative half. Both no-MPZP branches deny the
+    // plan AND the WZ decision, exactly as Folwarczna, Wojska Polskiego and
+    // Uzarzewo do — it is the next question anyone reading it asks.
+    prz_brak_mpzp: przeznaczenie === "plan_ogolny" || przeznaczenie === "studium",
+    ma_przeznaczenie: maPrzeznaczenie,
+    prz_nazwa: subject?.przeznaczenieNazwa ?? "",
+    prz_uchwala: subject?.przeznaczenieUchwala ?? "",
+    prz_data: subject?.przeznaczenieData ? formatDatePl(subject.przeznaczenieData) : "",
+    prz_symbol: subject?.przeznaczenieSymbol ?? "",
+    // Only the plan ogólny branch prints it — no MPZP or studium sentence in
+    // any reference operat names a publikator.
+    ma_publikator: przeznaczenie === "plan_ogolny" && Boolean(subject?.przeznaczeniePublikator),
+    prz_publikator: subject?.przeznaczeniePublikator ?? "",
     prawo_wlasnosc: input.propertyRight === "wlasnosc_lokalu",
     prawo_spoldzielcze: input.propertyRight === "spoldzielcze_wlasnosciowe",
     przedmiot_m: rightDoc.przedmiot.mianownik,

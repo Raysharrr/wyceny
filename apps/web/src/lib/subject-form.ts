@@ -32,13 +32,15 @@ export const EMPTY_SUBJECT: SubjectFormValues = {
   kondygnacjePodziemne: undefined,
   rokBudowy: undefined,
   pietro: undefined,
-  mpzpAbsent: undefined,
-  mpzpSymbol: "",
-  mpzpNazwa: "",
-  mpzpUchwala: "",
-  mpzpData: "",
-  mpzpPubl: "",
-  przeznaczenieStudium: "",
+  // `null`, not a default branch: nothing but the appraiser may say what
+  // determines the designation (M-10). `isEmptySubject` below treats it as
+  // empty, so an untouched section still counts as untouched.
+  przeznaczenieRodzaj: null,
+  przeznaczenieNazwa: "",
+  przeznaczenieUchwala: "",
+  przeznaczenieData: "",
+  przeznaczenieSymbol: "",
+  przeznaczeniePublikator: "",
 };
 
 type SubjectFieldValues = Partial<Record<keyof SubjectFormValues, unknown>>;
@@ -54,7 +56,7 @@ type SubjectFieldValues = Partial<Record<keyof SubjectFormValues, unknown>>;
 export function isEmptySubject(subject: SubjectFieldValues | null | undefined): boolean {
   if (!subject) return true;
   return Object.values(subject).every(
-    (value) => value === undefined || value === "" || value === false,
+    (value) => value === undefined || value === null || value === "" || value === false,
   );
 }
 
@@ -78,12 +80,16 @@ export function proposalToSubjectValues(p: SubjectProposal): SubjectFormValues {
     budynekRodzaj: p.building?.rodzaj ?? "",
     kondygnacjeNadziemne: p.building?.kondygnacjeNadziemne ?? undefined,
     kondygnacjePodziemne: p.building?.kondygnacjePodziemne ?? undefined,
-    mpzpAbsent: p.mpzp === null,
-    mpzpSymbol: p.mpzp?.symbol ?? "",
-    mpzpNazwa: p.mpzp?.nazwaPlanu ?? "",
-    mpzpUchwala: p.mpzp?.uchwala ?? "",
-    mpzpData: p.mpzp?.dataUchwaly ?? "",
-    mpzpPubl: p.mpzp?.publikator ?? "",
+    // A plan found IS the MPZP branch — the fetch read it off the city's plan
+    // layer, so there is nothing for the appraiser to decide. A plan NOT found
+    // leaves the choice open (plan ogólny or studium): the fetch knows the MPZP
+    // is absent, not what stands in its place.
+    przeznaczenieRodzaj: p.mpzp ? "mpzp" : null,
+    przeznaczenieNazwa: p.mpzp?.nazwaPlanu ?? "",
+    przeznaczenieUchwala: p.mpzp?.uchwala ?? "",
+    przeznaczenieData: p.mpzp?.dataUchwaly ?? "",
+    przeznaczenieSymbol: p.mpzp?.symbol ?? "",
+    przeznaczeniePublikator: p.mpzp?.publikator ?? "",
   };
 }
 

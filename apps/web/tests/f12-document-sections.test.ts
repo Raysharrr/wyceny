@@ -131,11 +131,26 @@ describe("F-12: rendered operat completeness (real template, golden data)", () =
     expect(text).not.toContain("kredytodawc");
   });
 
-  it("renders the EGiB facts block and the mpzp variant when a plan exists", () => {
+  it("renders the EGiB facts block and the MPZP variant when a plan exists", () => {
     expect(text).toContain("obręb Jeżyce");
     expect(text).toContain("działka nr 161");
-    expect(text).toContain("symbol przeznaczenia 1MW/U");
-    expect(text).toContain("uchwała nr I/1/2020");
+    // M-10: §9 now names the plan the way the operats do — "Zgodnie z …
+    // zatwierdzonym Uchwałą … ustalono, że …" — not the telegraph line
+    // ("Teren objęty …: … — symbol przeznaczenia …") no operat contains.
+    expect(text).toContain(
+      "Zgodnie z miejscowym planem zagospodarowania przestrzennego Plan Testowy, " +
+        "zatwierdzonym Uchwałą I/1/2020 z dnia 01.01.2020, ustalono, że przedmiotowy " +
+        "teren oznaczony jest symbolem: 1MW/U.",
+    );
+    expect(text).not.toContain("symbol przeznaczenia");
+    // §7's source bullet names the SAME document, never a fixed phrase.
+    expect(text).toContain(
+      "Informacja o przeznaczeniu gruntów w miejscowym planie zagospodarowania " +
+        "przestrzennego Plan Testowy, Uchwała I/1/2020 z dnia 01.01.2020,",
+    );
+    expect(text).not.toContain("Informacja o przeznaczeniu gruntów w dokumentacji planistycznej");
+    // The statutory quote belongs to the studium branch alone.
+    expect(text).not.toContain("Art. 64.2.");
     expect(text).not.toContain("brak obowiązującego miejscowego planu");
   });
 
@@ -406,7 +421,7 @@ describe("F-12: rendered operat — KW examined but udział absent (akt, udzial 
   });
 });
 
-describe("F-12: rendered operat — mpzp absent variant", () => {
+describe("F-12: rendered operat — studium variant (M-10)", () => {
   const text = renderGolden(SUBJECT_NO_MPZP);
 
   it("has no unresolved template tags and no 'undefined'", () => {
@@ -414,7 +429,7 @@ describe("F-12: rendered operat — mpzp absent variant", () => {
     expect(text).not.toMatch(/\{[a-z_#/.]+\}/i);
   });
 
-  it("renders the brak sentence and studium text, omitting the plan sentence", () => {
+  it("renders the brak sentence, the statutory quote and the studium source", () => {
     // Wording from the operats (Folwarczna, Wojska Polskiego, Uzarzewo, the
     // court opinion), which also answer the next question — whether a WZ
     // decision exists.
@@ -423,8 +438,25 @@ describe("F-12: rendered operat — mpzp absent variant", () => {
         "przestrzennego, nie ujawniono także informacji dotyczącej wydania decyzji " +
         "o warunkach zabudowy.",
     );
-    expect(text).toContain("zabudowa (studium)");
+    // Uzarzewo quotes both articles in full before naming the studium — the
+    // quote is what licenses reading a designation out of one at all.
+    expect(text).toContain("Zgodnie z Ustawą z dnia 07 lipca 2023r.");
+    expect(text).toContain("Art. 64.2.");
+    expect(text).toContain("Art. 65. 1.");
+    expect(text).toContain(
+      "Zgodnie ze studium uwarunkowań i kierunków zagospodarowania przestrzennego " +
+        "Gminy Testowej, zatwierdzonym Uchwałą Nr II/2/2015 Rady Gminy Testowej " +
+        "z dnia 02.02.2015, ustalono, że przedmiotowy teren oznaczony jest symbolem: " +
+        "MN – zabudowa (studium).",
+    );
+    // §7 follows the same branch (Uzarzewo poz. 5).
+    expect(text).toContain(
+      "Informacja o przeznaczeniu gruntów w studium uwarunkowań i kierunków " +
+        "zagospodarowania przestrzennego Gminy Testowej,",
+    );
     expect(text).not.toContain("symbol przeznaczenia");
+    // The studium is NOT a plan ogólny: its sentence carries no status clause.
+    expect(text).not.toContain("status dokumentu");
     // The deciding sentence is printed ONCE. Until 16.09 §9 carried two more,
     // both unconditional, so a valuation with no plan also claimed one.
     expect(text).not.toContain("Dla przedmiotowego terenu obowiązuje miejscowy plan");
@@ -552,6 +584,35 @@ describe("F-12 / T-12: operat per property right", () => {
   const coop = renderRight(COOP);
   const coopBasement = renderRight(COOP, { hasBasement: true });
   const coopWithKw = renderRight({ ...COOP, kwNumber: "KW-TEST-9" });
+
+  it.each([
+    ["własność", own],
+    ["własność + stale hasBasement", ownStaleBasement],
+    ["spółdzielcze bez KW", coop],
+    ["spółdzielcze bez KW + piwnica", coopBasement],
+    ["spółdzielcze z KW", coopWithKw],
+  ])(
+    "%s: §7 i §9 nazywają tę samą podstawę przeznaczenia, niezależnie od rodzaju prawa",
+    (_, r) => {
+      // M-10: przeznaczenie terenu nie zależy od tego, jakie prawo się wycenia —
+      // punkt §7 leży POZA ogrodzeniem `{#prawo_wlasnosc}`, które zdejmuje
+      // badanie ksiąg i akt notarialny przy prawie spółdzielczym. Gdyby tam
+      // wpadł, operaty spółdzielcze straciłyby źródło przeznaczenia bez słowa.
+      expect(r.model.prz_mpzp).toBe(true);
+      expect(r.text).toContain(
+        "Informacja o przeznaczeniu gruntów w miejscowym planie zagospodarowania " +
+          "przestrzennego Plan Testowy,",
+      );
+      expect(r.text).toContain(
+        "Zgodnie z miejscowym planem zagospodarowania przestrzennego Plan Testowy,",
+      );
+      expect(r.text).toContain("oznaczony jest symbolem: 1MW/U.");
+      // Zdanie rozstrzygające drukuje się dokładnie raz, w jednym wariancie.
+      expect(r.count("Dla przedmiotowego terenu obowiązuje miejscowy plan")).toBe(1);
+      expect(r.text).not.toContain("nie obowiązuje miejscowy plan");
+      expect(r.text).not.toContain("Art. 64.2.");
+    },
+  );
 
   it.each([
     ["własność", own],

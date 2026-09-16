@@ -602,6 +602,7 @@ export function SubjectForm({
 
               <SubjectSection
                 control={control}
+                setValue={setValue}
                 fetchState={subjectFetch}
                 onRetry={() => {
                   lastFetchedAddress.current = null;

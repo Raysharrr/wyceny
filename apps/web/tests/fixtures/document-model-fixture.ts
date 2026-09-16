@@ -149,7 +149,11 @@ export const KW_AKT_NULL_UDZIAL: KwSnapshot = {
   udzial: null,
 };
 
-/** Subject snapshot with a resolved MPZP — drives the `{#mpzp}` section-9 variant. */
+/**
+ * Subject snapshot with a resolved MPZP — drives the `{#prz_mpzp}` section-9
+ * variant. All five designation parts are filled (M-10): `isPrzeznaczenieComplete`
+ * gates both B-02 and §9, so an incomplete fixture would print nothing at all.
+ */
 export const SUBJECT_WITH_MPZP: SubjectSnapshot = {
   obreb: "Jeżyce",
   arkusz: "10",
@@ -159,19 +163,31 @@ export const SUBJECT_WITH_MPZP: SubjectSnapshot = {
   budynekRodzaj: "budynki mieszkalne",
   kondygnacjeNadziemne: 6,
   kondygnacjePodziemne: 1,
-  mpzpAbsent: false,
-  mpzpSymbol: "1MW/U",
-  mpzpNazwa: "Plan Testowy",
-  mpzpUchwala: "I/1/2020",
-  mpzpData: "2020-01-01",
-  mpzpPubl: "Rocznik 2020, poz. 1",
+  przeznaczenieRodzaj: "mpzp",
+  przeznaczenieSymbol: "1MW/U",
+  przeznaczenieNazwa: "Plan Testowy",
+  przeznaczenieUchwala: "I/1/2020",
+  przeznaczenieData: "2020-01-01",
+  // Carried over from the pre-M-10 `mpzpPubl`. Inert on this branch —
+  // `ma_publikator` is true only for `plan_ogolny` — but kept so the field
+  // stays exercised by at least one fixture.
+  przeznaczeniePublikator: "Rocznik 2020, poz. 1",
 };
 
-/** Subject snapshot with no MPZP — drives the `{#mpzp_brak}` section-9 variant. */
+/**
+ * Subject snapshot with no MPZP — the gmina still reads its studium (M-10),
+ * which drives the `{#prz_brak_mpzp}` / `{#prz_studium}` section-9 variant.
+ * Pre-M-10 this was `mpzpAbsent: true` + a free-text `przeznaczenieStudium`;
+ * the studium now names its own resolution like any other source, so all five
+ * parts are filled here too (fictional, F-9).
+ */
 export const SUBJECT_NO_MPZP: SubjectSnapshot = {
   obreb: "Łazarz",
-  mpzpAbsent: true,
-  przeznaczenieStudium: "zabudowa (studium)",
+  przeznaczenieRodzaj: "studium",
+  przeznaczenieNazwa: "Gminy Testowej",
+  przeznaczenieUchwala: "Nr II/2/2015 Rady Gminy Testowej",
+  przeznaczenieData: "2015-02-02",
+  przeznaczenieSymbol: "MN – zabudowa (studium)",
 };
 
 /**

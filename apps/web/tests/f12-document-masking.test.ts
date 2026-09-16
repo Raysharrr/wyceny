@@ -217,12 +217,11 @@ describe("F-12: subject snapshot mapped into document facts + mpzp variants", ()
           budynekRodzaj: "budynki mieszkalne",
           kondygnacjeNadziemne: 6,
           kondygnacjePodziemne: 1,
-          mpzpAbsent: false,
-          mpzpSymbol: "1MW/U",
-          mpzpNazwa: "Plan Testowy",
-          mpzpUchwala: "I/1/2020",
-          mpzpData: "2020-01-01",
-          mpzpPubl: "Rocznik 2020, poz. 1",
+          przeznaczenieRodzaj: "mpzp",
+          przeznaczenieSymbol: "1MW/U – tereny zabudowy mieszkaniowej wielorodzinnej",
+          przeznaczenieNazwa: "Plan Testowy",
+          przeznaczenieUchwala: "Nr I/1/2020 Rady Miasta Poznania",
+          przeznaczenieData: "2020-01-01",
         },
       },
     });
@@ -230,79 +229,111 @@ describe("F-12: subject snapshot mapped into document facts + mpzp variants", ()
     expect(model.pow_dzialki).toBe("0,0772");
     expect(model.kondygnacje).toBe("6 / 1");
     expect(model.rok_budowy).toBe("b.d. (brak w publicznej ewidencji)");
-    expect(model.mpzp).toEqual({
-      symbol: "1MW/U",
-      nazwa: "Plan Testowy",
-      uchwala: "I/1/2020",
-      data: "01.01.2020",
-      publ: "Rocznik 2020, poz. 1",
-    });
-    expect(model.mpzp_brak).toBe(false);
+    expect(model.prz_mpzp).toBe(true);
+    expect(model.prz_plan_ogolny).toBe(false);
+    expect(model.prz_studium).toBe(false);
+    expect(model.prz_brak_mpzp).toBe(false);
+    expect(model.ma_przeznaczenie).toBe(true);
+    expect(model.prz_nazwa).toBe("Plan Testowy");
+    expect(model.prz_uchwala).toBe("Nr I/1/2020 Rady Miasta Poznania");
+    expect(model.prz_data).toBe("01.01.2020");
+    expect(model.prz_symbol).toBe("1MW/U – tereny zabudowy mieszkaniowej wielorodzinnej");
+    // No MPZP sentence in any reference operat names a publikator — only the
+    // plan ogólny branch does (Folwarczna, Wojska Polskiego).
+    expect(model.ma_publikator).toBe(false);
   });
 
-  it("mpzp absent renders brak variant fields", () => {
+  // M-10: "no MPZP" is two different documents after the 2023 reform, and the
+  // operat has to name the one it actually read. The plan ogólny branch is the
+  // only one that prints a status/publikator clause.
+  it("plan ogólny renders the negative deciding sentence and the publikator clause", () => {
     const model = buildDocumentModel({
       ...goldenInput(),
       inputs: {
         ...syntheticInputs(),
         subject: {
           obreb: "Łazarz",
-          mpzpAbsent: true,
-          przeznaczenieStudium: "zabudowa mieszkaniowa (studium)",
+          przeznaczenieRodzaj: "plan_ogolny",
+          przeznaczenieNazwa: "miasta Poznania",
+          przeznaczenieUchwala: "Nr XXIX/529/IX/2025 Rady Miasta Poznania",
+          przeznaczenieData: "2025-12-18",
+          przeznaczenieSymbol: "742SW – strefa wielofunkcyjna",
+          przeznaczeniePublikator: "obowiązujący od 14 stycznia 2026 r.",
         },
       },
     });
-    expect(model.mpzp).toBeNull();
-    expect(model.mpzp_brak).toBe(true);
-    expect(model.przeznaczenie_studium).toBe("zabudowa mieszkaniowa (studium)");
+    expect(model.prz_plan_ogolny).toBe(true);
+    expect(model.prz_mpzp).toBe(false);
+    expect(model.prz_studium).toBe(false);
+    expect(model.prz_brak_mpzp).toBe(true);
+    expect(model.ma_przeznaczenie).toBe(true);
+    expect(model.ma_publikator).toBe(true);
+    expect(model.prz_publikator).toBe("obowiązujący od 14 stycznia 2026 r.");
   });
 
-  it("legacy inputs without subject render dashes and neither mpzp variant", () => {
-    const model = buildDocumentModel(goldenInput());
-    expect(model.obreb).toBe("—");
-    expect(model.mpzp).toBeNull();
-    expect(model.mpzp_brak).toBe(false);
-  });
-
-  it("pins the 'neither' state (mpzp null, mpzp_brak false) to legacy subject-null inputs (Fix C)", () => {
-    // Legacy: subject explicitly null (pre-EGiB/MPZP inputs — and, with Fix A
-    // in place, what an untouched "Dane przedmiotu" section resolves to).
-    const legacy = buildDocumentModel({
-      ...goldenInput(),
-      inputs: { ...syntheticInputs(), subject: null },
-    });
-    expect(legacy.mpzp).toBeNull();
-    expect(legacy.mpzp_brak).toBe(false);
-
-    // A persisted, non-empty subject with plan info resolves to the `mpzp` variant.
-    const withMpzp = buildDocumentModel({
+  // Uzarzewo: a gmina with no plan ogólny reads its studium, and the operat
+  // quotes art. 64.2 / 65.1 to say why. `prz_studium` is what prints the quote.
+  it("studium renders the negative deciding sentence without a publikator", () => {
+    const model = buildDocumentModel({
       ...goldenInput(),
       inputs: {
         ...syntheticInputs(),
-        subject: { obreb: "Jeżyce", mpzpAbsent: false, mpzpSymbol: "1MW/U" },
+        subject: {
+          obreb: "Uzarzewo",
+          przeznaczenieRodzaj: "studium",
+          przeznaczenieNazwa: "Gminy Swarzędz",
+          przeznaczenieUchwala: "Nr X/51/2011 Rady Miejskiej w Swarzędzu",
+          przeznaczenieData: "2011-03-29",
+          przeznaczenieSymbol: "I.78.M – tereny zabudowy mieszkaniowej",
+          // Set on purpose: only the plan ogólny branch may print it.
+          przeznaczeniePublikator: "cokolwiek",
+        },
       },
     });
-    expect(withMpzp.mpzp).not.toBeNull();
-    expect(withMpzp.mpzp_brak).toBe(false);
+    expect(model.prz_studium).toBe(true);
+    expect(model.prz_brak_mpzp).toBe(true);
+    expect(model.ma_przeznaczenie).toBe(true);
+    expect(model.ma_publikator).toBe(false);
+  });
 
-    // A persisted, non-empty subject flagged mpzpAbsent resolves to the `mpzp_brak` variant.
-    const withMpzpAbsent = buildDocumentModel({
+  it("legacy inputs without subject render dashes and no designation branch", () => {
+    const model = buildDocumentModel(goldenInput());
+    expect(model.obreb).toBe("—");
+    expect(model.prz_mpzp).toBe(false);
+    expect(model.prz_plan_ogolny).toBe(false);
+    expect(model.prz_studium).toBe(false);
+    expect(model.prz_brak_mpzp).toBe(false);
+    expect(model.ma_przeznaczenie).toBe(false);
+  });
+
+  // The source sentence is all-or-nothing: naming a plan the operat cannot
+  // identify, or identifying one with no symbol read out of it, is the 14.09
+  // defect. B-02 refuses to approve such a draft; the preview stays silent.
+  it("a half-filled designation prints no source sentence", () => {
+    const partial = buildDocumentModel({
       ...goldenInput(),
-      inputs: { ...syntheticInputs(), subject: { obreb: "Łazarz", mpzpAbsent: true } },
+      inputs: {
+        ...syntheticInputs(),
+        subject: {
+          obreb: "Jeżyce",
+          przeznaczenieRodzaj: "mpzp",
+          przeznaczenieNazwa: "Plan Testowy",
+          przeznaczenieUchwala: "Nr I/1/2020 Rady Miasta Poznania",
+          przeznaczenieData: "2020-01-01",
+          // symbol missing — nothing was read off the map
+        },
+      },
     });
-    expect(withMpzpAbsent.mpzp).toBeNull();
-    expect(withMpzpAbsent.mpzp_brak).toBe(true);
+    expect(partial.prz_mpzp).toBe(true);
+    expect(partial.ma_przeznaczenie).toBe(false);
 
-    // Residual edge case Fix A makes rare but doesn't eliminate at the model
-    // layer: a non-empty subject (e.g. only rokBudowy) with mpzpAbsent falsy
-    // and zero mpzp fields still yields neither variant — current behavior,
-    // asserted as-is rather than endorsed as ideal.
-    const nonEmptyNoMpzpInfo = buildDocumentModel({
+    // Pre-M-10 draft: the subject exists, the choice was never made.
+    const legacy = buildDocumentModel({
       ...goldenInput(),
       inputs: { ...syntheticInputs(), subject: { rokBudowy: 1938 } },
     });
-    expect(nonEmptyNoMpzpInfo.mpzp).toBeNull();
-    expect(nonEmptyNoMpzpInfo.mpzp_brak).toBe(false);
+    expect(legacy.prz_brak_mpzp).toBe(false);
+    expect(legacy.ma_przeznaczenie).toBe(false);
   });
 
   it("rok budowy set renders the year", () => {
@@ -313,16 +344,16 @@ describe("F-12: subject snapshot mapped into document facts + mpzp variants", ()
     expect(model.rok_budowy).toBe("1938");
   });
 
-  it("never leaks the subject snapshot's raw iso mpzp date, transactionId or to_verify status", () => {
+  it("never leaks the subject snapshot's raw iso designation date, transactionId or to_verify status", () => {
     const model = buildDocumentModel({
       ...goldenInput(),
       inputs: {
         ...syntheticInputs(),
         subject: {
           obreb: "Jeżyce",
-          mpzpAbsent: false,
-          mpzpSymbol: "1MW/U",
-          mpzpData: "2020-01-01",
+          przeznaczenieRodzaj: "mpzp",
+          przeznaczenieSymbol: "1MW/U",
+          przeznaczenieData: "2020-01-01",
         },
       },
     });
@@ -331,23 +362,23 @@ describe("F-12: subject snapshot mapped into document facts + mpzp variants", ()
     expect(json).not.toContain("rcn-tx-");
     expect(json).not.toContain("transactionId");
     expect(json).not.toContain("to_verify");
-    expect(model.mpzp?.data).toBe("01.01.2020");
+    expect(model.prz_data).toBe("01.01.2020");
   });
 
-  it("mpzpData free-text (Polish format, not schema-ISO) passes through raw rather than 'undefined.undefined.…' (Fix B)", () => {
+  it("przeznaczenieData free-text (Polish format, not schema-ISO) passes through raw rather than 'undefined.undefined.…' (Fix B)", () => {
     const model = buildDocumentModel({
       ...goldenInput(),
       inputs: {
         ...syntheticInputs(),
         subject: {
           obreb: "Jeżyce",
-          mpzpAbsent: false,
-          mpzpSymbol: "1MW/U",
-          mpzpData: "26.02.2019",
+          przeznaczenieRodzaj: "mpzp",
+          przeznaczenieSymbol: "1MW/U",
+          przeznaczenieData: "26.02.2019",
         },
       },
     });
-    expect(model.mpzp?.data).toBe("26.02.2019");
+    expect(model.prz_data).toBe("26.02.2019");
     expect(JSON.stringify(model)).not.toContain("undefined");
   });
 });

@@ -25,14 +25,28 @@ export type SubjectSnapshot = {
    * additive, so every snapshot saved before FH.2 parses unchanged.
    */
   pietro?: number | null;
-  mpzpAbsent?: boolean;
-  mpzpSymbol?: string;
-  mpzpNazwa?: string;
-  mpzpUchwala?: string;
-  mpzpData?: string;
-  mpzpPubl?: string;
-  przeznaczenieStudium?: string;
+  /**
+   * What determines the designation (M-10, D-34). Replaces the `mpzpAbsent`
+   * boolean: after the 2023 planning reform "no MPZP" is not one state but two
+   * — a gmina with a plan ogólny (Poznań since 14.01.2026) and one still
+   * reading its studium under art. 64.2. Nullable on purpose: nothing may
+   * guess it, B-02 refuses to approve until the appraiser picks one, and
+   * pre-M-10 drafts keep opening with nothing selected.
+   */
+  przeznaczenieRodzaj?: PrzeznaczenieRodzaj | null;
+  /** MPZP: nazwa planu. Plan ogólny/studium: gmina in the genitive ("Gminy Swarzędz"). */
+  przeznaczenieNazwa?: string;
+  /** Resolution without its leading noun: "Nr X/1/2020 Rady Miasta Poznania". */
+  przeznaczenieUchwala?: string;
+  przeznaczenieData?: string;
+  /** Symbol with its description: "4MW/U – tereny zabudowy mieszkaniowej wielorodzinnej". */
+  przeznaczenieSymbol?: string;
+  /** Plan ogólny only: "obowiązujący od 14 stycznia 2026 r. (opublikowany …)". */
+  przeznaczeniePublikator?: string;
 };
+
+/** The three designation sources the reference operats use — and no others (M-10). */
+export type PrzeznaczenieRodzaj = "mpzp" | "plan_ogolny" | "studium";
 
 /** The RCN-fetch provenance for the subject snapshot (F-5) — mirrors SampleMeta. */
 export type SubjectMetaSnapshot = {

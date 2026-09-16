@@ -51,6 +51,37 @@ const zbadaneKsiegi = {
   },
 };
 
+/**
+ * A designation that is chosen and complete (M-10, D-34). Spread into every
+ * input meant to reach the OTHER groups, for exactly the reason
+ * {@link zbadaneKsiegi} is: B-02 sits OUTSIDE the `subject != null` guard and
+ * is therefore asked on every path, so an input without a designation blocks
+ * before anything else is tested. The subject group below overrides it on
+ * purpose. Fictional plan (F-9).
+ */
+const wybranePrzeznaczenie = {
+  subject: {
+    przeznaczenieRodzaj: "mpzp" as const,
+    przeznaczenieNazwa: "Plan Testowy",
+    przeznaczenieUchwala: "Nr I/1/2020 Rady Miasta Poznania",
+    przeznaczenieData: "2020-01-01",
+    przeznaczenieSymbol: "1MW/U – tereny zabudowy mieszkaniowej wielorodzinnej",
+  },
+};
+
+/**
+ * The provenance half of {@link wybranePrzeznaczenie}, kept beside it so the
+ * two cannot drift apart. Carrying a subject at all opens the EGiB/MPZP group
+ * — that group IS gated on the snapshot existing — so these two stamps have to
+ * travel with the snapshot. Deliberately NOT folded into
+ * {@link confirmedScalars}: the subject group below proves that a snapshot
+ * WITHOUT them is refused, and that premise needs a scalar map that lacks them.
+ */
+const przeznaczenieProv = {
+  ewidencja: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+  mpzp: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+};
+
 function manualRows(n: number) {
   return Array.from({ length: n }, () => ({
     source: "manual" as const,
@@ -62,9 +93,10 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   it("passes with >=12 confirmed rows and a fully confirmed scalar map (no sample fetch)", () => {
     const result = approvalGate({
       ...zbadaneKsiegi,
+      ...wybranePrzeznaczenie,
       comparables: manualRows(12),
       sampleMeta: null,
-      provenance: confirmedScalars,
+      provenance: { ...confirmedScalars, ...przeznaczenieProv },
     });
     expect(result).toEqual({ ok: true });
   });
@@ -74,9 +106,10 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     rows[2] = { source: "rcn" as never, status: "to_verify" as never };
     const result = approvalGate({
       ...zbadaneKsiegi,
+      ...wybranePrzeznaczenie,
       comparables: rows,
       sampleMeta: null,
-      provenance: confirmedScalars,
+      provenance: { ...confirmedScalars, ...przeznaczenieProv },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -92,7 +125,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     const result = approvalGate({
       comparables: rows as never,
       sampleMeta: null,
-      provenance: confirmedScalars,
+      provenance: { ...confirmedScalars, ...przeznaczenieProv },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -104,9 +137,10 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   it(`blocks below ${REQUIRED_SAMPLE_SIZE} transactions even when everything is confirmed`, () => {
     const result = approvalGate({
       ...zbadaneKsiegi,
+      ...wybranePrzeznaczenie,
       comparables: manualRows(11),
       sampleMeta: null,
-      provenance: confirmedScalars,
+      provenance: { ...confirmedScalars, ...przeznaczenieProv },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -128,6 +162,9 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
         "provenance.area",
         "provenance.weights",
         "provenance.ratings",
+        // B-02 (M-10) joins the same breath, and for the same reason: it is
+        // asked of every draft, not only of one that already has a snapshot.
+        "subject.przeznaczenieRodzaj",
         "kw.badanie",
       ]);
     }
@@ -137,33 +174,49 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     const withMeta = { lat: 52.4, lon: 16.9 };
     const noGeocode = approvalGate({
       ...zbadaneKsiegi,
+      ...wybranePrzeznaczenie,
       comparables: manualRows(12),
       sampleMeta: withMeta,
-      provenance: confirmedScalars,
+      provenance: { ...confirmedScalars, ...przeznaczenieProv },
     });
     expect(noGeocode.ok).toBe(false);
     if (!noGeocode.ok) expect(noGeocode.blockers[0].path).toBe("provenance.geocode");
 
     const toVerifyGeocode = approvalGate({
       ...zbadaneKsiegi,
+      ...wybranePrzeznaczenie,
       comparables: manualRows(12),
       sampleMeta: withMeta,
-      provenance: { ...confirmedScalars, geocode: { source: "geokoder", status: "to_verify" } },
+      provenance: {
+        ...confirmedScalars,
+        ...przeznaczenieProv,
+        geocode: { source: "geokoder", status: "to_verify" },
+      },
     });
     expect(toVerifyGeocode.ok).toBe(false);
 
     const confirmedGeocode = approvalGate({
       ...zbadaneKsiegi,
+      ...wybranePrzeznaczenie,
       comparables: manualRows(12),
       sampleMeta: withMeta,
-      provenance: { ...confirmedScalars, geocode: { source: "geokoder", status: "confirmed" } },
+      provenance: {
+        ...confirmedScalars,
+        ...przeznaczenieProv,
+        geocode: { source: "geokoder", status: "confirmed" },
+      },
     });
     expect(confirmedGeocode).toEqual({ ok: true });
   });
 
   it("does NOT require geocode when there was no sample fetch (sampleMeta absent/null)", () => {
     expect(
-      approvalGate({ ...zbadaneKsiegi, comparables: manualRows(12), provenance: confirmedScalars }),
+      approvalGate({
+        ...zbadaneKsiegi,
+        ...wybranePrzeznaczenie,
+        comparables: manualRows(12),
+        provenance: { ...confirmedScalars, ...przeznaczenieProv },
+      }),
     ).toEqual({ ok: true });
   });
 
@@ -173,8 +226,9 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     const result = approvalGate({ comparables: rows, sampleMeta: null });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // 1 count blocker + 1 row blocker + 4 scalar blockers + the KW examination
-      expect(result.blockers).toHaveLength(7);
+      // 1 count blocker + 1 row blocker + 4 scalar blockers + the designation
+      // (B-02) + the KW examination
+      expect(result.blockers).toHaveLength(8);
     }
   });
 
@@ -183,7 +237,9 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
       ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: null,
-      subject: { obreb: "Jeżyce" },
+      // The designation travels WITH the snapshot: this group is about the
+      // EGiB/MPZP provenance stamps, so B-02 must not fire and steal the result.
+      subject: { ...wybranePrzeznaczenie.subject, obreb: "Jeżyce" },
       provenance: {
         ...confirmedScalars,
         ewidencja: { source: "ewidencja", status: "to_verify" },
@@ -203,7 +259,9 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
       ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: null,
-      subject: { obreb: "X" },
+      subject: { ...wybranePrzeznaczenie.subject, obreb: "X" },
+      // Deliberately WITHOUT `przeznaczenieProv`: the premise is a snapshot
+      // whose EGiB/MPZP stamps are missing, which default-deny must refuse.
       provenance: confirmedScalars,
     });
     expect(result.ok).toBe(false);
@@ -214,7 +272,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
       ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: null,
-      subject: { obreb: "Jeżyce" },
+      subject: { ...wybranePrzeznaczenie.subject, obreb: "Jeżyce" },
       provenance: {
         ...confirmedScalars,
         ewidencja: { source: "ewidencja", status: "confirmed" },
@@ -224,15 +282,74 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("does not gate subject when subject absent (legacy)", () => {
-    expect(
-      approvalGate({
-        ...zbadaneKsiegi,
-        comparables: manualRows(12),
-        sampleMeta: null,
-        provenance: confirmedScalars,
-      }),
-    ).toEqual({ ok: true });
+  /**
+   * ⚠️ Meaning CHANGED at M-10. Until then "no snapshot" meant "no subject
+   * demand at all", and this asserted `{ ok: true }`. It cannot any more: B-02
+   * is asked outside the `subject != null` guard precisely BECAUSE the 14.09
+   * valuation was typed in by hand with no snapshot and slipped past every
+   * check that lived inside it. So the thing this test actually protects — the
+   * EGiB/MPZP provenance group staying silent when there is nothing to stamp —
+   * is now asserted directly, with B-02 named as the one blocker that remains.
+   */
+  it("leaves the EGiB/MPZP group silent when subject absent, but still asks B-02 (legacy)", () => {
+    const result = approvalGate({
+      ...zbadaneKsiegi,
+      comparables: manualRows(12),
+      sampleMeta: null,
+      provenance: confirmedScalars,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const paths = result.blockers.map((b) => b.path);
+      expect(paths).toEqual(["subject.przeznaczenieRodzaj"]);
+      expect(paths).not.toContain("provenance.ewidencja");
+      expect(paths).not.toContain("provenance.mpzp");
+    }
+  });
+
+  /**
+   * B-02 (M-10, D-34) — the rule this whole change exists to defend. §9 prints
+   * ONE sentence naming the source of the designation; a sentence that names a
+   * source it cannot identify, or identifies one without the symbol read out of
+   * it, is exactly what Aneta reported on the 14.09 operat. So all five parts,
+   * or no approval — half-filled is refused just as hard as unchosen.
+   */
+  it.each([
+    ["nie wybrano podstawy", undefined],
+    ["wybrano MPZP, brak symbolu", { ...wybranePrzeznaczenie.subject, przeznaczenieSymbol: "" }],
+    ["wybrano MPZP, brak uchwały", { ...wybranePrzeznaczenie.subject, przeznaczenieUchwala: "" }],
+    ["wybrano MPZP, brak daty", { ...wybranePrzeznaczenie.subject, przeznaczenieData: "" }],
+    ["wybrano MPZP, brak nazwy", { ...wybranePrzeznaczenie.subject, przeznaczenieNazwa: "" }],
+    // `plan_ogolny` on purpose, not incidentally: it is the branch the Poznań
+    // prefill fills, and picking a source is NOT the same as completing it —
+    // the prefill offers the resolution but never the symbol, which is read off
+    // the map for THIS parcel. So the half-filled state is reachable in the UI.
+    ["sam rodzaj, bez reszty", { przeznaczenieRodzaj: "plan_ogolny" as const }],
+  ])("B-02 blokuje: %s", (_label, subject) => {
+    const result = approvalGate({
+      ...zbadaneKsiegi,
+      comparables: manualRows(12),
+      sampleMeta: null,
+      ...(subject ? { subject } : {}),
+      provenance: { ...confirmedScalars, ...przeznaczenieProv },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const b02 = result.blockers.find((b) => b.code === "B-02");
+      expect(b02, "B-02 nie pojawił się").toBeDefined();
+      expect(b02!.path).toBe("subject.przeznaczenieRodzaj");
+    }
+  });
+
+  it("B-02 milczy, gdy wszystkie pięć części przeznaczenia jest wypełnione", () => {
+    const result = approvalGate({
+      ...zbadaneKsiegi,
+      ...wybranePrzeznaczenie,
+      comparables: manualRows(12),
+      sampleMeta: null,
+      provenance: { ...confirmedScalars, ...przeznaczenieProv },
+    });
+    expect(result).toEqual({ ok: true });
   });
 });
 
@@ -247,9 +364,10 @@ describe("kw group (Slice 6, ADR-018)", () => {
   function passingInput() {
     return {
       ...zbadaneKsiegi,
+      ...wybranePrzeznaczenie,
       comparables: manualRows(12),
       sampleMeta: null,
-      provenance: confirmedScalars,
+      provenance: { ...confirmedScalars, ...przeznaczenieProv },
     };
   }
 
@@ -351,9 +469,10 @@ describe("kw group (Slice 6, ADR-018)", () => {
 describe("prose group (FR-6, Task 7)", () => {
   const passing = () => ({
     ...zbadaneKsiegi,
+    ...wybranePrzeznaczenie,
     comparables: manualRows(12),
     sampleMeta: null,
-    provenance: confirmedScalars,
+    provenance: { ...confirmedScalars, ...przeznaczenieProv },
   });
 
   it("adds ZERO blockers when requireProse is false — the kill switch is off (CI smoke)", () => {
@@ -590,8 +709,9 @@ describe("prose group (FR-6, Task 7)", () => {
     const result = approvalGate({ comparables: manualRows(3), prose }, { requireProse: true });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // 1 count + 4 scalars + the KW examination + 2 prose blockers, prose LAST.
-      expect(result.blockers).toHaveLength(8);
+      // 1 count + 4 scalars + the designation (B-02) + the KW examination
+      // + 2 prose blockers, prose LAST.
+      expect(result.blockers).toHaveLength(9);
       expect(result.blockers.map((b) => b.path).slice(-2)).toEqual([
         "prose.otoczenie",
         "prose.standard",
@@ -604,6 +724,7 @@ describe("featureDefs group (Slice 7)", () => {
   it("featureDefs to_verify blocks with a Polish label; legacy provenance without the key does not", () => {
     const blocked = approvalGate({
       ...zbadaneKsiegi,
+      ...wybranePrzeznaczenie,
       comparables: manualRows(12),
       sampleMeta: null,
       provenance: { ...confirmedScalars, featureDefs: { source: "preset", status: "to_verify" } },
@@ -620,9 +741,10 @@ describe("featureDefs group (Slice 7)", () => {
     expect(
       approvalGate({
         ...zbadaneKsiegi,
+        ...wybranePrzeznaczenie,
         comparables: manualRows(12),
         sampleMeta: null,
-        provenance: confirmedScalars,
+        provenance: { ...confirmedScalars, ...przeznaczenieProv },
       }).ok,
     ).toBe(true);
   });

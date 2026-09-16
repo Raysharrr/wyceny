@@ -622,11 +622,11 @@ describe("stepForBlockerPath", () => {
 
     // Sanity: the enumeration really did reach every group — sample size + one
     // transaction (2), the four scalars + featureDefs + geocode + EGiB + MPZP +
-    // KW (9), the KW examination and the encumbrance decision (2), the prose
-    // snapshot + its six sections (7), the five document fields (5). A drop
-    // here means a group stopped being exercised, and the loop below would
-    // then pass vacuously.
-    expect(paths.size).toBe(25);
+    // KW (9), the designation source (1, B-02/M-10), the KW examination and the
+    // encumbrance decision (2), the prose snapshot + its six sections (7), the
+    // five document fields (5). A drop here means a group stopped being
+    // exercised, and the loop below would then pass vacuously.
+    expect(paths.size).toBe(26);
     for (const path of paths) {
       expect(stepForBlockerPath(path), `no step for blocker path "${path}"`).toBeDefined();
     }
@@ -638,6 +638,9 @@ describe("stepForBlockerPath", () => {
     ["provenance.geocode", 1, "Przedmiot"],
     ["provenance.ewidencja", 1, "Przedmiot"],
     ["provenance.mpzp", 1, "Przedmiot"],
+    // B-02 (M-10): the designation source is picked on the step-1 form, so the
+    // blocker has to lead back there and not to a screen that cannot clear it.
+    ["subject.przeznaczenieRodzaj", 1, "Przedmiot"],
     ["provenance.kw", 1, "Przedmiot"],
     ["kw.kwGruntu", 1, "Przedmiot"],
     ["kw.kwLokalu", 1, "Przedmiot"],

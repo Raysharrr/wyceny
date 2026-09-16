@@ -1,12 +1,19 @@
 "use client";
 
-import { Controller, useWatch, type Control } from "react-hook-form";
+import { Controller, useWatch, type Control, type UseFormSetValue } from "react-hook-form";
 import type { z } from "zod";
 import { AutoBanner } from "@/components/wizard/auto-banner";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  isPoznan,
+  PLAN_OGOLNY_POZNAN,
+  PRZEZNACZENIE_LABEL,
+  PRZEZNACZENIE_NAZWA_LABEL,
+  PRZEZNACZENIE_NAZWA_PLACEHOLDER,
+} from "@/domain/przeznaczenie";
+import type { PrzeznaczenieRodzaj } from "@/domain/subject-snapshot";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 
 type FormInput = z.input<typeof valuationFormSchema>;
@@ -39,6 +46,9 @@ interface SubjectSectionProps {
   control: Control<FormInput, unknown, FormOutput>;
   fetchState: SubjectFetchState;
   onRetry: () => void;
+  /** The designation prefill writes four sibling fields at once, so the
+   * section needs the form's setter, not just its control. */
+  setValue: UseFormSetValue<FormInput>;
 }
 
 // Mirrors `toInputValue` in `new-valuation-form.tsx`: zod's coerced-number
@@ -56,17 +66,7 @@ const TEXT_FIELDS = [
   { name: "subject.budynekRodzaj", id: "subject-budynek-rodzaj", label: "Rodzaj budynku" },
 ] as const;
 
-// `mpzpData` is rendered separately as a `type="date"` input (mirroring
-// `inspectionDate`), so it's split out of this generic-text-field list.
-const MPZP_FIELDS_BEFORE_DATE = [
-  { name: "subject.mpzpSymbol", id: "subject-mpzp-symbol", label: "Symbol MPZP" },
-  { name: "subject.mpzpNazwa", id: "subject-mpzp-nazwa", label: "Nazwa planu" },
-  { name: "subject.mpzpUchwala", id: "subject-mpzp-uchwala", label: "Uchwała" },
-] as const;
-
-const MPZP_FIELDS_AFTER_DATE = [
-  { name: "subject.mpzpPubl", id: "subject-mpzp-publ", label: "Publikator" },
-] as const;
+const PRZEZNACZENIE_RODZAJE = ["mpzp", "plan_ogolny", "studium"] as const;
 
 function SubjectFetchStatusBar({
   fetchState,
@@ -178,8 +178,30 @@ export function MapPreview({ state }: { state: MapPreviewState }) {
  * Slice 12 Task 7 — `StepHeader` (via `WizardShell`) owns the step-1 title
  * now; the map preview moved out to the step-1 sidebar (`subject-form.tsx`).
  */
-export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionProps) {
-  const mpzpAbsent = useWatch({ control, name: "subject.mpzpAbsent" });
+export function SubjectSection({ control, fetchState, onRetry, setValue }: SubjectSectionProps) {
+  const rodzaj = useWatch({ control, name: "subject.przeznaczenieRodzaj" }) ?? null;
+  const address = useWatch({ control, name: "address" }) ?? "";
+  const teryt = useWatch({ control, name: "subjectMeta" })?.teryt ?? null;
+  const nazwa = useWatch({ control, name: "subject.przeznaczenieNazwa" });
+  const uchwala = useWatch({ control, name: "subject.przeznaczenieUchwala" });
+  const data = useWatch({ control, name: "subject.przeznaczenieData" });
+  const publikator = useWatch({ control, name: "subject.przeznaczeniePublikator" });
+  const opts = { shouldDirty: true } as const;
+
+  /**
+   * Picking "plan ogólny" in Poznań fills the city's resolution — it is the
+   * same three lines in every Poznań operat since 14.01.2026, and retyping a
+   * Dz. Urz. reference by hand is how a wrong one gets into a document. Only
+   * into empty fields: a correction the appraiser already made is never undone.
+   */
+  function prefillPoznan(picked: PrzeznaczenieRodzaj) {
+    if (picked !== "plan_ogolny" || !isPoznan(address, teryt)) return;
+    if (!nazwa) setValue("subject.przeznaczenieNazwa", PLAN_OGOLNY_POZNAN.nazwa, opts);
+    if (!uchwala) setValue("subject.przeznaczenieUchwala", PLAN_OGOLNY_POZNAN.uchwala, opts);
+    if (!data) setValue("subject.przeznaczenieData", PLAN_OGOLNY_POZNAN.data, opts);
+    if (!publikator)
+      setValue("subject.przeznaczeniePublikator", PLAN_OGOLNY_POZNAN.publikator, opts);
+  }
 
   return (
     <section className="flex flex-col gap-3">
@@ -301,80 +323,133 @@ export function SubjectSection({ control, fetchState, onRetry }: SubjectSectionP
 
         <Controller
           control={control}
-          name="subject.mpzpAbsent"
-          render={({ field }) => (
-            <Field orientation="horizontal">
-              <Checkbox
-                id="subject-mpzp-absent"
-                checked={field.value ?? false}
-                onCheckedChange={(checked) => field.onChange(checked === true)}
-                onBlur={field.onBlur}
-                ref={field.ref}
-              />
-              <FieldLabel htmlFor="subject-mpzp-absent">Brak obowiązującego MPZP</FieldLabel>
+          name="subject.przeznaczenieRodzaj"
+          render={({ field, fieldState }) => (
+            <Field className="sm:col-span-2" data-invalid={!!fieldState.error}>
+              <FieldLabel htmlFor="subject-przeznaczenie-rodzaj-mpzp">
+                Co określa przeznaczenie terenu?
+              </FieldLabel>
+              <div
+                role="radiogroup"
+                aria-label="Co określa przeznaczenie terenu?"
+                className="flex flex-col gap-2"
+              >
+                {PRZEZNACZENIE_RODZAJE.map((rodzaj) => (
+                  <label key={rodzaj} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      id={`subject-przeznaczenie-rodzaj-${rodzaj}`}
+                      name={field.name}
+                      value={rodzaj}
+                      checked={field.value === rodzaj}
+                      onBlur={field.onBlur}
+                      onChange={() => {
+                        field.onChange(rodzaj);
+                        prefillPoznan(rodzaj);
+                      }}
+                    />
+                    {PRZEZNACZENIE_LABEL[rodzaj]}
+                  </label>
+                ))}
+              </div>
+              <FieldDescription>
+                Po reformie z 2023 r. brak planu miejscowego to dwie różne podstawy: plan ogólny
+                gminy, a w gminie, która go jeszcze nie uchwaliła — studium (art. 64 ust. 2).
+              </FieldDescription>
+              <FieldError errors={[fieldState.error]} />
             </Field>
           )}
         />
 
-        {mpzpAbsent ? (
-          <Controller
-            control={control}
-            name="subject.przeznaczenieStudium"
-            render={({ field, fieldState }) => (
-              <Field data-invalid={!!fieldState.error}>
-                <FieldLabel htmlFor="subject-przeznaczenie-studium">
-                  Przeznaczenie wg studium/decyzji WZ
-                </FieldLabel>
-                <Input id="subject-przeznaczenie-studium" autoComplete="off" {...field} />
-                <FieldError errors={[fieldState.error]} />
-              </Field>
-            )}
-          />
-        ) : (
+        {rodzaj ? (
           <>
-            {MPZP_FIELDS_BEFORE_DATE.map(({ name, id, label }) => (
-              <Controller
-                key={name}
-                control={control}
-                name={name}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={!!fieldState.error}>
-                    <FieldLabel htmlFor={id}>{label}</FieldLabel>
-                    <Input id={id} autoComplete="off" {...field} />
-                    <FieldError errors={[fieldState.error]} />
-                  </Field>
-                )}
-              />
-            ))}
-
             <Controller
               control={control}
-              name="subject.mpzpData"
+              name="subject.przeznaczenieNazwa"
               render={({ field, fieldState }) => (
                 <Field data-invalid={!!fieldState.error}>
-                  <FieldLabel htmlFor="subject-mpzp-data">Data uchwały</FieldLabel>
-                  <Input id="subject-mpzp-data" type="date" {...field} />
+                  <FieldLabel htmlFor="subject-przeznaczenie-nazwa">
+                    {PRZEZNACZENIE_NAZWA_LABEL[rodzaj]}
+                  </FieldLabel>
+                  <Input
+                    id="subject-przeznaczenie-nazwa"
+                    autoComplete="off"
+                    placeholder={PRZEZNACZENIE_NAZWA_PLACEHOLDER[rodzaj]}
+                    {...field}
+                  />
                   <FieldError errors={[fieldState.error]} />
                 </Field>
               )}
             />
 
-            {MPZP_FIELDS_AFTER_DATE.map(({ name, id, label }) => (
+            <Controller
+              control={control}
+              name="subject.przeznaczenieUchwala"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={!!fieldState.error}>
+                  <FieldLabel htmlFor="subject-przeznaczenie-uchwala">Uchwała</FieldLabel>
+                  <Input
+                    id="subject-przeznaczenie-uchwala"
+                    autoComplete="off"
+                    placeholder="np. Nr VII/84/VIII/2019 Rady Miasta Poznania"
+                    {...field}
+                  />
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="subject.przeznaczenieData"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={!!fieldState.error}>
+                  <FieldLabel htmlFor="subject-przeznaczenie-data">Data uchwały</FieldLabel>
+                  <Input id="subject-przeznaczenie-data" type="date" {...field} />
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="subject.przeznaczenieSymbol"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={!!fieldState.error}>
+                  <FieldLabel htmlFor="subject-przeznaczenie-symbol">Symbol i opis</FieldLabel>
+                  <Input
+                    id="subject-przeznaczenie-symbol"
+                    autoComplete="off"
+                    placeholder="np. 4MW/U – tereny zabudowy mieszkaniowej wielorodzinnej"
+                    {...field}
+                  />
+                  <FieldError errors={[fieldState.error]} />
+                </Field>
+              )}
+            />
+
+            {rodzaj === "plan_ogolny" ? (
               <Controller
-                key={name}
                 control={control}
-                name={name}
+                name="subject.przeznaczeniePublikator"
                 render={({ field, fieldState }) => (
-                  <Field data-invalid={!!fieldState.error}>
-                    <FieldLabel htmlFor={id}>{label}</FieldLabel>
-                    <Input id={id} autoComplete="off" {...field} />
+                  <Field className="sm:col-span-2" data-invalid={!!fieldState.error}>
+                    <FieldLabel htmlFor="subject-przeznaczenie-publikator">
+                      Status dokumentu
+                    </FieldLabel>
+                    <Input
+                      id="subject-przeznaczenie-publikator"
+                      autoComplete="off"
+                      placeholder="np. obowiązujący od 14 stycznia 2026 r. (opublikowany …)"
+                      {...field}
+                    />
                     <FieldError errors={[fieldState.error]} />
                   </Field>
                 )}
               />
-            ))}
+            ) : null}
           </>
-        )}
+        ) : null}
       </FieldGroup>
     </section>
   );

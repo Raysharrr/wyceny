@@ -93,7 +93,27 @@ function rcnInputs(): KcsInput {
       source: "rcn-wfs-gugik" as const,
       query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D", pages: 1, truncated: false },
     },
-    provenance: { ...confirmedScalars, geocode: { source: "geokoder", status: "to_verify" } },
+    // B-02 (M-10): the designation is asked OUTSIDE the `subject != null`
+    // guard, so a draft meant to be approvable has to carry all five parts —
+    // otherwise every gate assertion below blocks on the designation instead
+    // of on the thing it is actually testing. Fictional plan (F-9).
+    subject: {
+      przeznaczenieRodzaj: "mpzp" as const,
+      przeznaczenieNazwa: "Plan Testowy",
+      przeznaczenieUchwala: "Nr I/1/2020 Rady Miasta Poznania",
+      przeznaczenieData: "2020-01-01",
+      przeznaczenieSymbol: "1MW/U – tereny zabudowy mieszkaniowej wielorodzinnej",
+    },
+    provenance: {
+      ...confirmedScalars,
+      geocode: { source: "geokoder", status: "to_verify" },
+      // Carrying a subject opens the EGiB/MPZP group, and `confirmSubjectEntries`
+      // only flips entries that ALREADY exist — an absent key stays absent and
+      // default-deny refuses it. They enter `to_verify`, like the geocode, so
+      // step 1's confirmation is still what clears them.
+      ewidencja: { source: "ewidencja" as const, status: "to_verify" as const },
+      mpzp: { source: "mpzp" as const, status: "to_verify" as const },
+    },
   };
 }
 
@@ -190,10 +210,18 @@ describe("confirmSubjectProvenance", () => {
 
   it("no-op on legacy inputs without subject", () => {
     // Geocode stripped from the fixture: since T7 this function owns that key
-    // too, so inputs carrying one are no longer an untouched-map case.
+    // too, so inputs carrying one are no longer an untouched-map case. Since
+    // M-10 the fixture also carries the EGiB/MPZP stamps (a subject exists to
+    // satisfy B-02), and this function owns those two as well — so a genuinely
+    // legacy map is one with none of the three.
+    const {
+      ewidencja: _e,
+      mpzp: _m,
+      ...legacyProvenance
+    } = withoutGeocode(rcnInputs().provenance!);
     const legacy = draftWith({
       ...rcnInputs(),
-      provenance: withoutGeocode(rcnInputs().provenance!),
+      provenance: legacyProvenance,
     });
     const v = confirmSubjectProvenance(legacy);
     expect(v.inputs).toEqual(legacy.inputs);

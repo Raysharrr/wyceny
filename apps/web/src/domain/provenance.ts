@@ -15,6 +15,8 @@ import {
 } from "./kw-snapshot";
 import type { PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
+import { isPrzeznaczenieComplete } from "./przeznaczenie";
+import type { SubjectSnapshot } from "./subject-snapshot";
 import type { AppraiserProfile } from "../ports/profile";
 
 /**
@@ -61,7 +63,8 @@ export type GateResult = { ok: true } | { ok: false; blockers: Blocker[] };
 export type GateInput = {
   comparables: Array<{ source?: ComparableSource; status?: ProvenanceStatus }>;
   sampleMeta?: unknown | null;
-  subject?: unknown | null;
+  // Typed since M-10: B-02 reads the designation fields off it.
+  subject?: SubjectSnapshot | null;
   kw?: {
     source: "akt" | "odpis_kw" | "ekw_reczne";
     kwLokalu: string | null;
@@ -238,6 +241,24 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
         label: `Przeznaczenie planistyczne (MPZP) — ${statusLabel(mpzp?.status ?? "none")}.`,
       });
     }
+  }
+
+  // B-02 (M-10, D-34) — asked OUTSIDE the `input.subject != null` guard, like
+  // B-06 and for the same reason: the 14.09 valuation was entered by hand, had
+  // no snapshot, and slipped past every check that lived inside the guard.
+  //
+  // All five parts, one blocker: §9 prints one sentence, and a sentence that
+  // names a source it cannot identify — or identifies one without the symbol
+  // read out of it — is what Aneta reported. Nothing here may be guessed; the
+  // auto-fetch fills the MPZP branch, the Poznań prefill the plan ogólny one.
+  if (!isPrzeznaczenieComplete(input.subject)) {
+    blockers.push({
+      path: "subject.przeznaczenieRodzaj",
+      code: "B-02",
+      label:
+        "Uzupełnij przeznaczenie terenu: wskaż podstawę (MPZP, plan ogólny albo studium), " +
+        "nazwę, uchwałę z datą i symbol.",
+    });
   }
 
   // Provenance of an attached snapshot — only meaningful once there is one.

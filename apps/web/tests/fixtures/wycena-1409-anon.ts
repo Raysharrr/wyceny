@@ -3,6 +3,7 @@ import path from "node:path";
 import type { ProvenanceSource } from "@wyceny/shared";
 import { computeKcs, type Feature, type KcsInput } from "../../src/domain/kcs";
 import type { BuildDocumentInput } from "../../src/domain/document-model";
+import { PLAN_OGOLNY_POZNAN } from "../../src/domain/przeznaczenie";
 import type {
   EncumbranceTreatment,
   KwGruntSnapshot,
@@ -369,8 +370,19 @@ export function wycena1409Anon(wariant: Wariant1409 = {}): BuildDocumentInput {
       kondygnacjePodziemne: 1,
       rokBudowy: 1978,
       pietro: PIETRO_PRZEDMIOTU,
-      mpzpAbsent: true,
-      przeznaczenieStudium: "teren zabudowy mieszkaniowej wielorodzinnej (dane fikcyjne)",
+      // M-10: pre-M-10 this was `mpzpAbsent: true` plus a free-text
+      // `przeznaczenieStudium` — and THIS is the valuation whose §9 named a
+      // studium and a WZ decision for a Poznań flat. Poznań has had a plan
+      // ogólny since 14.01.2026, so the anonymised 14.09 draft carries the
+      // branch it should have carried: the city's own resolution, verbatim
+      // from operats Folwarczna and Wojska Polskiego. The symbol stays
+      // fictional (F-9) — it is the one part read off the map per parcel.
+      przeznaczenieRodzaj: "plan_ogolny",
+      przeznaczenieNazwa: PLAN_OGOLNY_POZNAN.nazwa,
+      przeznaczenieUchwala: PLAN_OGOLNY_POZNAN.uchwala,
+      przeznaczenieData: PLAN_OGOLNY_POZNAN.data,
+      przeznaczeniePublikator: PLAN_OGOLNY_POZNAN.publikator,
+      przeznaczenieSymbol: "MW – teren zabudowy mieszkaniowej wielorodzinnej (dane fikcyjne)",
     },
     subjectMeta: {
       x: 360000,

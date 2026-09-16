@@ -526,7 +526,7 @@ export const HELP_PAGES: HelpPage[] = [
    * Źródła do sprawdzenia przy każdej zmianie operatu, audytu lub podpisu:
    *   apps/web/src/domain/operat-sections.ts:14         OPERAT_SECTION_TEMPLATES (IMPORTOWANE do MDX)
    *   apps/web/src/domain/document-model.ts:78          maskowanie: miesiąc zamiast pełnej daty (F-12)
-   *   apps/web/src/domain/document-model.ts:277         mpzp / mpzp_brak — wzajemnie wykluczające się
+   *   apps/web/src/domain/przeznaczenie.ts              isPrzeznaczenieComplete — jedna reguła dla B-02 i §9
    *   apps/web/src/domain/document-model.ts:285         cechy o wadze 0 poza dokumentem
    *   apps/web/src/domain/document-model.ts:545,546     Tabela 1 (Slice 3): obreb (obrebLabel) i odleglosc per wiersz, ręczne wiersze — kreska
    *   apps/web/src/domain/obreb-name.ts                 obrebLabel — format „numer nazwa" (Poznań) / „numer · gm. TERYT" (poza Poznaniem)

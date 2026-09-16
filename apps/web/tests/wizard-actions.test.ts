@@ -513,7 +513,7 @@ describe("confirmCalculationAction", () => {
 describe("saveInspectionDate", () => {
   // NOTE: the spec's validation `/^\d{4}-\d{2}-\d{2}$/.test(date) || date === ""`
   // checks format only, not calendar validity (same convention as
-  // subjectSchema.mpzpData) — "2026-13-99" is syntactically well-formed
+  // subjectSchema.przeznaczenieData) — "2026-13-99" is syntactically well-formed
   // (4-2-2 digit groups) and therefore accepted by this regex. Swapped the
   // brief's calendar-invalid example for a format-invalid one (missing
   // leading zeros) so this case actually exercises the reject path; flagged
