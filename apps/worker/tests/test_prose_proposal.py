@@ -120,6 +120,37 @@ def test_empty_sections_400():
     assert resp.status_code == 400
 
 
+def test_opis_budynku_is_accepted(monkeypatch):
+    """Ten worker musi wejść na produkcję PRZED webem.
+
+    `_validated_sections` odrzuca CAŁE żądanie przy nieznanej nazwie sekcji, a
+    web wysyła wszystkie sekcje jednym requestem. Nowy web + stary worker =
+    krok 6 nie generuje niczego; odwrotna kolejność jest bezpieczna, co pinuje
+    test poniżej.
+    """
+    monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({}))
+    resp = post(mint(), sekcje=["opis_budynku"])
+    assert resp.status_code == 200
+    assert resp.json()["sekcje"] == {"opis_budynku": CLEAN}
+
+
+def test_previous_section_list_still_accepted(monkeypatch):
+    """Wstecz: stary web (bez `opis_budynku`) działa z tym workerem."""
+    monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({}))
+    resp = post(
+        mint(),
+        sekcje=[
+            "analiza_rynku",
+            "opis_lokalu",
+            "otoczenie",
+            "zagospodarowanie",
+            "standard",
+            "uzasadnienie",
+        ],
+    )
+    assert resp.status_code == 200
+
+
 def test_float_in_facts_400():
     """PL-formatted strings only: the guard compares written forms, so a raw
     float in the facts guarantees a format mismatch. Bounce it at the border."""
