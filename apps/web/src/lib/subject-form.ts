@@ -31,6 +31,7 @@ export const EMPTY_SUBJECT: SubjectFormValues = {
   kondygnacjeNadziemne: undefined,
   kondygnacjePodziemne: undefined,
   rokBudowy: undefined,
+  pietro: undefined,
   mpzpAbsent: undefined,
   mpzpSymbol: "",
   mpzpNazwa: "",
@@ -98,6 +99,8 @@ function subjectSnapshotToForm(snapshot: SubjectSnapshot): Partial<SubjectFormVa
     kondygnacjePodziemne:
       snapshot.kondygnacjePodziemne != null ? String(snapshot.kondygnacjePodziemne) : undefined,
     rokBudowy: snapshot.rokBudowy != null ? String(snapshot.rokBudowy) : undefined,
+    // `!= null`, not truthiness: parter is 0 and must come back as "0".
+    pietro: snapshot.pietro != null ? String(snapshot.pietro) : undefined,
   };
 }
 
@@ -111,7 +114,7 @@ function subjectSnapshotToForm(snapshot: SubjectSnapshot): Partial<SubjectFormVa
  * Coercing at this defaults boundary fixes both render and save with no data
  * migration and no change to `normalizeKw`/the mutation/schema layer.
  */
-function coerceLegacyKw(kw: Partial<KwSnapshot>): KwSnapshot {
+function coerceLegacyKw(kw: Partial<KwSnapshot>): Required<KwSnapshot> {
   return {
     source: kw.source ?? "odpis_kw",
     kwLokalu: kw.kwLokalu ?? null,
@@ -125,6 +128,22 @@ function coerceLegacyKw(kw: Partial<KwSnapshot>): KwSnapshot {
     dataDokumentu: kw.dataDokumentu ?? null,
     dzial3: kw.dzial3 ?? null,
     dzial4: kw.dzial4 ?? null,
+    // ADR-018: every field this function forgets is a field that survives the
+    // save and then vanishes on the way back in — the appraiser re-opens step 1
+    // and the examination they recorded is gone.
+    //
+    // Under a plain `KwSnapshot` return type the enumeration was only a
+    // checklist — the fields below are OPTIONAL, so forgetting one still
+    // satisfied the type, and `tresc` was in fact missing from it when the
+    // round-trip was first measured (b1-kw-read). `Required<KwSnapshot>` above
+    // turns that checklist into a compile error: the return type now demands
+    // every optional field, at the cost of one word.
+    dataBadania: kw.dataBadania ?? null,
+    nrLokalu: kw.nrLokalu ?? null,
+    akt: kw.akt ?? null,
+    // The transcribed dzialy. Losing these on re-entry would not blank a field
+    // the appraiser can see — it would silently stop §8.2 quoting the book.
+    tresc: kw.tresc ?? null,
   };
 }
 
@@ -154,6 +173,12 @@ export function step1DefaultsFromInputs(v: {
       : { ...EMPTY_SUBJECT },
     subjectMeta: v.inputs?.subjectMeta ?? undefined,
     kw: v.inputs?.kw ? coerceLegacyKw(v.inputs.kw) : undefined,
+    // The grunt's book and the encumbrance decision are saved by
+    // `applySubjectUpdate` but were not read back here — re-entering step 1
+    // wiped a book that had been examined and a decision that had been made,
+    // and step 7 re-raised B-06/B-07 with nothing on screen to explain why.
+    kwGrunt: v.inputs?.kwGrunt ?? undefined,
+    encumbranceTreatment: v.inputs?.encumbranceTreatment ?? undefined,
     kwMeta: v.inputs?.kwMeta ?? undefined,
   };
 }

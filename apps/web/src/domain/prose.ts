@@ -23,7 +23,8 @@
  */
 
 import { cityFromAddress, formatNumber, formatPln, LEVEL_LABEL } from "./document-model";
-import { computeKcs, type Comparable, type KcsInput, type KcsResult } from "./kcs";
+import { computeKcsOnScale, kcsReady } from "./feature-rules";
+import type { Comparable, KcsInput, KcsResult } from "./kcs";
 import { obrebName } from "./obreb-name";
 import { effectiveSelection } from "./sample-snapshot";
 import { PROSE_SECTIONS, type ProseSection, type ProseSnapshot } from "./prose-snapshot";
@@ -185,16 +186,18 @@ function minMax(values: number[]): { min: number; max: number } | null {
 }
 
 /**
- * `computeKcs`, or null when the draft cannot feed the engine yet — prose is
- * offered on an inspection-only draft too. The three conditions mirror the
- * engine's own three preconditions (kcs.ts) rather than swallowing its throw.
+ * `computeKcsOnScale`, or null when the draft cannot feed the engine yet — prose
+ * is offered on an inspection-only draft too. The conditions mirror the
+ * engine's own preconditions (kcs.ts, feature-rules.ts) rather than swallowing
+ * its throw.
  */
 function proseKcs(inputs: KcsInput): KcsResult | null {
   const usable =
     inputs.comparables.length > 0 &&
     inputs.area > 0 &&
-    inputs.comparables.every((c) => c.pricePerM2 > 0);
-  return usable ? computeKcs(inputs) : null;
+    inputs.comparables.every((c) => c.pricePerM2 > 0) &&
+    kcsReady(inputs);
+  return usable ? computeKcsOnScale(inputs) : null;
 }
 
 /**
@@ -387,7 +390,11 @@ export function buildProseFacts({ address, inputs }: ProseFactsInput): ProseFact
         }
       : {}),
     ...(rated.length > 0
-      ? { oceny_cech: Object.fromEntries(rated.map((f) => [f.name, LEVEL_LABEL[f.rating]])) }
+      ? {
+          oceny_cech: Object.fromEntries(
+            rated.flatMap((f) => (f.rating ? [[f.name, LEVEL_LABEL[f.rating]]] : [])),
+          ),
+        }
       : {}),
     ...(position ? { pozycja_wyniku: position } : {}),
   };

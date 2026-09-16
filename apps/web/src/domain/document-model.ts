@@ -1,10 +1,15 @@
-import type { KcsInput, KcsResult, FeatureRating } from "./kcs";
+import type { Comparable, Feature, KcsInput, KcsResult, FeatureRating } from "./kcs";
+import { LEVEL_LABEL } from "./feature-presets";
+import { levelForValue, ratingPosition, type RatingPosition } from "./feature-rules";
+import { kwRequirements } from "./kw-requirements";
+import type { KwAkt, KwDzialSnapshot } from "./kw-snapshot";
+import type { KsiegaTresc } from "./kw-tresc";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
 import { DASH, operatStreet } from "./street-name";
-import { candidateKey } from "./sample-selection";
+import { candidateKey, type Candidate } from "./sample-selection";
 
 /**
  * Operat document model + professional-secrecy masking (F-12).
@@ -32,22 +37,34 @@ export const PURPOSE_LABEL: Record<OperatPurpose, string> = {
   informacyjny: "Informacyjny",
 };
 
-const RATING_TEXT: Record<FeatureRating, string> = {
-  lepsza: "wartość najwyższa cechy",
-  przecietna: "wartość pośrednia cechy",
-  gorsza: "wartość najniższa cechy",
+/**
+ * §12.2 wording for a rating's POSITION in the described scale (ADR-016 reg. 6,
+ * D-54) — not for the level's own key. With lepsza/przeciętna described and
+ * „przeciętna” chosen, the operat says „wartość najniższa cechy”, because that
+ * is what the appraiser's own two-level scale makes it. The 14.09 operat said
+ * „pośrednia” and the appraiser corrected it by hand.
+ */
+const POSITION_TEXT: Record<RatingPosition, string> = {
+  min: "wartość najniższa cechy",
+  mid: "wartość pośrednia cechy",
+  max: "wartość najwyższa cechy",
 };
 
 /**
- * Document label per rating level — the internal enum stays diacritic-free.
- * Exported so the prose facts (`domain/prose.ts`) name the levels exactly as
- * the §12.1 scale block does, instead of keeping a second diacritic map.
+ * §12.2 wording for a feature whose rating CANNOT come from the register: it
+ * has no numeric thresholds (standard, pomieszczenia przynależne…), or the
+ * transaction carries no value to place in them. The 14.09 operat printed
+ * „wartość najwyższa cechy” for every such feature of the Cmax flat — a claim
+ * about data nobody had (D-52).
+ *
+ * Wording awaits the user's acceptance (HANDOFF §FH.3) — one constant, so
+ * changing it costs a line.
  */
-export const LEVEL_LABEL: Record<FeatureRating, string> = {
-  lepsza: "lepsza",
-  przecietna: "przeciętna",
-  gorsza: "gorsza",
-};
+export const OCENA_SPOZA_REJESTRU = "brak danych w rejestrze do oceny tej cechy";
+
+// Re-exported so the prose facts (`domain/prose.ts`) keep naming the levels
+// from here; defined beside the levels themselves (the ADR-016 blockers use it too).
+export { LEVEL_LABEL };
 
 /** Document order of rating levels in the §12.1 scale block. */
 const LEVEL_ORDER: FeatureRating[] = ["lepsza", "przecietna", "gorsza"];
@@ -56,8 +73,20 @@ const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is inv
 
 const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 
-/** `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych na podstawie: …"). */
-const KW_ZRODLO_TEXT = { akt: "akt notarialny", odpis_kw: "odpis księgi wieczystej" } as const;
+/**
+ * `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych
+ * na podstawie: …"). `ekw_reczne` names what the appraiser actually did — read
+ * the book in the eKW browser — because the operat may never describe a
+ * document nobody held (ADR-018 reg. 4). Since b1-template §8.2 prints the
+ * examination protocol itself, so this phrase names only HOW the book was
+ * read — the sentence about an odpis staying in the appraiser's files is gone
+ * from the template (D-21).
+ */
+const KW_ZRODLO_TEXT = {
+  akt: "akt notarialny",
+  odpis_kw: "odpis księgi wieczystej",
+  ekw_reczne: "badanie księgi wieczystej w systemie eKW",
+} as const;
 
 /**
  * The §1 Wyciąg cell's own area sentence — the template prints it through an
@@ -187,14 +216,154 @@ function terminateSentence(text: string): string {
 }
 
 /**
- * T9 handoff: the template's `{#dzial3_wpisy}Dział III — wpis: {.}{/dzial3_wpisy}`
- * loop repeats the label per entry with no separator between iterations, so
- * 2+ entries would otherwise run together (`…wpisDział III — wpis: …`).
- * Template tags are FINAL — fixed here by terminating each entry with a
- * period (+ trailing space) so repeated iterations read as separate sentences.
+ * Entries of one dział, each turned into a complete sentence. The template
+ * prints them as ONE paragraph with no separator between entries, so 2+ entries
+ * would otherwise run together (`…wpisDział III — wpis: …`).
  */
 function terminateEntries(tresc: string[]): string[] {
   return tresc.map((t) => `${terminateSentence(t)} `);
+}
+
+/**
+ * The separator between an eKW cell's values inside one column. A pipe, not a
+ * comma: the cells themselves contain commas ("WIELKOPOLSKIE, M. POZNAŃ,
+ * POZNAŃ M., POZNAŃ" is ONE cell), so a comma would blur the boundary between
+ * cells into the boundary inside one. eKW never prints a pipe, so nothing in
+ * the book can be mistaken for the separator. `b1-template` inherits this
+ * choice — it cannot be undone from the rendered document.
+ */
+const KSIEGA_CELL_SEP = " | ";
+
+/** A row whose only content is its first column (a heading, a "BRAK WPISÓW"). */
+function soleRow(typ: KsiegaRow["typ"], kol1: string): KsiegaRow {
+  return { typ, kol1, kol2: "", kol3: "" };
+}
+
+/**
+ * The five dzialy as §8.2's table rows, in eKW's own order (spike RAPORT,
+ * "Mapowanie na generator DOCX"). One flat list: a nested model would make the
+ * template walk four levels, and template tags are the hardest thing here to
+ * change later.
+ */
+function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
+  const rows: KsiegaRow[] = [];
+  for (const dzial of tresc.dzialy) {
+    rows.push(soleRow("dzial", dzial.tytul));
+    // A dział marked BRAK WPISÓW gets a row SAYING so. Emitting nothing would
+    // leave the reader unable to tell "examined and empty" from "skipped" —
+    // the same distinction `dzialOpis` keeps on the manual path, where an empty
+    // dział prints "brak wpisów." instead of nothing.
+    if (dzial.brakWpisow) rows.push(soleRow("brak", "BRAK WPISÓW"));
+    for (const tabela of dzial.tabele) {
+      if (tabela.naglowek) rows.push(soleRow("tabela", tabela.naglowek));
+      for (const wpis of tabela.wpisy) {
+        // Only an entry that eKW itself opened with "Lp. N." gets the row; a
+        // single-entry table has `lp: null` and needs no opener.
+        if (wpis.lp != null) {
+          rows.push({
+            typ: "lp",
+            kol1: `Lp. ${wpis.lp}.`,
+            kol2: "",
+            kol3: wpis.nrPodstawyWpisu ?? "",
+          });
+        }
+        for (const rubryka of wpis.rubryki) {
+          rows.push({
+            typ: "rubryka",
+            kol1: rubryka.nazwa,
+            kol2: rubryka.lp ?? "",
+            kol3: rubryka.wartosci.join(KSIEGA_CELL_SEP),
+          });
+        }
+      }
+    }
+    for (const dokument of dzial.dokumenty) {
+      // The parenthesised field descriptions are part of the printout Aneta
+      // pastes, so they ride with the line they describe rather than being
+      // dropped as chrome.
+      const join = (line: string | null, opis: string | null) =>
+        [line, opis].filter((p) => p != null && p !== "").join(" ");
+      rows.push({
+        typ: "dokument",
+        kol1: dokument.nrPodstawyWpisu,
+        kol2: join(dokument.dokument, dokument.dokumentOpisPol),
+        kol3: join(dokument.wniosek, dokument.wniosekOpisPol),
+      });
+    }
+  }
+  return rows;
+}
+
+/**
+ * §8.2's examination protocol for one book (D-21). Copied CHARACTER FOR
+ * CHARACTER from the office's own operats (`operat-starolecka.txt:291`,
+ * `operat-polanka.txt`, `operat-kornik.txt` — all three agree), including the
+ * spaceless "r.", the bare eKW domain and the closing colon. The HANDOFF
+ * paraphrased it as "(źródło: przeglądarka eKW)"; the operats say the domain,
+ * and a paraphrase is not a citation. The date goes through `formatDatePl`
+ * because `dataBadania` is stored ISO and this is the first place it is
+ * printed.
+ *
+ * The colon is safe: §8.2 always has content right after this sentence — the
+ * transcribed dzialy, or, on the manual path, the dział III/IV sentences, which
+ * exist because `kwRequirements` refuses a book whose dzialy are unanswered.
+ *
+ * The source is the SAME on both book paths, and that rests on a fact the
+ * appraiser confirmed (15.09): she obtains odpisy from eKW, so an uploaded PDF
+ * is an eKW printout, not a paper odpis from the court. `odpis_kw` and
+ * `ekw_reczne` therefore differ in how the data reached this program, not in
+ * where it came from. The fact is an ASSUMPTION about how the office works, so
+ * it is pinned by a test asserting the two sentences are identical — the day
+ * paper odpisy appear, changing one path fails that test instead of passing
+ * unnoticed (review PR #59, decyzja usera).
+ *
+ * Returns "" when `zbadana` is false or a fact is missing. `zbadana` is the
+ * whole point: number-and-date alone printed an examination protocol for a
+ * valuation whose book was NEVER examined — an uploaded deed states the book's
+ * number and gets a `dataBadania` from the developer checkbox, while
+ * `kwRequirements` rightly refuses to call it examined (I-13, review PR #59).
+ * It is also the SOLE guard of that case: a second check on `source` here would
+ * make this one's mutation look covered when it is not.
+ */
+function protokolBadania(
+  zbadana: boolean,
+  numer: string | null | undefined,
+  dataBadania: string | null | undefined,
+  rodzaj: string,
+): string {
+  if (!zbadana || !numer || !dataBadania) return "";
+  return (
+    `W dniu ${formatDatePl(dataBadania)}r. dokonano badania księgi wieczystej ` +
+    `${rodzaj} nr ${numer} (źródło: przegladarka-ekw.ms.gov.pl):`
+  );
+}
+
+/** §7's deed sentence (ADR-018 reg. 5): only the parts the book actually states. */
+function aktOpis(akt: KwAkt | null | undefined): string {
+  if (akt == null) return "";
+  const parts = [
+    akt.rodzaj.trim(),
+    akt.rep.trim() ? `Rep. A nr ${akt.rep.trim()}` : "",
+    akt.data.trim() ? `z dnia ${formatDatePl(akt.data.trim())}` : "",
+  ].filter((p) => p !== "");
+  // "kind, Rep. A nr N z dnia D" — the date hangs off the Rep. number without a
+  // comma, as in the source operat, so the two leading parts join with one.
+  if (parts.length === 0) return "";
+  const [first, ...rest] = parts;
+  return rest.length === 0 ? first : `${first}, ${rest.join(" ")}`;
+}
+
+/**
+ * The manual path's sentence for one dział. Silence when the question was never
+ * answered (`dzial == null`): "brak wpisów" there would fabricate a clean-title
+ * or no-mortgage claim about a dział nobody read — the 14.09 failure itself.
+ */
+function dzialOpis(dzial: KwDzialSnapshot | null | undefined, etykieta: string): string {
+  if (dzial == null) return "";
+  if (!dzial.wpisy) return `${etykieta}: brak wpisów.`;
+  return dzial.tresc.length === 0
+    ? ""
+    : `${etykieta}: ${terminateEntries(dzial.tresc).join("")}`.trimEnd();
 }
 
 /** Polish list join for feature names: "a, b oraz c" (single name unchanged). */
@@ -219,13 +388,39 @@ export type TransactionRow = {
   cena_jedn: string;
 };
 
+/**
+ * One row of §8.2's transcribed book. Three columns, because that is what the
+ * eKW printout is — a label, its Lp., and its cells — and `typ` says which
+ * shape the row has so the template can style it without parsing `kol1`.
+ */
+export type KsiegaRow = {
+  typ: "dzial" | "brak" | "tabela" | "lp" | "rubryka" | "dokument";
+  kol1: string;
+  kol2: string;
+  kol3: string;
+};
+
 export type FeatureRow = {
   nazwa: string;
   waga_pct: string;
   ui_min: string;
+  /**
+   * ZAWSZE wypełnione, także przy skali dwustopniowej. Ui min/śr/max wynikają z
+   * wagi cechy i przedziału Cmin–Cmax, nie z liczby opisanych poziomów — przy
+   * dwóch poziomach rzeczoznawca po prostu nigdy na Ui śr nie wyląduje.
+   * Rozstrzyga operat wzorcowy (Kościelna, Tabela 3): powierzchnia ma tam skalę
+   * dwustopniową, jej Ui śr to 0,100, a SUMA 1,000. Dawne D-47 o kresce w tym
+   * miejscu jest unieważnione.
+   */
   ui_sr: string;
   ui_max: string;
   ui_przedmiot: string;
+};
+
+/** §12.2 — one comparable flat described feature by feature from its own data (D-52). */
+export type ComparableDescription = {
+  lokalizacja: string;
+  cechy: Array<{ nazwa: string; opis: string }>;
 };
 
 /** Section 9 MPZP block (§`{#mpzp}`) — only present when a plan resolved. */
@@ -247,6 +442,28 @@ export type DocumentModel = {
   data_sporzadzenia: string;
   /** §8.1 map block caption ("dane pobrane {mapy_data}") — same source date as data_sporzadzenia. */
   mapy_data: string;
+  // Author block (ADR-020 cz. 1). The title page, the two body paragraphs and
+  // the signature block carried these as template LITERALS, which is how the
+  // QA account issued an operat under another appraiser's name. They now come
+  // from the profile of whoever is logged in; an em dash marks an incomplete
+  // profile, which only the step-7 PREVIEW can reach — B-15 refuses to ISSUE
+  // a document with a dash where its author should be.
+  autor_imie_nazwisko: string;
+  autor_uprawnienia: string;
+  biuro: string;
+  /**
+   * "Załącznik nr 1" — one entry per rasterised page of the OC policy, in
+   * document order (D-60). String markers, exactly like the inspection photo
+   * loops: image bytes never travel inside the model, they are dispatched by
+   * marker in `docx-render.ts`.
+   */
+  polisa_strony: Array<{ img: string }>;
+  /**
+   * Honest silence for §15 and „Załącznik nr 1": bez stron polisy dokument nie
+   * wymienia załącznika, którego nie ma. Osiągalne tylko w PODGLĄDZIE — B-16
+   * nie wyda operatu bez ważnej polisy.
+   */
+  ma_polise: boolean;
   // EGiB/building facts (section 8.2) — from the auto-fetched subject snapshot;
   // dashes when no subject was fetched (legacy manual-entry inputs).
   obreb: string;
@@ -275,19 +492,101 @@ export type DocumentModel = {
   kw_sad: string;
   kw_wydzial: string;
   kw_data_dok: string;
-  // STUB_KW paragraph (the {nr_kw} line): its second sentence ("Pełna treść
-  // odpisu KW pozostaje…") renders ONLY when the title info could come from a KW
-  // excerpt — legacy/manual (kw == null) and the "odpis_kw" source. Under an
-  // "akt" (deed) source it is hidden, so the operat never implies possession of a
-  // KW excerpt it may not hold (final-review #5b).
-  kw_stub_odpis: boolean;
+  /**
+   * §8.2's examination protocol, one dated sentence per book (D-21) — what the
+   * 14.09 operat said instead of "Pełna treść odpisu KW pozostaje w
+   * dokumentacji źródłowej rzeczoznawcy", which is a sentence an operat may
+   * not contain. Empty, with its flag false, for a book nobody examined.
+   *
+   * The date inside comes from `dataBadania` through `formatDatePl`. That
+   * field is stored ISO and had never been rendered before b1-kw-read: this is
+   * the first place it reaches paper, and "2026-09-15" on a legal document is
+   * not a Polish date.
+   */
+  protokol_ksiegi_lokalu: string;
+  ma_protokol_ksiegi_lokalu: boolean;
+  protokol_ksiegi_gruntu: string;
+  ma_protokol_ksiegi_gruntu: boolean;
+  /**
+   * §2's sentence about the mother book (D-07): "Dla nieruchomości gruntowej
+   * Sąd Rejonowy … prowadzi księgę wieczystą nr …". Both empty when the grunt's
+   * book was not examined — the generic "właściwy sąd rejonowy prowadzi odrębną
+   * księgę wieczystą" is forbidden, because it implies an examination.
+   *
+   * The two are NOT filled together: the number comes from the grunt's own
+   * snapshot, the court only from a PDF read of the lokal's book. On the manual
+   * eKW path — the office's everyday path — the number is there and the court
+   * is empty, and §2 then keeps the court text it already prints for the
+   * lokal's book. The generator must treat an empty court that way; it may not
+   * print a placeholder inside the sentence.
+   *
+   * So the sentence's gate is `ma_ksiege_gruntu` below — NOT `kw_badanie`,
+   * which is true for an examined lokal alone and would print the sentence with
+   * no number and no court, and not `sad_ksiegi_gruntu`, which is empty on the
+   * everyday manual path.
+   */
+  nr_ksiegi_gruntu: string;
+  sad_ksiegi_gruntu: string;
+  /**
+   * Gate for §2's grunt sentence: the grunt's book was examined, so there is a
+   * number to print. Named rather than left to `nr_ksiegi_gruntu` being falsy:
+   * a template that leans on an empty string not printing is a template that
+   * prints a half sentence the day the string stops being empty — and the
+   * office's §2 already lost its number that way (check dryfu D-3).
+   */
+  ma_ksiege_gruntu: boolean;
+  /**
+   * The lokal book's five dzialy, FLATTENED into table rows for §8.2 — the
+   * generator gets one loop rather than four nested ones. Order is eKW's own:
+   * dział → "BRAK WPISÓW" or its tables → each entry's "Lp. N." → its rubrics →
+   * the dział's documents. Empty when no transcription was stored.
+   *
+   * These rows carry persons' names and PESELs, deliberately: ADR-018 reg. 7
+   * (decyzja usera 15.09) says §8.2 prints the dzialy as the office's own
+   * operat does. That is a documented exception to the F-12 minimisation which
+   * still governs every other path — see `tests/f12-document-masking.test.ts`.
+   */
+  ksiega_lokalu_wiersze: KsiegaRow[];
+  ma_tresc_lokalu: boolean;
+  /** §8.2's sentences for the manual path — used when there is no transcription to quote. */
+  dzial3_opis: string;
+  dzial4_opis: string;
+  /**
+   * The SAME two sentences for the ground book (b1-template, TP.2). Its
+   * protocol sentence ends with a colon and introduces the dzialy, exactly like
+   * the lokal book's — but the ground book is never transcribed (§P1.8: its
+   * card is filled by hand), so without these the colon introduced nothing.
+   * Empty when that dział was never answered.
+   */
+  dzial3_opis_gruntu: string;
+  dzial4_opis_gruntu: string;
+  /**
+   * The lokal's number as the book states it (dział I-O). One of §8.2's facts on
+   * the manual path, where there is no transcription to quote it from; empty
+   * when the book did not give it.
+   */
+  nr_lokalu_kw: string;
+  /**
+   * Dział II's deed, as §7 prints it (ADR-018 reg. 5, D-12): the kind, the Rep.
+   * A number and the date, joined. `ma_akt` false means the operat says nothing
+   * about a deed at all — never a sentence with blanks in it.
+   */
+  akt_opis: string;
+  ma_akt: boolean;
+  /**
+   * The encumbrance in the LOKAL's dział III (ADR-018 reg. 6, D-02/D-25/D-35).
+   * THREE states, not two: the two variant flags are mutually exclusive but NOT
+   * exhaustive — `ma_obciazenie` with neither of them is the half-made decision
+   * (`wariant: null`), where the basis is typed and the choice is not. The model
+   * does not pick one; B-07 refuses to approve it, so only the preview gets there.
+   */
+  ma_obciazenie: boolean;
+  obciazenie_bez_uwzglednienia: boolean;
+  obciazenie_z_uwzglednieniem: boolean;
+  obciazenie_podstawa: string;
   udzial_kw: string;
   pow_kw_present: boolean;
   pow_uzytkowa_kw: string;
-  dzial3_brak: boolean;
-  dzial3_wpisy: string[];
-  dzial4_brak: boolean;
-  dzial4_wpisy: string[];
   // Section 9 MPZP variants — `{#mpzp}`/`{#mpzp_brak}` are mutually exclusive,
   // enforced here (never both, never neither, when a subject is present).
   mpzp: MpzpBlock | null;
@@ -321,12 +620,41 @@ export type DocumentModel = {
   vmin: string;
   vmax: string;
   suma_ui: string;
+  /**
+   * Σ of Tabela 3's Ui śr column — always the plain sum, so with weights adding
+   * to 100 % it is "1,000".
+   *
+   * Ui min/śr/max come from the feature's WEIGHT and the Cmin–Cmax band, not
+   * from how many levels its scale describes, so a two-level feature has a Ui
+   * śr like any other — the appraiser simply can never land on it. The
+   * reference operat (Kościelna) settles it: powierzchnia there has a
+   * two-level scale, its Ui śr cell reads 0,100 and the SUMA row reads 1,000.
+   */
+  suma_ui_sr: string;
   cena_1m2: string;
   kredyt: boolean;
   transakcje: TransactionRow[];
   cechy: FeatureRow[];
-  opis_cmin: string[];
-  opis_cmax: string[];
+  /**
+   * §12.2 — the flats at the sample's lowest / highest unit price, one entry
+   * each (a price tie describes every flat at it, D-53). `lokalizacja` is the
+   * street without a house number, empty when the register has none; `cechy`
+   * carries one line per active feature, derived from that flat's own data
+   * (D-52). §12.2 loops over these, so a price tie describes every flat at it —
+   * the flat `opis_cmin`/`opis_cmax` that carried only the FIRST flat's lines
+   * went out with the loop that read them (b1-template, TP.4).
+   *
+   * The piętro behind these lines is normalised per source
+   * (`pietroOfCandidate`): RCN's kondygnacja loses one, the cooperative
+   * register's hand-typed "Piętro" does not. Step 3's table still LABELS the
+   * raw RCN kondygnacja "Piętro", so it shows one more than these sentences do
+   * — the label fix is a follow-up of PR #58, not a defect of this value.
+   */
+  lokale_cmin: ComparableDescription[];
+  lokale_cmax: ComparableDescription[];
+  /** §12.2 street of the first flat at that price; "" when unknown — the template owns the sentence. */
+  lokalizacja_cmin: string;
+  lokalizacja_cmax: string;
   opis_przedmiot: string[];
   /** §12.1 rating-scale definitions — one row per active feature; only non-empty levels print. */
   skala_ocen: Array<{ cecha: string; poziomy: Array<{ poziom: string; def: string }> }>;
@@ -393,10 +721,7 @@ export type DocumentFields = {
 export function documentFieldBlockers(v: DocumentFields): Blocker[] {
   const blockers: Blocker[] = [];
   if (!v.purpose) blockers.push({ path: "purpose", label: "Cel wyceny — brak." });
-  // A coop right has no KW of its own: step 1 lets the number stay empty, so
-  // demanding it here would send the appraiser back to a legally empty field.
-  const kwRequired = (v.propertyRight ?? "wlasnosc_lokalu") !== "spoldzielcze_wlasnosciowe";
-  if (!v.kwNumber && kwRequired)
+  if (!v.kwNumber && kwRequirements(v.propertyRight, null).numerKwWDokumencie)
     blockers.push({ path: "kwNumber", label: "Numer księgi wieczystej — brak." });
   if (!v.client) blockers.push({ path: "client", label: "Klient — brak." });
   if (!v.inspectionDate) blockers.push({ path: "inspectionDate", label: "Data oględzin — brak." });
@@ -424,7 +749,131 @@ export type BuildDocumentInput = {
   inputs: KcsInput;
   kcs: KcsResult;
   amountInWords: string;
+  /** Who is issuing this operat (ADR-020 cz. 1) — the appraiser's own profile, never the template. */
+  author: OperatAuthor;
 };
+
+/**
+ * The author of the operat as the document prints them, assembled from
+ * `appraiser_profile` by the app layer. Separate from `AppraiserProfile`
+ * (the port's row shape): the document needs the policy PAGES, not the
+ * storage prefix they live under, and it needs no validity date — B-16 has
+ * already refused the issue if the policy does not cover it.
+ */
+export type OperatAuthor = {
+  /** Empty string = an incomplete profile, reachable in the preview only (B-15). */
+  fullName: string;
+  licenseNo: string;
+  officeBlock: string;
+  /**
+   * Rasterised policy pages in document order, as JPEG.
+   *
+   * Wypełniane przez `policyPagesFrom` z prefiksu `insurance_doc_key` (jedna
+   * strona = jeden klucz `page-00N.jpg`). Model robi z nich ZNACZNIKI; bajty
+   * jadą do renderu osobno, tą samą drogą co zdjęcia z oględzin — obrazy nigdy
+   * nie podróżują wewnątrz modelu.
+   */
+  policyPages: Buffer[];
+};
+
+/**
+ * The sample candidate a comparable row came from, and whether the join is
+ * EXACT (R-7). Extracted from Table 1's own join so §12.2 reads the Cmin/Cmax
+ * flats' floor, area and street from the same place the table does — one join,
+ * one set of rules, no second chance to disagree with it.
+ *
+ * Primary key: transactionId + lokalId (`candidateKey`) — one notarial act can
+ * carry SEVERAL lokale (runtime bug, team-lead 2026-08-21, Heweliusza 3/43: a
+ * transactionId-only join printed the SAME obręb/distance for every lokal of
+ * one act). A comparable saved before `lokalId` existed falls back to matching
+ * by transactionId alone, first candidate found — the only information those
+ * legacy rows carry — but comes back `matched: false`, so the document prints
+ * a dash rather than a guess about which lokal of the act it was.
+ *
+ * A coop-register row (S5, defekt D-3) has `lokalId: ""` (one lokal per row)
+ * and `transactionId` = `coopTxId`, so the transactionId-only join IS exact for
+ * it — that is what `matched` recognises.
+ */
+export function candidateOf(
+  comparable: Pick<Comparable, "transactionId" | "lokalId" | "coopTxId">,
+  selection: KcsInput["sampleSelection"],
+): { candidate: Candidate; matched: boolean } | null {
+  // Manual inclusions too (final wave, I1): a row the appraiser added that
+  // later fell out of BOTH `proposed` and `alternates` after a radius change
+  // exists only in `manualInclusions[].candidate` — omitting it made the join
+  // miss it and print dashes for a row that IS in the sample.
+  const candidates = selection
+    ? [
+        ...selection.proposed,
+        ...selection.alternates,
+        ...(selection.manualInclusions ?? []).map((i) => i.candidate),
+      ]
+    : [];
+  const { transactionId, lokalId, coopTxId } = comparable;
+  if (!transactionId) return null;
+  const candidate = lokalId
+    ? candidates.find((c) => candidateKey(c) === candidateKey({ transactionId, lokalId }))
+    : candidates.find((c) => c.transactionId === transactionId);
+  if (!candidate) return null;
+  const matched = Boolean(lokalId) || (Boolean(coopTxId) && candidate.transactionId === coopTxId);
+  return { candidate, matched };
+}
+
+/**
+ * The transaction's PIĘTRO (parter = 0) — the unit the scale's bands and the
+ * subject's own `pietro` are in, which is not the unit either register stores.
+ *
+ * RCN's `floor` is `lok_nr_kond`, a kondygnacja numbered from 1, so it loses
+ * one. Measured, not assumed: across the 8 snapshot fixtures (80 000 rows)
+ * `handlowoUslugowa` sits at 1 (839 of 976) and `garaz` at −1 (10 117 of
+ * 11 779) — retail on the ground floor and garages one level below only line up
+ * if parter is 1. Underground rows then come out negative and no band covers
+ * them, which is the honest answer for a garage.
+ *
+ * The cooperative register's `floor` is hand-typed by the office under a
+ * "Piętro" label, so it is taken as a piętro and NOT converted. That is a
+ * reading of the label, not a measurement: every floor-bearing row in the
+ * database belongs to our own E2E fixtures, so there is nothing to measure
+ * (PR #58). An absent `source` is not treated as RCN — rows saved before the
+ * field existed must not be silently shifted.
+ */
+function pietroOfCandidate(
+  source: Comparable["source"],
+  candidate: Candidate | null,
+): number | null {
+  const floor = candidate?.floor;
+  if (floor == null) return null;
+  return source === "rcn" ? floor - 1 : floor;
+}
+
+/**
+ * §12.2 wording of ONE feature for ONE comparable flat (D-52). A measurable
+ * feature is placed by the SAME thresholds the subject is placed by, reading
+ * the transaction's own piętro or powierzchnia; everything else says outright
+ * that the register does not carry the answer.
+ *
+ * The piętro comes from `pietroOfCandidate`, which converts the RCN
+ * kondygnacja; the area comes from the row itself, falling back to the
+ * candidate.
+ */
+function comparableFeatureText(
+  feature: Feature,
+  comparable: Pick<Comparable, "area" | "source">,
+  candidate: Candidate | null,
+): string {
+  const measure = feature.measure;
+  if (!measure) return OCENA_SPOZA_REJESTRU;
+  const value =
+    measure.kind === "floor"
+      ? pietroOfCandidate(comparable.source, candidate)
+      : (comparable.area ?? candidate?.area ?? null);
+  const level = levelForValue(measure, value);
+  if (!level) return OCENA_SPOZA_REJESTRU;
+  // The wording follows the level's POSITION in the described scale, exactly
+  // as the subject's own does (ADR-016 reg. 6).
+  const position = ratingPosition({ rating: level, definitions: feature.definitions });
+  return position ? POSITION_TEXT[position] : OCENA_SPOZA_REJESTRU;
+}
 
 /**
  * `opts.preview` builds the STEP-7 PREVIEW rather than the document that gets
@@ -451,6 +900,45 @@ export function buildDocumentModel(
     subject.mpzpAbsent !== true &&
     Boolean(subject.mpzpSymbol || subject.mpzpNazwa || subject.mpzpUchwala);
   const kw = inputs.kw ?? null;
+  const kwGrunt = inputs.kwGrunt ?? null;
+  /**
+   * R-10, asked once. `kw_badanie` used to be `kw != null`, which called a
+   * snapshot an examination — and the 14.09 operat is what that produced: a
+   * dział III described as clean that nobody had opened. The rule that decides
+   * whether a book counts as examined lives in ONE place, and §8.2 asks it
+   * rather than re-deriving a second answer (ADR-018 reg. 2/3, I-13).
+   */
+  const kwReq = kwRequirements(input.propertyRight, kw, kwGrunt);
+  /**
+   * At least one book actually read. Not `!brakBadania`: a valuation whose
+   * lokal book IS examined and whose grunt book is not would then show nothing
+   * at all in the preview — hiding true information from the very person who
+   * has to finish the job. Not `lokalZbadana` alone either: a lokal bought from
+   * a developer has no book of its own, and the mother book IS its examination.
+   */
+  const kwBadanie = kwReq.lokalZbadana || kwReq.gruntZbadana;
+  const kwDeweloperski = kwBadanie && kw?.deweloperski === true;
+  // Gated on the EXAMINATION, not on number-and-date: an uploaded deed also
+  // carries a `dataBadania`, and printing "dokonano badania księgi wieczystej"
+  // for it is the I-13 class of false statement this whole block exists to stop
+  // (review PR #59). `lokalZbadana` already encodes source + number + date +
+  // answered dzialy, so one flag replaces four checks.
+  const protokolLokalu = protokolBadania(
+    kwReq.lokalZbadana,
+    kw?.kwLokalu,
+    kw?.dataBadania,
+    "nieruchomości lokalowej",
+  );
+  const protokolGruntu = protokolBadania(
+    kwReq.gruntZbadana,
+    kwGrunt?.nrKsiegi,
+    kwGrunt?.dataBadania,
+    "nieruchomości gruntowej",
+  );
+  const encumbrance = inputs.encumbranceTreatment ?? null;
+  // Only the LOKAL's dział III encumbers this lokal. An entry in the grunt's is
+  // described in §8.2 but raises no question here (D-02, kw-requirements).
+  const maObciazenie = kw?.dzial3?.wpisy === true;
   const rightDoc = PROPERTY_RIGHT_DOC[input.propertyRight];
   const kwBrak = rightDoc.klauzulaBrakKw !== null && !input.kwNumber;
   const maPiwnice = rightDoc.klauzulaPiwnicy !== null && inputs.hasBasement === true;
@@ -486,8 +974,15 @@ export function buildDocumentModel(
 
   // Weight-0 features stay out of the legal document entirely (workshop
   // decision: "pancerz obronny" — a zero-weight row invites challenge).
-  const activeFeatures = inputs.features.filter((f) => f.weight > 0);
-  const activeUi = kcs.ui.filter((f) => f.weight > 0);
+  // Ui rows zipped with the feature they were computed from BEFORE filtering,
+  // so the two lists cannot drift apart. Tabela 3's dash (ADR-016 reg. 6) is a
+  // property of the feature's SCALE, and a row carrying another feature's dash
+  // would be invisible — every row still prints something, just the wrong
+  // thing. (`computeKcs` returns one `ui` per input feature, in order.)
+  const active = inputs.features
+    .map((feature, i) => ({ feature, ui: kcs.ui[i] }))
+    .filter(({ feature }) => feature.weight > 0);
+  const activeFeatures = active.map((a) => a.feature);
   const skalaOcen = activeFeatures
     .map((f) => ({
       cecha: f.name,
@@ -498,6 +993,31 @@ export function buildDocumentModel(
     }))
     .filter((row) => row.poziomy.length > 0);
 
+  /**
+   * §12.2 — the flats at the sample's lowest and highest unit price, each
+   * described from ITS OWN data (D-51…D-53). A tie describes every flat at
+   * that price; the 14.09 operat described one and dropped the other.
+   */
+  const lokaleAtPrice = (price: number) =>
+    inputs.comparables
+      .filter((c) => c.pricePerM2 === price)
+      .map((row) => {
+        const join = candidateOf(row, inputs.sampleSelection);
+        const candidate = join?.matched ? join.candidate : null;
+        return {
+          // Street only, never the house number — professional secrecy (F-12,
+          // D-51). Empty when the register has none: the template owns the
+          // sentence, and an absent street must not become a dash mid-sentence.
+          lokalizacja: candidate?.street ? operatStreet(candidate.street) : "",
+          cechy: activeFeatures.map((f) => ({
+            nazwa: f.name,
+            opis: comparableFeatureText(f, row, candidate),
+          })),
+        };
+      });
+  const prices = inputs.comparables.map((c) => c.pricePerM2);
+  const lokaleCmin = lokaleAtPrice(Math.min(...prices));
+  const lokaleCmax = lokaleAtPrice(Math.max(...prices));
   return {
     adres: input.address,
     powierzchnia: formatNumber(input.area, 2),
@@ -507,6 +1027,11 @@ export function buildDocumentModel(
     data_ogledzin: formatDatePl(input.inspectionDate),
     data_sporzadzenia: formatDatePl(input.approvedAt.toISOString()),
     mapy_data: formatDatePl(input.approvedAt.toISOString()),
+    autor_imie_nazwisko: input.author.fullName || DASH,
+    autor_uprawnienia: input.author.licenseNo || DASH,
+    biuro: input.author.officeBlock || DASH,
+    polisa_strony: input.author.policyPages.map((_, i) => ({ img: `polisa-${i}` })),
+    ma_polise: input.author.policyPages.length > 0,
     obreb: subject?.obreb || DASH,
     arkusz: subject?.arkusz || DASH,
     nr_dzialki: subject?.nrDzialki || DASH,
@@ -517,34 +1042,54 @@ export function buildDocumentModel(
       ? `${subject.kondygnacjeNadziemne ?? DASH} / ${subject.kondygnacjePodziemne ?? DASH}`
       : DASH,
     rok_budowy: subject?.rokBudowy != null ? String(subject.rokBudowy) : ROK_BUDOWY_BD,
-    kw_badanie: kw != null,
-    kw_standard: kw != null && !kw.deweloperski,
-    kw_deweloperski: kw != null && kw.deweloperski,
+    kw_badanie: kwBadanie,
+    kw_standard: kwBadanie && !kwDeweloperski,
+    kw_deweloperski: kwDeweloperski,
     kw_zrodlo: kw ? KW_ZRODLO_TEXT[kw.source] : DASH,
     kw_lokalu: kw?.kwLokalu ?? DASH,
     kw_gruntu: kw?.kwGruntu ?? DASH,
     kw_sad: kw?.sad ?? DASH,
     kw_wydzial: kw?.wydzial ?? DASH,
     kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : DASH,
-    // Legacy/manual (kw == null) and odpis_kw source keep the sentence (accurate);
-    // an akt (deed) source hides it — no false claim of holding a KW excerpt.
-    kw_stub_odpis: kw == null || kw.source === "odpis_kw",
-    // Honest udział: the "wg odpisu księgi wieczystej" annotation is a LEGACY
-    // fallback for pre-Slice-6 rows that never examined a KW (kw == null). When
-    // a KW WAS examined (kw != null) but the extract carries no udział, render a
-    // dash — the document must not claim the share was "per the KW excerpt"
-    // when the excerpt (or akt) never stated it.
-    udzial_kw: kw == null ? "wg odpisu księgi wieczystej" : (kw.udzial ?? DASH),
+    protokol_ksiegi_lokalu: protokolLokalu,
+    ma_protokol_ksiegi_lokalu: protokolLokalu !== "",
+    protokol_ksiegi_gruntu: protokolGruntu,
+    ma_protokol_ksiegi_gruntu: protokolGruntu !== "",
+    // D-07: the number comes from the EXAMINED grunt book, never from the lokal
+    // book's `kwGruntu` alone — that number is a fact the lokal's book states,
+    // not evidence anyone opened the book it names.
+    nr_ksiegi_gruntu: kwReq.gruntZbadana ? (kwGrunt?.nrKsiegi ?? "") : "",
+    // The lokal was carved out of the grunt, so the same court keeps both books.
+    // EMPTY when the snapshot names no court — which is the routine case, not an
+    // edge one: only `/kw-extract` ever fills `sad`, the manual eKW path has no
+    // field for it (`EMPTY_MANUAL_KW`). Empty means "§2 keeps the court text it
+    // already prints for the lokal's book", per the handoff; that text is a
+    // literal in the template (check dryfu D-3), so the model cannot repeat it
+    // and must not substitute a dash — "Dla nieruchomości gruntowej — prowadzi
+    // księgę wieczystą nr …" is a broken sentence, not a missing value.
+    sad_ksiegi_gruntu: kwReq.gruntZbadana ? [kw?.sad, kw?.wydzial].filter(Boolean).join(" ") : "",
+    ma_ksiege_gruntu: kwReq.gruntZbadana,
+    ksiega_lokalu_wiersze: kw?.tresc ? ksiegaRows(kw.tresc) : [],
+    ma_tresc_lokalu: kw?.tresc != null,
+    dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),
+    dzial4_opis: dzialOpis(kw?.dzial4, "Dział IV"),
+    dzial3_opis_gruntu: dzialOpis(kwGrunt?.dzial3, "Dział III"),
+    dzial4_opis_gruntu: dzialOpis(kwGrunt?.dzial4, "Dział IV"),
+    nr_lokalu_kw: kw?.nrLokalu ?? "",
+    akt_opis: aktOpis(kw?.akt),
+    ma_akt: aktOpis(kw?.akt) !== "",
+    ma_obciazenie: maObciazenie,
+    obciazenie_bez_uwzglednienia: maObciazenie && encumbrance?.wariant === "bez_uwzglednienia",
+    obciazenie_z_uwzglednieniem: maObciazenie && encumbrance?.wariant === "z_uwzglednieniem",
+    obciazenie_podstawa: maObciazenie ? (encumbrance?.podstawa ?? "") : "",
+    // Honest udział (D-24, I-19, ADR-018 reg. 4). The "wg odpisu księgi
+    // wieczystej" annotation used to stand in when `kw == null` — i.e. on
+    // exactly the valuations that had examined nothing, where it named a
+    // document nobody held. A dash says the true thing instead: the operat does
+    // not know the share.
+    udzial_kw: kw?.udzial ?? DASH,
     pow_kw_present: kw?.powUzytkowaKw != null,
     pow_uzytkowa_kw: kw?.powUzytkowaKw != null ? formatNumber(kw.powUzytkowaKw, 2) : DASH,
-    // dzialN == null means the source document carries NO dział info (e.g. an
-    // akt notarialny) — that must render NOTHING, not "brak wpisów" (a
-    // fabricated clean-title/no-mortgage claim). brak is true ONLY when the
-    // dział was actually examined (non-null) and came back empty.
-    dzial3_brak: kw != null && kw.dzial3 != null && !kw.dzial3.wpisy,
-    dzial3_wpisy: kw?.dzial3?.wpisy ? terminateEntries(kw.dzial3.tresc) : [],
-    dzial4_brak: kw != null && kw.dzial4 != null && !kw.dzial4.wpisy,
-    dzial4_wpisy: kw?.dzial4?.wpisy ? terminateEntries(kw.dzial4.tresc) : [],
     mpzp: hasMpzp
       ? {
           symbol: subject.mpzpSymbol ?? "",
@@ -583,56 +1128,10 @@ export function buildDocumentModel(
     cena_1m2: formatPln(kcs.unitValue),
     kredyt: input.purpose === "zabezpieczenie_kredytu",
     transakcje: (() => {
-      const sel = inputs.sampleSelection;
-      // Manual inclusions too (final wave, I1): a row the appraiser added
-      // that later fell out of BOTH `proposed` and `alternates` after a
-      // radius change exists only in `manualInclusions[].candidate` —
-      // omitting it here made the join below miss it and print dashes for
-      // a row that IS in the sample.
-      const candidates = sel
-        ? [
-            ...sel.proposed,
-            ...sel.alternates,
-            ...(sel.manualInclusions ?? []).map((i) => i.candidate),
-          ]
-        : [];
-      // Primary key: transactionId+lokalId (candidateKey) — one notarial
-      // act can carry SEVERAL lokale (runtime bug, team-lead 2026-08-21,
-      // Heweliusza 3/43: a transactionId-only join printed the SAME
-      // obręb/distance for every lokal of one act). A comparable saved
-      // before `lokalId` existed on the row falls back to matching by
-      // transactionId alone, first candidate found — the only information
-      // those legacy rows carry.
-      const byCandidateKey = new Map(candidates.map((c) => [candidateKey(c), c] as const));
-      const byFirstTransactionId = new Map<string, (typeof candidates)[number]>();
-      for (const c of candidates) {
-        if (!byFirstTransactionId.has(c.transactionId))
-          byFirstTransactionId.set(c.transactionId, c);
-      }
       return inputs.comparables.map((c) => {
-        const candidate =
-          c.transactionId && c.lokalId
-            ? byCandidateKey.get(
-                candidateKey({ transactionId: c.transactionId, lokalId: c.lokalId }),
-              )
-            : c.transactionId
-              ? byFirstTransactionId.get(c.transactionId)
-              : undefined;
-        // A row matched only by `transactionId` (no `lokalId`) comes from
-        // `byFirstTransactionId` — SOME lokal of that act, not necessarily this one. For
-        // obręb that was nearly invisible; a street name in an operat is a factual claim
-        // about a comparable, so an unmatched row prints a dash rather than a guess
-        // (Heweliusza 3/43 is exactly this shape: 16 lokale under one act).
-        const matchedByLokal = Boolean(c.transactionId && c.lokalId && candidate);
-        // S5 (Task 4d, defekt D-3): a coop-register row has `lokalId: ""` (one lokal
-        // per row) and `transactionId` = `coopTxId`, so the transactionId-only join
-        // above IS exact for it — not "some lokal of that act". Street comes from the
-        // register record; city stays a dash, because the register does not store it
-        // (ADR-010, coordinator decision 12.09 — variant a; column `city` is a follow-up).
-        const matchedCoop = Boolean(
-          c.coopTxId && candidate && candidate.transactionId === c.coopTxId,
-        );
-        const matched = matchedByLokal || matchedCoop;
+        const join = candidateOf(c, inputs.sampleSelection);
+        const candidate = join?.candidate;
+        const matched = join?.matched ?? false;
         return {
           data_msc: maskMonth(c.date),
           // Slice 3d: city and street from the transaction's OWN record (the GEOPOZ
@@ -650,19 +1149,26 @@ export function buildDocumentModel(
         };
       });
     })(),
-    cechy: activeUi.map((f) => ({
-      nazwa: f.name,
-      waga_pct: formatNumber(f.weight * 100, 0),
-      ui_min: formatNumber(f.weight * kcs.vmin, 3),
-      ui_sr: formatNumber(f.weight, 3),
-      ui_max: formatNumber(f.weight * kcs.vmax, 3),
-      ui_przedmiot: formatNumber(f.value, 3),
+    cechy: active.map(({ ui }) => ({
+      nazwa: ui.name,
+      waga_pct: formatNumber(ui.weight * 100, 0),
+      ui_min: formatNumber(ui.weight * kcs.vmin, 3),
+      ui_sr: formatNumber(ui.weight, 3),
+      ui_max: formatNumber(ui.weight * kcs.vmax, 3),
+      ui_przedmiot: formatNumber(ui.value, 3),
     })),
-    // ponytail: canonical KCS simplification — cmin lokal = all features at
-    // worst, cmax = all at best; the subject follows its actual ratings.
-    opis_cmin: activeFeatures.map((f) => `${f.name} – wartość najniższa cechy,`),
-    opis_cmax: activeFeatures.map((f) => `${f.name} – wartość najwyższa cechy,`),
-    opis_przedmiot: activeFeatures.map((f) => `${f.name} – ${RATING_TEXT[f.rating]},`),
+    suma_ui_sr: formatNumber(
+      active.reduce((sum, { ui }) => sum + ui.weight, 0),
+      3,
+    ),
+    lokale_cmin: lokaleCmin,
+    lokale_cmax: lokaleCmax,
+    lokalizacja_cmin: lokaleCmin[0]?.lokalizacja ?? "",
+    lokalizacja_cmax: lokaleCmax[0]?.lokalizacja ?? "",
+    opis_przedmiot: activeFeatures.map((f) => {
+      const position = ratingPosition(f);
+      return `${f.name} – ${position ? POSITION_TEXT[position] : DASH},`;
+    }),
     skala_ocen: skalaOcen,
     cechy_lista: polishFeatureList(activeFeatures.map((f) => f.name)),
     cechy_lista_wg_wag: polishFeatureList(

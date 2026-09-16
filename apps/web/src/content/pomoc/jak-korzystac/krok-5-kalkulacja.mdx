@@ -17,7 +17,7 @@ Ekran pokazuje cztery karty, opisane numerami tabel, którymi trafią do operatu
 
 - **„Wybrane transakcje” (Tabela 1)** — ceny zł/m² z próby wraz z pochodzeniem każdego wiersza. Status potwierdzenia widnieje przy wierszach z rejestru („RCN — do weryfikacji” albo „RCN — potwierdzone”); wiersz wpisany ręcznie ma samą plakietkę „Rzeczoznawca”, bo potwierdzony jest z definicji. Gdy powierzchnia wyceny pochodzi z wgranego dokumentu, karta pokazuje też jej źródło i status.
 - **„Ceny jednostkowe próby” (Tabela 2)** — Cmin, Cmax, Cśr oraz Vmin i Vmax.
-- **„Współczynniki korygujące” (Tabela 3)** — wiersz na każdą cechę z jej wagą, oceną i współczynnikiem Ui, a pod nimi suma ΣUi.
+- **„Współczynniki korygujące” (Tabela 3)** — wiersz na każdą cechę z jej wagą, oceną i współczynnikiem Ui, a pod nimi suma ΣUi. Ui wynika z miejsca oceny w opisanej skali cechy: przy dwóch opisanych poziomach niższy daje współczynnik najniższy, wyższy — najwyższy; przy trzech „przeciętna” daje współczynnik pośredni. W operacie ta tabela pokazuje obok Ui przedmiotu także Ui min, Ui śr i Ui max. Te trzy kolumny wynikają z **wagi** cechy i z przedziału Cmin–Cmax, a nie z liczby opisanych poziomów, więc wypełniają się zawsze — także przy skali dwustopniowej, a kolumna Ui śr sumuje się do 1,000, dopóki wagi sumują się do 100%. Różnica polega na czym innym: **ocena cechy opisanej na dwóch poziomach nigdy nie wyląduje na Ui śr**, bo taka skala nie ma środka — jej Ui przedmiotu to zawsze Ui min albo Ui max.
 - **„Wartość rynkowa” (Tabela 4)** — wynik wyliczenia i kwota po zaokrągleniu.
 
 Znaczenie Cśr, Vmin, Vmax i ΣUi oraz samą metodę korygowania ceny średniej opisuje [Metoda KCS](/pomoc/metoda-kcs).
@@ -28,7 +28,7 @@ Dopóki kwota nie jest zatwierdzona, nad kartami wisi ostrzeżenie „Dane wejś
 
 Nic. Jedyne działanie w tym kroku to przycisk „Zatwierdź kalkulację i dalej” — zapisuje wartość rynkową i przechodzi do kroku 6. Po powrocie do kroku 5 ten sam przycisk nazywa się już „Dalej”; kliknięcie go przelicza wycenę jeszcze raz z tych samych danych, więc nic nie ryzykujesz.
 
-Gdy próba ma mniej niż trzy transakcje albo nie ma ani jednej cechy, zamiast kart widać kartę „Kalkulacja niedostępna” z odesłaniem do kroków 3 i 4.
+Gdy próba ma mniej niż trzy transakcje, nie ma ani jednej cechy albo któraś cecha nie ma oceny na opisanym poziomie swojej skali, zamiast kart widać kartę „Kalkulacja niedostępna” z odesłaniem do kroków 3 i 4.
 
 ## Co blokuje przejście dalej
 

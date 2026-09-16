@@ -21,6 +21,7 @@ import { previewOperat } from "@/app/actions/preview-operat";
 import type { ProseSnapshot } from "@/domain/prose-snapshot";
 import type { Valuation } from "@/ports/valuation";
 import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
+import { PROFIL_TESTOWY } from "./fixtures/document-model-fixture";
 
 /** What the action hands back: the blob key is stable, so the version is the
  * only thing distinguishing this render from the one it overwrote. */
@@ -67,7 +68,7 @@ const currentProse = () =>
 
 describe("StepOperat — the blocker list matches the approve action (Task 7)", () => {
   it("names the missing prose and keeps the approve button disabled", () => {
-    render(<StepOperat valuation={draft(null)} />);
+    render(<StepOperat valuation={draft(null)} profile={PROFIL_TESTOWY} />);
 
     expect(screen.getByTestId("gate-blockers")).toHaveTextContent(
       "Opisy sekcji nie zostały wygenerowane.",
@@ -81,7 +82,7 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
       value: "Propozycja automatu — dane testowe.",
       provenance: { source: "ai", status: "to_verify" },
     };
-    render(<StepOperat valuation={draft(prose)} />);
+    render(<StepOperat valuation={draft(prose)} profile={PROFIL_TESTOWY} />);
 
     expect(screen.getByTestId("gate-blockers")).toHaveTextContent(
       "Opis standardu wykończenia — do weryfikacji.",
@@ -94,7 +95,7 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
     // describe this draft, and re-reading them buys nothing.
     const prose = currentProse();
     prose.factsHashes.uzasadnienie = "f".repeat(64);
-    render(<StepOperat valuation={draft(prose)} />);
+    render(<StepOperat valuation={draft(prose)} profile={PROFIL_TESTOWY} />);
 
     const blockers = screen.getByTestId("gate-blockers");
     expect(blockers).toHaveTextContent(
@@ -110,7 +111,7 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
     // through step 6 and the draft is current again. Asserted on the first
     // section only; that all six are listed is the gate's own business and
     // `f4-approval-gate.test.ts` counts them there.
-    render(<StepOperat valuation={draft(confirmedProse())} />);
+    render(<StepOperat valuation={draft(confirmedProse())} profile={PROFIL_TESTOWY} />);
 
     expect(screen.getByTestId("gate-blockers")).toHaveTextContent(
       "Analiza i charakterystyka rynku — dane się zmieniły, przejrzyj ponownie.",
@@ -119,7 +120,7 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
   });
 
   it("shows no blockers once all six sections are confirmed", async () => {
-    render(<StepOperat valuation={draft(currentProse())} />);
+    render(<StepOperat valuation={draft(currentProse())} profile={PROFIL_TESTOWY} />);
 
     expect(screen.queryByTestId("gate-blockers")).toBeNull();
     expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeEnabled();
@@ -130,7 +131,7 @@ describe("StepOperat — the blocker list matches the approve action (Task 7)", 
 
   it("NEXT_PUBLIC_PROSE=off: the same prose-less draft shows no blockers at all", async () => {
     vi.stubEnv("NEXT_PUBLIC_PROSE", "off");
-    render(<StepOperat valuation={draft(null)} />);
+    render(<StepOperat valuation={draft(null)} profile={PROFIL_TESTOWY} />);
 
     expect(screen.queryByTestId("gate-blockers")).toBeNull();
     expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeEnabled();
@@ -185,7 +186,7 @@ describe("StepOperat — no bulk confirmation, only links back (Task 8)", () => 
   };
 
   it("offers no bulk confirmation, only a link to the step that holds the data", () => {
-    render(<StepOperat valuation={stuck()} />);
+    render(<StepOperat valuation={stuck()} profile={PROFIL_TESTOWY} />);
 
     for (const testId of [
       "confirm-sample-button",
@@ -202,7 +203,7 @@ describe("StepOperat — no bulk confirmation, only links back (Task 8)", () => 
   });
 
   it("sends each blocker to its own step, not all of them to one", () => {
-    render(<StepOperat valuation={stuck()} />);
+    render(<StepOperat valuation={stuck()} profile={PROFIL_TESTOWY} />);
     const blockers = screen.getByTestId("gate-blockers");
 
     // The subject group is read on step 1, the sample on step 3, the rating
@@ -222,7 +223,7 @@ describe("StepOperat — no bulk confirmation, only links back (Task 8)", () => 
   it("points a stale description at step 6, next to the section it names", () => {
     const prose = currentProse();
     prose.factsHashes.uzasadnienie = "f".repeat(64);
-    render(<StepOperat valuation={draft(prose)} />);
+    render(<StepOperat valuation={draft(prose)} profile={PROFIL_TESTOWY} />);
 
     const item = within(screen.getByTestId("gate-blockers"))
       .getByText(/Uzasadnienie wyniku/)
@@ -243,7 +244,7 @@ describe("StepOperat — no bulk confirmation, only links back (Task 8)", () => 
  */
 describe("StepOperat — the document on the screen (Task 10)", () => {
   it("with blockers: no automatic render, an explicit button instead", () => {
-    render(<StepOperat valuation={draft(null)} />);
+    render(<StepOperat valuation={draft(null)} profile={PROFIL_TESTOWY} />);
 
     expect(previewOperat).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Pokaż podgląd mimo braków" })).toBeEnabled();
@@ -251,7 +252,7 @@ describe("StepOperat — the document on the screen (Task 10)", () => {
   });
 
   it("with blockers: the preview stays a preview — issuing is still refused", async () => {
-    render(<StepOperat valuation={draft(null)} />);
+    render(<StepOperat valuation={draft(null)} profile={PROFIL_TESTOWY} />);
     await userEvent.click(screen.getByRole("button", { name: "Pokaż podgląd mimo braków" }));
 
     await screen.findByTitle("Podgląd operatu (PDF)");
@@ -259,7 +260,7 @@ describe("StepOperat — the document on the screen (Task 10)", () => {
   });
 
   it("without blockers: renders by itself and embeds the reader without its chrome", async () => {
-    render(<StepOperat valuation={draft(currentProse())} />);
+    render(<StepOperat valuation={draft(currentProse())} profile={PROFIL_TESTOWY} />);
 
     const frame = await screen.findByTitle("Podgląd operatu (PDF)");
     expect(frame).toHaveAttribute("src", expect.stringContaining("#toolbar=0&navpanes=0"));
@@ -270,7 +271,7 @@ describe("StepOperat — the document on the screen (Task 10)", () => {
     // the action computed from the bytes is the only thing that stops the
     // reader re-serving the render the appraiser just replaced. Rebuilding
     // the URL from the id would drop it.
-    render(<StepOperat valuation={draft(currentProse())} />);
+    render(<StepOperat valuation={draft(currentProse())} profile={PROFIL_TESTOWY} />);
 
     const frame = await screen.findByTitle("Podgląd operatu (PDF)");
     expect(frame).toHaveAttribute("src", `${PREVIEW_URL}#toolbar=0&navpanes=0`);
@@ -284,7 +285,7 @@ describe("StepOperat — the document on the screen (Task 10)", () => {
       error: "Nie udało się pobrać map do operatu — WMS nie odpowiada.",
       mapsUnavailable: true,
     });
-    render(<StepOperat valuation={draft(currentProse())} />);
+    render(<StepOperat valuation={draft(currentProse())} profile={PROFIL_TESTOWY} />);
 
     const skip = await screen.findByRole("button", { name: "Pokaż podgląd bez map" });
     expect(preview).toHaveBeenCalledTimes(1);
@@ -299,7 +300,7 @@ describe("StepOperat — the document on the screen (Task 10)", () => {
     preview.mockResolvedValueOnce({
       error: "Brak danych wejściowych operatu — nie ma czego pokazać.",
     });
-    render(<StepOperat valuation={draft(currentProse())} />);
+    render(<StepOperat valuation={draft(currentProse())} profile={PROFIL_TESTOWY} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Brak danych wejściowych operatu — nie ma czego pokazać.",
@@ -314,7 +315,7 @@ describe("StepOperat — what is on screen is the current render (fix round 1)",
     // starts a second build. Leaving the first render above a red alert would
     // show the appraiser a document that no longer corresponds to the draft —
     // the exact failure class this slice exists to remove.
-    render(<StepOperat valuation={draft(null)} />);
+    render(<StepOperat valuation={draft(null)} profile={PROFIL_TESTOWY} />);
     await userEvent.click(screen.getByRole("button", { name: "Pokaż podgląd mimo braków" }));
     await screen.findByTitle("Podgląd operatu (PDF)");
 
@@ -327,5 +328,24 @@ describe("StepOperat — what is on screen is the current render (fix round 1)",
       "Nie udało się złożyć podglądu operatu",
     );
     expect(screen.queryByTitle("Podgląd operatu (PDF)")).toBeNull();
+  });
+});
+
+describe("StepOperat — a draft without an inputs snapshot (R-1 equivalence)", () => {
+  // Pre-wizard legacy shape: every document field filled, `wr` set, no
+  // snapshot. There is nothing the gate can check, so the button must stay
+  // disabled even though the blocker list (document fields only) is empty —
+  // `approveValuation` refuses this draft outright.
+  it("keeps the approve button disabled with an empty blocker list", async () => {
+    render(
+      <StepOperat
+        valuation={{ ...draft(currentProse()), inputs: null }}
+        profile={PROFIL_TESTOWY}
+      />,
+    );
+
+    expect(screen.queryByTestId("gate-blockers")).toBeNull();
+    expect(screen.getByRole("button", { name: /Zatwierdź i generuj operat/i })).toBeDisabled();
+    await screen.findByTitle("Podgląd operatu (PDF)");
   });
 });

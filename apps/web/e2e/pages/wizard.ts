@@ -29,10 +29,30 @@ export class SubjectStep {
     await this.page.locator("#area").fill(o.area);
     await this.page.locator("#purpose").selectOption("sprzedaz");
     await this.page.locator("#client").fill(o.client);
-    await this.page.getByRole("button", { name: /^Wpisz ręcznie/ }).click();
-    if (o.kw) await this.page.locator("#kwNumber").fill(o.kw);
+    if (o.right === "spoldzielcze") {
+      // A coop right has no book of its own (T-12): one optional flat number,
+      // and no examination section at all.
+      if (o.kw) await this.page.locator("#kwNumber").fill(o.kw);
+    } else if (o.kw) {
+      await this.page.locator("#kw-lokalu").fill(o.kw);
+    }
     if (o.basement)
       await this.page.getByRole("checkbox", { name: "Lokal ma przynależną piwnicę" }).check();
+  }
+
+  /**
+   * The examination both books need before step 7 will let the operat out
+   * (B-06, ADR-018). Manual path — the office's own — with both dzialy
+   * answered "no entries", which is also what keeps B-07 out of the way.
+   */
+  async examineBooks(o: { kwLokalu: string; kwGruntu: string }) {
+    await this.page.locator("#kw-lokalu").fill(o.kwLokalu);
+    await this.page.locator("#kw-gruntu").fill(o.kwGruntu);
+    await this.page.locator("#kwg-nr").fill(o.kwGruntu);
+    for (const group of await this.page.getByRole("radiogroup", { name: /^Dział I(II|V)/ }).all()) {
+      await group.getByRole("radio", { name: "Brak wpisów" }).click();
+    }
+    await expect(this.page.getByText(/Zbadane księgi: 2 z 2/)).toBeVisible();
   }
 
   get summary(): Locator {
@@ -181,11 +201,33 @@ export class SampleStep {
   }
 }
 
-/** Steps 4–7 with prose OFF: preset features, calculation, placeholder, preview. */
+/**
+ * Step 4 (ADR-016): there is no default rating. A feature whose scale has
+ * fewer than two described levels (powierzchnia without sample areas) gets a
+ * two-level scale under „Edytuj skalę” first; then every feature takes its
+ * first card. Fictional texts (F-9).
+ */
+export async function rateAllFeatures(page: Page) {
+  const rows = page.locator('[data-testid^="feature-row-"]');
+  const count = await rows.count();
+  for (let i = 0; i < count; i++) {
+    const row = rows.nth(i);
+    if ((await row.getByRole("radio").count()) < 2) {
+      await row.getByRole("button", { name: "Edytuj skalę" }).click();
+      const levels = row.getByPlaceholder("puste pole — poziom nie pojawi się w operacie");
+      await levels.nth(0).fill("opis poziomu gorszego");
+      await levels.nth(2).fill("opis poziomu lepszego");
+    }
+    await row.getByRole("radio").first().click();
+  }
+}
+
+/** Steps 4–7 with prose OFF: preset features rated, calculation, placeholder, preview. */
 export class OperatPath {
   constructor(private readonly page: Page) {}
 
   async throughToOperat() {
+    await rateAllFeatures(this.page);
     await this.page.getByRole("button", { name: "Zatwierdź cechy i dalej" }).click();
     await this.page.waitForURL(/step=5/);
     await this.page.getByRole("button", { name: /^(Zatwierdź kalkulację i dalej|Dalej)$/ }).click();

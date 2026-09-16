@@ -3,10 +3,17 @@
 import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getSession } from "@/auth/session";
-import { storage, worker, valuationRepository, mapImages } from "@/app/valuations/_deps";
+import {
+  storage,
+  worker,
+  valuationRepository,
+  mapImages,
+  profileRepository,
+} from "@/app/valuations/_deps";
 import { mapsFrozenForCurrentAddress } from "@/domain/valuation";
-import { buildDocumentModel, type OperatPurpose } from "@/domain/document-model";
-import { computeKcs } from "@/domain/kcs";
+import { buildDocumentModel } from "@/domain/document-model";
+import { authorFrom, documentInputFor, policyPagesFrom } from "@/domain/document-input";
+import { computeKcsOnScale, kcsReady } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
 import { previewDocKey } from "@/lib/preview-doc";
@@ -76,6 +83,17 @@ export async function previewOperat(
     }
     if (!valuation.inputs) {
       return { error: "Brak danych wejściowych operatu — nie ma czego pokazać." };
+    }
+    // ADR-016: a draft whose ratings predate the scale rule has no WR to print.
+    // Said here, where it is true, instead of as the worker error below. (The
+    // preview only ever runs on a draft, whose stored `wr` the read migration
+    // has already dropped if it stopped following from the snapshot — so the
+    // I-21 guard inside `documentInputFor` has nothing left to catch here.)
+    if (!kcsReady(valuation.inputs)) {
+      return {
+        error:
+          "Oceny cech pochodzą sprzed zmiany skali ocen — zatwierdź cechy ponownie w kroku 4, żeby zobaczyć podgląd.",
+      };
     }
 
     try {
@@ -161,32 +179,25 @@ export async function previewOperat(
         };
       }
 
-      const kcs = computeKcs(valuation.inputs);
+      const kcs = computeKcsOnScale(valuation.inputs);
       const amountInWords = await worker.amountInWords(kcs.wr);
+      // The preview reads the CURRENT profile (ADR-020 cz. 1): the appraiser
+      // sees their own author block filling in as they complete /profile, and
+      // dashes until then — which is exactly what B-15 refuses to issue.
+      const profile = await profileRepository.get(session.user.id);
+      const author = authorFrom(profile, await policyPagesFrom(storage, profile?.insuranceDocKey));
       const model = buildDocumentModel(
-        {
-          address: valuation.address,
-          area: valuation.area,
-          purpose: valuation.purpose as OperatPurpose,
-          kwNumber: valuation.kwNumber,
-          propertyRight: valuation.propertyRight,
-          client: valuation.client ?? "",
-          inspectionDate: valuation.inspectionDate ?? "",
-          // The preview's "data sporządzenia" is TODAY; the issued operat gets
-          // the date it was issued. That difference is why issuing re-renders
-          // rather than promoting this file (spec §C).
-          approvedAt: new Date(),
-          inputs: valuation.inputs,
-          kcs,
-          amountInWords,
-        },
+        // The preview's "data sporządzenia" is TODAY; the issued operat gets
+        // the date it was issued. That difference is why issuing re-renders
+        // rather than promoting this file (spec §C).
+        documentInputFor(valuation, { approvedAt: new Date(), kcs, amountInWords, author }),
         // ...and the second half of that same §C difference: a section the
         // appraiser has not written yet is MARKED here and passed over in
         // silence when the operat is issued. This is the only call site that
         // may pass the flag — approve and sign must not.
         { preview: true },
       );
-      const docx = renderOperatDocx(model, { maps, photos });
+      const docx = renderOperatDocx(model, { maps, photos, policyPages: author.policyPages });
       const pdf = await worker.convertToPdf(docx);
       await storage.put(previewDocKey(id), pdf);
 

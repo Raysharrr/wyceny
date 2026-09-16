@@ -17,6 +17,9 @@ import {
   InputsChangedError,
   newValuation,
   newVersionOf,
+  NotReopenableError,
+  readFeatureScale,
+  reopenApproved,
   signValuation,
   type AuditAction,
   type FeaturesUpdate,
@@ -28,6 +31,7 @@ import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
 import { currentSectionFactsHashes } from "../domain/prose-hash";
 import { proseEnabled } from "../lib/prose-enabled";
+import { storageKeyOf } from "../lib/operat-doc-keys";
 import * as schema from "../db/schema";
 import type { NewValuationInput, PortValuation, SessionUser, Valuation } from "../ports/valuation";
 
@@ -73,7 +77,12 @@ function normalizeProse(prose: ProseSnapshot | null | undefined): ProseSnapshot 
  */
 function toValuation(row: typeof schema.valuation.$inferSelect): Valuation {
   const inputs = row.inputs as KcsInput | null;
-  return { ...row, inputs: inputs ? { ...inputs, prose: normalizeProse(inputs.prose) } : inputs };
+  // Ratings of a draft saved before ADR-016 migrate on read, like the prose
+  // above — every repo method narrows through here, `approve` included.
+  return readFeatureScale({
+    ...row,
+    inputs: inputs ? { ...inputs, prose: normalizeProse(inputs.prose) } : inputs,
+  });
 }
 
 type Tx = Parameters<Parameters<NodePgDatabase<typeof schema>["transaction"]>[0]>[0];
@@ -650,7 +659,14 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         }
         // Re-runs the full gate (F-4 + document fields) in the domain — this is
         // the atomic status flip; a caller that stored files first but fails
-        // here leaves harmless orphan files (same keys, overwritten on retry).
+        // here leaves orphan files behind. They used to be transient: the key
+        // was fixed per valuation, so the retry overwrote them. Since ADR-020
+        // wariant (a) the key carries the approval's `now` (`approvedOperatKeys`
+        // — one file set per approval, so a withdrawn one is not overwritten by
+        // the next), which means the retry writes NEW keys and each failed
+        // attempt leaves a permanent orphan nothing points at. Harmless but no
+        // longer self-cleaning; documented in `pomoc/metodyka/operat-i-
+        // niezmiennosc.mdx` and carried as a follow-up.
         //
         // BOTH prose options are derived HERE and REPLACE whatever the caller
         // passed (ADR-012). `gate` is still accepted so the call sites read
@@ -669,9 +685,27 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
         //    transaction, exactly like the hashes. `proseEnabled()` is the one
         //    place that comparison lives; the action calls it too, for its
         //    fail-fast check before it spends anything on generation.
+        //
+        // The PROFILE half of `gate` (B-15, B-16) is taken as passed — and this
+        // is a weaker guarantee than the prose half above, deliberately so.
+        // Re-reading `appraiser_profile` inside this transaction would be
+        // STRICTER (it would close the window between the action's read and
+        // this write, in which a profile can be emptied), but it is a read of
+        // a second table by the same server action, not a claim from a client,
+        // and the asymmetry is not what ADR-012 is about: the prose options
+        // are re-derived here because they were a per-call decision that could
+        // disable a whole invariant group. Tightening this is a follow-up, not
+        // a correctness hole — `tests/valuation-repo.test.ts` pins that the
+        // profile blockers DO fire inside the transaction.
+        //
+        // `today` is the exception that is settled here: the operat's date is
+        // `now`, this row's own timestamp, so the policy is measured against
+        // the date the document will actually carry rather than one the caller
+        // assembled earlier.
         const requireProse = proseEnabled();
         const updated = approveValuation(valuation, now, docs, {
           ...gate,
+          today: now,
           requireProse,
           currentSectionHashes:
             requireProse && valuation.inputs
@@ -755,6 +789,58 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           meta: { supersedes: id },
         });
         return toValuation(inserted);
+      });
+    },
+
+    async reopen(id: string, user: SessionUser): Promise<Valuation | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select().from(schema.valuation).where(eq(schema.valuation.id, id));
+        if (!row) return null;
+        const valuation = toValuation(row);
+        if (valuation.ownerId !== user.id) return null;
+        const updated = reopenApproved(valuation);
+        const [saved] = await tx
+          .update(schema.valuation)
+          .set({
+            status: updated.status,
+            approvedAt: updated.approvedAt,
+            docUrl: updated.docUrl,
+            docxUrl: updated.docxUrl,
+            amountInWords: updated.amountInWords,
+            wr: updated.wr,
+          })
+          // CAS on the status the domain just checked: two clicks on the same
+          // button must not produce two `reopened` rows, and one arriving after
+          // a signature must not un-sign anything (the write-once trigger would
+          // refuse it, but the refusal belongs here, with a message).
+          .where(and(eq(schema.valuation.id, id), eq(schema.valuation.status, "approved")))
+          .returning();
+        if (!saved) {
+          // The row exists and is this caller's — the domain said so a few
+          // lines up — so a CAS miss can only mean the status moved between
+          // the read and the write (a second click, a signature landing
+          // first). That is a STATUS refusal, not a missing row: `null` here
+          // would tell the owner „nie znaleziono wyceny albo nie masz do niej
+          // dostępu” about a valuation they are looking at.
+          throw new NotReopenableError(
+            `Valuation ${id} stopped being an unsigned approval mid-reopen — cannot reopen`,
+          );
+        }
+        await insertAudit(tx, {
+          valuationId: id,
+          actorId: user.id,
+          action: "reopened",
+          // Storage keys and the withdrawn issue date — F-13: identifiers, no
+          // operat content. With `approvedAt` cleared this row is the only
+          // record of which files that approval issued; the bytes stay in
+          // storage even though the valuation no longer points at them.
+          meta: {
+            approvedAt: valuation.approvedAt?.toISOString() ?? null,
+            docKey: storageKeyOf(valuation.docUrl),
+            docxKey: storageKeyOf(valuation.docxUrl),
+          },
+        });
+        return toValuation(saved);
       });
     },
   };

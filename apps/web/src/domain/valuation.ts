@@ -1,6 +1,7 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
-import { documentFieldBlockers } from "./document-model";
-import { computeKcs, isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
+import { documentFieldBlockers, formatDatePl } from "./document-model";
+import { computeKcsOnScale, describedLevels, featureIssues, kcsReady } from "./feature-rules";
+import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
@@ -514,6 +515,9 @@ export type SubjectUpdate = {
   subject: KcsInput["subject"];
   subjectMeta: KcsInput["subjectMeta"];
   kw: KcsInput["kw"];
+  /** Examination of the grunt's book and the encumbrance decision (ADR-018) — optional so callers that predate the block keep compiling. */
+  kwGrunt?: KcsInput["kwGrunt"];
+  encumbranceTreatment?: KcsInput["encumbranceTreatment"];
   kwMeta: KcsInput["kwMeta"];
   provenance: Partial<InputsProvenance> & Pick<InputsProvenance, "address" | "area">;
 };
@@ -583,6 +587,8 @@ export function applySubjectUpdate(v: Valuation, u: SubjectUpdate): Valuation {
       subject: u.subject ?? null,
       subjectMeta: u.subjectMeta ?? null,
       kw: u.kw ?? null,
+      kwGrunt: u.kwGrunt ?? null,
+      encumbranceTreatment: u.encumbranceTreatment ?? null,
       kwMeta: u.kwMeta ?? null,
       provenance,
     },
@@ -640,7 +646,64 @@ export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation 
   const provenance = sameJson(v.inputs.features, u.features)
     ? carryGroupStatuses(v.inputs.provenance, reassigned, FEATURES_GROUP_KEYS)
     : reassigned;
-  return { ...v, wr: null, inputs: { ...v.inputs, features: u.features, provenance } };
+  return {
+    ...v,
+    wr: null,
+    inputs: { ...v.inputs, features: u.features, provenance },
+  };
+}
+
+/**
+ * Does the amount this valuation carries still follow from its own snapshot?
+ * The step-5 confirm writes exactly what the engine returns, so this is true
+ * for everything saved under the current rules and false for an amount
+ * computed under an earlier one. Two callers, one question: the draft read
+ * below drops such an amount, and the views refuse to show recomputed tables
+ * beside it (I-21).
+ *
+ * `false` ALSO when there is no amount at all (`wr == null`) or the snapshot
+ * produces none — the question is "does the amount follow", and a missing one
+ * does not. Callers that treat `false` as "the numbers disagree" have to check
+ * `wr != null` first, the way `flat-view` does; otherwise a draft before step 5
+ * reads as a mismatch.
+ */
+export function amountMatchesSnapshot(v: Valuation): boolean {
+  if (v.wr == null || !v.inputs || !kcsReady(v.inputs)) return false;
+  return computeKcsOnScale(v.inputs).wr === v.wr;
+}
+
+/**
+ * A draft read after the ADR-016 change („Migracja danych”, no SQL). Two
+ * things can be wrong with a draft saved under the old rule, and both are read
+ * off the DATA — there is no rule marker to consult:
+ *
+ * - a rating that misses a scale which HAS described levels is not a rating any
+ *   more, so it is cleared to an explicit `null` (B-08; jsonb would drop
+ *   `undefined`). A feature with no described level at all keeps its rating:
+ *   there is nothing to choose between yet, and B-10 already says so;
+ * - `wr` that no longer follows from the snapshot is dropped. The step-5
+ *   confirm is the only writer of `wr` and writes exactly what the engine
+ *   returns, so on every correctly saved draft this is a no-op — it fires
+ *   precisely where the amount was computed under the old rule, and the
+ *   appraiser confirms the calculation again (F-3 enforced at read time).
+ *
+ * Approved and signed valuations keep what they were issued with, and a draft
+ * with no features has nothing to check. Pure and idempotent.
+ */
+export function readFeatureScale(v: Valuation): Valuation {
+  if (v.status !== "in_progress" || !v.inputs || v.inputs.features.length === 0) return v;
+  const features = v.inputs.features.map((f) => {
+    const levels = describedLevels(f);
+    return f.rating != null && levels.length > 0 && !levels.includes(f.rating)
+      ? { ...f, rating: null }
+      : f;
+  });
+  const inputs = { ...v.inputs, features };
+  // A draft with no amount has none to lose; one with an amount keeps it only
+  // while the snapshot still produces it.
+  const keepsAmount = v.wr == null || amountMatchesSnapshot({ ...v, inputs });
+  if (keepsAmount && features.every((f, i) => f === v.inputs!.features[i])) return v;
+  return { ...v, wr: keepsAmount ? v.wr : null, inputs };
 }
 
 export class CalculationNotReadyError extends Error {
@@ -651,14 +714,102 @@ export class CalculationNotReadyError extends Error {
 }
 
 /** Step-5 confirm: the ONLY place the wizard writes wr. Same engine call the
- * legacy create action used (F-1: computeKcs itself untouched). */
+ * legacy create action used (F-1: computeKcs itself untouched), fed the rating
+ * positions (ADR-016). */
 export function applyCalculationConfirm(v: Valuation): Valuation {
   assertDraft(v);
   if (!v.inputs) throw new Error(`Valuation ${v.id} has no inputs snapshot — nothing to confirm`);
-  if (v.inputs.comparables.length < 3 || v.inputs.features.length === 0) {
+  if (v.inputs.comparables.length < 3 || v.inputs.features.length === 0 || !kcsReady(v.inputs)) {
     throw new CalculationNotReadyError();
   }
-  return { ...v, wr: computeKcs(v.inputs).wr };
+  return { ...v, wr: computeKcsOnScale(v.inputs).wr };
+}
+
+/**
+ * Everything that stands between a draft and approval (R-1) — the ONE
+ * composition of the F-4 gate with the document-field blockers (spec §4),
+ * gate first. Step 7, the flat view, the approve action and `approveValuation`
+ * all read this list, so a blocker added here reaches the screen and both
+ * refusals at once.
+ *
+ * A draft with no inputs snapshot has nothing for the gate to check and gets
+ * only its document-field blockers; approval of such a draft is refused by
+ * the callers themselves (`approveValuation` throws, the screens keep the
+ * button disabled).
+ *
+ * `ctx` carries what only the app layer can know (`gateContextFor`): the
+ * FR-6 kill switch, the per-section facts hashes, the appraiser's profile and
+ * the date the operat will carry — this module reads no env and no clock
+ * (F-10).
+ */
+export function approvalBlockers(v: Valuation, ctx: GateOptions): Blocker[] {
+  const gate = v.inputs ? approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, ctx) : null;
+  return [
+    ...(gate && !gate.ok ? gate.blockers : []),
+    ...featureScaleBlockers(v),
+    ...documentFieldBlockers(v),
+    // Last, and outside the groups above, because these are the only blockers
+    // that are NOT about this valuation: they are about the person issuing it,
+    // and they are cleared on /profile once for every draft they will ever hold.
+    ...profileBlockers(ctx),
+  ];
+}
+
+/**
+ * B-08…B-10 (ADR-016 reg. 3–4, spec §4) — each feature's rating against its
+ * described scale. A draft whose ratings predate the rule needs no blocker of
+ * its own: {@link readFeatureScale} drops the amount that no longer follows
+ * from the snapshot, and the missing `wr` is what the gate already refuses.
+ */
+function featureScaleBlockers(v: Valuation): Blocker[] {
+  if (!v.inputs) return [];
+  return v.inputs.features.flatMap((f, i) =>
+    featureIssues(f).map((issue) => ({ path: `features[${i}]`, ...issue })),
+  );
+}
+
+/**
+ * The operat's date as the document itself prints it (`data_sporzadzenia` in
+ * `document-model.ts`, same conversion) — B-16 has to measure the policy
+ * against the date the appraiser will read on the title page, not against a
+ * differently-derived one.
+ */
+function operatDay(today: Date): string {
+  return today.toISOString().slice(0, 10);
+}
+
+/**
+ * B-15 and B-16 (spec §4, ADR-020 reg. 3): the operat carries its author's
+ * name, licence number and office block, and may only be issued while the
+ * appraiser's OC policy still covers its date.
+ *
+ * `ctx.author === undefined` means the caller could not tell, and nothing is
+ * checked; `null` means there is no profile row, which raises both. The dates
+ * are compared as `YYYY-MM-DD` STRINGS on purpose: `insurance_valid_until` is
+ * a `date` column with no time, so `new Date("2026-09-15") < new Date()` would
+ * be true from one minute past midnight and would reject a policy that is
+ * valid for exactly as long as the operat needs it.
+ */
+function profileBlockers(ctx: GateOptions): Blocker[] {
+  if (ctx.author === undefined || ctx.today === undefined) return [];
+  const blockers: Blocker[] = [];
+  const author = ctx.author;
+  if (!author?.fullName?.trim() || !author.licenseNo?.trim() || !author.officeBlock?.trim()) {
+    blockers.push({
+      path: "profile.dane",
+      code: "B-15",
+      label: "Uzupełnij profil: imię i nazwisko, numer uprawnień, dane biura.",
+    });
+  }
+  const day = operatDay(ctx.today);
+  if (!author?.insuranceDocKey || !author.insuranceValidUntil || author.insuranceValidUntil < day) {
+    blockers.push({
+      path: "profile.polisa",
+      code: "B-16",
+      label: `Dodaj polisę OC ważną na dzień ${formatDatePl(day)}.`,
+    });
+  }
+  return blockers;
 }
 
 /**
@@ -684,8 +835,7 @@ export function approveValuation(
   if (!v.inputs) {
     throw new ApprovalBlockedError([{ path: "inputs", label: "Brak danych wejściowych operatu." }]);
   }
-  const gate = approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, gateOptions);
-  const blockers = [...(gate.ok ? [] : gate.blockers), ...documentFieldBlockers(v)];
+  const blockers = approvalBlockers(v, gateOptions ?? {});
   if (blockers.length > 0) {
     throw new ApprovalBlockedError(blockers);
   }
@@ -722,6 +872,7 @@ export const AUDIT_ACTIONS = [
   "approved",
   "signed",
   "version_created",
+  "reopened",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -747,6 +898,51 @@ export function signValuation(v: Valuation, now: Date): Valuation {
     throw new NotSignableError(`Valuation ${v.id} is a legacy row — not signable`);
   }
   return { ...v, status: "signed", signedAt: now };
+}
+
+export class NotReopenableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotReopenableError";
+  }
+}
+
+/**
+ * „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6): approved → in_progress,
+ * for an operat nobody has signed. The opposite of `signValuation`, and only
+ * as far as the signature: once a document is signed it is write-once at the
+ * database level (F-7) and the way back is „Utwórz nową wersję”.
+ *
+ * Everything the approval PRODUCED is cleared — issue date, both document
+ * URLs, the amount in words, the market value — so the next approval computes
+ * them again. Carrying `amountInWords` over would print the old amount beside
+ * a corrected Tabela 4 (D-57); carrying `wr` over would leave the calculation
+ * confirmed while the numbers behind it changed.
+ *
+ * What the appraiser ENTERED is untouched: `inputs` (the corrections are made
+ * on them), the frozen maps, and the prose stamps. Reopening is a step back,
+ * not a reset — and re-fetching maps would silently change a document nobody
+ * asked to change.
+ *
+ * The already-issued DOCX and PDF stay in storage under their own keys
+ * (`approvedOperatKeys`); the `reopened` audit row is what names them, since
+ * with `approvedAt` cleared nothing else could.
+ */
+export function reopenApproved(v: Valuation): Valuation {
+  if (v.status !== "approved" || v.signedAt !== null) {
+    throw new NotReopenableError(
+      `Valuation ${v.id} is not an unsigned approval (status: ${v.status}) — cannot reopen`,
+    );
+  }
+  return {
+    ...v,
+    status: "in_progress",
+    approvedAt: null,
+    docUrl: null,
+    docxUrl: null,
+    amountInWords: null,
+    wr: null,
+  };
 }
 
 /**

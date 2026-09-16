@@ -23,13 +23,23 @@ Vmin jest zawsze mniejszy lub równy jedności, Vmax większy lub równy. To one
 
 ## Współczynniki cech i ich suma
 
-Każda cecha ma wagę (udział w całości korekty; wagi sumują się do jedności) oraz ocenę w trzystopniowej skali. Współczynnik cechy Ui zależy od oceny:
+Każda cecha ma wagę (udział w całości korekty; wagi sumują się do jedności) oraz ocenę w skali, którą tworzą **opisane poziomy** tej cechy — dwa dowolne z trzech (gorsza, przeciętna, lepsza) albo wszystkie trzy. Współczynnik cechy Ui zależy od **miejsca oceny w tej skali**, a nie od samej nazwy poziomu:
 
-- ocena **lepsza** — Ui = waga × Vmax,
-- ocena **przeciętna** — Ui = waga,
-- ocena **gorsza** — Ui = waga × Vmin.
+- ocena na **najwyższym** opisanym poziomie — Ui = waga × Vmax,
+- ocena na poziomie **pośrednim** (tylko przy trzech opisanych poziomach, czyli „przeciętna”) — Ui = waga,
+- ocena na **najniższym** opisanym poziomie — Ui = waga × Vmin.
 
-ΣUi, czyli suma współczynników wszystkich cech, jest łącznym mnożnikiem korekty. Poniższe własności zakładają, że wagi sumują się do jedności — silnik tego nie sprawdza i policzy wynik z dowolnym zestawem wag; pilnuje tego [krok ocen](/pomoc/krok-4-cechy). Gdy wszystkie cechy są przeciętne, ΣUi wynosi dokładnie 1 i wycena zatrzymuje się na cenie średniej. Gdy wszystkie są lepsze, ΣUi równa się Vmax i wycena dobija do najdroższej transakcji z próby. Każda pojedyncza ocena przesuwa wynik dokładnie o tyle, ile wynosi jej waga pomnożona przez odległość odpowiedniego współczynnika od jedności.
+Przy trzech poziomach daje to znany układ: lepsza — waga × Vmax, przeciętna — waga, gorsza — waga × Vmin. Przy dwóch poziomach skala nie ma środka: gdy cecha opisuje „lepsza” i „przeciętna”, ocena „przeciętna” jest wartością najniższą cechy i daje waga × Vmin; gdy opisuje „przeciętna” i „gorsza”, ta sama ocena jest wartością najwyższą i daje waga × Vmax. Tak skalę dwupoziomową czyta operat — opis poziomu jest tym samym kontraktem, który rzeczoznawca podpisuje, i rachunek czyta go tak samo.
+
+### Skale liczbowe i ocena lokali o cenie najniższej i najwyższej
+
+Dwie cechy opisuje liczba: położenie na piętrze i powierzchnia użytkowa. Ich skalę tworzą **przedziały liczbowe** — przylegające do siebie, bez dziur i bez zachodzenia na siebie — a zdania, które operat drukuje w tabeli definicji, powstają z tych przedziałów. Obie skale liczą tak samo: progi są liczbami całkowitymi, obie granice należą do przedziału, a sąsiedzi stykają się o jeden od siebie — „do 40 m²” sąsiaduje z „od 41 m² do 45 m²”. Piętra liczymy od parteru (parter = 0). Powierzchnia lokalu zaokrągla się do pełnych m², zanim trafi do przedziału, więc metraż 40,5 m² dostaje poziom, choć żadne z tych zdań nie obejmuje go dosłownie. Rzeczoznawca może zamiast progów wpisać własne zdanie — skala tej cechy przestaje być wtedy liczbowa i aplikacja nie próbuje jej odczytywać.
+
+Te same przedziały rozstrzygają dwie rzeczy naraz. Pierwsza to podpowiedź oceny przedmiotu w [kroku 4](/pomoc/krok-4-cechy) — porównanie danych z kroku 1 z progami, przyjmowane kliknięciem i nigdy zapisywane samo. Druga to **opis lokali o cenie najniższej i najwyższej w §12.2 operatu**: piętro i powierzchnia tych lokali pochodzą z rekordu transakcji i są oceniane tymi samymi progami co przedmiot, więc opis nie może się rozminąć z Tabelą 1. Rejestr cen i wartości numeruje kondygnacje od parteru jako pierwszej, więc aplikacja odejmuje jeden, zanim porówna transakcję z progami; lokal na kondygnacji podziemnej wypada poza skalę i operat mówi o nim, że danych nie ma. Cechy bez progów — standard wykończenia, lokalizacja szczegółowa, pomieszczenia przynależne, dodatkowe — nie mają w rejestrze danych, z których dałoby się wyprowadzić ocenę, i operat mówi to wprost, zamiast przypisywać takiemu lokalowi same wartości skrajne. Gdy tę samą najniższą (albo najwyższą) cenę ma więcej niż jedna transakcja, operat opisuje wszystkie.
+
+Ocena na poziomie bez opisu, cecha z wagą, która ma opisany mniej niż dwa poziomy, i cecha bez oceny nie dają współczynnika — silnik nie policzy wtedy wyniku, a zatwierdzenie operatu jest [zablokowane](/pomoc/zasady-zatwierdzania). Reguła jest jedna dla wszystkich wycen. Wycena rozpoczęta przed jej wprowadzeniem czeka na ponowne zatwierdzenie cech i dopiero wtedy odzyskuje kwotę — może się ona różnić od policzonej wcześniej, bo wcześniejszy rachunek czytał nazwę poziomu, a nie jego miejsce w skali.
+
+ΣUi, czyli suma współczynników wszystkich cech, jest łącznym mnożnikiem korekty. Poniższe własności zakładają, że wagi sumują się do jedności — silnik tego nie sprawdza i policzy wynik z dowolnym zestawem wag; pilnuje tego [krok ocen](/pomoc/krok-4-cechy). Gdy wszystkie cechy są na poziomie pośrednim, ΣUi wynosi dokładnie 1 i wycena zatrzymuje się na cenie średniej. Gdy wszystkie są na poziomie najwyższym, ΣUi dobija do Vmax, a więc do najdroższej transakcji z próby — z dokładnością do zaokrągleń opisanych niżej, bo suma zaokrąglonych Ui może się różnić od Vmax o tysięczne. Każda pojedyncza ocena przesuwa wynik o tyle, ile wynosi jej waga pomnożona przez odległość odpowiedniego współczynnika od jedności.
 
 ## Wartość jednostkowa i wartość rynkowa
 
@@ -49,12 +59,17 @@ Silnik nie liczy w pełnej precyzji. Odwzorowuje operat: dokument drukuje wielko
 
 1. **Cśr** — do {ROUNDING.csr} miejsc po przecinku.
 2. **Vmin i Vmax** — liczone z już zaokrąglonej Cśr, każdy do {ROUNDING.vmin} miejsc po przecinku.
-3. **ΣUi** — liczona z już zaokrąglonych Vmin i Vmax, do {ROUNDING.sumUi} miejsc po przecinku.
-4. **Wartość jednostkowa** — iloczyn zaokrąglonej Cśr i zaokrąglonej ΣUi, do {ROUNDING.unitValue} miejsc po przecinku.
-5. **Wartość dokładna** — iloczyn zaokrąglonej wartości jednostkowej i powierzchni, do pełnych groszy.
-6. **Wartość rynkowa** — do pełnych {ROUNDING.wrNearest} zł.
+3. **Ui każdej cechy** — liczone z już zaokrąglonych Vmin i Vmax, do {ROUNDING.ui} miejsc po przecinku.
+4. **ΣUi** — suma zaokrąglonych Ui, do {ROUNDING.sumUi} miejsc po przecinku.
+5. **Wartość jednostkowa** — iloczyn zaokrąglonej Cśr i zaokrąglonej ΣUi, do {ROUNDING.unitValue} miejsc po przecinku.
+6. **Wartość dokładna** — iloczyn zaokrąglonej wartości jednostkowej i powierzchni, do pełnych groszy.
+7. **Wartość rynkowa** — do pełnych {ROUNDING.wrNearest} zł.
 
-Krok piąty łatwo przeoczyć, a bez niego rachunek się rozjeżdża: zanim wynik trafi na pełne {ROUNDING.wrNearest} zł, jest najpierw zaokrąglany do groszy. Nie jest to wielkość rachunkowo pomocnicza, ukryta wewnątrz kalkulacji — to właśnie ta kwota trafia do Tabeli 4 operatu i na kartę wyniku, więc rzeczoznawca ma ją przed oczami i musi umieć powiedzieć, czym różni się od wartości rynkowej. W kodzie sześć pozostałych kroków jest nazwaną stałą konwencji operatu (`ROUNDING`), a krok groszowy stoi obok niej jako zwykła precyzja walutowa — ta strona renderuje liczby wprost z tej stałej, więc jeśli kiedykolwiek się zmieni, zmieni się też ten opis.
+Krok trzeci wynika wprost z tego, co drukuje Tabela 3: skoro kolumna Ui jest podana do {ROUNDING.ui} miejsc po przecinku, to sumą ma być suma liczb wydrukowanych, a nie ich dokładniejszych odpowiedników z pamięci. Wystarczy, że zaokrąglenia pojedynczych Ui przesuną sumę o tysięczną, a wynik zmienia się o kilkaset złotych — na operacie z 14 września ΣUi przechodzi z 1,021 na 1,022, a wartość rynkowa z 466 800 zł na 467 300 zł, czyli dokładnie na kwotę z dokumentu.
+
+Krok szósty łatwo przeoczyć, a bez niego rachunek się rozjeżdża: zanim wynik trafi na pełne {ROUNDING.wrNearest} zł, jest najpierw zaokrąglany do groszy. Nie jest to wielkość rachunkowo pomocnicza, ukryta wewnątrz kalkulacji — to właśnie ta kwota trafia do Tabeli 4 operatu i na kartę wyniku, więc rzeczoznawca ma ją przed oczami i musi umieć powiedzieć, czym różni się od wartości rynkowej. W kodzie sześć pozostałych kroków (siedem pozycji stałej — Vmin i Vmax mają własne wpisy) jest nazwaną stałą konwencji operatu (`ROUNDING`), a krok groszowy stoi obok niej jako zwykła precyzja walutowa — ta strona renderuje liczby wprost z tej stałej, więc jeśli kiedykolwiek się zmieni, zmieni się też ten opis.
+
+Zaokrąglanie Ui obowiązuje w każdej kalkulacji — nie ma drugiego trybu liczenia. Wycena policzona przed wprowadzeniem tej zasady, przeliczona ponownie, może więc pokazać kwotę o kilkaset złotych inną niż poprzednio; to ta nowa jest zgodna z rachunkiem operatu.
 
 ## Dlaczego operat pokazuje 1 044 400 zł, a nie 1 043 900 zł
 

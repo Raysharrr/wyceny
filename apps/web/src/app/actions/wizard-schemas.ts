@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { kwRequirements } from "@/domain/kw-requirements";
 import { valuationFormObject } from "@/lib/valuation-form-schema";
 
 /**
@@ -24,6 +25,8 @@ const step1Object = valuationFormObject.pick({
   subject: true,
   subjectMeta: true,
   kw: true,
+  kwGrunt: true,
+  encumbranceTreatment: true,
   kwMeta: true,
   purpose: true,
   propertyRight: true,
@@ -37,7 +40,7 @@ const step1Object = valuationFormObject.pick({
  * mirrors `valuationFormSchema`'s own superRefine (valuation-form-schema.ts:161-169).
  */
 export const step1Schema = step1Object.superRefine((values, ctx) => {
-  if (!values.kw && !values.kwNumber && values.propertyRight !== "spoldzielcze_wlasnosciowe") {
+  if (!values.kwNumber && kwRequirements(values.propertyRight, values.kw).numerKwWFormularzu) {
     ctx.addIssue({
       code: "custom",
       path: ["kwNumber"],

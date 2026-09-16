@@ -2,15 +2,53 @@ import { describe, expect, it } from "vitest";
 import {
   approvalGate,
   REQUIRED_SAMPLE_SIZE,
+  type GateOptions,
   type InputsProvenance,
 } from "../src/domain/provenance";
-import { confirmedProse } from "./fixtures/valuation-inputs";
+import { documentFieldBlockers } from "../src/domain/document-model";
+import type { KwSnapshot } from "../src/domain/kw-snapshot";
+import { currentSectionFactsHashes } from "../src/domain/prose-hash";
+import { approvalBlockers, applyFeaturesUpdate, readFeatureScale } from "../src/domain/valuation";
+import { blockerTarget, stepForBlockerPath } from "../src/domain/wizard";
+import type { AppraiserProfile } from "../src/ports/profile";
+import type { Feature } from "../src/domain/kcs";
+import type { Valuation } from "../src/ports/valuation";
+import { approvableInput, confirmedProse, confirmedProseFor } from "./fixtures/valuation-inputs";
 
 const confirmedScalars: InputsProvenance = {
   address: { source: "rzeczoznawca", status: "confirmed" },
   area: { source: "rzeczoznawca", status: "confirmed" },
   weights: { source: "rzeczoznawca", status: "confirmed" },
   ratings: { source: "rzeczoznawca", status: "confirmed" },
+  // The examination below is the appraiser's own work, so it enters confirmed
+  // (ADR-018 reg. 1). The KW group's own tests override this entry.
+  kw: { source: "rzeczoznawca", status: "confirmed" },
+};
+
+/**
+ * Both books examined. Spread into every input meant to reach the OTHER
+ * groups: since ADR-018 the gate asks for the examination on every path
+ * (B-06), so an input without one blocks before anything else is tested. The
+ * KW group below overrides it on purpose. Numbers are short synthetic strings,
+ * never the real format (F-9).
+ */
+const zbadaneKsiegi = {
+  kw: {
+    source: "ekw_reczne" as const,
+    kwLokalu: "AB1C/1/9",
+    kwGruntu: "AB1C/2/7",
+    deweloperski: false,
+    dataBadania: "2026-09-15",
+    dzial3: { wpisy: false, tresc: [] },
+    dzial4: { wpisy: false, tresc: [] },
+  },
+  kwGrunt: {
+    source: "ekw_reczne" as const,
+    nrKsiegi: "AB1C/2/7",
+    dataBadania: "2026-09-15",
+    dzial3: { wpisy: false, tresc: [] },
+    dzial4: { wpisy: false, tresc: [] },
+  },
 };
 
 function manualRows(n: number) {
@@ -23,6 +61,7 @@ function manualRows(n: number) {
 describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   it("passes with >=12 confirmed rows and a fully confirmed scalar map (no sample fetch)", () => {
     const result = approvalGate({
+      ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: null,
       provenance: confirmedScalars,
@@ -34,6 +73,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     const rows = manualRows(12);
     rows[2] = { source: "rcn" as never, status: "to_verify" as never };
     const result = approvalGate({
+      ...zbadaneKsiegi,
       comparables: rows,
       sampleMeta: null,
       provenance: confirmedScalars,
@@ -63,6 +103,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 
   it(`blocks below ${REQUIRED_SAMPLE_SIZE} transactions even when everything is confirmed`, () => {
     const result = approvalGate({
+      ...zbadaneKsiegi,
       comparables: manualRows(11),
       sampleMeta: null,
       provenance: confirmedScalars,
@@ -75,7 +116,10 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     }
   });
 
-  it("blocks when the scalar provenance map is missing entirely (default-deny: 4 blockers)", () => {
+  it("blocks when the scalar provenance map is missing entirely (default-deny)", () => {
+    // Nothing supplied at all — so the KW examination is missing too, and says
+    // so in the same breath as the four scalars (ADR-018: B-06 is asked of
+    // every draft, not only of one that already uploaded something).
     const result = approvalGate({ comparables: manualRows(12), sampleMeta: null });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -84,6 +128,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
         "provenance.area",
         "provenance.weights",
         "provenance.ratings",
+        "kw.badanie",
       ]);
     }
   });
@@ -91,6 +136,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   it("requires a confirmed geocode entry when sampleMeta is present", () => {
     const withMeta = { lat: 52.4, lon: 16.9 };
     const noGeocode = approvalGate({
+      ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: withMeta,
       provenance: confirmedScalars,
@@ -99,6 +145,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     if (!noGeocode.ok) expect(noGeocode.blockers[0].path).toBe("provenance.geocode");
 
     const toVerifyGeocode = approvalGate({
+      ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: withMeta,
       provenance: { ...confirmedScalars, geocode: { source: "geokoder", status: "to_verify" } },
@@ -106,6 +153,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     expect(toVerifyGeocode.ok).toBe(false);
 
     const confirmedGeocode = approvalGate({
+      ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: withMeta,
       provenance: { ...confirmedScalars, geocode: { source: "geokoder", status: "confirmed" } },
@@ -114,9 +162,9 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
   });
 
   it("does NOT require geocode when there was no sample fetch (sampleMeta absent/null)", () => {
-    expect(approvalGate({ comparables: manualRows(12), provenance: confirmedScalars })).toEqual({
-      ok: true,
-    });
+    expect(
+      approvalGate({ ...zbadaneKsiegi, comparables: manualRows(12), provenance: confirmedScalars }),
+    ).toEqual({ ok: true });
   });
 
   it("collects ALL blockers at once (count + rows + scalars)", () => {
@@ -125,13 +173,14 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
     const result = approvalGate({ comparables: rows, sampleMeta: null });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // 1 count blocker + 1 row blocker + 4 scalar blockers
-      expect(result.blockers).toHaveLength(6);
+      // 1 count blocker + 1 row blocker + 4 scalar blockers + the KW examination
+      expect(result.blockers).toHaveLength(7);
     }
   });
 
   it("blocks approval when subject fetched but not confirmed", () => {
     const result = approvalGate({
+      ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: null,
       subject: { obreb: "Jeżyce" },
@@ -151,6 +200,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 
   it("blocks when subject present but provenance entries missing (default-deny)", () => {
     const result = approvalGate({
+      ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: null,
       subject: { obreb: "X" },
@@ -161,6 +211,7 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 
   it("passes with subject groups confirmed", () => {
     const result = approvalGate({
+      ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: null,
       subject: { obreb: "Jeżyce" },
@@ -175,25 +226,40 @@ describe("F-4: approvalGate (aggregate invariant, default-deny)", () => {
 
   it("does not gate subject when subject absent (legacy)", () => {
     expect(
-      approvalGate({ comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars }),
+      approvalGate({
+        ...zbadaneKsiegi,
+        comparables: manualRows(12),
+        sampleMeta: null,
+        provenance: confirmedScalars,
+      }),
     ).toEqual({ ok: true });
   });
 });
 
-describe("kw group (Slice 6)", () => {
+/**
+ * KW group (Slice 6, rewritten for ADR-018). Until 15.09 the whole group lived
+ * inside `if (input.kw != null)`, so the manual path — the one the office
+ * actually uses — met no demand at all while the operat still claimed both
+ * books had been examined. The group now asks the same question of every path,
+ * and asks it once: B-06 instead of the old pair of number blockers.
+ */
+describe("kw group (Slice 6, ADR-018)", () => {
   function passingInput() {
-    return { comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars };
+    return {
+      ...zbadaneKsiegi,
+      comparables: manualRows(12),
+      sampleMeta: null,
+      provenance: confirmedScalars,
+    };
   }
 
-  const kwOk = {
-    source: "akt" as const,
-    kwLokalu: "AB1C/1/9",
-    kwGruntu: "AB1C/2/7",
-    deweloperski: false,
-  };
+  const kwOk = zbadaneKsiegi.kw;
+  const codes = (r: ReturnType<typeof approvalGate>) =>
+    r.ok ? [] : r.blockers.map((b) => b.code ?? b.path);
 
   it("blocks when kw snapshot present but provenance kw missing (default-deny)", () => {
-    const result = approvalGate({ ...passingInput(), kw: kwOk });
+    const base = passingInput();
+    const result = approvalGate({ ...base, provenance: { ...base.provenance, kw: undefined } });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.blockers.some((b) => b.path === "provenance.kw")).toBe(true);
@@ -204,87 +270,57 @@ describe("kw group (Slice 6)", () => {
     const base = passingInput();
     const toVerify = approvalGate({
       ...base,
-      kw: kwOk,
-      provenance: { ...base.provenance, kw: { source: "akt", status: "to_verify" } },
+      provenance: { ...base.provenance, kw: { source: "odpis_kw", status: "to_verify" } },
     });
     expect(toVerify.ok).toBe(false);
-    const confirmed = approvalGate({
-      ...base,
-      kw: kwOk,
-      provenance: { ...base.provenance, kw: { source: "akt", status: "confirmed" } },
-    });
-    expect(confirmed.ok).toBe(true);
+    expect(approvalGate(base)).toEqual({ ok: true });
   });
 
-  it("blocks missing kwGruntu and missing kwLokalu (non-developer)", () => {
-    const base = passingInput();
-    const prov = {
-      ...base.provenance,
-      kw: { source: "akt" as const, status: "confirmed" as const },
-    };
-    const noGrunt = approvalGate({ ...base, provenance: prov, kw: { ...kwOk, kwGruntu: null } });
-    expect(noGrunt.ok).toBe(false);
-    const noLokal = approvalGate({ ...base, provenance: prov, kw: { ...kwOk, kwLokalu: null } });
-    expect(noLokal.ok).toBe(false);
+  // The regression this whole block exists for (I-13 U). Before ADR-018 each
+  // of these passed the gate: no snapshot meant no question asked.
+  it.each([
+    ["nic — ścieżka ręczna sprzed ADR-018", { kw: null, kwGrunt: null }],
+    ["sam numer, bez daty badania", { kw: { ...kwOk, dataBadania: null } }],
+    ["dział IV bez odpowiedzi Brak wpisów / Są wpisy", { kw: { ...kwOk, dzial4: null } }],
+    ["księga lokalu zbadana, księgi gruntu nie zbadano", { kwGrunt: null }],
+    ["grunt bez daty badania", { kwGrunt: { ...zbadaneKsiegi.kwGrunt, dataBadania: null } }],
+    ["akt notarialny sam z siebie nie jest badaniem księgi", { kw: { ...kwOk, source: "akt" } }],
+  ] as const)("B-06: %s", (_name, override) => {
+    expect(codes(approvalGate({ ...passingInput(), ...override }))).toEqual(["B-06"]);
   });
 
-  it("developer variant: missing kwLokalu is fine when deweloperski", () => {
+  it("deweloperski: lokal bez własnej księgi wymaga tylko księgi macierzystej", () => {
     const base = passingInput();
-    const result = approvalGate({
-      ...base,
-      provenance: { ...base.provenance, kw: { source: "akt", status: "confirmed" } },
-      kw: { ...kwOk, kwLokalu: null, deweloperski: true },
-    });
-    expect(result.ok).toBe(true);
+    const akt = { ...kwOk, source: "akt" as const, kwLokalu: null, deweloperski: true };
+    expect(approvalGate({ ...base, kw: akt })).toEqual({ ok: true });
+    expect(codes(approvalGate({ ...base, kw: akt, kwGrunt: null }))).toEqual(["B-06"]);
   });
 
-  // T-12 (S1): the right decides whether KW gruntu is demanded. Absent = legacy
-  // caller = własność (the gate stays default-deny for every existing draft).
-  it("T-12: spółdzielcze + missing kwGruntu → no blocker; własność/absent → blocker as before", () => {
-    const base = passingInput();
-    const prov = {
-      ...base.provenance,
-      kw: { source: "akt" as const, status: "confirmed" as const },
-    };
-    const noGrunt = { ...kwOk, kwGruntu: null };
-    const coop = approvalGate({
-      ...base,
-      provenance: prov,
-      kw: noGrunt,
-      propertyRight: "spoldzielcze_wlasnosciowe",
+  // T-12 (S1): the right decides whether any book is demanded at all. Absent =
+  // legacy caller = własność (the gate stays default-deny for every draft).
+  it("T-12: spółdzielcze nie wymaga żadnej księgi; własność i brak rodzaju wymagają", () => {
+    const bare = { ...passingInput(), kw: null, kwGrunt: null };
+    expect(approvalGate({ ...bare, propertyRight: "spoldzielcze_wlasnosciowe" })).toEqual({
+      ok: true,
     });
-    // S4: the operat is composed per right, so nothing blocks — and nothing
-    // about the KW gruntu.
-    expect(coop).toEqual({ ok: true });
-    const own = approvalGate({
-      ...base,
-      provenance: prov,
-      kw: noGrunt,
-      propertyRight: "wlasnosc_lokalu",
-    });
-    expect(own.ok).toBe(false);
-    if (!own.ok) expect(own.blockers.map((b) => b.path)).toEqual(["kw.kwGruntu"]);
-    const legacy = approvalGate({ ...base, provenance: prov, kw: noGrunt });
-    expect(legacy.ok).toBe(false);
+    expect(codes(approvalGate({ ...bare, propertyRight: "wlasnosc_lokalu" }))).toEqual(["B-06"]);
+    expect(codes(approvalGate(bare))).toEqual(["B-06"]);
   });
 
-  it("B-3: spółdzielcze + extract without KW lokalu → no kwLokalu blocker; własność → blocker as before", () => {
+  it("B-07: wpis w dziale III księgi lokalu bez decyzji o obciążeniu blokuje", () => {
     const base = passingInput();
-    const prov = {
-      ...base.provenance,
-      kw: { source: "akt" as const, status: "confirmed" as const },
-    };
-    const noLokal = { ...kwOk, kwLokalu: null, kwGruntu: null };
-    const coop = approvalGate({
-      ...base,
-      provenance: prov,
-      kw: noLokal,
-      propertyRight: "spoldzielcze_wlasnosciowe",
-    });
-    expect(coop).toEqual({ ok: true });
-    const own = approvalGate({ ...base, provenance: prov, kw: { ...kwOk, kwLokalu: null } });
-    expect(own.ok).toBe(false);
-    if (!own.ok) expect(own.blockers.map((b) => b.path)).toEqual(["kw.kwLokalu"]);
+    const zWpisem = { ...kwOk, dzial3: { wpisy: true, tresc: ["Służebność osobista mieszkania"] } };
+    expect(codes(approvalGate({ ...base, kw: zWpisem }))).toEqual(["B-07"]);
+    expect(
+      approvalGate({
+        ...base,
+        kw: zWpisem,
+        encumbranceTreatment: {
+          wariant: "bez_uwzglednienia",
+          podstawa: "Zgodnie z poleceniem Zleceniodawcy.",
+        },
+      }),
+    ).toEqual({ ok: true });
   });
 
   it("S4: neither right carries a right-specific blocker on a passing input", () => {
@@ -301,8 +337,8 @@ describe("kw group (Slice 6)", () => {
     }
   });
 
-  it("no kw snapshot -> no kw blockers (manual path regression)", () => {
-    expect(approvalGate(passingInput()).ok).toBe(true);
+  it("obie księgi zbadane → grupa milczy", () => {
+    expect(approvalGate(passingInput())).toEqual({ ok: true });
   });
 });
 
@@ -314,6 +350,7 @@ describe("kw group (Slice 6)", () => {
  */
 describe("prose group (FR-6, Task 7)", () => {
   const passing = () => ({
+    ...zbadaneKsiegi,
     comparables: manualRows(12),
     sampleMeta: null,
     provenance: confirmedScalars,
@@ -553,8 +590,8 @@ describe("prose group (FR-6, Task 7)", () => {
     const result = approvalGate({ comparables: manualRows(3), prose }, { requireProse: true });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // 1 count blocker + 4 scalar blockers + 2 prose blockers, prose LAST.
-      expect(result.blockers).toHaveLength(7);
+      // 1 count + 4 scalars + the KW examination + 2 prose blockers, prose LAST.
+      expect(result.blockers).toHaveLength(8);
       expect(result.blockers.map((b) => b.path).slice(-2)).toEqual([
         "prose.otoczenie",
         "prose.standard",
@@ -566,6 +603,7 @@ describe("prose group (FR-6, Task 7)", () => {
 describe("featureDefs group (Slice 7)", () => {
   it("featureDefs to_verify blocks with a Polish label; legacy provenance without the key does not", () => {
     const blocked = approvalGate({
+      ...zbadaneKsiegi,
       comparables: manualRows(12),
       sampleMeta: null,
       provenance: { ...confirmedScalars, featureDefs: { source: "preset", status: "to_verify" } },
@@ -580,8 +618,451 @@ describe("featureDefs group (Slice 7)", () => {
 
     // legacy: no featureDefs key at all → no blocker
     expect(
-      approvalGate({ comparables: manualRows(12), sampleMeta: null, provenance: confirmedScalars })
-        .ok,
+      approvalGate({
+        ...zbadaneKsiegi,
+        comparables: manualRows(12),
+        sampleMeta: null,
+        provenance: confirmedScalars,
+      }).ok,
     ).toBe(true);
+  });
+});
+
+/**
+ * R-1 (operat-bugfix, paczka 1): `approvalBlockers` is the one composition of
+ * the approval gate (step 7, the flat view, the approve action and the domain
+ * `approveValuation` all read it). This pins the ORDER and the SHAPES of that
+ * list: gate blockers first (none without an inputs snapshot), then the
+ * document-field blockers, on every fixture shape below. A new blocker group
+ * that lands somewhere else in the list turns these red and has to say so.
+ */
+describe("R-1: approvalBlockers — pin kolejności i kształtów blokad", () => {
+  const ADDRESS = "Audit approvable";
+
+  function gateThenFieldBlockers(v: Valuation, ctx: GateOptions) {
+    const gate = v.inputs
+      ? approvalGate({ ...v.inputs, propertyRight: v.propertyRight }, ctx)
+      : null;
+    return [...(gate && !gate.ok ? gate.blockers : []), ...documentFieldBlockers(v)];
+  }
+
+  const valuation = (overrides: Partial<Valuation> = {}): Valuation => {
+    const input = approvableInput("test-user");
+    return {
+      id: "valuation-r1",
+      address: input.address,
+      area: input.area,
+      wr: 700_000,
+      inputs: input.inputs,
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: input.purpose ?? null,
+      propertyRight: "wlasnosc_lokalu",
+      kwNumber: input.kwNumber ?? null,
+      client: input.client ?? null,
+      inspectionDate: input.inspectionDate ?? null,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
+      mapsFrozenFor: null,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      ...overrides,
+    };
+  };
+
+  const ctxFor = (v: Valuation, requireProse: boolean): GateOptions => ({
+    requireProse,
+    currentSectionHashes:
+      requireProse && v.inputs
+        ? currentSectionFactsHashes({ address: v.address, inputs: v.inputs })
+        : undefined,
+  });
+
+  const withProse = (v: Valuation): Valuation => ({
+    ...v,
+    inputs: { ...v.inputs!, prose: confirmedProseFor(ADDRESS, v.inputs!) },
+  });
+
+  const kwConfirmed = { source: "akt" as const, status: "confirmed" as const };
+  const kwNoGrunt: KwSnapshot = {
+    source: "akt",
+    kwLokalu: "AB1C/1/9",
+    kwGruntu: null,
+    kwInne: [],
+    deweloperski: false,
+    powUzytkowaKw: null,
+    udzial: null,
+    sad: null,
+    wydzial: null,
+    dataDokumentu: null,
+    dzial3: null,
+    dzial4: null,
+  };
+
+  const cases: Array<[string, Valuation]> = [
+    ["kompletna (confirmed prose)", withProse(valuation())],
+    ["bez prozy", valuation()],
+    [
+      "proza nieaktualna (facts moved on after confirmation)",
+      (() => {
+        const confirmed = withProse(valuation());
+        return { ...confirmed, inputs: { ...confirmed.inputs!, area: 99 } };
+      })(),
+    ],
+    ["bez KW (no number, no extract)", withProse(valuation({ kwNumber: null }))],
+    [
+      "akt bez zbadanej księgi lokalu (własność) — B-06",
+      withProse(
+        valuation({
+          inputs: {
+            ...valuation().inputs!,
+            kw: kwNoGrunt,
+            provenance: { ...valuation().inputs!.provenance!, kw: kwConfirmed },
+          },
+        }),
+      ),
+    ],
+    [
+      "spółdzielcza (no KW number, akt bez badania) — bez B-06",
+      withProse(
+        valuation({
+          propertyRight: "spoldzielcze_wlasnosciowe",
+          kwNumber: null,
+          inputs: {
+            ...valuation().inputs!,
+            kw: kwNoGrunt,
+            provenance: { ...valuation().inputs!.provenance!, kw: kwConfirmed },
+          },
+        }),
+      ),
+    ],
+    [
+      "both groups blocked (to_verify sample, missing document fields, no wr)",
+      valuation({
+        inputs: {
+          ...valuation().inputs!,
+          comparables: valuation()
+            .inputs!.comparables.slice(0, 5)
+            .map((c) => ({
+              ...c,
+              status: "to_verify" as const,
+            })),
+        },
+        purpose: null,
+        client: null,
+        inspectionDate: null,
+        wr: null,
+      }),
+    ],
+    ["legacy draft without inputs snapshot", valuation({ inputs: null })],
+    [
+      "legacy draft without inputs, document fields missing",
+      valuation({ inputs: null, purpose: null, kwNumber: null }),
+    ],
+  ];
+
+  for (const [name, v] of cases) {
+    for (const requireProse of [true, false]) {
+      it(`${name} — requireProse=${requireProse}`, () => {
+        const ctx = ctxFor(v, requireProse);
+        const blockers = approvalBlockers(v, ctx);
+        expect(blockers).toEqual(gateThenFieldBlockers(v, ctx));
+        // `code` is additive: a blocker either carries a paczka-1 catalogue id
+        // (B-06/B-07 so far) or nothing at all — never an ad-hoc string.
+        expect(blockers.every((b) => b.code === undefined || /^B-\d\d$/.test(b.code))).toBe(true);
+      });
+    }
+  }
+
+  it("the fixture set exercises both empty and non-empty lists, gate and field blockers", () => {
+    const all = cases.map(([, v]) => approvalBlockers(v, ctxFor(v, true)));
+    expect(all.some((b) => b.length === 0)).toBe(true);
+    const paths = [...new Set(all.flat().map((b) => b.path))];
+    for (const p of ["prose", "kw.badanie", "kwNumber", "comparables", "purpose", "wr"]) {
+      expect(paths, `no case emits "${p}"`).toContain(p);
+    }
+    // The stale case really is stale: a per-section blocker, not the missing-snapshot one.
+    expect(paths.some((p) => p.startsWith("prose."))).toBe(true);
+  });
+});
+
+describe("B-15, B-16: profil autora i polisa OC (ADR-020 reg. 3, spec §4)", () => {
+  /** Fikcyjne dane — żadne nazwisko ani numer uprawnień nie jest prawdziwy (F-9, R10). */
+  const kompletnyProfil: AppraiserProfile = {
+    fullName: "Jan Testowy",
+    licenseNo: "0000",
+    officeBlock: "Biuro Wycen Testowe\nul. Przykładowa 1\n60-000 Poznań",
+    insuranceDocKey: "polisa/test-user/abc123",
+    insuranceValidUntil: "2026-12-31",
+  };
+  /** Godzina ≠ 00:00 celowo: data operatu to dzień, nie moment. */
+  const DATA_OPERATU = new Date("2026-09-15T14:30:00.000Z");
+
+  /** Wycena bez zarzutów po stronie danych — zostają same blokady profilu. */
+  const czystaWycena = (): Valuation => {
+    const input = approvableInput("test-user");
+    return {
+      id: "valuation-b15",
+      address: input.address,
+      area: input.area,
+      wr: 700_000,
+      inputs: { ...input.inputs!, prose: confirmedProseFor(input.address, input.inputs!) },
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: input.purpose ?? null,
+      propertyRight: "wlasnosc_lokalu",
+      kwNumber: input.kwNumber ?? null,
+      client: input.client ?? null,
+      inspectionDate: input.inspectionDate ?? null,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
+      mapsFrozenFor: null,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+    };
+  };
+
+  const kody = (author: AppraiserProfile | null, today = DATA_OPERATU) => {
+    const v = czystaWycena();
+    return approvalBlockers(v, {
+      requireProse: true,
+      currentSectionHashes: currentSectionFactsHashes({ address: v.address, inputs: v.inputs! }),
+      author,
+      today,
+    }).map((b) => b.code);
+  };
+
+  it("kompletny profil z ważną polisą nie wnosi żadnej blokady", () => {
+    expect(kody(kompletnyProfil)).toEqual([]);
+  });
+
+  it("brak wiersza profilu podnosi obie blokady naraz", () => {
+    expect(kody(null)).toEqual(["B-15", "B-16"]);
+  });
+
+  it.each(["fullName", "licenseNo", "officeBlock"] as const)(
+    "brak pola %s podnosi B-15 z komunikatem ze specu",
+    (pole) => {
+      const v = czystaWycena();
+      const blockers = approvalBlockers(v, {
+        requireProse: true,
+        currentSectionHashes: currentSectionFactsHashes({ address: v.address, inputs: v.inputs! }),
+        author: { ...kompletnyProfil, [pole]: null },
+        today: DATA_OPERATU,
+      });
+      expect(blockers).toEqual([
+        {
+          path: "profile.dane",
+          code: "B-15",
+          label: "Uzupełnij profil: imię i nazwisko, numer uprawnień, dane biura.",
+        },
+      ]);
+    },
+  );
+
+  it("same białe znaki w polu autora to wciąż brak (B-15)", () => {
+    expect(kody({ ...kompletnyProfil, officeBlock: "   \n  " })).toEqual(["B-15"]);
+  });
+
+  it("brak pliku polisy podnosi B-16 z datą operatu w formacie dd.mm.rrrr", () => {
+    const v = czystaWycena();
+    const blockers = approvalBlockers(v, {
+      requireProse: true,
+      currentSectionHashes: currentSectionFactsHashes({ address: v.address, inputs: v.inputs! }),
+      author: { ...kompletnyProfil, insuranceDocKey: null },
+      today: DATA_OPERATU,
+    });
+    expect(blockers).toEqual([
+      {
+        path: "profile.polisa",
+        code: "B-16",
+        label: "Dodaj polisę OC ważną na dzień 15.09.2026.",
+      },
+    ]);
+  });
+
+  it("polisa ważna do dnia PRZED datą operatu podnosi B-16", () => {
+    expect(kody({ ...kompletnyProfil, insuranceValidUntil: "2026-09-14" })).toEqual(["B-16"]);
+  });
+
+  /**
+   * Granica, o którą najłatwiej się potknąć: `insurance_valid_until` to kolumna
+   * `date`, a data operatu ma godzinę. Porównanie dat jako obiektów `Date`
+   * odrzuciłoby polisę ważną dokładnie tyle, ile trzeba.
+   */
+  it("polisa ważna dokładnie do daty operatu NIE podnosi B-16", () => {
+    expect(kody({ ...kompletnyProfil, insuranceValidUntil: "2026-09-15" })).toEqual([]);
+  });
+
+  it("nieobecny `author` w kontekście nie sprawdza profilu (precedens requireProse)", () => {
+    const v = czystaWycena();
+    const blockers = approvalBlockers(v, {
+      requireProse: true,
+      currentSectionHashes: currentSectionFactsHashes({ address: v.address, inputs: v.inputs! }),
+    });
+    expect(blockers).toEqual([]);
+  });
+
+  it("każda blokada profilu prowadzi na /profile, nie do kroku kreatora", () => {
+    for (const path of ["profile.dane", "profile.polisa"]) {
+      expect(blockerTarget(path)).toEqual({
+        kind: "page",
+        href: "/profile",
+        label: "Profil rzeczoznawcy",
+      });
+      expect(stepForBlockerPath(path)).toBeUndefined();
+    }
+  });
+
+  it("każda blokada z pustej wyceny ma cel: krok kreatora albo /profile", () => {
+    const pusta: Valuation = { ...czystaWycena(), purpose: null, client: null, wr: null };
+    const blockers = approvalBlockers(pusta, {
+      requireProse: true,
+      author: null,
+      today: DATA_OPERATU,
+    });
+    expect(blockers.length).toBeGreaterThan(0);
+    for (const b of blockers) {
+      expect(blockerTarget(b.path), `brak celu dla "${b.path}"`).toBeDefined();
+    }
+  });
+});
+
+/**
+ * B-08…B-10 (ADR-016 reg. 3–4, spec §4): the rating scale blocks approval —
+ * a missing rating, a rating the scale does not describe, and a weighted
+ * feature with fewer than two described levels. Every one links to step 4. A
+ * draft whose ratings predate the rule needs no blocker of its own: the read
+ * migration clears what is unusable (B-08) and drops an amount that no longer
+ * follows from the snapshot, which the gate already refuses as a missing `wr`.
+ */
+describe("B-08…B-10: rating scale blockers (ADR-016)", () => {
+  const LEPSZA_GORSZA = { lepsza: "poniżej 47 m²", gorsza: "47 m² i więcej" };
+  const THREE = { lepsza: "lepsza", przecietna: "przeciętna", gorsza: "gorsza" };
+
+  function draft(features: Feature[]): Valuation {
+    const input = approvableInput("test-user");
+    return {
+      id: "valuation-b08",
+      address: input.address,
+      area: input.area,
+      wr: null,
+      inputs: { ...input.inputs!, features },
+      amountInWords: null,
+      docUrl: null,
+      docxUrl: null,
+      purpose: input.purpose ?? null,
+      propertyRight: "wlasnosc_lokalu",
+      kwNumber: input.kwNumber ?? null,
+      client: input.client ?? null,
+      inspectionDate: input.inspectionDate ?? null,
+      ownerId: "test-user",
+      status: "in_progress",
+      approvedAt: null,
+      signedAt: null,
+      supersedesId: null,
+      mapsFrozenFor: null,
+      createdAt: new Date("2026-09-15T00:00:00.000Z"),
+    };
+  }
+
+  const featureBlockers = (v: Valuation) =>
+    approvalBlockers(v, {}).filter((b) => b.code != null && /^B-(08|09|10)$/.test(b.code));
+
+  /** The 14.09 case: powierzchnia rated „przeciętna” on a lepsza/gorsza scale, saved before the rule. */
+  const reported = () =>
+    draft([
+      { name: "Lokalizacja szczegółowa", weight: 0.5, rating: "przecietna", definitions: THREE },
+      {
+        name: "Powierzchnia użytkowa",
+        weight: 0.5,
+        rating: "przecietna",
+        definitions: LEPSZA_GORSZA,
+      },
+    ]);
+
+  it("as reported, straight from the snapshot: B-09 on powierzchnia", () => {
+    expect(featureBlockers(reported())).toEqual([
+      {
+        path: "features[1]",
+        code: "B-09",
+        label:
+          "Ocena „przeciętna” cechy „Powierzchnia użytkowa” nie ma opisu w skali — opisz ten poziom albo zmień ocenę.",
+      },
+    ]);
+  });
+
+  it("as reported, after the draft read migration: B-08 on powierzchnia", () => {
+    expect(featureBlockers(readFeatureScale(reported())).map((b) => [b.path, b.code])).toEqual([
+      ["features[1]", "B-08"],
+    ]);
+  });
+
+  it("B-08: a feature without a rating", () => {
+    const v = draft([{ name: "Standard", weight: 1, rating: null, definitions: THREE }]);
+    expect(featureBlockers(v)).toEqual([
+      { path: "features[0]", code: "B-08", label: "Wybierz ocenę cechy „Standard”." },
+    ]);
+  });
+
+  it("B-10: a weighted feature with fewer than two described levels", () => {
+    const v = draft([
+      { name: "Dodatkowe", weight: 1, rating: "lepsza", definitions: { lepsza: "ogródek" } },
+    ]);
+    expect(featureBlockers(v)).toEqual([
+      {
+        path: "features[0]",
+        code: "B-10",
+        label: "Cecha „Dodatkowe” musi mieć opisane co najmniej dwa poziomy.",
+      },
+    ]);
+  });
+
+  it("after the step-4 save with every rating on its scale: no rating scale blockers", () => {
+    const saved = applyFeaturesUpdate(readFeatureScale(reported()), {
+      features: [
+        { name: "Lokalizacja szczegółowa", weight: 0.5, rating: "przecietna", definitions: THREE },
+        {
+          name: "Powierzchnia użytkowa",
+          weight: 0.5,
+          rating: "lepsza",
+          definitions: LEPSZA_GORSZA,
+        },
+      ],
+      provenance: {
+        weights: { source: "rzeczoznawca", status: "confirmed" },
+        ratings: { source: "rzeczoznawca", status: "confirmed" },
+        featureDefs: { source: "rzeczoznawca", status: "confirmed" },
+      },
+    });
+    expect(featureBlockers(saved)).toEqual([]);
+  });
+
+  it("lands between the F-4 gate and the document fields", () => {
+    const v: Valuation = {
+      ...reported(),
+      purpose: null,
+      inputs: { ...reported().inputs!, comparables: [] },
+    };
+    const codesAndPaths = approvalBlockers(v, {}).map((b) => b.code ?? b.path);
+    expect(codesAndPaths).toEqual(["comparables", "B-09", "purpose", "wr"]);
+  });
+
+  it("an issued valuation is judged by the same rating rules", () => {
+    expect(featureBlockers({ ...reported(), status: "approved" }).map((b) => b.code)).toEqual([
+      "B-09",
+    ]);
+  });
+
+  it("every rating scale blocker links to step 4", () => {
+    for (const b of featureBlockers(reported())) {
+      expect(stepForBlockerPath(b.path)?.n, b.path).toBe(4);
+    }
   });
 });

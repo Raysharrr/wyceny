@@ -2,7 +2,7 @@ Po zatwierdzeniu wycena opuszcza kreator i otwiera się w widoku dokumentu: oper
 
 <img
   src="/api/pomoc/po-zatwierdzeniu.png"
-  alt="Widok zatwierdzonej wyceny: nagłówek ze statusem „Zatwierdzony”, datą zatwierdzenia i przyciskami „Pobierz PDF” oraz „Pobierz DOCX”; obok karta „Operat szacunkowy” z osadzonym czytnikiem PDF przewiniętym na dalszą stronę dokumentu, a z prawej panele „Wynik”, „Przedmiot” i „Akcje” z przyciskiem podpisania operatu."
+  alt="Górna część widoku zatwierdzonej wyceny: nagłówek ze statusem „Zatwierdzony”, datą zatwierdzenia i przyciskami „Pobierz PDF” oraz „Pobierz DOCX”, a pod nim trzy panele — „Wynik” z powierzchnią, wartością rynkową i kwotą słownie, „Przedmiot” z adresem, celem wyceny, numerem KW i klientem oraz „Akcje” z przyciskami „Podpisz operat (nieodwracalne)” i „Cofnij zatwierdzenie i popraw” nad objaśnieniem, że podpisanie jest ostateczne."
   style={{
     width: "100%",
     height: "auto",
@@ -17,9 +17,9 @@ Status wyceny — w nagłówku i na liście — zmienia się na „Zatwierdzony�
 
 Operat wyświetla się bezpośrednio na stronie. „Pobierz DOCX” pobiera plik na dysk, natomiast „Pobierz PDF” — mimo nazwy — otwiera dokument w przeglądarce; na dysk zapisujesz go wtedy z jej podglądu. Dokumenty są dostępne wyłącznie po zalogowaniu i tylko dla osób, które widzą tę wycenę — jej właściciela i administratora biura.
 
-Pod dokumentem zostają karty z danymi wyceny: rozbicie kalkulacji, wybrane transakcje z ich pochodzeniem, cechy z wagami, dane przedmiotu i dane z księgi wieczystej. Po prawej stronie panel „Wynik” powtarza powierzchnię i wartość rynkową, a panel „Przedmiot” — adres, cel wyceny, numer KW i klienta. Kwoty słownie szukaj w samym operacie: na ekranie to pole zostaje puste, bo powstaje ona przy składaniu dokumentu.
+Pod dokumentem zostają karty z danymi wyceny: rozbicie kalkulacji, wybrane transakcje z ich pochodzeniem, cechy z wagami, dane przedmiotu i dane z księgi wieczystej. Po prawej stronie panel „Wynik” powtarza powierzchnię, wartość rynkową i kwotę słownie — dokładnie tę, którą wydrukował operat — a panel „Przedmiot” — adres, cel wyceny, numer KW i klienta.
 
-Kreator jest dla tej wyceny zamknięty: danych nie da się już edytować i nie ma w aplikacji akcji cofającej zatwierdzenie. Co dokładnie jest niezmienne już po zatwierdzeniu, a co dopiero po podpisie, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
+Kreator jest dla tej wyceny zamknięty: danych nie da się już edytować. Dopóki operat nie jest podpisany, można go jednak świadomie cofnąć do edycji — patrz „Cofnięcie zatwierdzenia” niżej. Co dokładnie jest niezmienne już po zatwierdzeniu, a co dopiero po podpisie, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
 
 ## Podpisanie operatu
 
@@ -27,7 +27,19 @@ Podpisać wycenę może wyłącznie jej właściciel — administrator oglądaj�
 
 Wcześniej trzeba wgrać skan podpisu w „Profil i ustawienia” (PNG albo JPEG, do 1 MB). Bez skanu podpisanie kończy się komunikatem „Brak skanu podpisu — wgraj go w profilu, a potem podpisz operat.”.
 
-Przycisk „Podpisz operat (nieodwracalne)” składa dokument jeszcze raz — z tych samych zamrożonych danych, tych samych map i tych samych zdjęć — dokłada skan podpisu i zapisuje podpisaną wersję w PDF i DOCX. Po podpisaniu status to „Podpisany”, pod tytułem pojawia się data podpisania, a wycena jest zamknięta na stałe.
+Przycisk „Podpisz operat (nieodwracalne)” **nie składa dokumentu od nowa**: bierze ten sam plik, który powstał przy zatwierdzeniu, wstawia w przewidziane miejsce skan podpisu i zapisuje podpisaną wersję w DOCX i PDF. Podpisujesz więc dokładnie ten dokument, który zatwierdziłeś — nawet jeśli w międzyczasie zmienił się szablon albo sposób liczenia czegokolwiek w aplikacji. Po podpisaniu status to „Podpisany”, pod tytułem pojawia się data podpisania, a wycena jest zamknięta na stałe.
+
+Operat zatwierdzony przed tą zmianą w programie nie ma w sobie miejsca na podpis i podpisać się go nie da. Aplikacja odmawia wtedy wprost i kieruje do „Cofnij zatwierdzenie i popraw”: po ponownym zatwierdzeniu powstaje dokument, który podpis przyjmie.
+
+## Cofnięcie zatwierdzenia
+
+Przycisk „Cofnij zatwierdzenie i popraw” widzi **autor wyceny**, i tylko przy operacie **zatwierdzonym, jeszcze niepodpisanym**. Po podpisie tej drogi nie ma — zostaje „Utwórz nową wersję”.
+
+Aplikacja pyta o potwierdzenie („Cofnąć zatwierdzenie?”) i dopiero wtedy cofa. Wycena wraca do kreatora jako szkic, z zachowanymi danymi: wpisami z kroków, zamrożonymi mapami i treścią opisów wraz z ich potwierdzeniem. Nie jest to reset — to krok wstecz.
+
+Kasowane są za to wszystkie wyniki zatwierdzenia: data zatwierdzenia, adresy obu plików, kwota słownie i **wartość rynkowa**. Ostatnie z nich jest celowe: skoro wracasz, żeby coś poprawić, kalkulację trzeba zatwierdzić jeszcze raz — do tego czasu brama zatwierdzenia pokazuje ją jako brakującą. Dzięki temu w nowym operacie nie zostanie kwota słownie z poprzedniego podejścia.
+
+Poprzedni plik **przestaje być dostępny do pobrania**: wycena nie wskazuje już na niego, więc jego link przestaje działać. Sam plik nie jest kasowany — zostaje w magazynie, a w dzienniku audytu zapisuje się wiersz „cofnięcie” z informacją, kto i kiedy cofnął zatwierdzenie oraz pod jakimi kluczami leżą wycofane dokumenty. Ekranu z poprzednimi wersjami na razie nie ma; jeżeli potrzebujesz starego pliku, pobierz go **przed** cofnięciem. Kolejne zatwierdzenie zapisuje **nowe** pliki obok, nie zamiast.
 
 ## Nowa wersja
 

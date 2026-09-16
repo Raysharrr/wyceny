@@ -13,11 +13,20 @@
  * the convention itself is declared in `ROUNDING` below;
  * half-up everywhere (values are always positive here). Full-precision math
  * would yield 1 043 900 for Kościelna instead of the operat's 1 044 400.
+ *
+ * Tabela 3 prints EVERY Ui at 3 dp and the appraiser adds up the printed
+ * column, so each Ui is rounded before the sum (`ROUNDING.ui`) — that is what
+ * makes Piastowskie print the operat's 447 300 zł instead of 446 900 zł.
  */
 
 import type { ProvenanceStatus } from "@wyceny/shared";
 import type { CandidatePool } from "../ports/sample";
-import type { KwMetaSnapshot, KwSnapshot } from "./kw-snapshot";
+import type {
+  EncumbranceTreatment,
+  KwGruntSnapshot,
+  KwMetaSnapshot,
+  KwSnapshot,
+} from "./kw-snapshot";
 import type { InputsProvenance } from "./provenance";
 import type { SubjectMetaSnapshot, SubjectSnapshot } from "./subject-snapshot";
 import type { InspectionSnapshot } from "./inspection";
@@ -107,15 +116,56 @@ export type Comparable = {
   status?: ProvenanceStatus;
 };
 
+/** One band of a measurable scale; whole numbers, an absent edge is unbounded on that side. */
+export type MeasureBound = { od?: number; do?: number };
+
+/**
+ * Numeric thresholds of a MEASURABLE feature — piętro and powierzchnia only
+ * (plan §P1.1 "Progi cech mierzalnych", ADR-016 reg. 5). The bands are the
+ * scale; the definition TEXTS are generated from them
+ * (`definitionsFromMeasure`), never parsed back — so an appraiser who retypes
+ * a definition by hand drops `measure` and with it the suggestion.
+ *
+ * Both kinds share ONE convention, taken from how the operats actually write
+ * these scales: edges are WHOLE numbers, both INCLUSIVE, neighbours touch at
+ * `prev.do + 1 === next.od`. Aneta's 14.09 area scale is literally "do 40 m² /
+ * od 41 m² do 45 m² / od 46 m²", and a continuous `do`-exclusive reading cannot
+ * express it — 40→41 and 45→46 come out as gaps and the step refuses to save.
+ * `kind` therefore fixes only what the number MEANS and how a measured value
+ * reaches the bands:
+ * - `"floor"` — piętro as a whole number, parter = 0; the value is whole already;
+ * - `"area"` — m²; the measured area is rounded half-up to whole m² before it is
+ *   placed, so no flat lands in the gap the operat's own wording leaves open
+ *   (40,5 m² is "do 40 m²" or "od 41 m²" — never neither).
+ *
+ * The engine never reads this; it feeds the step-4 suggestion and the §12.2
+ * Cmin/Cmax sentences (D-52).
+ */
+export type FeatureMeasure = {
+  kind: "floor" | "area";
+  bounds: Partial<Record<FeatureRating, MeasureBound>>;
+};
+
 export type Feature = {
   name: string;
   /** Weight as a fraction (Σ over features = 1.0). UI works in %, converts before calling. */
   weight: number;
-  rating: FeatureRating;
+  /** Null until the appraiser picks a level — there is no default rating (ADR-016 reg. 3). */
+  rating: FeatureRating | null;
   /** Preset pool key (Slice 7, F-6) — display/audit metadata only; the engine never reads it. */
   key?: string;
-  /** Per-level rating-scale definitions (Slice 7) — operat content only; the engine never reads them. */
+  /**
+   * Per-level rating-scale definitions (Slice 7). The engine never reads them;
+   * `computeKcsOnScale` (domain/feature-rules.ts) turns them into the rating's
+   * position before calling it (ADR-016 reg. 2).
+   */
   definitions?: Partial<Record<FeatureRating, string>> | null;
+  /**
+   * Numeric thresholds behind `definitions` for a measurable feature (piętro,
+   * powierzchnia). Optional and additive: a snapshot saved before FH.1 has no
+   * `measure` and reads exactly as it did — it simply gets no suggestion.
+   */
+  measure?: FeatureMeasure | null;
 };
 
 export type KcsInput = {
@@ -141,8 +191,12 @@ export type KcsInput = {
   subject?: SubjectSnapshot | null;
   /** Fetch provenance for the subject snapshot (F-5) — display/audit metadata only. */
   subjectMeta?: SubjectMetaSnapshot | null;
-  /** KW extract snapshot (Slice 6) — document-sourced only; display/audit metadata only; computeKcs never reads this. */
+  /** Examination of the lokal's KW (Slice 6, ADR-018) — from a PDF or typed by hand; display/render only, computeKcs never reads this. */
   kw?: KwSnapshot | null;
+  /** Examination of the grunt's KW (ADR-018) — manual-only in paczka 1; display/render only. Absent on drafts saved before the block. */
+  kwGrunt?: KwGruntSnapshot | null;
+  /** The appraiser's call on a dział III entry in the lokal's book (ADR-018 reg. 6) — render only; drives §2/§3/§8.2/§10.1 wording, never the figure. */
+  encumbranceTreatment?: EncumbranceTreatment | null;
   /** Extraction provenance for the kw snapshot (F-5) — display/audit metadata only. */
   kwMeta?: KwMetaSnapshot | null;
   /** Step 1 "Lokal ma przynależną piwnicę" (T-12) — render only (basement clause, S4); computeKcs never reads this. Absent on drafts saved before S1. */
@@ -181,6 +235,8 @@ export const ROUNDING = {
   csr: 2,
   vmin: 3,
   vmax: 3,
+  /** Each Ui of Tabela 3, rounded before the sum. */
+  ui: 3,
   sumUi: 3,
   unitValue: 2,
   wrNearest: 100,
@@ -205,6 +261,9 @@ export function computeKcs(input: KcsInput): KcsResult {
     }
     return c.pricePerM2;
   });
+  if (input.features.some((f) => f.rating == null)) {
+    throw new Error("KCS engine: every feature must be rated");
+  }
 
   const cmin = Math.min(...prices);
   const cmax = Math.max(...prices);
@@ -214,8 +273,10 @@ export function computeKcs(input: KcsInput): KcsResult {
 
   const ui: FeatureShare[] = input.features.map((f) => ({
     ...f,
-    value:
+    value: roundTo(
       f.rating === "lepsza" ? f.weight * vmax : f.rating === "gorsza" ? f.weight * vmin : f.weight,
+      ROUNDING.ui,
+    ),
   }));
   const sumUi = roundTo(
     ui.reduce((sum, share) => sum + share.value, 0),

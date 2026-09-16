@@ -32,7 +32,14 @@ const INPUTS: KcsInput = {
     { date: "2024-12", area: 64, pricePerM2: 10725, source: "manual" },
   ],
   features: [
-    { key: "standard_wykonczenia", name: "standard wykończenia", weight: 1, rating: "lepsza" },
+    {
+      key: "standard_wykonczenia",
+      name: "standard wykończenia",
+      weight: 1,
+      rating: "lepsza",
+      // ADR-016: Ui comes from the rating's position in the described scale.
+      definitions: { lepsza: "opis lepszej", gorsza: "opis gorszej" },
+    },
   ],
   inspection: {
     note: "Układ: 2 pokoje, kuchnia, łazienka; otoczenie: zabudowa wielorodzinna.",

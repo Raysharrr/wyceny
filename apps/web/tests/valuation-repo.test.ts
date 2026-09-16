@@ -1,16 +1,24 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { Client } from "pg";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "../src/db/client";
 import * as schema from "../src/db/schema";
 import { valuationRepo } from "../src/adapters/valuation-drizzle";
-import { ApprovalBlockedError, InputsChangedError, assertNotSigned } from "../src/domain/valuation";
+import {
+  ApprovalBlockedError,
+  InputsChangedError,
+  NotReopenableError,
+  assertNotSigned,
+} from "../src/domain/valuation";
 import { buildPhotoKey } from "../src/domain/inspection";
+import { approvedOperatKeys } from "../src/lib/operat-doc-keys";
 import type { KcsInput } from "../src/domain/kcs";
 import type { ProseSnapshot } from "../src/domain/prose-snapshot";
 import type { NewValuationInput, SessionUser, Valuation } from "../src/ports/valuation";
 import {
   approvableInputs,
+  approvableWr,
   partialDraftInputs,
   valuationInput,
   withConfirmedProse,
@@ -113,18 +121,29 @@ describe("valuationRepo (integration, real Postgres)", () => {
     const created = await repo.create({
       address: "ul. Kościelna 33A, Poznań",
       area: 71.63,
-      wr: 1_044_400,
+      // One comparable, one feature rated on its described scale: Ui = 1 × Vmax
+      // = 1, so the amount is simply the unit price × area. Spelled out rather
+      // than invented, because a `wr` that does not follow from the snapshot is
+      // dropped on read (`readFeatureScale`, ADR-016).
+      wr: 1_052_900,
       inputs: {
         area: 71.63,
         comparables: [{ date: "2024-07", area: 63.27, pricePerM2: 14698.91 }],
-        features: [{ name: "standard wykończenia", weight: 1, rating: "lepsza" }],
+        features: [
+          {
+            name: "standard wykończenia",
+            weight: 1,
+            rating: "lepsza",
+            definitions: { lepsza: "opis lepszej", gorsza: "opis gorszej" },
+          },
+        ],
       },
       amountInWords: null,
       docUrl: null,
       ownerId: appraiserA.id,
     });
     const fetched = await repo.get(created.id, appraiserA);
-    expect(fetched?.wr).toBe(1_044_400);
+    expect(fetched?.wr).toBe(1_052_900);
     expect(fetched?.inputs?.comparables[0]?.pricePerM2).toBe(14698.91);
   });
 
@@ -165,6 +184,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("confirmSample flips rcn rows to confirmed and persists, leaving geocode to step 1", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 1"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const confirmed = await repo.confirmSample(created.id, appraiserA);
@@ -180,6 +200,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("confirmSample is owner-only: another appraiser AND a non-owner admin get null", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 2"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     expect(await repo.confirmSample(created.id, appraiserB)).toBeNull();
@@ -189,6 +210,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve rejects an unconfirmed draft with ApprovalBlockedError (server-side gate — API bypass impossible)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 3"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     await expect(repo.approve(created.id, appraiserA)).rejects.toThrow(ApprovalBlockedError);
@@ -200,6 +222,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve succeeds after confirmSample: status approved + approvedAt persisted", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 4"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 4", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -212,9 +235,140 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(reread!.approvedAt).toBeInstanceOf(Date);
   });
 
+  /**
+   * ADR-020: the operat's storage key is `approvedAt.getTime()`
+   * (`approvedOperatKeys`), written by approve and read back by the signature
+   * from a fresh `get`. A column that dropped milliseconds would move the key
+   * between the two, and every signature would fail with „zatwierdzono przed
+   * aktualizacją” on a valuation that is perfectly fine — invisible to every
+   * test with a mocked repository. Hence this one, on real Postgres.
+   */
+  it("approvedAt survives the round-trip to the millisecond, so the operat key does", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Milisekundowa 1"),
+      wr: approvableWr(),
+      inputs: withConfirmedProse("ul. Milisekundowa 1", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+    // A time whose millisecond part is not zero — the part that gets lost.
+    const now = new Date("2026-09-15T08:00:00.123Z");
+
+    const approved = await repo.approve(created.id, appraiserA, undefined, now);
+    const reread = await repo.get(created.id, appraiserA);
+
+    expect(approved!.approvedAt!.getTime()).toBe(now.getTime());
+    expect(reread!.approvedAt!.getTime()).toBe(now.getTime());
+  });
+
+  /**
+   * B-15/B-16 W TRANSAKCJI (ADR-020 reg. 3). Bramka na ekranie i fail-fast w
+   * akcji to wygoda; rozstrzyga ta, która biegnie wewnątrz transakcji zapisu
+   * (ADR-012), a jej jedynym nośnikiem danych profilu jest `...gate` w
+   * `valuation-drizzle.ts`. Testy akcji tego nie pilnują — mockują
+   * repozytorium, więc zawężenie przekazywanego kontekstu do
+   * `{ requireProse }` (regresja z PR #50) zostawiłoby je zielone.
+   *
+   * Kryterium: oba przypadki czerwienią się, gdy `...gate` zniknie z wywołania
+   * `approveValuation` w adapterze.
+   *
+   * Dane profilu poniżej są FIKCYJNE (F-9).
+   */
+  it("approve odmawia w transakcji przy niekompletnym profilu autora (B-15)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Profilowa 1"),
+      wr: approvableWr(),
+      inputs: withConfirmedProse("ul. Profilowa 1", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+
+    const niepelnyProfil = {
+      fullName: "Jan Testowy",
+      licenseNo: null,
+      officeBlock: "Biuro Wycen Testowe",
+      insuranceDocKey: "polisa/user-test-1/fikcyjna",
+      insuranceValidUntil: "2099-12-31",
+    };
+    try {
+      await repo.approve(created.id, appraiserA, undefined, new Date(), undefined, undefined, {
+        author: niepelnyProfil,
+      });
+      throw new Error("approve powinno odmówić");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApprovalBlockedError);
+      expect((e as ApprovalBlockedError).blockers.map((b) => b.code)).toContain("B-15");
+    }
+    // Odmowa jest atomowa: status nie drgnął.
+    expect((await repo.get(created.id, appraiserA))!.status).toBe("in_progress");
+  });
+
+  it("approve odmawia w transakcji przy polisie po terminie (B-16)", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Profilowa 2"),
+      wr: approvableWr(),
+      inputs: withConfirmedProse("ul. Profilowa 2", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+
+    const wygaslaPolisa = {
+      fullName: "Jan Testowy",
+      licenseNo: "0000",
+      officeBlock: "Biuro Wycen Testowe",
+      insuranceDocKey: "polisa/user-test-1/fikcyjna",
+      insuranceValidUntil: "2000-01-01",
+    };
+    try {
+      await repo.approve(created.id, appraiserA, undefined, new Date(), undefined, undefined, {
+        author: wygaslaPolisa,
+      });
+      throw new Error("approve powinno odmówić");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApprovalBlockedError);
+      expect((e as ApprovalBlockedError).blockers.map((b) => b.code)).toContain("B-16");
+    }
+    expect((await repo.get(created.id, appraiserA))!.status).toBe("in_progress");
+  });
+
+  /**
+   * Druga połowa tej samej reguły: kompletny profil z ważną polisą przechodzi.
+   * Bez tego przypadku oba testy wyżej zieleniłyby się także wtedy, gdyby
+   * bramka zaczęła odmawiać KAŻDEMU profilowi.
+   */
+  it("approve przechodzi w transakcji przy kompletnym profilu i ważnej polisie", async () => {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Profilowa 3"),
+      wr: approvableWr(),
+      inputs: withConfirmedProse("ul. Profilowa 3", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+
+    const approved = await repo.approve(
+      created.id,
+      appraiserA,
+      undefined,
+      new Date(),
+      undefined,
+      undefined,
+      {
+        author: {
+          fullName: "Jan Testowy",
+          licenseNo: "0000",
+          officeBlock: "Biuro Wycen Testowe",
+          insuranceDocKey: "polisa/user-test-1/fikcyjna",
+          insuranceValidUntil: "2099-12-31",
+        },
+      },
+    );
+    expect(approved!.status).toBe("approved");
+  });
+
   it("an approved valuation refuses further mutations (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 5"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 5", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -246,6 +400,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     // fields must still be refused — with a blocker naming path "purpose".
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 7"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
       purpose: null,
       kwNumber: null,
@@ -269,6 +424,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve persists docUrl + docxUrl when passed", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 8"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 8", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -295,6 +451,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve without amountInWords leaves the column alone (older callers, and sign)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 8b"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 8b", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -312,6 +469,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve with audit.mapsSkipped writes an 'approved' audit row whose meta contains mapsSkipped: true (Slice 9)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 9"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 9", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -333,9 +491,196 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
     expect(rows.at(-1)!.meta).toMatchObject({ mapsSkipped: true });
   });
 
+  /**
+   * „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6) — end to end on real
+   * Postgres, because the interesting part is the audit row: with `approvedAt`
+   * cleared, that row is the only record of which documents the withdrawn
+   * approval issued, and the whole promise („Obecny plik zostanie w historii
+   * wyceny”) rests on being able to read their keys back.
+   */
+  async function approvedFixture(address: string, now = new Date()) {
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, address),
+      wr: approvableWr(),
+      inputs: withConfirmedProse(address, approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+    const keys = approvedOperatKeys(created.id, now);
+    await repo.approve(
+      created.id,
+      appraiserA,
+      {
+        docUrl: `/api/docs/${keys.pdf}`,
+        docxUrl: `/api/docs/${keys.docx}`,
+        amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+      },
+      now,
+    );
+    return { id: created.id, keys };
+  }
+
+  const auditRowsFor = (id: string) =>
+    db
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.valuationId, id))
+      .orderBy(schema.auditLog.id);
+
+  it("reopen sends an unsigned approval back to editing and clears what the approval produced", async () => {
+    const { id } = await approvedFixture("ul. Cofnieta 1");
+
+    const reopened = await repo.reopen(id, appraiserA);
+
+    expect(reopened!.status).toBe("in_progress");
+    expect(reopened!.approvedAt).toBeNull();
+    expect(reopened!.docUrl).toBeNull();
+    expect(reopened!.docxUrl).toBeNull();
+    expect(reopened!.amountInWords).toBeNull();
+    expect(reopened!.wr).toBeNull();
+    // And it is the row that changed, not just the object handed back.
+    const reread = await repo.get(id, appraiserA);
+    expect(reread!.status).toBe("in_progress");
+    expect(reread!.docxUrl).toBeNull();
+    // The valuation is editable again — which is the point of the button.
+    await repo.confirmSubject(id, appraiserA);
+  });
+
+  it("the reopened audit row names the withdrawn documents by their storage keys", async () => {
+    const now = new Date("2026-09-15T09:30:00.500Z");
+    const { id, keys } = await approvedFixture("ul. Cofnieta 2", now);
+
+    await repo.reopen(id, appraiserA);
+
+    const rows = await auditRowsFor(id);
+    expect(rows.at(-1)!.action).toBe("reopened");
+    expect(rows.at(-1)!.actorId).toBe(appraiserA.id);
+    expect(rows.at(-1)!.meta).toMatchObject({
+      docKey: keys.pdf,
+      docxKey: keys.docx,
+      approvedAt: now.toISOString(),
+    });
+    // The `approved` row stays: the trail shows both that it was issued and
+    // that it was withdrawn.
+    expect(rows.map((r) => r.action)).toContain("approved");
+  });
+
+  it("names the keys of a row approved BEFORE the per-approval keys existed", async () => {
+    // The seven valuations waiting on staging: their files sit under the old
+    // fixed `operat-<id>.docx`, and reopening them is exactly the way out that
+    // the signature refusal points at. The audit row has to name THOSE keys.
+    const created = await repo.create({
+      ...valuationInput(appraiserA.id, "ul. Cofnieta 6"),
+      wr: approvableWr(),
+      inputs: withConfirmedProse("ul. Cofnieta 6", approvableInputs()),
+    });
+    await repo.confirmSample(created.id, appraiserA);
+    await repo.confirmSubject(created.id, appraiserA);
+    await repo.approve(created.id, appraiserA, {
+      docUrl: `/api/docs/operat-${created.id}.pdf`,
+      docxUrl: `/api/docs/operat-${created.id}.docx`,
+    });
+
+    await repo.reopen(created.id, appraiserA);
+
+    const rows = await auditRowsFor(created.id);
+    expect(rows.at(-1)!.meta).toMatchObject({
+      docKey: `operat-${created.id}.pdf`,
+      docxKey: `operat-${created.id}.docx`,
+    });
+  });
+
+  it("after a reopen the stale amount in words cannot come back (D-57)", async () => {
+    const { id } = await approvedFixture("ul. Cofnieta 5");
+    expect((await repo.get(id, appraiserA))!.amountInWords).not.toBeNull();
+
+    await repo.reopen(id, appraiserA);
+    // The calculation has to be confirmed again — reopening cleared `wr`, so
+    // the F-4 gate refuses until the appraiser has looked at the numbers once
+    // more. That refusal is the point: the corrections happen in between.
+    await expect(repo.approve(id, appraiserA)).rejects.toThrow(ApprovalBlockedError);
+    await repo.confirmCalculation(id, appraiserA);
+    // Re-approved by a caller that does NOT recompute the words: `approve`
+    // only WRITES `amountInWords` when given one, so without the clearing
+    // above this would print the withdrawn amount beside a corrected Tabela 4.
+    const keys = approvedOperatKeys(id, new Date());
+    const reapproved = await repo.approve(id, appraiserA, {
+      docUrl: `/api/docs/${keys.pdf}`,
+      docxUrl: `/api/docs/${keys.docx}`,
+    });
+
+    expect(reapproved!.status).toBe("approved");
+    expect(reapproved!.amountInWords).toBeNull();
+  });
+
+  it("a lost CAS is a status refusal, not a missing valuation", async () => {
+    const { id } = await approvedFixture("ul. Cofnieta 7");
+
+    // The CAS branch needs an INTERLEAVING, not merely two callers. Running
+    // `reopen` twice at once does not produce one: the second SELECT lands
+    // after the first transaction has committed, so it reads `in_progress` and
+    // the DOMAIN refuses before any UPDATE is attempted. Both refusals are
+    // `NotReopenableError`, so a test asserting only the type passed with the
+    // CAS branch deleted — which is what round 2 measured (review PR #56).
+    //
+    // So the interleaving is built by hand: a second connection takes the row
+    // and flips it WITHOUT committing. `reopen` then reads the still-committed
+    // `approved` (READ COMMITTED), passes the domain, and its UPDATE blocks on
+    // the row lock. Releasing the blocker makes Postgres re-evaluate the
+    // predicate against the new row version — `status = 'approved'` no longer
+    // matches, zero rows come back, and the branch under test runs.
+    const blocker = new Client({ connectionString: process.env.DATABASE_URL });
+    await blocker.connect();
+    let refusal: unknown;
+    try {
+      await blocker.query("begin");
+      await blocker.query("update valuation set status = 'in_progress' where id = $1", [id]);
+
+      // The rejection handler is attached the moment the promise exists, and
+      // awaited ONCE: a second `await` on a rejected promise reports an
+      // unhandled rejection, and so does a `commit` that fails below while
+      // this promise is still pending.
+      const racing = repo.reopen(id, appraiserA).catch((e: unknown) => e);
+      // Long enough for the UPDATE inside `reopen` to reach the lock; the
+      // assertions below fail loudly if it has not.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await blocker.query("commit");
+      refusal = await racing;
+    } finally {
+      // Releasing the connection is ALL this block does. Asserting here would
+      // mask the real cause when the setup itself fails (`begin`/`update`
+      // throwing), and an early `return` to avoid that would be worse still —
+      // it discards the in-flight exception and the test goes green on broken
+      // infrastructure.
+      await blocker.end();
+    }
+
+    expect(refusal).toBeInstanceOf(NotReopenableError);
+    // The message is what separates this branch from the domain's refusal —
+    // the two throw the same type, and only the wording says which ran.
+    expect((refusal as Error).message).toMatch(/mid-reopen/);
+
+    // The refusal wrote nothing: the withdrawal that did happen was the
+    // blocker's raw UPDATE, which leaves no audit row of its own.
+    const rows = await auditRowsFor(id);
+    expect(rows.filter((r) => r.action === "reopened")).toHaveLength(0);
+  });
+
+  it("reopen refuses a draft, and answers null for someone else's valuation", async () => {
+    const draft = await repo.create(valuationInput(appraiserA.id, "ul. Cofnieta 3"));
+    await expect(repo.reopen(draft.id, appraiserA)).rejects.toThrow(NotReopenableError);
+
+    const { id } = await approvedFixture("ul. Cofnieta 4");
+    expect(await repo.reopen(id, appraiserB)).toBeNull();
+    // Refused, not half-done: the valuation is still approved.
+    expect((await repo.get(id, appraiserA))!.status).toBe("approved");
+    expect(await auditRowsFor(id).then((r) => r.map((x) => x.action))).not.toContain("reopened");
+  });
+
   it("approve rejects with InputsChangedError when expectedInputs no longer matches the row (approve-window drift guard, final review)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 10"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -368,6 +713,7 @@ describe("F-4: confirmSample + approve mutations (draft lifecycle)", () => {
   it("approve succeeds when expectedInputs matches the row exactly (no drift)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 11"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 11", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -452,6 +798,9 @@ function kwApprovableInputs(): KcsInput {
       sad: "Sąd Rejonowy Poznań-Stare Miasto",
       wydzial: "V Wydział Ksiąg Wieczystych",
       dataDokumentu: "2026-06-01",
+      // ADR-018: when the appraiser read the book, without which the excerpt is
+      // a file rather than an examination and B-06 keeps the draft shut.
+      dataBadania: "2026-06-02",
       dzial3: { wpisy: false, tresc: [] },
       dzial4: { wpisy: true, tresc: ["Hipoteka umowna na rzecz banku X"] },
     },
@@ -488,6 +837,7 @@ describe("F-5: confirmKw mutation (KW-extract provenance, Task 8)", () => {
   it("confirmKw on an approved valuation throws (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Gating 13"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Gating 13", kwApprovableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -503,6 +853,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("adds a photo key, audits inspection_updated with op meta, in one tx", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 1"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const key = buildPhotoKey("wnetrza", "u-1", created.id);
@@ -527,6 +878,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("updateInspection is owner-only: another appraiser AND a non-owner admin get null", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 2"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const key = buildPhotoKey("wnetrza", "u-2", created.id);
@@ -538,6 +890,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("updateInspection on an approved valuation throws (write-once at approval)", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 3"),
+      wr: approvableWr(),
       inputs: withConfirmedProse("ul. Ogledziny 3", approvableInputs()),
     });
     await repo.confirmSample(created.id, appraiserA);
@@ -552,6 +905,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("set_note persists the trimmed note", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 4"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const updated = await repo.updateInspection(created.id, appraiserA, {
@@ -564,6 +918,7 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
   it("set_date persists inspectionDate (column), audits 'date_updated', and survives a re-read", async () => {
     const created = await repo.create({
       ...valuationInput(appraiserA.id, "ul. Ogledziny 5"),
+      wr: approvableWr(),
       inputs: approvableInputs(),
     });
     const updated = await repo.updateInspection(created.id, appraiserA, {

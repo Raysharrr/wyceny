@@ -47,6 +47,7 @@ import { saveInspectionDate } from "../src/app/actions/inspection";
 import { valuationRepository } from "@/app/valuations/_deps";
 import { CalculationNotReadyError } from "@/domain/valuation";
 import { normalizeKw } from "@/domain/kw-snapshot";
+import { FEATURE_PRESETS } from "@/domain/feature-presets";
 import type { Valuation } from "@/ports/valuation";
 import type { KwSnapshot } from "@/domain/kw-snapshot";
 
@@ -125,6 +126,10 @@ describe("createDraft", () => {
           subject: null,
           subjectMeta: null,
           kw: null,
+          // ADR-018: step 1 carries the grunt's book and the encumbrance
+          // decision too — absent here, so both persist as an honest null.
+          kwGrunt: null,
+          encumbranceTreatment: null,
           kwMeta: null,
           hasBasement: false,
           provenance: {
@@ -260,6 +265,8 @@ describe("saveSubjectAction", () => {
       subject: null,
       subjectMeta: null,
       kw: normalizeKw(rawKw),
+      kwGrunt: null,
+      encumbranceTreatment: null,
       kwMeta: null,
       provenance: {
         address: { source: "rzeczoznawca", status: "confirmed" },
@@ -346,7 +353,13 @@ describe("saveFeaturesAction", () => {
         rating: "przecietna",
         definitions: { lepsza: "b", przecietna: "  a   b  ", gorsza: "c" },
       },
-      { key: "lokalizacja", name: "lokalizacja", weightPct: 50, rating: "lepsza" },
+      {
+        key: "lokalizacja",
+        name: "lokalizacja",
+        weightPct: 50,
+        rating: "lepsza",
+        definitions: { lepsza: "d", przecietna: "e" },
+      },
     ],
   };
 
@@ -382,13 +395,15 @@ describe("saveFeaturesAction", () => {
           rating: "przecietna",
           key: "standard-wykonczenia",
           definitions: { lepsza: "b", przecietna: "a b", gorsza: "c" },
+          measure: null,
         },
         {
           name: "lokalizacja",
           weight: 0.5,
           rating: "lepsza",
           key: "lokalizacja",
-          definitions: {},
+          definitions: { lepsza: "d", przecietna: "e" },
+          measure: null,
         },
       ],
       provenance: {
@@ -397,6 +412,50 @@ describe("saveFeaturesAction", () => {
         featureDefs: { source: "rzeczoznawca", status: "confirmed" },
       },
     });
+  });
+
+  // FH.1: the thresholds have to survive the save, or the suggestion is gone
+  // after the next reload and every unit test still passes.
+  it("zapisuje progi liczbowe cechy mierzalnej razem z opisami (FH.1)", async () => {
+    const pietro = FEATURE_PRESETS.lokal.find((e) => e.key === "polozenie-na-pietrze")!;
+    getMock.mockResolvedValueOnce({ ...draftValuation, inputs: null });
+    saveFeaturesMock.mockResolvedValueOnce(draftValuation);
+
+    const result = await saveFeaturesAction(VALUATION_ID, {
+      features: [
+        {
+          key: "polozenie-na-pietrze",
+          name: pietro.name,
+          weightPct: 100,
+          rating: "lepsza",
+          definitions: pietro.defaultDefinitions,
+          measure: pietro.defaultMeasure,
+        },
+      ],
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(saveFeaturesMock.mock.calls[0][2].features[0].measure).toEqual(pietro.defaultMeasure);
+  });
+
+  it("odrzuca progi z luką — skala z dziurą nigdy się nie zapisuje (D-46, D-48)", async () => {
+    const result = await saveFeaturesAction(VALUATION_ID, {
+      features: [
+        {
+          key: "polozenie-na-pietrze",
+          name: "Położenie na piętrze",
+          weightPct: 100,
+          rating: "lepsza",
+          definitions: { gorsza: "parter", lepsza: "od 4 piętra" },
+          measure: { kind: "floor", bounds: { gorsza: { od: 0, do: 0 }, lepsza: { od: 4 } } },
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      error: "Między przedziałami poziomów „gorsza” i „lepsza” jest luka.",
+    });
+    expect(saveFeaturesMock).not.toHaveBeenCalled();
   });
 
   it("draft not found (repo.get -> null) -> error, saveFeatures never called", async () => {

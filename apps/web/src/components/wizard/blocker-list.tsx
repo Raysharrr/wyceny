@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Blocker } from "@/domain/provenance";
-import { stepForBlockerPath } from "@/domain/wizard";
+import { blockerTarget } from "@/domain/wizard";
 
 /**
  * What stands between a draft and its operat, each item linked to the step
@@ -38,18 +38,30 @@ export function BlockerList({
       </p>
       <ul className="list-disc pl-5 text-sm text-amber-600 dark:text-amber-500">
         {blockers.map((b) => {
-          const step = stepForBlockerPath(b.path);
+          const target = blockerTarget(b.path);
+          // Two kinds of destination, one link. B-15/B-16 are cleared on
+          // /profile, not in any wizard step (ADR-020 cz. 1) — a `?step=`
+          // link would send the appraiser to a screen that cannot clear them.
+          const link =
+            target?.kind === "step"
+              ? {
+                  href: `?step=${target.step.n}`,
+                  text: `Przejdź do kroku ${target.step.n}. ${target.step.label}`,
+                }
+              : target
+                ? { href: target.href, text: `Przejdź do: ${target.label}` }
+                : null;
           return (
             <li key={b.path}>
               {b.label}
-              {step ? (
+              {link ? (
                 <>
                   {" "}
                   <Link
-                    href={`?step=${step.n}`}
+                    href={link.href}
                     className="font-medium underline underline-offset-2 hover:text-primary"
                   >
-                    Przejdź do kroku {step.n}. {step.label}
+                    {link.text}
                   </Link>
                 </>
               ) : null}

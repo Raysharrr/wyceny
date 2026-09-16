@@ -1,7 +1,8 @@
 import { computeKcs, type KcsInput } from "../../src/domain/kcs";
-import type { BuildDocumentInput } from "../../src/domain/document-model";
+import type { BuildDocumentInput, OperatAuthor } from "../../src/domain/document-model";
+import type { AppraiserProfile } from "../../src/ports/profile";
 import type { SubjectSnapshot } from "../../src/domain/subject-snapshot";
-import type { KwSnapshot } from "../../src/domain/kw-snapshot";
+import type { KwGruntSnapshot, KwSnapshot } from "../../src/domain/kw-snapshot";
 
 /**
  * Shared synthetic render-input fixture (F-12 completeness suite +
@@ -9,8 +10,12 @@ import type { KwSnapshot } from "../../src/domain/kw-snapshot";
  * 3 rated features with scale definitions — never the source Kościelna
  * operat's real data.
  */
-export function goldenInputs(subject?: SubjectSnapshot, kw?: KwSnapshot): KcsInput {
-  return {
+export function goldenInputs(
+  subject?: SubjectSnapshot,
+  kw?: KwSnapshot,
+  kwGrunt?: KwGruntSnapshot,
+): KcsInput {
+  const inputs: KcsInput = {
     area: 48.2,
     comparables: Array.from({ length: 12 }, (_, i) => ({
       pricePerM2: 10_000 + i * 50,
@@ -53,7 +58,15 @@ export function goldenInputs(subject?: SubjectSnapshot, kw?: KwSnapshot): KcsInp
     provenance: null,
     subject,
     kw,
+    kwGrunt,
   };
+  // Bezargumentowo ta fabryka była czysta — i to była prawda tylko dla jednego
+  // z jej wywołań. Z argumentami wkłada do wyniku obiekty WOŁAJĄCEGO, którymi
+  // są stałe modułowe (`SUBJECT_WITH_MPZP`, `KW_STANDARD`), więc zapis do
+  // `subject`/`kw` wracał do stałej. Fabryka z parametrami jest tyloma
+  // fabrykami, ile ma sensownych zestawów argumentów — bramka przemiatu bada
+  // je osobno.
+  return structuredClone(inputs);
 }
 
 /**
@@ -80,6 +93,26 @@ export const KW_STANDARD: KwSnapshot = {
     wpisy: true,
     tresc: ["Hipoteka umowna na rzecz banku X", "Hipoteka przymusowa na rzecz US"],
   },
+  /**
+   * Since b1-kw-read the §8.2 block asks `kwRequirements`, not `kw != null` —
+   * so a fixture that stands for AN EXAMINED BOOK has to carry the day it was
+   * examined. Without it this snapshot describes a book nobody opened, which is
+   * exactly what the 14.09 operat did and what the new predicate refuses.
+   */
+  dataBadania: "2026-06-05",
+};
+
+/**
+ * The mother book, examined — the developer variant's whole legal picture (a
+ * lokal bought from a developer has no book of its own, so `kwRequirements`
+ * counts only this one).
+ */
+export const KW_GRUNT_ZBADANA: KwGruntSnapshot = {
+  source: "ekw_reczne",
+  nrKsiegi: "PO1P/2/4",
+  dataBadania: "2026-06-05",
+  dzial3: { wpisy: false, tresc: [] },
+  dzial4: { wpisy: false, tresc: [] },
 };
 
 /** Developer variant — no own kwLokalu, examination covers the grunt KW only. */
@@ -142,6 +175,31 @@ export const SUBJECT_NO_MPZP: SubjectSnapshot = {
 };
 
 /**
+ * Autor operatu dla testów — dane CAŁKOWICIE FIKCYJNE (F-9, ryzyko R10 specu):
+ * nazwisko, numer uprawnień i adres biura nie należą do nikogo. Jedna stała dla
+ * całego zestawu testów, żeby zmiana kształtu `OperatAuthor` miała jedno miejsce.
+ */
+export const AUTOR_TESTOWY: OperatAuthor = {
+  fullName: "Jan Testowy",
+  licenseNo: "0000",
+  officeBlock: "Biuro Wycen Testowe\nul. Przykładowa 1\n60-000 Poznań",
+  policyPages: [],
+};
+
+/**
+ * Ten sam autor jako wiersz profilu — kompletny, z polisą ważną tak długo, że
+ * upływ czasu nie zazieleni ani nie zaczerwieni żadnego testu (bramka porównuje
+ * `insuranceValidUntil` z DZISIEJSZĄ datą, więc realistyczny rok wygasłby).
+ */
+export const PROFIL_TESTOWY: AppraiserProfile = {
+  fullName: AUTOR_TESTOWY.fullName,
+  licenseNo: AUTOR_TESTOWY.licenseNo,
+  officeBlock: AUTOR_TESTOWY.officeBlock,
+  insuranceDocKey: "polisa/test-user/fikcyjna",
+  insuranceValidUntil: "2099-12-31",
+};
+
+/**
  * Complete `buildDocumentModel()` input — the shared baseline for the F-12
  * render-completeness suite and the F-7 signature render tests. No subject
  * and no kw (both optional and undefined by default) reproduces the legacy
@@ -150,9 +208,10 @@ export const SUBJECT_NO_MPZP: SubjectSnapshot = {
 export function syntheticDocumentInput(
   subject?: SubjectSnapshot,
   kw?: KwSnapshot,
+  kwGrunt?: KwGruntSnapshot,
 ): BuildDocumentInput {
-  const inputs = goldenInputs(subject, kw);
-  return {
+  const inputs = goldenInputs(subject, kw, kwGrunt);
+  const v: BuildDocumentInput = {
     address: "ul. Przykładowa 5, Poznań",
     area: 48.2,
     purpose: "informacyjny",
@@ -164,5 +223,10 @@ export function syntheticDocumentInput(
     inputs,
     kcs: computeKcs(inputs),
     amountInWords: "czterysta osiemdziesiąt tysięcy złotych zero groszy",
+    author: AUTOR_TESTOWY,
   };
+  // Bez klonu `author` byłby tym samym obiektem co stała `AUTOR_TESTOWY` we
+  // wszystkich wywołaniach (`goldenInputs` jest czyste, więc to jedyny
+  // przeciek tej fabryki). Pilnuje tego `fixtures-isolation.test.ts`.
+  return structuredClone(v);
 }

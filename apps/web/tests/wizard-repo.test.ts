@@ -11,12 +11,13 @@ import {
 } from "../src/domain/valuation";
 import type { Comparable, KcsInput } from "../src/domain/kcs";
 import { approvalGate, type InputsProvenance } from "../src/domain/provenance";
-import { normalizeKw } from "../src/domain/kw-snapshot";
+import { normalizeKw, normalizeKwGrunt } from "../src/domain/kw-snapshot";
 import type { SessionUser, Valuation } from "../src/ports/valuation";
 import { assignSampleProvenance, assignSubjectProvenance } from "../src/lib/assign-provenance";
 import { isEmptySubject, step1DefaultsFromInputs } from "../src/lib/subject-form";
 import { sampleStepSchema, step1Schema } from "../src/app/actions/wizard-schemas";
 import {
+  THREE_LEVEL_SCALE,
   approvableInput,
   partialDraftInputs,
   valuationInput,
@@ -104,7 +105,10 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
     expect(afterSample!.inputs!.comparables).toEqual(comparables);
 
     const featuresUpdate: FeaturesUpdate = {
-      features: [{ name: "standard", weight: 1, rating: "przecietna" }],
+      // A rating the engine can place: its level is described (ADR-016).
+      features: [
+        { name: "standard", weight: 1, rating: "przecietna", definitions: THREE_LEVEL_SCALE },
+      ],
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -391,7 +395,9 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
       sampleMeta: null,
     });
     await repo.saveFeatures(created.id, appraiserA, {
-      features: [{ name: "standard", weight: 1, rating: "przecietna" }],
+      features: [
+        { name: "standard", weight: 1, rating: "przecietna", definitions: THREE_LEVEL_SCALE },
+      ],
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -577,6 +583,8 @@ describe("every to_verify a legacy draft can hold has a step that clears it (T8)
       subject: effSubject ?? null,
       subjectMeta: effSubjectMeta ?? null,
       kw: parsed.kw ? normalizeKw(parsed.kw) : null,
+      kwGrunt: parsed.kwGrunt ? normalizeKwGrunt(parsed.kwGrunt) : null,
+      encumbranceTreatment: parsed.encumbranceTreatment ?? null,
       kwMeta: parsed.kwMeta ?? null,
       provenance: assignSubjectProvenance({
         area: parsed.area,
@@ -606,6 +614,71 @@ describe("every to_verify a legacy draft can hold has a step that clears it (T8)
       sampleMeta: parsed.sampleMeta ?? null,
     });
   }
+
+  /**
+   * The round trip that was silently lossy: everything the appraiser records
+   * about the two books IS saved, but `step1DefaultsFromInputs` read only `kw`
+   * back — so re-opening step 1 and pressing save wiped the grunt book, the
+   * encumbrance decision and three fields of the lokal's own snapshot, and
+   * step 7 re-raised B-06/B-07 with nothing on screen to explain it. Asserted
+   * as snapshot EQUALITY, not field by field: a future `KwSnapshot` field that
+   * nobody maps fails right here.
+   */
+  it("step 1 re-submitted unchanged preserves both books, the akt and the encumbrance decision", async () => {
+    const created = await repo.create(legacyStuckDraft("Wizard KW Examination Round Trip"));
+    const examined = {
+      kw: {
+        source: "ekw_reczne" as const,
+        kwLokalu: "AB1C/1/9",
+        kwGruntu: "AB1C/2/7",
+        kwInne: [],
+        deweloperski: false,
+        powUzytkowaKw: 69.56,
+        udzial: "1234/56789",
+        sad: "Sąd Rejonowy Poznań-Stare Miasto",
+        wydzial: "VI Wydział Ksiąg Wieczystych",
+        dataDokumentu: "2026-05-11",
+        dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu"] },
+        dzial4: { wpisy: false, tresc: [] },
+        dataBadania: "2026-09-15",
+        nrLokalu: "12",
+        akt: { rodzaj: "Akt notarialny", rep: "Rep. A 1234/2026", data: "2026-05-11" },
+      },
+      kwGrunt: {
+        source: "ekw_reczne" as const,
+        nrKsiegi: "AB1C/2/7",
+        dataBadania: "2026-09-15",
+        dzial3: { wpisy: false, tresc: [] },
+        dzial4: { wpisy: false, tresc: [] },
+      },
+      encumbranceTreatment: {
+        wariant: "bez_uwzglednienia" as const,
+        podstawa: "Zgodnie z poleceniem Zleceniodawcy.",
+      },
+    };
+    await repo.saveSubject(created.id, appraiserA, {
+      address: created.address,
+      area: created.area,
+      purpose: created.purpose ?? "sprzedaz",
+      kwNumber: "AB1C/1/9",
+      client: created.client ?? "p. Test Testowy",
+      subject: null,
+      subjectMeta: null,
+      kwMeta: null,
+      provenance: created.inputs!.provenance!,
+      ...examined,
+    });
+
+    await resubmitStep1((await repo.get(created.id, appraiserA))!);
+
+    const after = (await repo.get(created.id, appraiserA))!.inputs!;
+    // `tresc: null` materialises on the way back through `coerceLegacyKw`, like
+    // `dataBadania`/`nrLokalu`/`akt` before it: this snapshot was typed by hand,
+    // so there is no transcription to keep (b1-kw-read).
+    expect(after.kw).toEqual({ ...examined.kw, tresc: null });
+    expect(after.kwGrunt).toEqual(examined.kwGrunt);
+    expect(after.encumbranceTreatment).toEqual(examined.encumbranceTreatment);
+  });
 
   it("step 1 clears a geocoding, a KW extract and a document-sourced area on a subject-less draft", async () => {
     const created = await repo.create(legacyStuckDraft("Wizard Legacy Stuck Subject"));

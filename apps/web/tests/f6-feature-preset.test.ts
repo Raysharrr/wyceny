@@ -16,7 +16,13 @@ import fixture from "./fixtures/koscielna.json";
  * F-6 (fitness function): the expert preset (ADR-006) is the single source of
  * truth for the lokal feature bag. Guards: Σ(basic weights) = 100 exactly, the
  * bag is Aneta's canonical 6+3 list, the basic six reproduce the golden-era
- * form defaults (40/30/10/10/4/6), and the engine ignores the new metadata.
+ * form weights (40/30/10/10/4/6), and the engine ignores the new metadata.
+ *
+ * CONTRACT CHANGE (ADR-016 reg. 3, spec §7.4, block „naprawa operatu” P5): the
+ * preset used to seed every feature with the rating "przecietna"; since then
+ * it seeds NO rating (`null`) — the appraiser picks every level. The key set
+ * is unchanged. Names and texts follow the 14.09 operat review (D-43, D-45,
+ * D-46, D-49).
  */
 describe("F-6: lokal feature preset", () => {
   const lokal = FEATURE_PRESETS.lokal;
@@ -37,15 +43,40 @@ describe("F-6: lokal feature preset", () => {
     ]);
   });
 
-  it("basic six reproduce the pre-Slice-7 hardcoded form defaults exactly", () => {
+  it("basic six keep the pre-Slice-7 weights; names capitalised as in the operat (D-43)", () => {
     expect(basic.map((e) => [e.name, e.defaultWeightPct])).toEqual([
-      ["standard wykończenia", 40],
-      ["położenie na piętrze", 30],
-      ["lokalizacja", 10],
-      ["powierzchnia użytkowa", 10],
-      ["pomieszczenia przynależne", 4],
-      ["dodatkowe", 6],
+      ["Standard wykończenia", 40],
+      ["Położenie na piętrze", 30],
+      ["Lokalizacja szczegółowa", 10],
+      ["Powierzchnia użytkowa", 10],
+      ["Pomieszczenia przynależne", 4],
+      ["Dodatkowe", 6],
     ]);
+    expect(lokal.filter((e) => e.kind === "exceptional").map((e) => e.name)).toEqual([
+      "Funkcjonalność lokalu",
+      "Liczba izb",
+      "Rodzaj zabudowy budynku",
+    ]);
+  });
+
+  it("scale texts from the 14.09 review: D-45 standard, D-46 floor, D-49 rooms; no trailing dots", () => {
+    const defs = (key: string) => lokal.find((e) => e.key === key)!.defaultDefinitions;
+    expect(defs("standard-wykonczenia").przecietna).toBe(
+      "standard przeciętny, wykończenie materiałami przeciętnej jakości, widoczne zużycia elementów wykończenia",
+    );
+    // D-46: closed, disjoint floor bands; the texts are generated from them in
+    // the wording three KCŚ operats use (Kościelna, Meissnera, Starołęcka).
+    expect(defs("polozenie-na-pietrze")).toEqual({
+      lepsza: "4 piętro i powyżej",
+      przecietna: "piętra pośrednie",
+      gorsza: "parter",
+    });
+    expect(defs("pomieszczenia-przynalezne").lepsza).toBe(
+      "przynależna piwnica lub inne pomieszczenie",
+    );
+    for (const e of lokal) {
+      for (const text of Object.values(e.defaultDefinitions)) expect(text).not.toMatch(/\.$/);
+    }
   });
 
   it("basic weights sum to exactly 100; exceptional entries carry weight 0", () => {
@@ -74,19 +105,43 @@ describe("F-6: lokal feature preset", () => {
     expect(medianAreaM2([50, 61])).toBe(56); // 55.5 → half-up
     expect(medianAreaM2([undefined, null, 70])).toBe(70);
     expect(powierzchniaDefinitions(null)).toEqual({});
-    const defs = powierzchniaDefinitions(65);
-    expect(defs.lepsza).toContain("65");
-    expect(defs.gorsza).toContain("65");
-    expect(defs.przecietna).toBeUndefined();
+    // Bands touch one m² apart, both edges inclusive — a flat of exactly the
+    // median area stays in the larger band.
+    expect(powierzchniaDefinitions(65)).toEqual({ lepsza: "do 64 m²", gorsza: "od 65 m²" });
   });
 
-  it("defaultFeatureFormValues() = active basic bag, all przecietna, static definitions copied", () => {
+  it("defaultFeatureFormValues() = active basic bag, NO default rating (ADR-016 reg. 3), static definitions copied", () => {
     const defaults = defaultFeatureFormValues();
     expect(defaults.map((f) => [f.key, f.weightPct, f.rating])).toEqual(
-      basic.map((e) => [e.key, e.defaultWeightPct, "przecietna"]),
+      basic.map((e) => [e.key, e.defaultWeightPct, null]),
     );
+    expect(defaults.some((f) => f.rating != null)).toBe(false);
     // powierzchnia starts empty — the form fills it from the live sample median
     expect(defaults.find((f) => f.key === "powierzchnia-uzytkowa")!.definitions).toEqual({});
+  });
+
+  /**
+   * Wartości formularza nie mogą wskazywać na preset: `bounds` jest zagnieżdżone,
+   * więc płytkie oddanie pozwoliłoby wycenie zapisać własne progi do
+   * FEATURE_PRESETS, a stamtąd do każdej wyceny otwartej później w tym samym
+   * procesie. Asercja przez konsekwencję — zapis w jednym zestawie wartości,
+   * odczyt w presecie i w NASTĘPNYM zestawie.
+   */
+  it("progi w wartościach formularza to kopia, nie obiekt presetu", () => {
+    const pietro = lokal.find((e) => e.key === "polozenie-na-pietrze")!;
+    const pierwsza = defaultFeatureFormValues().find((f) => f.key === "polozenie-na-pietrze")!;
+    expect(pierwsza.measure).toEqual(pietro.defaultMeasure);
+
+    pierwsza.measure!.bounds.lepsza = { od: 99 };
+    pierwsza.measure!.kind = "area";
+
+    expect(pietro.defaultMeasure).toEqual({
+      kind: "floor",
+      bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+    });
+    const druga = defaultFeatureFormValues().find((f) => f.key === "polozenie-na-pietrze")!;
+    expect(druga.measure!.bounds.lepsza).toEqual({ od: 4 });
+    expect(druga.measure!.kind).toBe("floor");
   });
 
   it("matchesPresetWeights: true for untouched defaults, false for any edit", () => {

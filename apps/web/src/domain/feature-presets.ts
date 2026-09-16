@@ -1,4 +1,5 @@
-import type { FeatureRating } from "./kcs";
+import { definitionsFromMeasure } from "./feature-rules";
+import type { FeatureMeasure, FeatureRating } from "./kcs";
 
 /**
  * Expert feature preset (F-6, ADR-006) — the domain source of truth for the
@@ -9,14 +10,37 @@ import type { FeatureRating } from "./kcs";
  *
  * Definition TEXTS are hypothesis-grade defaults derived from the Kościelna
  * operat and the Gościejewko court operat §9.1 (wiki: cechy-porownawcze-lokali)
- * — Aneta verifies them during app testing (user decision 2026-07-15). The
+ * — Aneta verifies them during app testing (user decision 2026-07-15); names
+ * and texts corrected after her 14.09 operat (D-43, D-45, D-46, D-49). The
  * MODEL (per-valuation, editable) is confirmed. Pure module: zero I/O (F-10).
+ *
+ * The two MEASURABLE features are the exception to "texts": piętro and
+ * powierzchnia carry numeric thresholds (`defaultMeasure`), and their texts are
+ * GENERATED from them (`definitionsFromMeasure`, FH.1) — editing a threshold
+ * rewrites the text, so the two can never state different scales.
  */
 
 /** Document/display order of rating levels. */
 export const FEATURE_LEVELS = ["lepsza", "przecietna", "gorsza"] as const;
 
+/**
+ * Label per rating level — defined in `feature-rules.ts` beside the rules that
+ * read the levels, re-exported here because this module has been the import
+ * site since Slice 7.
+ */
+export { LEVEL_LABEL } from "./feature-rules";
+
 export type FeatureDefinitions = Partial<Record<FeatureRating, string>>;
+
+/**
+ * Piętro thresholds (D-46): parter / 1–3 / od 4, closed and disjoint —
+ * the 14.09 operat's "piętra pośrednie" had no numbers at all. Piętro is
+ * counted parter = 0, the convention the definition texts print.
+ */
+const PIETRO_MEASURE: FeatureMeasure = {
+  kind: "floor",
+  bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+};
 
 export type FeaturePresetEntry = {
   /** Stable slug (no diacritics) — closed pool, validated by zod. */
@@ -28,6 +52,12 @@ export type FeaturePresetEntry = {
   kind: "basic" | "exceptional";
   /** Static level definitions; powierzchnia-uzytkowa is dynamic — see powierzchniaDefinitions(). */
   defaultDefinitions: FeatureDefinitions;
+  /**
+   * Numeric thresholds behind those texts, for the two measurable features
+   * (FH.1). Absent on every other feature — nothing to measure, no suggestion.
+   * powierzchnia-uzytkowa is dynamic here too: `powierzchniaMeasure()`.
+   */
+  defaultMeasure?: FeatureMeasure;
 };
 
 export const LOKAL_FEATURE_KEYS = [
@@ -48,29 +78,28 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
   lokal: [
     {
       key: "standard-wykonczenia",
-      name: "standard wykończenia",
+      name: "Standard wykończenia",
       defaultWeightPct: 40,
       kind: "basic",
       defaultDefinitions: {
         lepsza: "standard dobry, wykończenie materiałami lepszej jakości",
-        przecietna: "standard dobry, wykończenie materiałami dobrej jakości",
+        przecietna:
+          "standard przeciętny, wykończenie materiałami przeciętnej jakości, widoczne zużycia elementów wykończenia",
         gorsza: "wymagany remont lub odświeżenie części elementów wykończenia",
       },
     },
     {
       key: "polozenie-na-pietrze",
-      name: "położenie na piętrze",
+      name: "Położenie na piętrze",
       defaultWeightPct: 30,
       kind: "basic",
-      defaultDefinitions: {
-        lepsza: "czwarte piętro i powyżej",
-        przecietna: "piętra pośrednie (1–3)",
-        gorsza: "parter",
-      },
+      // D-46: the texts ARE the thresholds — generated, never typed twice.
+      defaultDefinitions: definitionsFromMeasure(PIETRO_MEASURE),
+      defaultMeasure: PIETRO_MEASURE,
     },
     {
       key: "lokalizacja",
-      name: "lokalizacja",
+      name: "Lokalizacja szczegółowa",
       defaultWeightPct: 10,
       kind: "basic",
       defaultDefinitions: {
@@ -82,7 +111,7 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "powierzchnia-uzytkowa",
-      name: "powierzchnia użytkowa",
+      name: "Powierzchnia użytkowa",
       defaultWeightPct: 10,
       kind: "basic",
       // Dynamic: threshold comes from the comparable-sample area median —
@@ -92,17 +121,17 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "pomieszczenia-przynalezne",
-      name: "pomieszczenia przynależne",
+      name: "Pomieszczenia przynależne",
       defaultWeightPct: 4,
       kind: "basic",
       defaultDefinitions: {
-        lepsza: "przynależna komórka lokatorska lub inne pomieszczenie",
+        lepsza: "przynależna piwnica lub inne pomieszczenie",
         gorsza: "brak pomieszczeń przynależnych",
       },
     },
     {
       key: "dodatkowe",
-      name: "dodatkowe",
+      name: "Dodatkowe",
       defaultWeightPct: 6,
       kind: "basic",
       defaultDefinitions: {
@@ -112,7 +141,7 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "funkcjonalnosc-lokalu",
-      name: "funkcjonalność lokalu",
+      name: "Funkcjonalność lokalu",
       defaultWeightPct: 0,
       kind: "exceptional",
       defaultDefinitions: {
@@ -122,7 +151,7 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "liczba-izb",
-      name: "liczba izb",
+      name: "Liczba izb",
       defaultWeightPct: 0,
       kind: "exceptional",
       defaultDefinitions: {
@@ -132,7 +161,7 @@ export const FEATURE_PRESETS: { lokal: FeaturePresetEntry[] } = {
     },
     {
       key: "rodzaj-zabudowy",
-      name: "rodzaj zabudowy budynku",
+      name: "Rodzaj zabudowy budynku",
       defaultWeightPct: 0,
       kind: "exceptional",
       defaultDefinitions: {
@@ -154,13 +183,25 @@ export function medianAreaM2(areas: Array<number | null | undefined>): number | 
   return Math.round(median);
 }
 
+/**
+ * Sample-derived powierzchnia thresholds; null when the sample carries no
+ * areas. The median splits the scale in two: below it the flat is the smaller
+ * (and, per m², the dearer) one. Both edges are inclusive whole m², so the
+ * bands touch one m² apart — "do 46 m²" / "od 47 m²" for a median of 47, which
+ * leaves a flat of exactly the median area in the larger band, as before.
+ *
+ * TWO levels, not three: that is the real shape of the Kościelna and Meissnera
+ * operats, and it is all a median can honestly say.
+ */
+export function powierzchniaMeasure(medianM2: number | null): FeatureMeasure | null {
+  if (medianM2 == null) return null;
+  return { kind: "area", bounds: { lepsza: { do: medianM2 - 1 }, gorsza: { od: medianM2 } } };
+}
+
 /** Sample-derived powierzchnia definitions; {} when the sample carries no areas. */
 export function powierzchniaDefinitions(medianM2: number | null): FeatureDefinitions {
-  if (medianM2 == null) return {};
-  return {
-    lepsza: `powierzchnia użytkowa poniżej ${medianM2} m²`,
-    gorsza: `powierzchnia użytkowa ${medianM2} m² i więcej`,
-  };
+  const measure = powierzchniaMeasure(medianM2);
+  return measure ? definitionsFromMeasure(measure) : {};
 }
 
 /** Expected preset definitions for a key, resolving the dynamic powierzchnia case. */
@@ -197,13 +238,14 @@ export function matchesPresetDefinitions(
   });
 }
 
-/** Form seed: the active basic bag (weights in %, all przecietna, definitions copied). */
+/** Form seed: the active basic bag (weights in %, no rating — ADR-016 reg. 3, definitions copied). */
 export function defaultFeatureFormValues(): Array<{
   key: LokalFeatureKey;
   name: string;
   weightPct: number;
-  rating: "przecietna";
+  rating: FeatureRating | null;
   definitions: FeatureDefinitions;
+  measure?: FeatureMeasure;
 }> {
   return FEATURE_PRESETS.lokal
     .filter((e) => e.kind === "basic")
@@ -211,7 +253,13 @@ export function defaultFeatureFormValues(): Array<{
       key: e.key as LokalFeatureKey,
       name: e.name,
       weightPct: e.defaultWeightPct,
-      rating: "przecietna" as const,
+      rating: null,
       definitions: { ...e.defaultDefinitions },
+      // Deep copy, not the preset's own object: `bounds` is nested, so a shallow
+      // hand-over would let one valuation's thresholds write into FEATURE_PRESETS
+      // and from there into every valuation opened later in the same process.
+      // The form happens to REPLACE the measure rather than mutate it, but that
+      // is the caller's convention, not a contract this module can rely on.
+      ...(e.defaultMeasure ? { measure: structuredClone(e.defaultMeasure) } : {}),
     }));
 }

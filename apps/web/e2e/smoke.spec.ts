@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { rateAllFeatures } from "./pages/wizard";
 
 // Offline smoke: manual-entry paths only (the RCN fetch needs live GUGiK).
 // The admin password is read from the SAME variable the seed script uses
@@ -28,8 +29,16 @@ async function createDraftStep1(page: import("@playwright/test").Page) {
   await page.locator("#address").fill("ul. Testowa 1, Poznań");
   await page.locator("#area").fill("54.3");
   await page.locator("#purpose").selectOption("sprzedaz");
-  await page.locator("#kwNumber").fill("KW-TEST-1");
   await page.locator("#client").fill("p. Test Testowy");
+  // ADR-018: both books examined, manually — without it step 7 blocks on B-06
+  // no matter how complete the rest of the draft is.
+  await page.locator("#kw-lokalu").fill("KW-TEST-1");
+  await page.locator("#kw-gruntu").fill("KW-TEST-2");
+  await page.locator("#kwg-nr").fill("KW-TEST-2");
+  for (const group of await page.getByRole("radiogroup", { name: /^Dział I(II|V)/ }).all()) {
+    await group.getByRole("radio", { name: "Brak wpisów" }).click();
+  }
+  await expect(page.getByText(/Zbadane księgi: 2 z 2/)).toBeVisible();
   await page.getByRole("button", { name: "Dane się zgadzają — dalej" }).click();
   await page.waitForURL(/\/valuations\/[0-9a-f-]{36}\?step=2/);
   // Regression net for the RSC-boundary 500 (server render of an existing
@@ -53,7 +62,8 @@ async function walkToOperat(page: import("@playwright/test").Page, prices: strin
     await page.locator(`#comparable-price-${i}`).fill(price);
   await page.getByRole("button", { name: "Zatwierdź próbę i dalej" }).click();
   await page.waitForURL(/step=4/);
-  // step 4: preset cech
+  // step 4: preset cech — każda cecha dostaje ocenę (brak oceny domyślnej, ADR-016)
+  await rateAllFeatures(page);
   await page.getByRole("button", { name: "Zatwierdź cechy i dalej" }).click();
   await page.waitForURL(/step=5/);
   // step 5: kalkulacja

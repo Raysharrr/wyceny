@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "integration/**"]
   pull_request:
-    branches: [main]
+    branches: [main, "integration/**"]
 
 env:
   # CI-only dummy values — never real secrets. `apps/web`'s db client and
@@ -188,6 +188,14 @@ jobs:
       # Slice 9: approve fetches WMS maps via the worker; off keeps the e2e
       # smoke network-free (approve renders the honest §8.1 stub instead).
       MAPS_FETCH: "off"
+      # ADR-020 cz. 1: the seed also creates a complete appraiser profile
+      # (author + OC policy), without which B-15/B-16 block every approval and
+      # the specs fail on a gate that is working correctly. Deliberately a
+      # FLAG and not the seed's default — the same script rotates passwords on
+      # staging, where these accounts belong to people who really sign
+      # operaty, and an invented licence number in a working profile is the
+      # exact failure ADR-020 exists to prevent.
+      SEED_E2E_PROFILE: "1"
       # Slice 10 (FR-2): keeps the inspection photo upload inputs hidden so
       # the smoke path stays network-free (see inspection-section.tsx's
       # `uploadEnabled` guard).

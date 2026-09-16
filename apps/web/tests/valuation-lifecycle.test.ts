@@ -14,13 +14,16 @@ import {
   confirmSampleProvenance,
   confirmSubjectProvenance,
   newVersionOf,
+  NotReopenableError,
+  reopenApproved,
   signValuation,
 } from "../src/domain/valuation";
 import type { Valuation } from "../src/ports/valuation";
 import type { Comparable, KcsInput } from "../src/domain/kcs";
+import { THREE_LEVEL_SCALE } from "./fixtures/valuation-inputs";
 import { approvalGate, type InputsProvenance } from "../src/domain/provenance";
 import { confirmProseSnapshot, PROSE_SECTIONS } from "../src/domain/prose-snapshot";
-import { confirmedProse } from "./fixtures/valuation-inputs";
+import { confirmedProse, EXAMINED_BOOKS } from "./fixtures/valuation-inputs";
 import { assignSampleProvenance } from "../src/lib/assign-provenance";
 
 const confirmedScalars: InputsProvenance = {
@@ -28,6 +31,9 @@ const confirmedScalars: InputsProvenance = {
   area: { source: "rzeczoznawca", status: "confirmed" },
   weights: { source: "rzeczoznawca", status: "confirmed" },
   ratings: { source: "rzeczoznawca", status: "confirmed" },
+  // The examination in EXAMINED_BOOKS is the appraiser's own work, so it
+  // enters confirmed (ADR-018 reg. 1).
+  kw: { source: "rzeczoznawca", status: "confirmed" },
 };
 
 function draftWith(inputs: KcsInput | null, overrides: Partial<Valuation> = {}): Valuation {
@@ -61,6 +67,8 @@ function draftWith(inputs: KcsInput | null, overrides: Partial<Valuation> = {}):
 
 function rcnInputs(): KcsInput {
   return {
+    // ADR-018: a draft that can be approved is one whose books were examined.
+    ...EXAMINED_BOOKS,
     area: 50,
     comparables: Array.from({ length: 12 }, (_, i) => ({
       pricePerM2: 10_000 + i,
@@ -68,7 +76,15 @@ function rcnInputs(): KcsInput {
       transactionId: `tx-${i}`,
       status: "to_verify" as const,
     })),
-    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    // A rating on its described scale, so the ADR-016 blockers (B-08…B-10) clear.
+    features: [
+      {
+        name: "standard",
+        weight: 1,
+        rating: "przecietna" as const,
+        definitions: THREE_LEVEL_SCALE,
+      },
+    ],
     sampleMeta: {
       point: { x: 355300.15, y: 505330.31, source: "subject" as const },
       maxRadiusM: 3000,
@@ -768,6 +784,51 @@ describe("signValuation (F-7)", () => {
   });
 });
 
+/**
+ * „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6, spec §3 P9): an operat
+ * that is approved but not yet signed goes back to editing. The files it
+ * already issued stay in storage — the audit row names their keys — and every
+ * field the approval computed is cleared, so the next approval computes it
+ * again rather than carrying a stale number into a new document (D-57).
+ */
+describe("reopenApproved (ADR-020 reguła 6)", () => {
+  it("flips approved → in_progress and clears everything the approval produced", () => {
+    const reopened = reopenApproved(approvedValuation);
+
+    expect(reopened.status).toBe("in_progress");
+    expect(reopened.approvedAt).toBeNull();
+    expect(reopened.docUrl).toBeNull();
+    expect(reopened.docxUrl).toBeNull();
+    expect(reopened.amountInWords).toBeNull();
+    expect(reopened.wr).toBeNull();
+  });
+
+  it("leaves the inputs — the corrections are made ON them, not instead of them", () => {
+    const reopened = reopenApproved(approvedValuation);
+
+    expect(reopened.inputs).toBe(approvedValuation.inputs);
+    // The frozen maps and the prose stamps survive: reopening is not a reset,
+    // and re-fetching maps would change the document nobody asked to change.
+    expect(reopened.mapsFrozenFor).toBe(approvedValuation.mapsFrozenFor);
+    expect(reopened.signedAt).toBeNull();
+  });
+
+  it("refuses a draft and a signed valuation — only an unsigned approval reopens", () => {
+    expect(() => reopenApproved({ ...approvedValuation, status: "in_progress" })).toThrow(
+      NotReopenableError,
+    );
+    expect(() =>
+      reopenApproved({ ...approvedValuation, status: "signed", signedAt: new Date() }),
+    ).toThrow(NotReopenableError);
+  });
+
+  it("refuses an approved row that is already signed, whatever its status says", () => {
+    expect(() =>
+      reopenApproved({ ...approvedValuation, signedAt: new Date("2026-07-20T10:00:00Z") }),
+    ).toThrow(NotReopenableError);
+  });
+});
+
 describe("newVersionOf (NFR-3)", () => {
   it("copies a signed valuation into a linked draft", () => {
     const signed = signValuation(approvedValuation, new Date());
@@ -936,6 +997,7 @@ describe("AUDIT_ACTIONS (FR-12)", () => {
       "approved",
       "signed",
       "version_created",
+      "reopened",
     ]);
   });
 });

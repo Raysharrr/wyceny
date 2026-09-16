@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import type { Step1Input } from "../src/app/actions/wizard-schemas";
-import { approvableInput, confirmedProseFor } from "./fixtures/valuation-inputs";
+import { approvableInput, approvableWr, confirmedProseFor } from "./fixtures/valuation-inputs";
 import { PROSE_SECTIONS, PROSE_SECTION_LABEL } from "../src/domain/prose-snapshot";
 
 /**
@@ -96,7 +96,9 @@ function draft(): Valuation {
     id: ID,
     address: ADDRESS,
     area: 71.63,
-    wr: 1_044_400,
+    // I-21: the amount must be the one this snapshot produces — a fixture that
+    // invents a number now trips `documentInputFor` (ADR-016).
+    wr: approvableWr(),
     inputs: { ...inputs, prose: confirmedProseFor(ADDRESS, inputs) },
     amountInWords: null,
     docUrl: null,
@@ -127,7 +129,9 @@ function reconfirmAt(address: string) {
   current = {
     ...current,
     address,
-    wr: 1_044_400,
+    // I-21: the amount must be the one this snapshot produces — a fixture that
+    // invents a number now trips `documentInputFor` (ADR-016).
+    wr: approvableWr(),
     inputs: { ...inputs, prose: confirmedProseFor(address, inputs) },
   };
 }
@@ -291,9 +295,11 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     await previewOperat(ID);
 
     expect(approveMock).not.toHaveBeenCalled();
+    // By shape, not by spelling: since ADR-020 the issued keys carry the
+    // approval's timestamp, and an assertion naming one fixed key would go on
+    // passing while the preview wrote a differently-named issued document.
     const writtenKeys = storagePutMock.mock.calls.map(([key]) => key);
-    expect(writtenKeys).not.toContain(`operat-${ID}.pdf`);
-    expect(writtenKeys).not.toContain(`operat-${ID}.docx`);
+    expect(writtenKeys.filter((key) => key.startsWith("operat-"))).toEqual([]);
     expect(current.docUrl).toBeNull();
     expect(current.docxUrl).toBeNull();
   });
@@ -304,6 +310,31 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     const result = await previewOperat(ID);
 
     expect(result).toEqual({ error: expect.stringContaining("zatwierdzona") });
+    expect(convertToPdfMock).not.toHaveBeenCalled();
+  });
+
+  // ADR-016: a draft whose ratings predate the scale rule has no WR to print.
+  // Named here rather than surfacing as a worker failure further down.
+  it("refuses a draft whose ratings predate the scale rule, naming the reason", async () => {
+    current = {
+      ...current,
+      inputs: {
+        ...current.inputs!,
+        features: [
+          {
+            key: "standard-wykonczenia",
+            name: "Standard wykończenia",
+            weight: 1,
+            rating: "przecietna" as const,
+            definitions: { lepsza: "opis lepszej", gorsza: "opis gorszej" },
+          },
+        ],
+      },
+    };
+
+    const result = await previewOperat(ID);
+
+    expect(result).toEqual({ error: expect.stringContaining("sprzed zmiany skali ocen") });
     expect(convertToPdfMock).not.toHaveBeenCalled();
   });
 

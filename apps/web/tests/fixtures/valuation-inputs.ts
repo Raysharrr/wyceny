@@ -1,3 +1,4 @@
+import { computeKcsOnScale } from "../../src/domain/feature-rules";
 import type { KcsInput } from "../../src/domain/kcs";
 import type { InputsProvenance } from "../../src/domain/provenance";
 import { currentSectionFactsHash } from "../../src/domain/prose-hash";
@@ -93,7 +94,10 @@ export function valuationInput(ownerId: string, address: string): NewValuationIn
   return {
     address,
     area: 33.3,
-    wr: 333000,
+    // No snapshot, so no amount can follow from one: `readFeatureScale` drops a
+    // `wr` that its inputs do not produce (ADR-016). Tests that need a priced
+    // draft pass `inputs` AND the matching `wr` — see `approvableInput`.
+    wr: null,
     inputs: null,
     amountInWords: null,
     docUrl: null,
@@ -106,6 +110,52 @@ export function valuationInput(ownerId: string, address: string): NewValuationIn
 }
 
 /**
+ * A described three-level scale (ADR-016): a rating on any level has a
+ * position, so a feature carrying it feeds the engine like before the rule.
+ * Fictional text (F-9).
+ */
+export const THREE_LEVEL_SCALE = {
+  lepsza: "opis poziomu lepszego",
+  przecietna: "opis poziomu przeciętnego",
+  gorsza: "opis poziomu gorszego",
+};
+
+/**
+ * Both books examined, the way ADR-018 requires of any valuation allowed to be
+ * approved: B-06 asks on every path, not only after an upload, so a fixture
+ * that clears the gate has to carry an examination. Manual source, because
+ * that is the office's actual practice; both dzialy answered "no entries", so
+ * B-07 stays out of the way of tests about other things. KW numbers are short
+ * synthetic strings, never the real format (F-9).
+ */
+export const EXAMINED_BOOKS = {
+  kw: {
+    source: "ekw_reczne" as const,
+    kwLokalu: "PO1P/1/6",
+    kwGruntu: "PO1P/2/4",
+    kwInne: [],
+    deweloperski: false,
+    powUzytkowaKw: null,
+    udzial: null,
+    sad: null,
+    wydzial: null,
+    dataDokumentu: null,
+    dataBadania: "2026-07-10",
+    nrLokalu: null,
+    akt: null,
+    dzial3: { wpisy: false, tresc: [] },
+    dzial4: { wpisy: false, tresc: [] },
+  },
+  kwGrunt: {
+    source: "ekw_reczne" as const,
+    nrKsiegi: "PO1P/2/4",
+    dataBadania: "2026-07-10",
+    dzial3: { wpisy: false, tresc: [] },
+    dzial4: { wpisy: false, tresc: [] },
+  },
+};
+
+/**
  * `KcsInput` fixture with 12 rcn comparables + geocode, both `to_verify`
  * (moved from `valuation-repo.test.ts`, F-7 Task 4). Does NOT pass the F-4
  * gate on its own: `confirmSample` must flip the sample to `confirmed`, and
@@ -115,7 +165,8 @@ export function valuationInput(ownerId: string, address: string): NewValuationIn
  * the gate refuses a bare draft.
  */
 export function approvableInputs(): KcsInput {
-  return {
+  const base: KcsInput = {
+    ...EXAMINED_BOOKS,
     area: 50,
     comparables: Array.from({ length: 12 }, (_, i) => ({
       pricePerM2: 10_000 + i,
@@ -123,7 +174,15 @@ export function approvableInputs(): KcsInput {
       transactionId: `tx-${i}`,
       status: "to_verify" as const,
     })),
-    features: [{ name: "standard", weight: 1, rating: "przecietna" as const }],
+    features: [
+      {
+        name: "standard",
+        weight: 1,
+        rating: "przecietna" as const,
+        definitions: THREE_LEVEL_SCALE,
+      },
+    ],
+    // Saved under the ADR-016 rule — a draft without the marker is migrated on read.
     sampleMeta: {
       point: { x: 355300.15, y: 505330.31, source: "subject" as const },
       maxRadiusM: 3000,
@@ -138,8 +197,20 @@ export function approvableInputs(): KcsInput {
       weights: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       ratings: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       geocode: { source: "geokoder" as const, status: "to_verify" as const },
+      // The examination above is the appraiser's own work (ADR-018 reg. 1),
+      // so it enters confirmed — the same stamp `assignSubjectProvenance` puts
+      // on it when the manual card is saved.
+      kw: { source: "rzeczoznawca" as const, status: "confirmed" as const },
     },
   };
+  // Głęboka kopia na wyjściu: `...EXAMINED_BOOKS` i `THREE_LEVEL_SCALE` to
+  // stałe modułowe, więc bez tego `kw`, `kwGrunt` i `features[0].definitions`
+  // byłyby WSPÓLNE dla wszystkich wywołań — test zmieniający datę badania
+  // księgi albo opis poziomu pisałby dane każdemu następnemu w przebiegu.
+  // Domyka to także `approvableInput` i `confirmableInput`, bo obie budują
+  // stąd. Klon na wyjściu, nie kopiowanie pól: nowe pole nie wymaga wtedy
+  // pamiętania o kopii (pilnuje tego `fixtures-isolation.test.ts`).
+  return structuredClone(base);
 }
 
 /**
@@ -155,18 +226,31 @@ export function approvableInputs(): KcsInput {
  * the gate REFUSES a bare draft need it. A test that wants an approval to
  * SUCCEED wraps the inputs in {@link withConfirmedProse}.
  */
+/**
+ * The amount `approvableInputs()` produces. A draft carrying any OTHER number
+ * loses it on read (`readFeatureScale`, ADR-016), so a test that wants a priced
+ * approvable draft passes this beside the inputs.
+ */
+export function approvableWr(): number {
+  return computeKcsOnScale(approvableInputs()).wr;
+}
+
 export function approvableInput(ownerId: string): NewValuationInput {
   const base = approvableInputs();
+  const inputs = {
+    ...base,
+    comparables: base.comparables.map((c) => ({ ...c, status: "confirmed" as const })),
+    provenance: {
+      ...base.provenance!,
+      geocode: { source: "geokoder" as const, status: "confirmed" as const },
+    },
+  };
   return {
     ...valuationInput(ownerId, "Audit approvable"),
-    inputs: {
-      ...base,
-      comparables: base.comparables.map((c) => ({ ...c, status: "confirmed" as const })),
-      provenance: {
-        ...base.provenance!,
-        geocode: { source: "geokoder" as const, status: "confirmed" as const },
-      },
-    },
+    inputs,
+    // ADR-016: `wr` that does not follow from the snapshot is dropped on read
+    // (`readFeatureScale`), so a fixture cannot invent one.
+    wr: computeKcsOnScale(inputs).wr,
     purpose: "sprzedaz",
     kwNumber: "PO1P/1/6",
     client: "Jan Testowy",

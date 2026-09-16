@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { COMPARABLE_SOURCES, POOL_SOURCES } from "@/domain/kcs";
+import { kwRequirements } from "@/domain/kw-requirements";
+import { ksiegaTrescSchema } from "@/domain/kw-tresc";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
+import { definitionsFromMeasure, featureIssues, measureIssues } from "@/domain/feature-rules";
 import { MANUAL_REJECTION_REASONS } from "@/domain/sample-manual";
 import type { CandidatePool } from "@/ports/sample";
 
@@ -37,15 +40,67 @@ export const featureDefinitionsSchema = z.object({
   gorsza: z.string().optional(),
 });
 
-export const featureSchema = z.object({
-  // Closed pool (F-6): a custom feature is added by a commit to the preset,
-  // never free-typed (brainstorm decision 2).
-  key: z.enum(LOKAL_FEATURE_KEYS, { message: "Nieznana cecha — wybierz z puli." }),
-  name: z.string().trim().min(1, "Podaj nazwę cechy."),
-  weightPct: z.coerce.number().min(0, "Waga nie może być ujemna."),
-  rating: z.enum(["gorsza", "przecietna", "lepsza"]),
-  definitions: featureDefinitionsSchema.optional(),
+/**
+ * Mirrors `MeasureBound` from `@/domain/kcs` — an absent edge is unbounded, and
+ * an edge that IS there is a whole number: the operats write these bands in
+ * whole piętra and whole m², and the touching rule (`prev.do + 1 === next.od`)
+ * is only meaningful on integers.
+ *
+ * Plain `z.number()`, not `z.coerce`: the threshold inputs already hand over a
+ * number, and coercion would type the form's own value as `unknown`.
+ */
+const measureBoundSchema = z.object({
+  od: z.number().int("Próg podaj liczbą całkowitą.").optional(),
+  do: z.number().int("Próg podaj liczbą całkowitą.").optional(),
 });
+
+/**
+ * Mirrors `FeatureMeasure` from `@/domain/kcs` (FH.1). `.nullish()`, not
+ * `.optional()`: retyping a definition by hand RETRACTS the thresholds, and
+ * `setValue(…, undefined)` is not a reliable clear in RHF — the form has to be
+ * able to say "there are no thresholds" with a value.
+ */
+export const featureMeasureSchema = z.object({
+  kind: z.enum(["floor", "area"]),
+  bounds: z.object({
+    lepsza: measureBoundSchema.optional(),
+    przecietna: measureBoundSchema.optional(),
+    gorsza: measureBoundSchema.optional(),
+  }),
+});
+
+export const featureSchema = z
+  .object({
+    // Closed pool (F-6): a custom feature is added by a commit to the preset,
+    // never free-typed (brainstorm decision 2).
+    key: z.enum(LOKAL_FEATURE_KEYS, { message: "Nieznana cecha — wybierz z puli." }),
+    name: z.string().trim().min(1, "Podaj nazwę cechy."),
+    weightPct: z.coerce.number().min(0, "Waga nie może być ujemna."),
+    // ADR-016 reg. 3: no default rating — null until the appraiser picks a level.
+    rating: z.enum(["gorsza", "przecietna", "lepsza"]).nullable(),
+    definitions: featureDefinitionsSchema.optional(),
+    measure: featureMeasureSchema.nullish(),
+  })
+  // FH.1 (D-46, D-48): thresholds with a gap or an overlap are not a scale —
+  // the 14.09 operat shipped both. Saved thresholds also have to BE the texts,
+  // so the operat's §12.1 block and the suggestion can never disagree.
+  .superRefine((feature, ctx) => {
+    if (!feature.measure) return;
+    for (const message of measureIssues(feature.measure)) {
+      ctx.addIssue({ code: "custom", path: ["measure"], message });
+    }
+    const generated = definitionsFromMeasure(feature.measure);
+    const matches = (["lepsza", "przecietna", "gorsza"] as const).every(
+      (level) => (feature.definitions?.[level] ?? "") === (generated[level] ?? ""),
+    );
+    if (!matches) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["measure"],
+        message: "Opisy poziomów nie odpowiadają progom liczbowym.",
+      });
+    }
+  });
 
 /** Mirrors `PoolPoint` from `@/ports/sample` — the subject point the pool was fetched around (ADR-015 v3). */
 export const poolPointSchema = z.object({
@@ -328,6 +383,14 @@ export const subjectSchema = z.object({
     .min(1500, "Rok budowy wygląda na błędny.")
     .max(2100, "Rok budowy wygląda na błędny.")
     .optional(),
+  // FH.2 — piętro lokalu, parter = 0. Podziemia nie są piętrem lokalu
+  // mieszkalnego, więc dolna granica to parter.
+  pietro: z.coerce
+    .number()
+    .int("Piętro podaj liczbą całkowitą.")
+    .min(0, "Piętro nie może być ujemne — parter to 0.")
+    .max(100, "Piętro wygląda na błędne.")
+    .nullish(),
   mpzpAbsent: z.boolean().optional(),
   mpzpSymbol: z.string().optional(),
   mpzpNazwa: z.string().optional(),
@@ -356,8 +419,15 @@ export const subjectMetaSchema = z.object({
 /** Mirrors `KwDzialSnapshot`/`KwSnapshot` from `@/domain/kw-snapshot` (Slice 6). */
 export const kwDzialSchema = z.object({ wpisy: z.boolean(), tresc: z.array(z.string()) });
 
+/** Mirrors `KwAkt` — dział II in three fields (ADR-018 reg. 1). */
+export const kwAktSchema = z.object({
+  rodzaj: z.string(),
+  rep: z.string(),
+  data: z.string(),
+});
+
 export const kwSchema = z.object({
-  source: z.enum(["akt", "odpis_kw"]),
+  source: z.enum(["akt", "odpis_kw", "ekw_reczne"]),
   kwLokalu: z.string().nullable(),
   kwGruntu: z.string().nullable(),
   kwInne: z.array(z.string()),
@@ -369,6 +439,30 @@ export const kwSchema = z.object({
   dataDokumentu: z.string().nullable(),
   dzial3: kwDzialSchema.nullable(),
   dzial4: kwDzialSchema.nullable(),
+  // Optional like the domain type: a snapshot saved before ADR-018 (and every
+  // extract the worker emits today) must still parse — no data migration.
+  dataBadania: z.string().nullish(),
+  nrLokalu: z.string().nullish(),
+  akt: kwAktSchema.nullish(),
+  // The transcribed content of the five dzialy (b1-kw-read). Mirrors
+  // `KwSnapshot["tresc"]`; the schema is the domain's own (`domain/kw-tresc`),
+  // not a copy, so a drift in the worker's wire shape fails in ONE place.
+  tresc: ksiegaTrescSchema.nullish(),
+});
+
+/** Mirrors `KwGruntSnapshot` — the grunt's book, manual-only in paczka 1. */
+export const kwGruntSchema = z.object({
+  source: z.literal("ekw_reczne"),
+  nrKsiegi: z.string().nullable(),
+  dataBadania: z.string().nullable(),
+  dzial3: kwDzialSchema.nullable(),
+  dzial4: kwDzialSchema.nullable(),
+});
+
+/** Mirrors `EncumbranceTreatment` — the appraiser's call on a dział III entry (ADR-018 reg. 6). */
+export const encumbranceTreatmentSchema = z.object({
+  wariant: z.enum(["bez_uwzglednienia", "z_uwzglednieniem"]).nullable(),
+  podstawa: z.string(),
 });
 
 /** Mirrors `KwMetaSnapshot` from `@/domain/kw-snapshot`. */
@@ -401,14 +495,40 @@ export const valuationFormObject = z.object({
     .refine(
       (features) => new Set(features.map((f) => f.key)).size === features.length,
       "Każda cecha może wystąpić najwyżej raz.",
-    ),
+    )
+    // I-10 (ADR-016 reg. 4): a rating the scale does not describe, or a weighted
+    // feature with fewer than two described levels, is never saved. A missing
+    // rating is saved and blocks approval instead (B-08).
+    .superRefine((features, ctx) => {
+      features.forEach((f, index) => {
+        const weight = Number.isFinite(f.weightPct) ? f.weightPct : 0;
+        for (const issue of featureIssues({ ...f, weight })) {
+          if (issue.code === "B-08") continue;
+          ctx.addIssue({ code: "custom", path: [index], message: issue.label });
+        }
+      });
+    }),
   sampleMeta: sampleMetaSchema.optional(),
   sampleSelection: sampleSelectionSchema.optional(),
   streetView: streetViewSchema.optional(),
   subject: subjectSchema.optional(),
   subjectMeta: subjectMetaSchema.optional(),
-  kw: kwSchema.optional(),
-  kwMeta: kwMetaSchema.optional(),
+  // `.nullish()`, not `.optional()`: retracting an examination is a real act —
+  // unticking "zakup deweloperski", or switching the property right — and the
+  // form has to be able to SAY "there is no snapshot" rather than merely omit
+  // the key. `setValue(…, undefined)` is not a reliable clear in RHF, so the
+  // retraction has to be a value, and a value the schema rejects would fail on
+  // a path no field renders (the W4 dead-end). `wizard.ts` already writes
+  // `parsed.kw ? normalizeKw(parsed.kw) : null`.
+  kw: kwSchema.nullish(),
+  kwGrunt: kwGruntSchema.nullish(),
+  encumbranceTreatment: encumbranceTreatmentSchema.nullish(),
+  // `.nullish()` for the same reason as the three above, and since `b1-kw-read`
+  // for a sharper one: `retractExamination` now withdraws this too, and a
+  // withdrawal has to be a VALUE the schema accepts. `.optional()` would have
+  // made `setValue("kwMeta", null)` fail on a path no field renders — the W4
+  // dead-end, with the save button silently refusing.
+  kwMeta: kwMetaSchema.nullish(),
   purpose: z.enum(["sprzedaz", "zabezpieczenie_kredytu", "informacyjny"], {
     message: "Wybierz cel wyceny.",
   }),
@@ -428,8 +548,7 @@ export const valuationFormObject = z.object({
  * extract is present (Slice 6).
  */
 export const valuationFormSchema = valuationFormObject.superRefine((values, ctx) => {
-  // A coop right has no KW of its own (T-12) — the number is optional there.
-  if (!values.kw && !values.kwNumber && values.propertyRight !== "spoldzielcze_wlasnosciowe") {
+  if (!values.kwNumber && kwRequirements(values.propertyRight, values.kw).numerKwWFormularzu) {
     ctx.addIssue({
       code: "custom",
       path: ["kwNumber"],

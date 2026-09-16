@@ -18,7 +18,7 @@ import { isEmptySubject } from "@/lib/subject-form";
 import { recordFailure } from "@/app/actions/_record-failure";
 import { errorWithCode, withTrace } from "@/lib/trace";
 import { normalizeDefText, type FeatureDefinitions } from "@/domain/feature-presets";
-import { normalizeKw } from "@/domain/kw-snapshot";
+import { normalizeKw, normalizeKwGrunt } from "@/domain/kw-snapshot";
 import {
   CalculationNotReadyError,
   confirmKwEntries,
@@ -96,6 +96,9 @@ export async function createDraft(input: Step1Input): Promise<{ error: string } 
   // Normalize the document-sourced KW snapshot once — see
   // `normalizeKw` for the full rationale.
   const normalizedKw = parsed.data.kw ? normalizeKw(parsed.data.kw) : parsed.data.kw;
+  const normalizedKwGrunt = parsed.data.kwGrunt
+    ? normalizeKwGrunt(parsed.data.kwGrunt)
+    : parsed.data.kwGrunt;
 
   // An untouched "Dane przedmiotu" section still submits a truthy object —
   // treat it as absent so no snapshot/provenance is persisted for data
@@ -133,6 +136,10 @@ export async function createDraft(input: Step1Input): Promise<{ error: string } 
     subject: effSubject ?? null,
     subjectMeta: effSubjectMeta ?? null,
     kw: normalizedKw ?? null,
+    // The grunt's book and the encumbrance decision travel with step 1 like
+    // the lokal's snapshot does — the F-4 gate reads all three (ADR-018).
+    kwGrunt: normalizedKwGrunt ?? null,
+    encumbranceTreatment: parsed.data.encumbranceTreatment ?? null,
     kwMeta: parsed.data.kwMeta ?? null,
     hasBasement: parsed.data.hasBasement,
     // Runtime-partial, type-full (advisor BLOCKER-1): weights/ratings arrive
@@ -189,6 +196,9 @@ export async function saveSubjectAction(
     }
 
     const normalizedKw = parsed.data.kw ? normalizeKw(parsed.data.kw) : parsed.data.kw;
+    const normalizedKwGrunt = parsed.data.kwGrunt
+      ? normalizeKwGrunt(parsed.data.kwGrunt)
+      : parsed.data.kwGrunt;
     const subjectTouched = !isEmptySubject(parsed.data.subject);
     const effSubject = subjectTouched ? parsed.data.subject : undefined;
     const effSubjectMeta = subjectTouched ? parsed.data.subjectMeta : undefined;
@@ -214,6 +224,8 @@ export async function saveSubjectAction(
         subject: effSubject ?? null,
         subjectMeta: effSubjectMeta ?? null,
         kw: normalizedKw ?? null,
+        kwGrunt: normalizedKwGrunt ?? null,
+        encumbranceTreatment: parsed.data.encumbranceTreatment ?? null,
         kwMeta: parsed.data.kwMeta ?? null,
         provenance,
       });
@@ -326,6 +338,10 @@ export async function saveFeaturesAction(
       rating: f.rating,
       key: f.key,
       definitions: normalizeDefinitions(f.definitions),
+      // FH.1: the thresholds travel with the definitions they generated — a
+      // feature that lost them (a hand-retyped text) persists that loss, so
+      // the suggestion stays gone after a reload.
+      measure: f.measure ?? null,
     }));
 
     try {

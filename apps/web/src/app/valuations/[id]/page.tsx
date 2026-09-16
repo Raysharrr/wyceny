@@ -3,13 +3,11 @@ import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { WizardShell } from "@/components/wizard/wizard-shell";
 import { getSession } from "@/auth/session";
-import { approvalGate } from "@/domain/provenance";
-import { currentSectionFactsHashes } from "@/domain/prose-hash";
-import { proseEnabled } from "@/lib/prose-enabled";
-import { documentFieldBlockers } from "@/domain/document-model";
+import { approvalBlockers } from "@/domain/valuation";
+import { gateContextFor } from "@/lib/gate-context";
 import { maxReachedStep, resolveStep } from "@/domain/wizard";
 import { step1DefaultsFromInputs } from "@/lib/subject-form";
-import { valuationRepository } from "../_deps";
+import { profileRepository, valuationRepository } from "../_deps";
 import { proseStepProps } from "./prose-step-props";
 import { SubjectForm } from "../new/subject-form";
 import { FlatView } from "./flat-view";
@@ -82,6 +80,12 @@ export default async function ValuationViewPage({
   // which is the case this gates the owner-only action bar for.
   const isOwner = valuation.ownerId === session.user.id;
 
+  // ONE profile read for the whole render (ADR-020 cz. 1). Both branches below
+  // need it — the wizard's step 7 and the flat view build the same gate — and
+  // the step-7 card is a synchronous component, so it takes the answer as a
+  // prop rather than reading the row a second time.
+  const profile = await profileRepository.get(session.user.id);
+
   // Wizard shell (Slice 11a, Task 7/12) — only for the owner's own
   // in-progress draft. Everything else (approved/signed, an admin viewing
   // another appraiser's draft) falls through to the flat view below.
@@ -126,6 +130,7 @@ export default async function ValuationViewPage({
             features={valuation.inputs?.features ?? []}
             comparables={valuation.inputs?.comparables ?? []}
             area={valuation.area}
+            pietro={valuation.inputs?.subject?.pietro ?? null}
           />
         ) : step === 5 ? (
           <StepCalculation valuation={valuation} />
@@ -138,7 +143,7 @@ export default async function ValuationViewPage({
             {...await proseStepProps(valuation, session.user, valuationRepository)}
           />
         ) : (
-          <StepOperat valuation={valuation} />
+          <StepOperat valuation={valuation} profile={profile} />
         )}
       </WizardShell>
     );
@@ -147,6 +152,12 @@ export default async function ValuationViewPage({
   const isDraft = valuation.status === "in_progress";
   const canSign =
     valuation.status === "approved" && Boolean(valuation.inputs) && Boolean(valuation.docxUrl);
+  // „Cofnij zatwierdzenie i popraw” (ADR-020 reguła 6): an approval nobody has
+  // signed, and only for its author — an admin looking at someone else's
+  // valuation sees the document, not the way to withdraw it. `signedAt` is
+  // checked rather than the status alone, so a row that is somehow both
+  // approved and signed offers nothing.
+  const canReopen = valuation.status === "approved" && valuation.signedAt === null && isOwner;
   // Successor lookup (Task 9): no dedicated port method (YAGNI) — a signed
   // valuation is superseded by at most one draft, found by scanning the
   // owner's own list for a row that points back at this one.
@@ -160,25 +171,13 @@ export default async function ValuationViewPage({
   // — offering the button here would let the owner spawn a second, duplicate
   // draft.
   const canCreateNewVersion = valuation.status === "signed" && isOwner && !successor;
-  // Mirrors step-operat.tsx: this list has to name the same blockers the
-  // approve action refuses on, kill switch (FR-6) included.
-  const gate =
-    isDraft && valuation.inputs
-      ? approvalGate(
-          { ...valuation.inputs, propertyRight: valuation.propertyRight },
-          {
-            requireProse: proseEnabled(),
-            currentSectionHashes: proseEnabled()
-              ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })
-              : undefined,
-          },
-        )
-      : null;
-  const fieldBlockers = isDraft ? documentFieldBlockers(valuation) : [];
-  // Approval requires BOTH the F-4 provenance gate and the document-field
-  // check (spec §4) — the button is enabled only when neither has a blocker.
-  const allBlockers = [...(gate && !gate.ok ? gate.blockers : []), ...fieldBlockers];
-  const gateOk = gate?.ok === true && fieldBlockers.length === 0;
+  // The same list the approve action refuses on, kill switch (FR-6) included.
+  const allBlockers = isDraft
+    ? approvalBlockers(valuation, gateContextFor(valuation, profile))
+    : [];
+  // A draft without an inputs snapshot can never be approved, even with an
+  // empty list (only its document fields are checkable).
+  const gateOk = isDraft && valuation.inputs != null && allBlockers.length === 0;
   // A legacy `approved` row (no inputs) or a superseded `signed` row leaves
   // every can* flag false — without this check the action-bar Card would
   // render empty for the owner.
@@ -190,6 +189,7 @@ export default async function ValuationViewPage({
   const hasAnyAction =
     valuation.status === "in_progress" || // canApprove
     canSign ||
+    canReopen ||
     canCreateNewVersion;
 
   return (
@@ -198,6 +198,7 @@ export default async function ValuationViewPage({
       isOwner={isOwner}
       isDraft={isDraft}
       canSign={canSign}
+      canReopen={canReopen}
       successor={successor}
       allBlockers={allBlockers}
       gateOk={gateOk}

@@ -5,8 +5,10 @@ import {
   documentFieldBlockers,
   formatNumber,
   formatPln,
+  OCENA_SPOZA_REJESTRU,
 } from "../src/domain/document-model";
 import type { KwSnapshot } from "../src/domain/kw-snapshot";
+import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 
 const NBSP = "\u00A0"; // non-breaking space (escape — a pasted literal is invisible to review)
 
@@ -22,9 +24,29 @@ function syntheticInputs(): KcsInput {
       transactionId: `rcn-tx-${i}`, // must never reach the model
       status: "confirmed" as const,
     })),
+    // Trzy opisane poziomy w każdej cesze (ADR-016 reg. 1) — bez opisów ocena nie
+    // ma pozycji w skali, a od FH.3 to z pozycji bierze się opis słowny (D-54).
     features: [
-      { name: "standard wykończenia", weight: 0.6, rating: "lepsza" as const },
-      { name: "lokalizacja", weight: 0.4, rating: "gorsza" as const },
+      {
+        name: "standard wykończenia",
+        weight: 0.6,
+        rating: "lepsza" as const,
+        definitions: {
+          lepsza: "opis lepszej",
+          przecietna: "opis przeciętnej",
+          gorsza: "opis gorszej",
+        },
+      },
+      {
+        name: "lokalizacja",
+        weight: 0.4,
+        rating: "gorsza" as const,
+        definitions: {
+          lepsza: "opis lepszej",
+          przecietna: "opis przeciętnej",
+          gorsza: "opis gorszej",
+        },
+      },
     ],
     sampleMeta: null,
     provenance: null,
@@ -45,6 +67,7 @@ function goldenInput() {
     inputs,
     kcs: computeKcs(inputs),
     amountInWords: "sto tysięcy złotych zero groszy",
+    author: AUTOR_TESTOWY,
   };
 }
 
@@ -85,6 +108,7 @@ describe("F-12: professional-secrecy masking in the document model", () => {
       inputs,
       kcs: computeKcs(inputs),
       amountInWords: "słownie",
+      author: AUTOR_TESTOWY,
     });
     expect(credit.kredyt).toBe(true);
   });
@@ -114,9 +138,12 @@ describe("F-12: professional-secrecy masking in the document model", () => {
       "standard wykończenia – wartość najwyższa cechy,",
       "lokalizacja – wartość najniższa cechy,",
     ]);
-    expect(model.opis_cmin).toHaveLength(2);
-    expect(model.opis_cmin[0]).toContain("wartość najniższa");
-    expect(model.opis_cmax[0]).toContain("wartość najwyższa");
+    expect(model.lokale_cmin[0].cechy).toHaveLength(2);
+    // FH.3 (D-52): żadna z tych cech nie ma progów liczbowych, a rejestr nie
+    // niesie standardu ani lokalizacji — operat mówi to wprost, zamiast
+    // przypisywać lokalowi Cmin same wartości najniższe.
+    expect(model.lokale_cmin[0].cechy[0].opis).toContain(OCENA_SPOZA_REJESTRU);
+    expect(model.lokale_cmax[0].cechy[0].opis).toContain(OCENA_SPOZA_REJESTRU);
   });
 });
 
@@ -146,7 +173,21 @@ describe("F-12: KW examination masking (Slice 6, defense-in-depth)", () => {
     };
   }
 
-  it("never leaks an 11-digit (PESEL-shaped) run anywhere in the serialized model", () => {
+  /**
+   * SCOPE, narrowed by b1-kw-read. This guards the FIELD-READ path, whose
+   * snapshot arrives post-`scrub_extract` and must not have an 11-digit run
+   * reintroduced by a passthrough (sąd, wydział, udział, dział III/IV text).
+   *
+   * It is no longer true of every model, and saying so would be a false
+   * assurance. `inputs.kw.tresc` — the full transcription of the five dzialy —
+   * carries persons and PESELs ON PURPOSE: ADR-018 reg. 7 (decyzja usera 15.09)
+   * has §8.2 print the dzialy as the office's own operat does. That exception is
+   * pinned in the opposite direction by "carries persons' data from the
+   * transcription on purpose" in `tests/document-model-kw.test.ts`, so
+   * tightening F-12 back over `tresc` has to face the decision instead of
+   * quietly undoing it. The fixture below therefore has no `tresc`.
+   */
+  it("never leaks an 11-digit (PESEL-shaped) run from the FIELD READ into the model", () => {
     const inputs = { ...syntheticInputs(), kw: kwFixtureWithScrubMarker() };
     const model = buildDocumentModel({ ...goldenInput(), inputs, kcs: computeKcs(inputs) });
     const json = JSON.stringify(model);
