@@ -297,7 +297,7 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     }
   });
 
-  it("marks nothing in a draft whose six sections are written", async () => {
+  it("marks nothing in a draft whose seven sections are written", async () => {
     await previewOperat(ID);
 
     expect(docText(convertToPdfMock.mock.calls[0][0])).not.toContain("[PODGLĄD: BRAK TREŚCI]");

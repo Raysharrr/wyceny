@@ -16,8 +16,10 @@ import {
   INSPECTION_SECTIONS,
   MAX_INSPECTION_PHOTOS,
   totalInspectionPhotos,
+  type InspectionNotes,
   type InspectionSection,
   type InspectionSnapshot,
+  type NoteField,
 } from "./inspection";
 
 /**
@@ -213,7 +215,11 @@ export class InspectionLimitError extends Error {
 export type InspectionOp =
   | { kind: "add_photo"; section: InspectionSection; key: string }
   | { kind: "remove_photo"; section: InspectionSection; key: string }
-  | { kind: "set_note"; note: string }
+  // Since 16.09 the note is written PER FIELD (ADR-017 reg. 1). No op writes
+  // the old single `note` any more: it stays in the snapshot read-only, so an
+  // existing draft keeps showing what the appraiser typed while nothing new
+  // can be written into the shape that caused D-15 and D-31.
+  | { kind: "set_note_field"; field: NoteField; text: string }
   | { kind: "set_date"; date: string };
 
 /**
@@ -250,8 +256,14 @@ export function applyInspectionOp(v: Valuation, op: InspectionOp): Valuation {
   } else if (op.kind === "set_date") {
     return { ...v, inspectionDate: op.date || null };
   } else {
-    const note = op.note.trim();
-    inspection = { ...current, note: note.length > 0 ? note : null };
+    // A blank field is REMOVED, not stored as "": `noteField` and
+    // `selectProseSections` both read presence, and an empty string that
+    // counts as present would offer a section with nothing to write from.
+    const text = op.text.trim();
+    const notes: InspectionNotes = { ...current.notes };
+    if (text) notes[op.field] = text;
+    else delete notes[op.field];
+    inspection = { ...current, notes };
   }
   return { ...v, inputs: { ...v.inputs, inspection } };
 }

@@ -13,9 +13,10 @@
 
 import { sourced, type Sourced } from "@wyceny/shared";
 
-/** The six operat sections the model writes — worker `prose.SECTIONS`, same order. */
+/** The seven operat sections the model writes — worker `prose.SECTIONS`, same order. */
 export const PROSE_SECTIONS = [
   "analiza_rynku",
+  "opis_budynku",
   "opis_lokalu",
   "otoczenie",
   "zagospodarowanie",
@@ -33,6 +34,7 @@ export type ProseSection = (typeof PROSE_SECTIONS)[number];
  */
 export const PROSE_SECTION_LABEL: Record<ProseSection, string> = {
   analiza_rynku: "Analiza i charakterystyka rynku",
+  opis_budynku: "Opis budynku",
   opis_lokalu: "Opis lokalu — układ funkcjonalny",
   otoczenie: "Charakterystyka bezpośredniego otoczenia",
   zagospodarowanie: "Opis zagospodarowania terenu",

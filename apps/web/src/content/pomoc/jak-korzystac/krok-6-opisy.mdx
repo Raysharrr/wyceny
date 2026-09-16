@@ -5,7 +5,7 @@ W kroku 6 powstają opisowe fragmenty operatu — te, których nie da się zło�
 
 <img
   src="/api/pomoc/krok-6-opisy.png"
-  alt="Krok 6 kreatora: sześć pól tekstowych z propozycjami sekcji opisowych operatu, każde z plakietką „AI — do weryfikacji”, nad nimi adnotacja o odpowiedzialności rzeczoznawcy i przycisk „Wygeneruj ponownie”."
+  alt="Krok 6 kreatora: siedem pól tekstowych z propozycjami sekcji opisowych operatu, każde z plakietką „AI — do weryfikacji”, nad nimi adnotacja o odpowiedzialności rzeczoznawcy i przycisk „Wygeneruj ponownie”."
   style={{
     width: "100%",
     height: "auto",
@@ -31,7 +31,7 @@ Fakty, z których powstaje tekst, pochodzą wyłącznie z tej wyceny:
 - **adres i powierzchnia użytkowa** przedmiotu z [kroku 1](/pomoc/krok-1-przedmiot) oraz nazwa miasta z tego adresu,
 - **określenie rynku** „wtórny, lokale mieszkalne” — powtórzenie filtrów doboru, nie założenie: dobór odrzuca transakcje niemieszkalne i te, które rejestr oznaczył jako rynek pierwotny. Rejestr wypełnia to pole w części rekordów, więc transakcja deweloperska z pustym polem może się przez ten filtr prześlizgnąć — jeśli dla tej wyceny określenie jest nieprawdziwe, popraw zdanie w sekcji analizy rynku. Bez próby fakt nie jest wpisywany wcale,
 - **dane ewidencyjne działki i budynku (EGiB)** z [kroku 1](/pomoc/krok-1-przedmiot) — obręb, numer i powierzchnia działki, rodzaj użytku, rodzaj budynku, liczba kondygnacji nadziemnych, rok budowy,
-- **notatka z [oględzin](/pomoc/krok-2-ogledziny)** — jeden i ten sam tekst notatki widzą wszystkie cztery sekcje opisujące nieruchomość; każda wycina z niego swój wątek,
+- **notatka z [oględzin](/pomoc/krok-2-ogledziny)** — podzielona na pola, a **każde pole zasila dokładnie jedną sekcję**: „Otoczenie” → charakterystyka otoczenia, „Budynek” → opis budynku, „Lokal — układ” → opis lokalu, „Wykończenie” → opis standardu, „Zagospodarowanie działki” → opis zagospodarowania. Pole „Uwagi” nie trafia do żadnego opisu — drukuje się dosłownie w sekcji 8.3. Dawna, niepodzielona notatka nie jest już dla opisów faktem w ogóle,
 - **[próba porównawcza](/pomoc/krok-3-proba)** — liczba transakcji przyjętych do porównań, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna, przedział cen całkowitych, a od Slice'u „Proza z próby” także **obszar badania**: nazwy obrębów, z których pochodzi Twoja próba (po Twoich odrzuceniach, nie przed nimi), użyty promień oraz liczba przebadanych transakcji **słownie** — „kilkadziesiąt”, „kilkaset”. Dokładna liczba przebadanych zostaje w kroku 3 i w danych wyceny; operat jej co do sztuki nie podaje, bo nie podają jej operaty wzorcowe,
 - **oceny cech** z [kroku 4](/pomoc/krok-4-cechy) — nazwy cech o niezerowej wadze wraz z ich ocenami słownymi,
 - **pozycja wyniku na tle próby** — wyłącznie jako określenie słowne, np. „w przedziale cen próby, powyżej średniej”. Sama kwota wartości rynkowej ani wartość jednostkowa nigdy nie opuszczają aplikacji.
@@ -73,7 +73,7 @@ Regeneracja potrafi też **zabrać**, i warto o tym wiedzieć przed kliknięciem
 Pod pustym polem stoi wyjaśnienie. Powody są cztery:
 
 - **automat użył liczby spoza danych wyceny** — komunikat wymienia te liczby wprost. Tekst został odrzucony i sekcję trzeba napisać ręcznie. Jest to zamierzone: lepszy pusty akapit niż liczba, której w operacie nie da się obronić;
-- **brak danych wejściowych** — bez notatki z oględzin nie powstanie opis lokalu ani opis otoczenia, a bez próby porównawczej nie powstanie analiza rynku. Komunikat mówi, czego brakuje;
+- **brak danych wejściowych** — sekcja oparta na notatce powstaje tylko wtedy, gdy wypełnione jest **jej własne** pole: bez pola „Otoczenie” nie powstanie charakterystyka otoczenia, nawet jeśli pozostałe pola są pełne. Bez próby porównawczej nie powstanie analiza rynku. Komunikat nazywa brakujące pole;
 - **generowanie się nie udało** — awaria połączenia albo usługi; „Wygeneruj ponownie” jest wtedy sensowną próbą;
 - **sekcja wróciła bez tekstu i bez podanego powodu** — przypadek rzadki, ale i wtedy pole mówi, że się nie udało, zamiast milczeć.
 
@@ -83,14 +83,17 @@ Aplikacja nigdy nie wypełnia takiego pola tekstem zastępczym ani zdaniem z sza
 
 ## Gdzie ten tekst trafia
 
-Zatwierdzone opisy drukują się w operacie w sześciu miejscach:
+Zatwierdzone opisy drukują się w operacie w siedmiu miejscach:
 
 - **analiza i charakterystyka rynku** — sekcja 11 operatu,
 - **charakterystyka bezpośredniego otoczenia** — sekcja 8.1, po zdaniu z adresem,
+- **opis budynku** — sekcja 8.3, pod nagłówkiem „Opis budynku”, przed zdjęciami budynku,
+- **opis lokalu** — sekcja 8.3, pod nagłówkiem „Opis lokalu mieszkalnego”, **oraz wyciąg z operatu** (sekcja 1), czyli ten sam tekst w dwóch miejscach; wiersz „Opis nieruchomości” w wyciągu bierze się właśnie stąd,
+- **opis standardu wykończenia** — sekcja 8.3, pod tym samym nagłówkiem „Opis lokalu mieszkalnego”, zaraz po opisie lokalu i przed zdjęciami wnętrz,
 - **opis zagospodarowania terenu** — sekcja 8.4, po zdaniu z adresem,
-- **opis standardu wykończenia** — sekcja 8.3,
-- **opis lokalu** — sekcja 8.3 **oraz wyciąg z operatu** (sekcja 1), czyli ten sam tekst w dwóch miejscach; wiersz „Opis nieruchomości” w wyciągu bierze się właśnie stąd,
 - **uzasadnienie wyniku** — sekcja 13.
+
+Do 16 września 2026 opis standardu wykończenia drukował się pod nagłówkiem „Opis budynku”, a budynku nie opisywała żadna osobna sekcja — jego parametry trafiały za to do charakterystyki otoczenia i do opisu zagospodarowania, więc ta sama informacja potrafiła wystąpić w operacie cztery razy. Dlatego doszła siódma sekcja, a notatka z oględzin została podzielona na pola.
 
 ### Jak tekst z pola zamienia się w akapity operatu
 

@@ -117,10 +117,15 @@ describe("what a step-1 save costs the descriptions", () => {
       ["zagospodarowanie"],
     ],
     ["użytek", () => staleAfter(ADDRESS, editSubject({ uzytek: "Bi" })), ["zagospodarowanie"]],
+    // D-31: the building's own parameters invalidate the BUILDING description.
+    // Until 16.09 all three below said ["zagospodarowanie"] — the map pinned
+    // the defect: a change to the building's age re-flagged the description of
+    // the land it stands on, because that section was where the building got
+    // written up.
     [
       "rodzaj budynku",
       () => staleAfter(ADDRESS, editSubject({ budynekRodzaj: "usługowy" })),
-      ["zagospodarowanie"],
+      ["opis_budynku"],
     ],
     [
       "pow. działki",
@@ -130,17 +135,13 @@ describe("what a step-1 save costs the descriptions", () => {
     [
       "kondygnacje nadziemne",
       () => staleAfter(ADDRESS, editSubject({ kondygnacjeNadziemne: 9 })),
-      ["zagospodarowanie"],
+      ["opis_budynku"],
     ],
-    [
-      "rok budowy",
-      () => staleAfter(ADDRESS, editSubject({ rokBudowy: 2001 })),
-      ["zagospodarowanie"],
-    ],
+    ["rok budowy", () => staleAfter(ADDRESS, editSubject({ rokBudowy: 2001 })), ["opis_budynku"]],
     [
       "odłączenie przedmiotu",
       () => staleAfter(ADDRESS, { ...baseInputs(), subject: null }),
-      ["analiza_rynku", "zagospodarowanie"],
+      ["analiza_rynku", "opis_budynku", "zagospodarowanie"],
     ],
   ])("%s unieważnia: %o", (_label, measure, expected) => {
     expect([...measure()].sort()).toEqual([...expected].sort());

@@ -20,7 +20,7 @@ import { approvableInput, confirmedProseFor } from "./fixtures/valuation-inputs"
  * Each of the three has its own unit tests; none of them exercises the
  * composition, and the composition is where the promise of this slice lives —
  * "correct one transaction price and you re-read the two sections that
- * describe it, not all six". A test per part can all pass while the parts
+ * describe it, not all seven". A test per part can all pass while the parts
  * disagree about which sections moved.
  *
  * Fictional throughout (F-9): no address, sample or sentence here describes a
@@ -30,7 +30,7 @@ const ADDRESS = "ul. Klonowa 5, m. Nowogród";
 
 type DraftWithProse = KcsInput & { prose: ProseSnapshot };
 
-/** The appraiser's own six sections, fingerprinted against THIS draft. */
+/** The appraiser's own seven sections, fingerprinted against THIS draft. */
 function draftWithConfirmedProse(): DraftWithProse {
   const inputs = approvableInput("test-user").inputs!;
   return { ...inputs, prose: confirmedProseFor(ADDRESS, inputs) };
@@ -68,11 +68,11 @@ describe("a corrected transaction price → the two sections that describe it (T
   const MOVED: ProseSection[] = ["analiza_rynku", "uzasadnienie"];
   const UNTOUCHED = PROSE_SECTIONS.filter((s) => !MOVED.includes(s));
 
-  it("orders exactly the sections whose own facts moved — a proper subset of the six", () => {
+  it("orders exactly the sections whose own facts moved — a proper subset of the seven", () => {
     expect(staleProseSections(after.prose, factsInput, currentSectionFactsHash)).toEqual(MOVED);
-    // The point of the whole slice: the other four are NOT in the batch, so
+    // The point of the whole slice: the other five are NOT in the batch, so
     // they are neither paid for nor put back in front of the appraiser.
-    expect(UNTOUCHED.length).toBe(4);
+    expect(UNTOUCHED.length).toBe(5);
   });
 
   it("blocks approval naming exactly them, BEFORE any regeneration has run", () => {
@@ -132,7 +132,7 @@ describe("a corrected transaction price → the two sections that describe it (T
     }
   });
 
-  it("one pass through step 6 clears it — and the four untouched sections never moved", () => {
+  it("one pass through step 6 clears it — and the five untouched sections never moved", () => {
     const merged = mergeProseProposal(after.prose, regenerationOf(MOVED, factsInput));
     const texts = Object.fromEntries(
       PROSE_SECTIONS.map((s) => [s, merged.sections[s]!.value]),

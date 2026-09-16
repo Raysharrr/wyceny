@@ -627,11 +627,11 @@ describe("stepForBlockerPath", () => {
     // Sanity: the enumeration really did reach every group — sample size + one
     // transaction (2), the four scalars + featureDefs + geocode + EGiB + MPZP +
     // KW (9), the designation source (1, B-02/M-10), the KW examination and the
-    // encumbrance decision (2), the prose snapshot + its six sections (7), the
+    // encumbrance decision (2), the prose snapshot + its seven sections (8), the
     // five document fields (5), the building photos (1, B-01/M-1 — okładka).
     // A drop here means a group stopped being exercised, and the loop below
     // would then pass vacuously.
-    expect(paths.size).toBe(27);
+    expect(paths.size).toBe(28);
     for (const path of paths) {
       expect(stepForBlockerPath(path), `no step for blocker path "${path}"`).toBeDefined();
     }

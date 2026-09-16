@@ -75,7 +75,22 @@ const FEATURES: KcsInput["features"] = [
   { key: "winda", name: "winda", weight: 0, rating: "gorsza" },
 ];
 
-const NOTE = "Układ: 2 pokoje, kuchnia, łazienka; otoczenie: zabudowa wielorodzinna, sklepy.";
+/**
+ * One text per note field (ADR-017): distinct on purpose, so a fact carrying a
+ * neighbour's text — the D-15/D-31 defect — fails `toEqual` below.
+ */
+const NOTES = {
+  otoczenie: "Zabudowa wielorodzinna, sklepy.",
+  budynek: "Dźwig osobowy, klatka schodowa po remoncie.",
+  lokalUklad: "2 pokoje, kuchnia, łazienka.",
+  wykonczenie: "Panele, glazura w łazience.",
+  zagospodarowanie: "Teren ogrodzony, miejsca postojowe.",
+  uwagi: "Właściciel obecny przy oględzinach.",
+};
+
+/** The pre-16.09 single note — read-only now, never a prose fact. */
+const LEGACY_NOTE =
+  "Układ: 2 pokoje, kuchnia, łazienka; otoczenie: zabudowa wielorodzinna, sklepy.";
 
 const INPUTS: KcsInput = {
   comparables: COMPARABLES,
@@ -91,7 +106,7 @@ const INPUTS: KcsInput = {
     kondygnacjePodziemne: 1,
     rokBudowy: 2014,
   },
-  inspection: { note: NOTE, photos: { otoczenie: [], budynekZewn: [], wnetrza: [] } },
+  inspection: { note: null, notes: NOTES, photos: { otoczenie: [], budynekZewn: [], wnetrza: [] } },
 };
 
 const ADDRESS = "ul. Klonowa 14/3, Nowogród";
@@ -124,13 +139,53 @@ describe("buildProseFacts", () => {
       budynek_rodzaj: "budynek mieszkalny wielorodzinny",
       kondygnacje: "5",
       rok_budowy: "2014",
-      notatka_uklad: NOTE,
-      notatka_otoczenie: NOTE,
-      notatka_standard: NOTE,
-      notatka_zagospodarowanie: NOTE,
+      // One note field -> one fact key (ADR-017); `uwagi` is not a fact.
+      notatka_uklad: NOTES.lokalUklad,
+      notatka_otoczenie: NOTES.otoczenie,
+      notatka_budynek: NOTES.budynek,
+      notatka_standard: NOTES.wykonczenie,
+      notatka_zagospodarowanie: NOTES.zagospodarowanie,
       oceny_cech: { "standard wykończenia": "przeciętna", "stan techniczny budynku": "lepsza" },
       pozycja_wyniku: "w przedziale cen próby, powyżej średniej",
     });
+  });
+
+  it("the old single `note` yields NO prose facts — it is read-only (ADR-017)", () => {
+    const facts = buildProseFacts({
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        inspection: { note: LEGACY_NOTE, photos: INPUTS.inspection!.photos },
+      },
+    });
+
+    for (const key of [
+      "notatka_uklad",
+      "notatka_otoczenie",
+      "notatka_budynek",
+      "notatka_standard",
+      "notatka_zagospodarowanie",
+    ]) {
+      expect(facts).not.toHaveProperty(key);
+    }
+    expect(JSON.stringify(facts)).not.toContain(LEGACY_NOTE);
+  });
+
+  it("blank note fields yield no fact, and `uwagi` never becomes one", () => {
+    const facts = buildProseFacts({
+      address: ADDRESS,
+      inputs: {
+        ...INPUTS,
+        inspection: {
+          note: null,
+          notes: { otoczenie: "   ", uwagi: NOTES.uwagi },
+          photos: INPUTS.inspection!.photos,
+        },
+      },
+    });
+
+    expect(facts).not.toHaveProperty("notatka_otoczenie");
+    expect(JSON.stringify(facts)).not.toContain(NOTES.uwagi);
   });
 
   it("prices are written EXACTLY as the operat table writes them (same formatters)", () => {
@@ -183,7 +238,7 @@ describe("buildProseFacts", () => {
 
     expect(facts).not.toHaveProperty("proba");
     expect(facts).not.toHaveProperty("pozycja_wyniku");
-    expect(facts.notatka_otoczenie).toBe(NOTE);
+    expect(facts.notatka_otoczenie).toBe(NOTES.otoczenie);
     // Slice 5: `rynek` jest twierdzeniem O PRÓBIE („wtórny, lokale mieszkalne"
     // to konsekwencja filtrów doboru), więc bez próby nie ma go co twierdzić.
     expect(facts).not.toHaveProperty("rynek");
@@ -326,12 +381,15 @@ describe("a partial sample never describes itself as a whole one (review I-1)", 
 describe("currentSectionFactsHash — scoped to what the section sees", () => {
   const base = { address: ADDRESS, inputs: INPUTS };
 
-  it("a changed inspection note does NOT move the market-analysis fingerprint", () => {
+  it("a changed inspection note field does NOT move the market-analysis fingerprint", () => {
     const edited = {
       address: ADDRESS,
       inputs: {
         ...INPUTS,
-        inspection: { note: "Zupełnie inna notatka.", photos: INPUTS.inspection!.photos },
+        inspection: {
+          ...INPUTS.inspection!,
+          notes: { ...NOTES, otoczenie: "Zupełnie inna notatka." },
+        },
       },
     };
     expect(currentSectionFactsHash("analiza_rynku", edited)).toBe(
@@ -340,6 +398,53 @@ describe("currentSectionFactsHash — scoped to what the section sees", () => {
     expect(currentSectionFactsHash("otoczenie", edited)).not.toBe(
       currentSectionFactsHash("otoczenie", base),
     );
+  });
+
+  it("each note field moves ONLY its own section (ADR-017: one field, one section)", () => {
+    const owner = {
+      otoczenie: "otoczenie",
+      budynek: "opis_budynku",
+      lokalUklad: "opis_lokalu",
+      wykonczenie: "standard",
+      zagospodarowanie: "zagospodarowanie",
+    } as const;
+    for (const [field, section] of Object.entries(owner)) {
+      const edited = {
+        address: ADDRESS,
+        inputs: {
+          ...INPUTS,
+          inspection: { ...INPUTS.inspection!, notes: { ...NOTES, [field]: "Zmieniony tekst." } },
+        },
+      };
+      const moved = PROSE_SECTIONS.filter(
+        (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+      );
+      expect(moved).toEqual([section]);
+    }
+  });
+
+  it("changed `uwagi` or the old `note` moves NO section — neither is a prose fact", () => {
+    for (const inspection of [
+      { ...INPUTS.inspection!, notes: { ...NOTES, uwagi: "Inna uwaga." } },
+      { ...INPUTS.inspection!, note: LEGACY_NOTE },
+    ]) {
+      const edited = { address: ADDRESS, inputs: { ...INPUTS, inspection } };
+      const moved = PROSE_SECTIONS.filter(
+        (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+      );
+      expect(moved).toEqual([]);
+    }
+  });
+
+  it("changed building data moves ONLY opis_budynku — not zagospodarowanie (D-31)", () => {
+    const edited = {
+      address: ADDRESS,
+      inputs: { ...INPUTS, subject: { ...INPUTS.subject!, rokBudowy: 1975 } },
+    };
+    const moved = PROSE_SECTIONS.filter(
+      (s) => currentSectionFactsHash(s, edited) !== currentSectionFactsHash(s, base),
+    );
+    expect(moved).toEqual(["opis_budynku"]);
   });
 
   it("a changed feature rating moves ONLY standard and uzasadnienie", () => {
@@ -496,9 +601,10 @@ describe("selectProseSections", () => {
   const sectionsFor = (inputs: KcsInput) =>
     selectProseSections(buildProseFacts({ address: ADDRESS, inputs }));
 
-  it("a complete draft asks for all six sections", () => {
+  it("a complete draft asks for all seven sections", () => {
     expect(sectionsFor(INPUTS)).toEqual([
       "analiza_rynku",
+      "opis_budynku",
       "opis_lokalu",
       "otoczenie",
       "zagospodarowanie",
@@ -510,7 +616,9 @@ describe("selectProseSections", () => {
   it("no inspection note: the note-driven sections drop out", () => {
     expect(sectionsFor({ ...INPUTS, inspection: null })).toEqual([
       "analiza_rynku",
-      // zagospodarowanie survives on the EGiB facts alone, standard on oceny_cech
+      // opis_budynku survives on the building facts, zagospodarowanie on the
+      // EGiB plot facts, standard on oceny_cech
+      "opis_budynku",
       "zagospodarowanie",
       "standard",
       "uzasadnienie",
@@ -519,6 +627,7 @@ describe("selectProseSections", () => {
 
   it("no comparables: no analiza_rynku and no uzasadnienie", () => {
     expect(sectionsFor({ ...INPUTS, comparables: [] })).toEqual([
+      "opis_budynku",
       "opis_lokalu",
       "otoczenie",
       "zagospodarowanie",
@@ -538,6 +647,43 @@ describe("selectProseSections", () => {
     expect(sectionsFor({ ...INPUTS, comparables: undated })).toContain("analiza_rynku");
     // ...and the transactions stay home, so no trend is claimed either.
     expect(buildProseTransactions(undated)).toEqual([]);
+  });
+
+  it("only an old single note: no note-driven section is asked for (ADR-017)", () => {
+    expect(
+      sectionsFor({
+        comparables: [],
+        area: 68.4,
+        features: [],
+        inspection: { note: LEGACY_NOTE, photos: INPUTS.inspection!.photos },
+      }),
+    ).toEqual([]);
+  });
+
+  it("building facts alone ask for opis_budynku and NOT zagospodarowanie (D-31)", () => {
+    expect(
+      sectionsFor({
+        comparables: [],
+        area: 68.4,
+        features: [],
+        subject: { rokBudowy: 2014 },
+      }),
+    ).toEqual(["opis_budynku"]);
+  });
+
+  it("the budynek note alone asks for opis_budynku", () => {
+    expect(
+      sectionsFor({
+        comparables: [],
+        area: 68.4,
+        features: [],
+        inspection: {
+          note: null,
+          notes: { budynek: NOTES.budynek },
+          photos: INPUTS.inspection!.photos,
+        },
+      }),
+    ).toEqual(["opis_budynku"]);
   });
 
   it("an empty draft asks for nothing at all", () => {

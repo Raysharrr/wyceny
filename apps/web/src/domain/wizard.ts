@@ -89,7 +89,7 @@ const BLOCKER_STEP: Record<string, number> = {
   features: 4,
   // Step 5 (Kalkulacja).
   wr: 5,
-  // Step 6 (Opisy): the prose snapshot and each of its six sections.
+  // Step 6 (Opisy): the prose snapshot and each of its seven sections.
   prose: 6,
 };
 

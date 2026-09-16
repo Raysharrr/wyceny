@@ -11,6 +11,7 @@ import {
   buildPhotoKey,
   isOwnPhotoKey,
   type InspectionSection,
+  type NoteField,
   INSPECTION_SECTIONS,
 } from "@/domain/inspection";
 import { hasApp1, isJpeg, jpegDimensions } from "@/lib/jpeg";
@@ -122,27 +123,34 @@ export async function removeInspectionPhoto(
   });
 }
 
-export async function saveInspectionNote(
+/**
+ * One field of the structured inspection note (ADR-017 reg. 1). Each field
+ * feeds exactly one prose section, which is why it is saved per field rather
+ * than as one blob — see `NOTE_FIELDS`.
+ */
+export async function saveInspectionNoteField(
   valuationId: string,
+  field: NoteField,
   note: string,
 ): Promise<{ error: string } | undefined> {
   const session = await getSession();
   if (!session) redirect("/login");
   return withTrace(async () => {
     if (note.length > MAX_NOTE_CHARS) {
-      return { error: `Notatka może mieć najwyżej ${MAX_NOTE_CHARS} znaków.` };
+      return { error: `Pole notatki może mieć najwyżej ${MAX_NOTE_CHARS} znaków.` };
     }
     try {
       const updated = await valuationRepository.updateInspection(valuationId, session.user, {
-        kind: "set_note",
-        note,
+        kind: "set_note_field",
+        field,
+        text: note,
       });
       if (!updated) {
         return { error: "Nie znaleziono wyceny albo nie masz do niej dostępu." };
       }
     } catch (error) {
       await recordFailure({
-        event: "saveInspectionNote.failed",
+        event: "saveInspectionNoteField.failed",
         valuationId,
         actorId: session.user.id,
         error: error,

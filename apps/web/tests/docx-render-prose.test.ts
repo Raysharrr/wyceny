@@ -210,7 +210,7 @@ describe("T8: the prose prints in the rendered operat", () => {
 describe("T8: honest silence when the draft carries no prose", () => {
   const bare = goldenInputs();
 
-  it("prints no stub, no empty heading — the four wrapped paragraphs are GONE, not blank", () => {
+  it("prints no stub, no empty heading — the five wrapped paragraphs are GONE, not blank", () => {
     const withProse = renderOperatDocx(
       buildDocumentModel({
         ...syntheticDocumentInput(),
@@ -219,12 +219,14 @@ describe("T8: honest silence when the draft carries no prose", () => {
     );
     const without = renderOperatDocx(buildDocumentModel({ ...syntheticDocumentInput() }));
 
-    // Six: the four {#ma_proza_*}-wrapped prose paragraphs (§11, §8.3 opis
-    // lokalu, §8.3 standard, §13) plus the §8.3 "Opis lokalu mieszkalnego"
-    // sub-label and its spacer, which the wrap now opens BEFORE. The other two
-    // tags are trailing clauses of paragraphs that keep their address sentence
-    // either way.
-    expect(paragraphCount(withProse) - paragraphCount(without)).toBe(6);
+    // Seven: the five {#ma_proza_*}-wrapped prose paragraphs (§11, §8.3 opis
+    // budynku, §8.3 opis lokalu, §8.3 standard, §13) plus the §8.3 "Opis lokalu
+    // mieszkalnego" sub-label and its spacer, which the wrap opens BEFORE. The
+    // "Opis budynku" heading is deliberately NOT wrapped: the factual sentence
+    // with the address always follows it, so it never stands over nothing. The
+    // other two tags are trailing clauses of paragraphs that keep their address
+    // sentence either way.
+    expect(paragraphCount(withProse) - paragraphCount(without)).toBe(7);
     expect(docText(without)).not.toContain("zostanie uzupełniony po oględzinach");
     expect(docText(without)).not.toMatch(/\{[a-z_#/.]+\}/i);
   });

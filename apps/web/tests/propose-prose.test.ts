@@ -41,7 +41,15 @@ const saveProseMock = vi.mocked(valuationRepository.saveProse);
 const VALUATION_ID = "vid";
 const SESSION_USER = { id: "test-user", role: "appraiser" };
 const ADDRESS = "ul. Klonowa 14/3, Nowogród";
-const NOTE = "Układ: 2 pokoje, kuchnia, łazienka; otoczenie: zabudowa wielorodzinna.";
+/** One text per note field (ADR-017) — every note-fed section is generatable. */
+const NOTES = {
+  otoczenie: "Zabudowa wielorodzinna.",
+  budynek: "Dźwig osobowy, klatka schodowa po remoncie.",
+  lokalUklad: "2 pokoje, kuchnia, łazienka.",
+  wykonczenie: "Panele, glazura w łazience.",
+  zagospodarowanie: "Teren ogrodzony.",
+  uwagi: "Właściciel obecny przy oględzinach.",
+};
 
 const INPUTS: KcsInput = {
   area: 68.4,
@@ -60,7 +68,7 @@ const INPUTS: KcsInput = {
       definitions: { lepsza: "opis lepszej", gorsza: "opis gorszej" },
     },
   ],
-  inspection: { note: NOTE, photos: { otoczenie: [], budynekZewn: [], wnetrza: [] } },
+  inspection: { note: null, notes: NOTES, photos: { otoczenie: [], budynekZewn: [], wnetrza: [] } },
 };
 
 const draft: Valuation = {
@@ -93,9 +101,10 @@ const PROPOSAL = {
   usage: { inputTokens: 3120, outputTokens: 480 },
 };
 
-/** All six sections, in the same order `PROSE_SECTIONS` — the request shape when nothing is persisted yet. */
+/** All seven sections, in the same order `PROSE_SECTIONS` — the request shape when nothing is persisted yet. */
 const ALL_SECTIONS: ProseSection[] = [
   "analiza_rynku",
+  "opis_budynku",
   "opis_lokalu",
   "otoczenie",
   "zagospodarowanie",
@@ -104,12 +113,12 @@ const ALL_SECTIONS: ProseSection[] = [
 ];
 
 /**
- * A draft with all six sections already `rzeczoznawca`/`confirmed`
+ * A draft with all seven sections already `rzeczoznawca`/`confirmed`
  * (`confirmedProseFor`, fingerprinted against the ORIGINAL `INPUTS`), then
  * ONE comparable's price edited. `analiza_rynku` and `uzasadnienie` are the
  * only sections whose fact subset includes `proba`/the transactions
  * (`PROSE_SECTION_FACTS`, `SECTIONS_USING_TRANSACTIONS` — T1), so editing a
- * price invalidates exactly those two and leaves the other four's fingerprint
+ * price invalidates exactly those two and leaves the other five's fingerprint
  * untouched.
  *
  * Deliberately appraiser-authored, not `ai` (T3 ruling 1): the sections the
@@ -229,7 +238,7 @@ describe("proposeProse — happy path", () => {
     expect(fetchProposalMock).toHaveBeenCalledWith({
       token: expect.stringMatching(/^\d+\.[0-9a-f]+\.[0-9a-f]{64}$/),
       // draft.inputs.prose is undefined — every generatable section counts as
-      // MISSING, so T3's selection sends all six, same as before T3 existed.
+      // MISSING, so T3's selection sends all seven.
       sections: ALL_SECTIONS,
       facts,
       transactions: [
@@ -250,7 +259,7 @@ describe("proposeProse — happy path", () => {
       rejected: PROPOSAL.rejected,
       // T2 moved the fingerprint from one hash for the whole valuation to one
       // per section; T3 stamps it only for the sections actually REQUESTED —
-      // here, all six. Each one is over its own fact subset AND (for
+      // here, all seven. Each one is over its own fact subset AND (for
       // `analiza_rynku`/`uzasadnienie`) the transactions (review I-2) — kept
       // as over-approximation after Slice 5 removed the trend the worker used
       // to derive from them.
@@ -260,8 +269,8 @@ describe("proposeProse — happy path", () => {
           currentSectionFactsHash(section, { address: ADDRESS, inputs: INPUTS }),
         ]),
       ),
-      // T5 fix round 1: the same six fingerprints, under a name that means
-      // "asked" rather than "answered". Five of these sections came back with
+      // T5 fix round 1: the same seven fingerprints, under a name that means
+      // "asked" rather than "answered". Six of these sections came back with
       // NO text (`PROPOSAL` delivers only opis_lokalu) and every one is still
       // recorded here — that is the whole point. The two maps hold the same
       // thing only at this instant; the first merge separates them.

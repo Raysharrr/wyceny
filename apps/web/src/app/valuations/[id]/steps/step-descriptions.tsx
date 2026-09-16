@@ -31,10 +31,18 @@ const MISSING_DATA_HINT: Record<ProseSection, string> = {
   // simply absent and the model drops that thread. What withholds it now is
   // having no usable sample at all (writing the help page caught the drift).
   analiza_rynku: "Brak użytecznej próby porównawczej — napisz tę sekcję ręcznie.",
-  opis_lokalu: "Brak notatki z oględzin — napisz opis ręcznie.",
-  otoczenie: "Brak notatki z oględzin — napisz opis ręcznie.",
-  zagospodarowanie: "Brak notatki z oględzin i danych ewidencyjnych — napisz opis ręcznie.",
-  standard: "Brak notatki z oględzin i ocen cech — napisz opis ręcznie.",
+  // Since 16.09 every section is fed by ITS OWN note field (ADR-017 reg. 2), so
+  // the hint names that field — "brak notatki z oględzin" would now send the
+  // appraiser to look at a note that IS filled in, just not in this part.
+  // Both sources, like `zagospodarowanie`: the section is selected on the note
+  // field OR the EGiB building data, so its absence means both are missing.
+  opis_budynku:
+    "Brak pola „Budynek” w notatce i danych ewidencyjnych budynku — napisz opis ręcznie.",
+  opis_lokalu: "Brak pola „Lokal — układ” w notatce z oględzin — napisz opis ręcznie.",
+  otoczenie: "Brak pola „Otoczenie” w notatce z oględzin — napisz opis ręcznie.",
+  zagospodarowanie:
+    "Brak pola „Zagospodarowanie działki” w notatce i danych ewidencyjnych — napisz opis ręcznie.",
+  standard: "Brak pola „Wykończenie” w notatce z oględzin i ocen cech — napisz opis ręcznie.",
   uzasadnienie: "Brak próby albo cech z niezerową wagą — napisz uzasadnienie ręcznie.",
 };
 
