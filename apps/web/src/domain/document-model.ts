@@ -501,9 +501,13 @@ export type DocumentModel = {
   kw_zrodlo: string;
   kw_lokalu: string;
   kw_gruntu: string;
+  /** Court and wydział for the Wyciąg (with) and §2 (without); "" when unknown. */
   kw_sad: string;
   kw_wydzial: string;
+  ma_kw_data_dok: boolean;
   kw_data_dok: string;
+  /** §7's KW bullet, as DD.MM.YYYY — the template adds the "r.". */
+  kw_data_badania: string;
   /**
    * §8.2's examination protocol, one dated sentence per book (D-21) — what the
    * 14.09 operat said instead of "Pełna treść odpisu KW pozostaje w
@@ -603,6 +607,7 @@ export type DocumentModel = {
   // enforced here (never both, never neither, when a subject is present).
   mpzp: MpzpBlock | null;
   mpzp_brak: boolean;
+  ma_przeznaczenie_studium: boolean;
   przeznaczenie_studium: string;
   // Property right (T-12, S4) — the four mechanisms of the Piastowskie diff:
   // `prawo_wlasnosc`/`prawo_spoldzielcze` are a mutually exclusive pair (exactly
@@ -1032,9 +1037,21 @@ export function buildDocumentModel(
     kw_zrodlo: kw ? KW_ZRODLO_TEXT[kw.source] : DASH,
     kw_lokalu: kw?.kwLokalu ?? DASH,
     kw_gruntu: kw?.kwGruntu ?? DASH,
-    kw_sad: kw?.sad ?? DASH,
-    kw_wydzial: kw?.wydzial ?? DASH,
-    kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : DASH,
+    // The court and its wydział decide which sentence the Wyciąg and §2 print,
+    // so an absent one has to be EMPTY, not a dash: the template's `{#kw_sad}`
+    // reads "—" as a court and writes it into the sentence. The template used
+    // to carry one fixed court as a literal, which is how every operat this
+    // program issued named the Poznań Stare Miasto court whatever the property.
+    kw_sad: kw?.sad ?? "",
+    kw_wydzial: kw?.wydzial ?? "",
+    // Same reasoning for the document's date, which now sits inside its own tag
+    // in §8.2: an akt and an odpis have one, the manual eKW path has none, and
+    // "(data dokumentu: —)" is a hole no operat has.
+    ma_kw_data_dok: Boolean(kw?.dataDokumentu),
+    kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : "",
+    // §7 dates its KW bullet in every reference operat ("… w dniu 22.04.2026r.,").
+    // The template writes the "r." itself, so this is the bare date.
+    kw_data_badania: kw?.dataBadania ? formatDatePl(kw.dataBadania) : "",
     protokol_ksiegi_lokalu: protokolLokalu,
     ma_protokol_ksiegi_lokalu: protokolLokalu !== "",
     protokol_ksiegi_gruntu: protokolGruntu,
@@ -1084,7 +1101,12 @@ export function buildDocumentModel(
         }
       : null,
     mpzp_brak: subject?.mpzpAbsent === true,
-    przeznaczenie_studium: subject?.przeznaczenieStudium || DASH,
+    // No operat writes a dash where the designation is missing: it names the
+    // source it did read (MPZP, plan ogólny, studium) or says nothing at all.
+    // The sentence is therefore gated, and printed "…decyzji o warunkach
+    // zabudowy: —." until 16.09.
+    ma_przeznaczenie_studium: Boolean(subject?.przeznaczenieStudium),
+    przeznaczenie_studium: subject?.przeznaczenieStudium ?? "",
     prawo_wlasnosc: input.propertyRight === "wlasnosc_lokalu",
     prawo_spoldzielcze: input.propertyRight === "spoldzielcze_wlasnosciowe",
     przedmiot_m: rightDoc.przedmiot.mianownik,

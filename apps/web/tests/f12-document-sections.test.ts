@@ -415,9 +415,20 @@ describe("F-12: rendered operat — mpzp absent variant", () => {
   });
 
   it("renders the brak sentence and studium text, omitting the plan sentence", () => {
-    expect(text).toContain("brak obowiązującego miejscowego planu");
+    // Wording from the operats (Folwarczna, Wojska Polskiego, Uzarzewo, the
+    // court opinion), which also answer the next question — whether a WZ
+    // decision exists.
+    expect(text).toContain(
+      "Dla przedmiotowego terenu nie obowiązuje miejscowy plan zagospodarowania " +
+        "przestrzennego, nie ujawniono także informacji dotyczącej wydania decyzji " +
+        "o warunkach zabudowy.",
+    );
     expect(text).toContain("zabudowa (studium)");
     expect(text).not.toContain("symbol przeznaczenia");
+    // The deciding sentence is printed ONCE. Until 16.09 §9 carried two more,
+    // both unconditional, so a valuation with no plan also claimed one.
+    expect(text).not.toContain("Dla przedmiotowego terenu obowiązuje miejscowy plan");
+    expect(text).not.toContain("ustalono na podstawie dokumentacji planistycznej");
   });
 });
 
@@ -666,8 +677,11 @@ describe("F-12 / T-12: operat per property right", () => {
   it("spółdzielcze z KW: prints the number like własność, never the no-KW sentence, still no land KW / udział", () => {
     expect(coopWithKw.count(NO_KW_SENTENCE)).toBe(0);
     expect(coopWithKw.text).toContain("Oznaczenie księgi wieczystej: KW-TEST-9.");
+    // This fixture's snapshot names no court, so §2 takes the sentence that
+    // needs none. The court was a literal here until 16.09 and put the Poznań
+    // Stare Miasto court on every property, wherever it lay.
     expect(coopWithKw.text).toContain(
-      "Dla lokalu mieszkalnego Sąd Rejonowy Poznań – Stare Miasto w Poznaniu prowadzi księgę wieczystą nr KW-TEST-9.",
+      "Dla lokalu mieszkalnego prowadzona jest księga wieczysta nr KW-TEST-9.",
     );
     expect(coopWithKw.text).not.toContain("Dla nieruchomości gruntowej");
     expect(coopWithKw.text).not.toContain("udział");

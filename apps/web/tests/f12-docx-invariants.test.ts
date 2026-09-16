@@ -160,6 +160,29 @@ describe("I-13 G: §8.2 w kolejności operatu wzorcowego (TP.2, D-21/D-24/D-25)"
     expect(paragraphs.filter((p) => p.container === "table")).toHaveLength(0);
   });
 
+  it("§8.2 nie nazywa sądu — to miejsce Wyciągu i §2", () => {
+    const { doc, text } = sec82({ kw: "ekw_reczne_obie_ksiegi" });
+    // W 16 operatach wzorcowych §8.2 nie nazywa sądu ani razu. Zdanie „Księgi
+    // prowadzi: {kw_sad}, {kw_wydzial}." drukowało na ścieżce ręcznej — tej
+    // codziennej, gdzie oba pola są puste — „Księgi prowadzi: —, —.".
+    expectNoText(doc, "Księgi prowadzi");
+    expect(text).toContain("Badanie ksiąg wieczystych przeprowadzono na podstawie:");
+    // Ta migawka MA datę dokumentu, więc nawias jest na miejscu; przypadek bez
+    // niej pilnuje `ma_kw_data_dok` w document-model-kw.test.ts.
+    expect(text).toContain("(data dokumentu: 01.09.2026)");
+  });
+
+  it("§7 datuje pozycję o badaniu ksiąg — tak jak każdy operat wzorcowy", () => {
+    // „Badanie ksiąg wieczystych – … w dniu 22.04.2026r.," (Meissnera §7 poz. 2;
+    // tak samo Malachitowa, Śmieszkowo, Mięcierzyn, Kalwy). Data stoi w §7 i w
+    // protokole §8.2; do §6 „Daty istotne" nie trafia w żadnym z nich.
+    const sec7 = sectionText(render({ kw: "ekw_reczne_obie_ksiegi" }), "7.");
+    expect(sec7).toContain(
+      "Badanie ksiąg wieczystych – nieruchomości lokalowej o funkcji mieszkalnej " +
+        "oraz nieruchomości gruntowej w dniu 14.09.2026r.,",
+    );
+  });
+
   it("PDF lokalu z treścią: tabela działów w kolejności eKW, zamiast zdań", () => {
     const { doc, paragraphs, text } = sec82({ kw: "pdf_lokalu_z_trescia" });
     const cells = paragraphs.filter((p) => p.container === "table").map((p) => p.text);

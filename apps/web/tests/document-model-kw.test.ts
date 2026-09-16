@@ -292,19 +292,47 @@ describe("§2 sentence about the grunt's book (D-07, check dryfu D-3)", () => {
     expect(obie.nr_ksiegi_gruntu).toBe("AB1C/2/7");
   });
 
-  it("leaves the court empty — never a dash — when the snapshot states none", () => {
-    // This is the manual eKW path, the one the office uses every day: the card
-    // has no court field at all (`EMPTY_MANUAL_KW`), so `sad` is null while the
-    // number is filled. A dash would print "Dla nieruchomości gruntowej —
-    // prowadzi księgę wieczystą nr AB1C/2/7"; empty tells the generator to keep
-    // §2's own court text, which is a literal in the template (check dryfu D-3).
+  it("leaves every court field empty — never a dash — when the snapshot states none", () => {
+    // The manual eKW path with the court left blank. A dash here is not a
+    // display detail: `{#kw_sad}` reads any non-empty value as a court, so "—"
+    // would print "Dla nieruchomości lokalowej … — prowadzi księgę wieczystą
+    // nr …" in §2 and a lone dash in the Wyciąg. Empty picks the sentence that
+    // needs no court ("prowadzona jest księga wieczysta nr …").
     const model = modelOf({
       kw: { ...EXAMINED_LOKAL, sad: null, wydzial: null },
       kwGrunt: EXAMINED_GRUNT,
     });
     expect(model.nr_ksiegi_gruntu).toBe("AB1C/2/7");
     expect(model.sad_ksiegi_gruntu).toBe("");
-    expect(model.kw_sad).toBe("—"); // the dash this field must NOT copy
+    expect(model.kw_sad).toBe("");
+    expect(model.kw_wydzial).toBe("");
+  });
+
+  it("gates the document's date: an akt has one, the manual eKW path has none", () => {
+    // §8.2 wrote "(data dokumentu: —)" on the everyday manual path — a hole no
+    // operat has. The date exists for an akt or an odpis; reading the book in
+    // eKW produces no document to date.
+    const zAktem = modelOf({ kw: { ...EXAMINED_LOKAL, dataDokumentu: "2026-09-01" } });
+    expect(zAktem.ma_kw_data_dok).toBe(true);
+    expect(zAktem.kw_data_dok).toBe("01.09.2026");
+    const reczne = modelOf({ kw: { ...EXAMINED_LOKAL, dataDokumentu: null } });
+    expect(reczne.ma_kw_data_dok).toBe(false);
+    expect(reczne.kw_data_dok).toBe("");
+  });
+
+  it("carries the court the appraiser typed to the Wyciąg and §2", () => {
+    // Until 16.09 both places printed one court baked into the template as a
+    // literal, so a flat in Kórnik was filed with the Poznań Stare Miasto court.
+    const model = modelOf({
+      kw: {
+        ...EXAMINED_LOKAL,
+        sad: "Sąd Rejonowy w Środzie Wielkopolskiej",
+        wydzial: "V Wydział Ksiąg Wieczystych",
+      },
+      kwGrunt: EXAMINED_GRUNT,
+    });
+    expect(model.kw_sad).toBe("Sąd Rejonowy w Środzie Wielkopolskiej");
+    expect(model.kw_wydzial).toBe("V Wydział Ksiąg Wieczystych");
   });
 });
 
