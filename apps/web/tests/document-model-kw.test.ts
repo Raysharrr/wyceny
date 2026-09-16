@@ -266,10 +266,16 @@ describe("§2 sentence about the grunt's book (D-07, check dryfu D-3)", () => {
   it("names the court and the number once the grunt's book is examined", () => {
     const model = modelOf({ kw: EXAMINED_LOKAL, kwGrunt: EXAMINED_GRUNT });
     expect(model.nr_ksiegi_gruntu).toBe("AB1C/2/7");
-    // The lokal was carved out of the grunt, so the same court keeps both books.
-    expect(model.sad_ksiegi_gruntu).toBe(
-      "Sąd Rejonowy Poznań-Stare Miasto V Wydział Ksiąg Wieczystych",
-    );
+    // The lokal was carved out of the grunt, so the same court keeps both books
+    // — the COURT, without its wydział. §2 names no wydział in any of the 16
+    // reference operats; the Wyciąg always does. Joining both printed "Sąd
+    // Rejonowy … V Wydział Ksiąg Wieczystych prowadzi księgę wieczystą nr …"
+    // next to a neighbouring sentence naming the court alone (staging, 16.09).
+    expect(model.sad_ksiegi_gruntu).toBe("Sąd Rejonowy Poznań-Stare Miasto");
+    expect(model.sad_ksiegi_gruntu).not.toContain("Wydział");
+    // The Wyciąg keeps both, as its own row.
+    expect(model.kw_sad).toBe("Sąd Rejonowy Poznań-Stare Miasto");
+    expect(model.kw_wydzial).toBe("V Wydział Ksiąg Wieczystych");
   });
 
   it("is empty when the grunt's book was not examined — the generic sentence is forbidden (D-07)", () => {
