@@ -156,6 +156,16 @@ export const EXAMINED_BOOKS = {
 };
 
 /**
+ * Klucz zdjęcia okładkowego, które {@link approvableInputs} niesie od M-1.
+ * Eksportowany, bo sam manifest nie wystarcza testom, które NAPRAWDĘ renderują:
+ * `loadInspectionPhotos` czyta każdy klucz ze storage i twardo wywala się, gdy
+ * bajtów nie ma. Taki test musi więc podłożyć bajty pod DOKŁADNIE ten klucz —
+ * i tylko pod niego, bo storage odpowiadający na wszystko zapętla sondowanie
+ * stron polisy OC.
+ */
+export const FIXTURE_COVER_PHOTO_KEY = "ogledziny-budynek-fixture.jpg";
+
+/**
  * `KcsInput` fixture with 12 rcn comparables + geocode, both `to_verify`
  * (moved from `valuation-repo.test.ts`, F-7 Task 4). Does NOT pass the F-4
  * gate on its own: `confirmSample` must flip the sample to `confirmed`, and
@@ -204,6 +214,17 @@ export function approvableInputs(): KcsInput {
       przeznaczenieUchwala: "Nr I/1/2020 Rady Miasta Poznania",
       przeznaczenieData: "2020-01-01",
       przeznaczenieSymbol: "1MW/U – tereny zabudowy mieszkaniowej wielorodzinnej",
+    },
+    // B-01 (M-1, D-01). Jak przy B-02 wyżej: blokada jest pytana POZA guardem
+    // na istnienie migawki, bo szkic, który nigdy nie dotknął kroku 2, nie ma
+    // jej wcale. Od M-1 „approvable" ZNACZY też „jest zdjęcie budynku" —
+    // pierwsze z nich drukuje się na okładce, więc bez niego wydany dokument
+    // wracałby do defektu, który zgłosiła Aneta. Sam manifest, bez bajtów:
+    // brama czyta klucze, nie obrazy. Testy, które faktycznie renderują,
+    // nadpisują `inspection` własnym zestawem kluczy.
+    inspection: {
+      note: null,
+      photos: { otoczenie: [], budynekZewn: [FIXTURE_COVER_PHOTO_KEY], wnetrza: [] },
     },
     provenance: {
       address: { source: "rzeczoznawca" as const, status: "confirmed" as const },

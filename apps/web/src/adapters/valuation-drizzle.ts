@@ -30,6 +30,7 @@ import { totalInspectionPhotos } from "../domain/inspection";
 import type { GateOptions } from "../domain/provenance";
 import type { ProseSection, ProseSnapshot } from "../domain/prose-snapshot";
 import { currentSectionFactsHashes } from "../domain/prose-hash";
+import { photoUploadEnabled } from "../lib/photo-upload-enabled";
 import { proseEnabled } from "../lib/prose-enabled";
 import { storageKeyOf } from "../lib/operat-doc-keys";
 import * as schema from "../db/schema";
@@ -707,6 +708,10 @@ export function valuationRepo(db: NodePgDatabase<typeof schema>): PortValuation 
           ...gate,
           today: now,
           requireProse,
+          // B-01 (M-1) derived here for the same reason as `requireProse`:
+          // taken from `gate` it would be a door — a caller passing
+          // `requirePhotos: false` would issue an operat with a blank cover.
+          requirePhotos: photoUploadEnabled(),
           currentSectionHashes:
             requireProse && valuation.inputs
               ? currentSectionFactsHashes({ address: valuation.address, inputs: valuation.inputs })

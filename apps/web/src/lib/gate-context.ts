@@ -2,6 +2,7 @@ import { currentSectionFactsHashes } from "@/domain/prose-hash";
 import type { GateOptions } from "@/domain/provenance";
 import type { AppraiserProfile } from "@/ports/profile";
 import type { Valuation } from "@/ports/valuation";
+import { photoUploadEnabled } from "@/lib/photo-upload-enabled";
 import { proseEnabled } from "@/lib/prose-enabled";
 
 /**
@@ -40,6 +41,9 @@ export function gateContextFor(
   const requireProse = proseEnabled();
   return {
     requireProse,
+    // B-01 (M-1) — zdjęcie budynku, czyli okładka. Ten sam rodzaj drzwi co
+    // wyłącznik prozy wyżej: build bez uploadu zdjęć nie umie go spełnić.
+    requirePhotos: photoUploadEnabled(),
     author,
     today,
     // Lets the gate see the sections whose facts have since moved on (T6

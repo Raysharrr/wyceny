@@ -18,7 +18,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Valuation } from "../src/ports/valuation";
-import { approvableInput, withConfirmedProse } from "./fixtures/valuation-inputs";
+import {
+  FIXTURE_COVER_PHOTO_KEY,
+  approvableInput,
+  withConfirmedProse,
+} from "./fixtures/valuation-inputs";
 
 vi.mock("@/auth/session", () => ({
   getSession: vi.fn(async () => ({ user: { id: "u1", role: "appraiser" } })),
@@ -180,7 +184,13 @@ describe("approve / sign / preview hand buildDocumentModel the same input (R-2)"
     vi.mocked(worker.amountInWords).mockResolvedValue("czterysta tysięcy złotych");
     vi.mocked(worker.convertToPdf).mockResolvedValue(Buffer.from("pdf"));
     vi.mocked(storage.put).mockImplementation(async (key) => `/api/docs/${key}`);
-    vi.mocked(storage.get).mockResolvedValue(undefined as never);
+    // Fikstura niesie od M-1 klucz zdjęcia na okładkę (B-01), a zatwierdzenie i
+    // podgląd czytają manifest oględzin ze storage, zanim cokolwiek zbudują —
+    // klucz bez bajtów przerywa akcję. Bajty tylko pod tym jednym kluczem;
+    // reszta odpowiada jak dotąd „nic", czym kończy się sondowanie stron polisy.
+    vi.mocked(storage.get).mockImplementation(async (key) =>
+      key === FIXTURE_COVER_PHOTO_KEY ? (PNG_1PX as never) : (undefined as never),
+    );
     vi.mocked(valuationRepository.freezeMaps).mockImplementation(async () => valuation());
     vi.mocked(valuationRepository.approve).mockImplementation(async () =>
       valuation({ status: "approved" }),

@@ -48,7 +48,7 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * binarka w repo jest tą PRZEJRZANĄ, a nie że da się ją odtworzyć bajtowo;
  * odtwarzalność sprawdza się porównaniem rozpakowanych części.
  */
-const TEMPLATE_SHA256 = "3a75cd4258123499689dfcbefb5b912053171b9eac097a2769578e08f9c81fb6";
+const TEMPLATE_SHA256 = "5b74d868091876a41e847c90d5649b6b3406ea371a495d0822f750dc3b72deec";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -221,6 +221,10 @@ const REQUIRED_PLACEHOLDERS = [
   "{oznaczenie_geodezyjne}",
   "{#ma_ewidencja}",
   "{^ma_ewidencja}",
+  // M-1 (D-01): slot na zdjęcie nieruchomości na okładce — jedyne miejsce
+  // fotograficzne, które generator zostawił bez tagu.
+  "{%foto_okladka}",
+  "{#ma_foto_okladka}",
   // M-10: §9 and §7's source bullet branch on the SAME three flags — the two
   // must never name different documents. `prz_brak_mpzp` is the union of the
   // two no-MPZP branches; `ma_przeznaczenie` gates the whole source sentence.

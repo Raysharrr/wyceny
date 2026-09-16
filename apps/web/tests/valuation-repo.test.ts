@@ -872,7 +872,10 @@ describe("FR-2: updateInspection mutation (photo manifest + note, Slice 10, Task
       .where(eq(schema.auditLog.valuationId, created.id))
       .orderBy(schema.auditLog.id);
     expect(rows.at(-1)!.action).toBe("inspection_updated");
-    expect(rows.at(-1)!.meta).toMatchObject({ op: "photo_added", section: "wnetrza", total: 1 });
+    // `total` liczy WSZYSTKIE sekcje, nie tę jedną: fikstura niesie od M-1
+    // zdjęcie okładkowe w „Budynek z zewnątrz" (B-01), więc po dołożeniu
+    // zdjęcia wnętrza manifest ma dwa klucze.
+    expect(rows.at(-1)!.meta).toMatchObject({ op: "photo_added", section: "wnetrza", total: 2 });
   });
 
   it("updateInspection is owner-only: another appraiser AND a non-owner admin get null", async () => {

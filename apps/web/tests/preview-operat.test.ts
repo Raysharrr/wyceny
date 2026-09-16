@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import PizZip from "pizzip";
 import type { Valuation } from "../src/ports/valuation";
 import type { Step1Input } from "../src/app/actions/wizard-schemas";
-import { approvableInput, approvableWr, confirmedProseFor } from "./fixtures/valuation-inputs";
+import {
+  FIXTURE_COVER_PHOTO_KEY,
+  approvableInput,
+  approvableWr,
+  confirmedProseFor,
+} from "./fixtures/valuation-inputs";
 import { PROSE_SECTIONS, PROSE_SECTION_LABEL } from "../src/domain/prose-snapshot";
 
 /**
@@ -171,6 +176,10 @@ const docText = (buf: Buffer) =>
 beforeEach(() => {
   current = draft();
   blobs = new Map();
+  // Bajty zdjęcia, które fikstura ma w manifeście oględzin od M-1 (B-01).
+  // Bez nich i podgląd, i zatwierdzenie przerywają na odczycie zdjęć, zanim
+  // dojdą do map — a to mapy są tematem tego pliku.
+  blobs.set(FIXTURE_COVER_PHOTO_KEY, JPG_1PX);
 
   for (const mock of [
     getMock,
@@ -254,7 +263,10 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
 
     expect(result).toEqual({ url: expect.stringContaining(`/api/podglad/${ID}`) });
     const docx = convertToPdfMock.mock.calls[0][0];
-    expect(generatedMedia(docx)).toHaveLength(2);
+    // Dwie mapy + okładka + to samo zdjęcie budynku w §8.3: od M-1 pierwsze
+    // zdjęcie z „Budynek z zewnątrz" jest osobnym obrazem na stronie tytułowej,
+    // więc jeden klucz z manifestu daje dwa media.
+    expect(generatedMedia(docx)).toHaveLength(2 + 1 + 1);
     expect(blobs.get(PREVIEW_KEY)).toEqual(Buffer.from("%PDF-1.7 podgląd"));
   });
 
@@ -370,7 +382,10 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
 
     expect(result).toHaveProperty("url");
     expect(fetchMapsMock).not.toHaveBeenCalled();
-    expect(generatedMedia(convertToPdfMock.mock.calls.at(-1)![0])).toHaveLength(0);
+    // Zero map — zostają tylko dwa obrazy oględzin (okładka i to samo zdjęcie
+    // w §8.3). Gdyby mapy jednak weszły, byłyby cztery, więc liczba dalej
+    // rozróżnia dokładnie to, o co w tym teście chodzi.
+    expect(generatedMedia(convertToPdfMock.mock.calls.at(-1)![0])).toHaveLength(2);
     expect(blobs.has(EWIDENCYJNA_KEY)).toBe(false);
     expect(blobs.has(ORTO_KEY)).toBe(false);
     expect(current.mapsFrozenFor).toBeNull();
@@ -416,7 +431,9 @@ describe("previewOperat — the render and its frozen maps (Task 9)", () => {
     const result = await previewOperat(ID, { skipMaps: true });
 
     expect(result).toHaveProperty("url");
-    expect(generatedMedia(convertToPdfMock.mock.calls.at(-1)![0])).toHaveLength(0);
+    // Jak wyżej: żadnej mapy w dokumencie, tylko dwa obrazy oględzin
+    // (okładka i to samo zdjęcie w §8.3) — bajty map zostają w storage.
+    expect(generatedMedia(convertToPdfMock.mock.calls.at(-1)![0])).toHaveLength(2);
     expect(current.mapsFrozenFor).toBe(ADDRESS);
     expect(blobs.has(EWIDENCYJNA_KEY)).toBe(true);
     expect(blobs.has(ORTO_KEY)).toBe(true);

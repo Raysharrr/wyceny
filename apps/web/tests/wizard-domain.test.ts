@@ -601,11 +601,15 @@ describe("stepForBlockerPath", () => {
     } as Parameters<typeof documentFieldBlockers>[0];
     const paths = new Set([
       // prose absent -> the snapshot-level blocker
-      ...blockerPaths(maximallyBlockedInput(), { requireProse: true }),
+      // Każdy wyłącznik MUSI być tu włączony, inaczej ten strażnik przestaje
+      // strzec: blokada schowana za `requireProse`/`requirePhotos` byłaby dla
+      // wyliczenia niewidzialna, a to właśnie ona wyrenderowałaby się w kroku 7
+      // bez drogi wyjścia. B-01 (M-1) wpadło tu dokładnie tą szczeliną.
+      ...blockerPaths(maximallyBlockedInput(), { requireProse: true, requirePhotos: true }),
       // prose present but unread -> one blocker per section
       ...blockerPaths(
         { ...maximallyBlockedInput(), prose: { sections: {}, factsHashes: {} } },
-        { requireProse: true },
+        { requireProse: true, requirePhotos: true },
       ),
       // B-07 fires only on a dział III entry, so the enumeration above never
       // reaches it — an unmapped `encumbranceTreatment` would strand the
@@ -624,9 +628,10 @@ describe("stepForBlockerPath", () => {
     // transaction (2), the four scalars + featureDefs + geocode + EGiB + MPZP +
     // KW (9), the designation source (1, B-02/M-10), the KW examination and the
     // encumbrance decision (2), the prose snapshot + its six sections (7), the
-    // five document fields (5). A drop here means a group stopped being
-    // exercised, and the loop below would then pass vacuously.
-    expect(paths.size).toBe(26);
+    // five document fields (5), the building photos (1, B-01/M-1 — okładka).
+    // A drop here means a group stopped being exercised, and the loop below
+    // would then pass vacuously.
+    expect(paths.size).toBe(27);
     for (const path of paths) {
       expect(stepForBlockerPath(path), `no step for blocker path "${path}"`).toBeDefined();
     }
@@ -648,6 +653,7 @@ describe("stepForBlockerPath", () => {
     ["kwNumber", 1, "Przedmiot"],
     ["client", 1, "Przedmiot"],
     ["inspectionDate", 2, "Oględziny"],
+    ["inspection.photos.budynekZewn", 2, "Oględziny"],
     ["comparables", 3, "Próba"],
     ["comparables[11]", 3, "Próba"],
     ["provenance.weights", 4, "Cechy"],
