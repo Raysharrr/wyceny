@@ -16,6 +16,13 @@ export class SubjectStep {
     client: string;
     kw?: string;
     basement?: boolean;
+    /**
+     * Podstawa przeznaczenia terenu (M-10). Domyślnie MPZP, bo tak wygląda
+     * większość wycen — ale KAŻDY szkic musi ją nieść, niezależnie od rodzaju
+     * prawa: §7 i §9 drukują ją w obu rodzajach operatu (punkt §7 leży poza
+     * ogrodzeniem `{#prawo_wlasnosc}`), a B-02 nie wypuści operatu bez niej.
+     */
+    przeznaczenie?: "mpzp" | "plan_ogolny" | "studium";
   }) {
     await this.page
       .getByRole("radio", {
@@ -38,6 +45,29 @@ export class SubjectStep {
     }
     if (o.basement)
       await this.page.getByRole("checkbox", { name: "Lokal ma przynależną piwnicę" }).check();
+    await this.fillPrzeznaczenie(o.przeznaczenie ?? "mpzp");
+  }
+
+  /**
+   * Wszystkie pięć części naraz, bo §9 składa z nich JEDNO zdanie i B-02
+   * wymaga kompletu. Symbol jest zawsze wpisywany ręcznie — nawet gdy uchwała
+   * podpowiada się sama (Poznań, plan ogólny), strefy nie podpowiada nic.
+   */
+  async fillPrzeznaczenie(rodzaj: "mpzp" | "plan_ogolny" | "studium") {
+    await this.page.locator(`#subject-przeznaczenie-rodzaj-${rodzaj}`).check();
+    const nazwa = this.page.locator("#subject-przeznaczenie-nazwa");
+    const uchwala = this.page.locator("#subject-przeznaczenie-uchwala");
+    const data = this.page.locator("#subject-przeznaczenie-data");
+    // Plan ogólny w Poznaniu podpowiada uchwałę sam — nadpisanie jej tutaj
+    // zatarłoby regresję w podpowiedzi, więc wypełniamy tylko puste pola.
+    if (!(await nazwa.inputValue())) {
+      await nazwa.fill(rodzaj === "mpzp" ? "Plan Testowy" : "Gminy Testowej");
+    }
+    if (!(await uchwala.inputValue())) await uchwala.fill("Nr I/1/2020 Rady Gminy Testowej");
+    if (!(await data.inputValue())) await data.fill("2020-01-01");
+    await this.page
+      .locator("#subject-przeznaczenie-symbol")
+      .fill("1MW/U – tereny zabudowy mieszkaniowej wielorodzinnej");
   }
 
   /**

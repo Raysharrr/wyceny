@@ -48,7 +48,7 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * binarka w repo jest tą PRZEJRZANĄ, a nie że da się ją odtworzyć bajtowo;
  * odtwarzalność sprawdza się porównaniem rozpakowanych części.
  */
-const TEMPLATE_SHA256 = "14aea988339c387ec61e95f905b434fd5b36023e06bde5e82864042e3ba5887f";
+const TEMPLATE_SHA256 = "57e1a7f2ae811b4911f59fb7321f82b33d4d5ba1ab3923cbe2501c879acbc2b0";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -215,11 +215,26 @@ const REQUIRED_PLACEHOLDERS = [
   "{budynek_rodzaj}",
   "{kondygnacje}",
   "{rok_budowy}",
-  "{przeznaczenie_studium}",
-  "{#mpzp}",
-  "{/mpzp}",
-  "{#mpzp_brak}",
-  "{/mpzp_brak}",
+  // M-10: §9 and §7's source bullet branch on the SAME three flags — the two
+  // must never name different documents. `prz_brak_mpzp` is the union of the
+  // two no-MPZP branches; `ma_przeznaczenie` gates the whole source sentence.
+  "{#prz_mpzp}",
+  "{/prz_mpzp}",
+  "{#prz_plan_ogolny}",
+  "{/prz_plan_ogolny}",
+  "{#prz_studium}",
+  "{/prz_studium}",
+  "{#prz_brak_mpzp}",
+  "{/prz_brak_mpzp}",
+  "{#ma_przeznaczenie}",
+  "{/ma_przeznaczenie}",
+  "{#ma_publikator}",
+  "{/ma_publikator}",
+  "{prz_nazwa}",
+  "{prz_uchwala}",
+  "{prz_data}",
+  "{prz_symbol}",
+  "{prz_publikator}",
   // Task 9: 8.2 KW examination block — scalars, section pairs, loops.
   "{udzial_kw}",
   "{pow_uzytkowa_kw}",

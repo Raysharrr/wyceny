@@ -35,8 +35,10 @@ describe("proposalToSubjectValues", () => {
     expect(v.obreb).toBe("Jeżyce");
     expect(v.powEwidHa).toBe(0.0772);
     expect(v.kondygnacjeNadziemne).toBe(6);
-    expect(v.mpzpSymbol).toBe("4MW/U");
-    expect(v.mpzpAbsent).toBe(false);
+    expect(v.przeznaczenieSymbol).toBe("4MW/U");
+    // A plan the fetch read off the city layer IS the MPZP branch — nothing
+    // left for the appraiser to decide (M-10).
+    expect(v.przeznaczenieRodzaj).toBe("mpzp");
     expect(v.rokBudowy).toBeUndefined(); // never auto-filled — not publicly available
   });
 
@@ -46,14 +48,17 @@ describe("proposalToSubjectValues", () => {
     expect(v.kondygnacjeNadziemne).toBeUndefined();
   });
 
-  it("null mpzp sets mpzpAbsent true and empty plan fields", () => {
+  // The fetch knows the MPZP is absent, NOT what stands in its place — a plan
+  // ogólny and a studium are different documents and different §9 wording. So
+  // it leaves the choice open and B-02 asks (M-10).
+  it("null mpzp leaves the designation unchosen and the fields empty", () => {
     const v = proposalToSubjectValues({
       ...proposal,
       mpzp: null,
       meta: { ...proposal.meta, mpzpAbsent: true },
     });
-    expect(v.mpzpAbsent).toBe(true);
-    expect(v.mpzpSymbol).toBe("");
+    expect(v.przeznaczenieRodzaj).toBeNull();
+    expect(v.przeznaczenieSymbol).toBe("");
   });
 
   it("EMPTY_SUBJECT has no numeric zeros (coerce trap)", () => {
@@ -73,9 +78,12 @@ describe("isEmptySubject (Fix A)", () => {
     expect(isEmptySubject(EMPTY_SUBJECT)).toBe(true);
   });
 
-  it("is empty when mpzpAbsent is false or undefined and everything else is empty", () => {
-    expect(isEmptySubject({ ...EMPTY_SUBJECT, mpzpAbsent: false })).toBe(true);
-    expect(isEmptySubject({ ...EMPTY_SUBJECT, mpzpAbsent: undefined })).toBe(true);
+  // `przeznaczenieRodzaj` defaults to null, and an untouched section must keep
+  // reading as untouched — otherwise every new draft persists an empty snapshot
+  // and stamps ewidencja/mpzp provenance for data nobody entered.
+  it("is empty when the designation is unchosen and everything else is empty", () => {
+    expect(isEmptySubject({ ...EMPTY_SUBJECT, przeznaczenieRodzaj: null })).toBe(true);
+    expect(isEmptySubject({ ...EMPTY_SUBJECT, przeznaczenieRodzaj: undefined })).toBe(true);
   });
 
   it("is non-empty when a single string field is set", () => {
@@ -86,8 +94,8 @@ describe("isEmptySubject (Fix A)", () => {
     expect(isEmptySubject({ ...EMPTY_SUBJECT, rokBudowy: 1938 })).toBe(false);
   });
 
-  it("is non-empty when mpzpAbsent is true, even with everything else empty", () => {
-    expect(isEmptySubject({ ...EMPTY_SUBJECT, mpzpAbsent: true })).toBe(false);
+  it("is non-empty once a designation is chosen, even with everything else empty", () => {
+    expect(isEmptySubject({ ...EMPTY_SUBJECT, przeznaczenieRodzaj: "plan_ogolny" })).toBe(false);
   });
 });
 

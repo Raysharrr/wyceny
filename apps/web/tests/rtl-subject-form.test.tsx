@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PLAN_OGOLNY_POZNAN } from "@/domain/przeznaczenie";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import userEvent from "@testing-library/user-event";
@@ -447,5 +448,81 @@ describe("SubjectForm — piętro przedmiotu (FH.2)", () => {
       subject?: { pietro?: number | null };
     };
     expect(payload.subject?.pietro).toBe(0);
+  });
+});
+
+/**
+ * M-10 / D-34. Przed tą zmianą krok 1 miał jeden checkbox „Brak obowiązującego
+ * MPZP", a po jego zaznaczeniu jedno pole wolnego tekstu. Po reformie z 2023 r.
+ * brak planu miejscowego to dwie różne podstawy i dwa różne brzmienia §9, więc
+ * wybór jest jawny, a uchwała poznańska — podpowiadana, nie przepisywana ręką.
+ */
+describe("SubjectForm — podstawa przeznaczenia terenu (M-10)", () => {
+  beforeEach(() => {
+    vi.mocked(createDraft).mockClear();
+  });
+
+  it("pola przeznaczenia pojawiają się dopiero po wyborze podstawy", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    expect(screen.queryByLabelText("Symbol i opis")).toBeNull();
+
+    await user.click(screen.getByLabelText(/miejscowy plan zagospodarowania/i));
+    expect(screen.getByLabelText("Symbol i opis")).toBeTruthy();
+    expect(screen.getByLabelText("Nazwa planu")).toBeTruthy();
+    // „Status dokumentu" drukuje tylko gałąź planu ogólnego — żaden operat
+    // wzorcowy nie podaje publikatora przy MPZP ani przy studium.
+    expect(screen.queryByLabelText("Status dokumentu")).toBeNull();
+  });
+
+  it("wybór planu ogólnego w Poznaniu podpowiada uchwałę miasta", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequired(user);
+    await user.click(screen.getByLabelText(/plan ogólny gminy/i));
+
+    expect(screen.getByLabelText<HTMLInputElement>("Uchwała").value).toBe(
+      PLAN_OGOLNY_POZNAN.uchwala,
+    );
+    expect(screen.getByLabelText<HTMLInputElement>("Gmina / miasto (dopełniacz)").value).toBe(
+      PLAN_OGOLNY_POZNAN.nazwa,
+    );
+    // Symbol strefy NIGDY nie jest podpowiadany: odczytuje się go z mapy dla
+    // TEJ działki (Folwarczna to 742SW, sąsiedni kwartał już nie).
+    expect(screen.getByLabelText<HTMLInputElement>("Symbol i opis").value).toBe("");
+  });
+
+  it("nie nadpisuje uchwały, którą rzeczoznawca już poprawił", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequired(user);
+    await user.click(screen.getByLabelText(/plan ogólny gminy/i));
+    const uchwala = screen.getByLabelText<HTMLInputElement>("Uchwała");
+    await user.clear(uchwala);
+    await user.type(uchwala, "Nr I/1/2030 Rady Miasta Poznania");
+    // Przeklikanie tam i z powrotem to najczęstszy sposób, w jaki podpowiedź
+    // kasuje ręczną poprawkę.
+    await user.click(screen.getByLabelText(/studium/i));
+    await user.click(screen.getByLabelText(/plan ogólny gminy/i));
+
+    expect(screen.getByLabelText<HTMLInputElement>("Uchwała").value).toBe(
+      "Nr I/1/2030 Rady Miasta Poznania",
+    );
+  });
+
+  it("zapisuje wybraną podstawę w migawce przedmiotu", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequired(user);
+    await user.click(screen.getByLabelText(/studium/i));
+    await user.type(screen.getByLabelText("Symbol i opis"), "I.78.M – tereny mieszkaniowe");
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const payload = vi.mocked(createDraft).mock.calls.at(-1)?.[0] as {
+      subject?: { przeznaczenieRodzaj?: string | null; przeznaczenieSymbol?: string };
+    };
+    expect(payload.subject?.przeznaczenieRodzaj).toBe("studium");
+    expect(payload.subject?.przeznaczenieSymbol).toBe("I.78.M – tereny mieszkaniowe");
   });
 });

@@ -54,10 +54,17 @@ describe("MapPreview (Task 8, moved to the sidebar in Slice 12 Task 7)", () => {
 // logic. `mapPreview` left SubjectSection's props in Task 7 (it no longer
 // renders MapPreview itself); `fetchState`/`onRetry` stayed.
 function FetchStatusHarness({ fetchState }: { fetchState: SubjectFetchState }) {
-  const { control } = useForm<FormInput, unknown, FormOutput>({
+  const { control, setValue } = useForm<FormInput, unknown, FormOutput>({
     defaultValues: { subject: { ...EMPTY_SUBJECT } } as FormInput,
   });
-  return <SubjectSection control={control} fetchState={fetchState} onRetry={() => {}} />;
+  return (
+    <SubjectSection
+      control={control}
+      setValue={setValue}
+      fetchState={fetchState}
+      onRetry={() => {}}
+    />
+  );
 }
 
 describe("SubjectSection — fetch-status bar restyle (AutoBanner, Slice 12 Task 7)", () => {

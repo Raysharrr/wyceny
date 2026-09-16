@@ -39,6 +39,16 @@ async function createDraftStep1(page: import("@playwright/test").Page) {
     await group.getByRole("radio", { name: "Brak wpisów" }).click();
   }
   await expect(page.getByText(/Zbadane księgi: 2 z 2/)).toBeVisible();
+  // M-10: §9 nazywa dokument, z którego odczytano przeznaczenie. Bez kompletu
+  // pięciu części B-02 nie wypuści operatu, a §9 nie wydrukuje o przeznaczeniu
+  // nic — dokładnie to zgłosiła Aneta 14.09.
+  await page.locator("#subject-przeznaczenie-rodzaj-mpzp").check();
+  await page.locator("#subject-przeznaczenie-nazwa").fill("Plan Testowy");
+  await page.locator("#subject-przeznaczenie-uchwala").fill("Nr I/1/2020 Rady Gminy Testowej");
+  await page.locator("#subject-przeznaczenie-data").fill("2020-01-01");
+  await page
+    .locator("#subject-przeznaczenie-symbol")
+    .fill("1MW/U – tereny zabudowy mieszkaniowej wielorodzinnej");
   await page.getByRole("button", { name: "Dane się zgadzają — dalej" }).click();
   await page.waitForURL(/\/valuations\/[0-9a-f-]{36}\?step=2/);
   // Regression net for the RSC-boundary 500 (server render of an existing

@@ -375,9 +375,9 @@ describe("kw section (Slice 6)", () => {
   });
 });
 
-describe("subjectSchema — mpzpData (Fix B)", () => {
+describe("subjectSchema — przeznaczenieData (Fix B, renamed at M-10)", () => {
   it("rejects a Polish free-text date with the Polish message", () => {
-    const r = subjectSchema.safeParse({ mpzpData: "26.02.2019" });
+    const r = subjectSchema.safeParse({ przeznaczenieData: "26.02.2019" });
     expect(r.success).toBe(false);
     if (!r.success) {
       expect(r.error.issues[0]?.message).toBe("Podaj datę w formacie RRRR-MM-DD.");
@@ -385,11 +385,11 @@ describe("subjectSchema — mpzpData (Fix B)", () => {
   });
 
   it("accepts an ISO YYYY-MM-DD date", () => {
-    expect(subjectSchema.safeParse({ mpzpData: "2019-02-26" }).success).toBe(true);
+    expect(subjectSchema.safeParse({ przeznaczenieData: "2019-02-26" }).success).toBe(true);
   });
 
-  it("accepts an empty or absent mpzpData", () => {
-    expect(subjectSchema.safeParse({ mpzpData: "" }).success).toBe(true);
+  it("accepts an empty or absent przeznaczenieData", () => {
+    expect(subjectSchema.safeParse({ przeznaczenieData: "" }).success).toBe(true);
     expect(subjectSchema.safeParse({}).success).toBe(true);
   });
 });

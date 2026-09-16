@@ -191,12 +191,33 @@ export function approvableInputs(): KcsInput {
       source: "rcn-wfs-gugik" as const,
       query: { bbox: [1, 2, 3, 4], count: 5000, sort: "dok_data D", pages: 1, truncated: false },
     },
+    // B-02 (M-10, D-34). The designation is NOT decoration here: the blocker
+    // is asked OUTSIDE the `input.subject != null` guard — exactly like B-06,
+    // and for the same reason, since the 14.09 valuation was typed in by hand
+    // with no snapshot and slipped past every check that lived inside it. So
+    // "approvable" now MEANS "designation chosen", and a fixture claiming the
+    // name has to say which of the three sources it read. All five parts, or
+    // §9 prints nothing and the gate refuses. Fictional plan (F-9).
+    subject: {
+      przeznaczenieRodzaj: "mpzp" as const,
+      przeznaczenieNazwa: "Plan Testowy",
+      przeznaczenieUchwala: "Nr I/1/2020 Rady Miasta Poznania",
+      przeznaczenieData: "2020-01-01",
+      przeznaczenieSymbol: "1MW/U – tereny zabudowy mieszkaniowej wielorodzinnej",
+    },
     provenance: {
       address: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       area: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       weights: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       ratings: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       geocode: { source: "geokoder" as const, status: "to_verify" as const },
+      // Carrying a `subject` opens the EGiB/MPZP provenance group, which is
+      // gated on the snapshot EXISTING (provenance.ts) — so the two stamps
+      // come with it. `rzeczoznawca`/`confirmed` is what
+      // `assignSubjectProvenance` writes for a hand-entered card, which is
+      // what this fixture is: designation chosen by the appraiser, not fetched.
+      ewidencja: { source: "rzeczoznawca" as const, status: "confirmed" as const },
+      mpzp: { source: "rzeczoznawca" as const, status: "confirmed" as const },
       // The examination above is the appraiser's own work (ADR-018 reg. 1),
       // so it enters confirmed — the same stamp `assignSubjectProvenance` puts
       // on it when the manual card is saved.
