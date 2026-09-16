@@ -553,8 +553,10 @@ describe("currentSectionFactsHash — the fingerprint covers the transactions to
 
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     expect(
+      // A different CITY: §11 is composed from the data (M-12) and names only
+      // the city, so a corrected flat number is not a change to it.
       currentSectionFactsHash("analiza_rynku", {
-        address: "ul. Klonowa 14/4, Nowogród",
+        address: "ul. Klonowa 14/3, Zielonka",
         inputs: INPUTS,
       }),
     ).not.toBe(hash);

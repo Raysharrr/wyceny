@@ -29,6 +29,7 @@ import { proseProposal, valuationRepository } from "@/app/valuations/_deps";
 import { PROSE_WORKER_RESPONDED_PREFIX, ProseWorkerDetailError } from "@/adapters/prose-http";
 import { buildProseFacts } from "@/domain/prose";
 import { currentSectionFactsHash } from "@/domain/prose-hash";
+import { composeMarketAnalysis } from "@/domain/market-analysis";
 import { confirmedProseFor } from "./fixtures/valuation-inputs";
 import type { KcsInput } from "@/domain/kcs";
 import type { ProseSection } from "@/domain/prose-snapshot";
@@ -157,6 +158,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/**
+ * What a batch REQUESTED, read from the saved snapshot's `attempts`. Since M-12
+ * §11 (`analiza_rynku`) is composed locally and never reaches the worker, so
+ * the worker's own `sections` no longer tell the whole batch.
+ */
+const requested = () =>
+  Object.keys(saveProseMock.mock.calls[0]![2].attempts ?? {}).sort() as ProseSection[];
+
 describe("proposeProse — gates before any token is spent", () => {
   it("no session -> redirect to /login, worker untouched", async () => {
     getSessionMock.mockResolvedValue(null as never);
@@ -238,8 +247,9 @@ describe("proposeProse — happy path", () => {
     expect(fetchProposalMock).toHaveBeenCalledWith({
       token: expect.stringMatching(/^\d+\.[0-9a-f]+\.[0-9a-f]{64}$/),
       // draft.inputs.prose is undefined — every generatable section counts as
-      // MISSING, so T3's selection sends all seven.
-      sections: ALL_SECTIONS,
+      // MISSING. All seven are requested; six go to the worker, §11 is
+      // composed locally (M-12).
+      sections: ALL_SECTIONS.filter((section) => section !== "analiza_rynku"),
       facts,
       transactions: [
         { data: "11-2024", cena_m2: 9240 },
@@ -251,6 +261,10 @@ describe("proposeProse — happy path", () => {
 
     const expectedSnapshot = {
       sections: {
+        analiza_rynku: {
+          value: composeMarketAnalysis({ address: ADDRESS, inputs: INPUTS }),
+          provenance: { source: "ai", status: "to_verify" },
+        },
         opis_lokalu: {
           value: PROPOSAL.sections.opis_lokalu,
           provenance: { source: "ai", status: "to_verify" },
@@ -324,10 +338,8 @@ describe("proposeProse — regenerates only the sections whose facts moved (T3)"
 
     await proposeProse(VALUATION_ID);
 
-    expect(fetchProposal.mock.calls[0]![0].sections.sort()).toEqual([
-      "analiza_rynku",
-      "uzasadnienie",
-    ]);
+    expect(requested()).toEqual(["analiza_rynku", "uzasadnienie"]);
+    expect(fetchProposal.mock.calls[0]![0].sections).toEqual(["uzasadnienie"]);
   });
 
   it("a draft where nothing moved is not regenerated at all — the current prose comes back untouched", async () => {
@@ -498,7 +510,9 @@ describe("proposeProse — an answer already given is not bought again (T5 fix r
 
     await proposeProse(VALUATION_ID);
 
-    expect(fetchProposalMock.mock.calls[0]![0].sections).toEqual(["analiza_rynku"]);
+    expect(requested()).toEqual(["analiza_rynku"]);
+    // §11 alone: composed locally, no worker call at all (M-12).
+    expect(fetchProposalMock).not.toHaveBeenCalled();
   });
 
   it("...and the attempted section returns to the batch as soon as ITS OWN facts move", async () => {
@@ -525,10 +539,8 @@ describe("proposeProse — an answer already given is not bought again (T5 fix r
 
     await proposeProse(VALUATION_ID);
 
-    expect(fetchProposalMock.mock.calls[0]![0].sections.sort()).toEqual([
-      "analiza_rynku",
-      "uzasadnienie",
-    ]);
+    expect(requested()).toEqual(["analiza_rynku", "uzasadnienie"]);
+    expect(fetchProposalMock.mock.calls[0]![0].sections).toEqual(["uzasadnienie"]);
   });
 
   it("the appraiser asking (includeAttempted) puts it back without having to name it", async () => {
@@ -541,10 +553,8 @@ describe("proposeProse — an answer already given is not bought again (T5 fix r
 
     await proposeProse(VALUATION_ID, { includeAttempted: true });
 
-    expect(fetchProposalMock.mock.calls[0]![0].sections.sort()).toEqual([
-      "analiza_rynku",
-      "uzasadnienie",
-    ]);
+    expect(requested()).toEqual(["analiza_rynku", "uzasadnienie"]);
+    expect(fetchProposalMock.mock.calls[0]![0].sections).toEqual(["uzasadnienie"]);
   });
 
   it("opts.sections bypasses the bound entirely — 'redo this one' always works", async () => {

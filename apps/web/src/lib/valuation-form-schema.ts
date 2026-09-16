@@ -306,6 +306,20 @@ export const manualRangeSchema = z
  */
 export const sampleSelectionSchema = z.object({
   version: z.literal(3),
+  /** Statistics of the collected set for §11 (M-12). Listed here or zod strips it on every step-3 save. */
+  poolStats: z
+    .object({
+      areaMin: z.number(),
+      areaMax: z.number(),
+      unitPriceMin: z.number(),
+      unitPriceMax: z.number(),
+      unitPriceMean: z.number(),
+      totalMin: z.number(),
+      totalMax: z.number(),
+      totalMean: z.number(),
+      excluded: z.object({ shares: z.boolean(), area: z.boolean(), price: z.boolean() }),
+    })
+    .optional(),
   proposed: z.array(candidateSchema),
   alternates: z.array(candidateSchema),
   flags: z.record(

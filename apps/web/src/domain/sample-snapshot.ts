@@ -83,8 +83,77 @@ function capRejected(rejected: Rejected[]): RejectedRow[] {
  * show badges and re-run the appraiser's choice, NOT the whole 3 km pool
  * (`ranking` is dropped — see {@link toSampleSelectionSnapshot}).
  */
+/**
+ * The collected set §11 describes BEFORE the sample was cut from it (M-12):
+ * residential free-market transactions in the radius and in the window, with
+ * a price — what "W okresie monitorowania rynku lokalnego odnotowano
+ * transakcje…" talks about. The only rejections that happen INSIDE this set
+ * are the ones §11 names in "W toku analizy odrzucono…", flagged in
+ * `excluded`.
+ *
+ * Computed at selection time because it cannot be computed later: the
+ * snapshot keeps a capped `rejected` sample (50 per reason, no total price)
+ * and drops `ranking` entirely.
+ */
+export type PoolStats = {
+  areaMin: number;
+  areaMax: number;
+  unitPriceMin: number;
+  unitPriceMax: number;
+  unitPriceMean: number;
+  totalMin: number;
+  totalMax: number;
+  totalMean: number;
+  excluded: { shares: boolean; area: boolean; price: boolean };
+};
+
+/** Rejection reasons that remove a row FROM the collected set, not before it. */
+const WITHIN_POOL: ReadonlySet<RejectReason> = new Set([
+  "share_not_whole",
+  "out_of_area_band",
+  "manual_area_range",
+  "manual_price_range",
+]);
+
+export function poolStatsOf(s: Selection): PoolStats | null {
+  // Every reason must be a within-set one: a share that is ALSO outside the
+  // window was never in the set (the first reason alone would count it).
+  const inPool = s.rejected.filter((r) => r.allReasons.every((reason) => WITHIN_POOL.has(reason)));
+  const rows = [...s.ranking.map((r) => r.candidate), ...inPool.map((r) => r.candidate)].filter(
+    (c) => c.area > 0 && c.pricePerM2 > 0,
+  );
+  if (rows.length === 0) return null;
+  const total = (c: Candidate) => (c.priceTotal > 0 ? c.priceTotal : c.pricePerM2 * c.area);
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const areas = rows.map((c) => c.area);
+  const prices = rows.map((c) => c.pricePerM2);
+  const totals = rows.map(total);
+  const has = (...reasons: RejectReason[]) => inPool.some((r) => reasons.includes(r.reason));
+  return {
+    areaMin: Math.min(...areas),
+    areaMax: Math.max(...areas),
+    unitPriceMin: Math.min(...prices),
+    unitPriceMax: Math.max(...prices),
+    unitPriceMean: mean(prices),
+    totalMin: Math.min(...totals),
+    totalMax: Math.max(...totals),
+    totalMean: mean(totals),
+    excluded: {
+      shares: has("share_not_whole"),
+      area: has("out_of_area_band", "manual_area_range"),
+      price: has("manual_price_range"),
+    },
+  };
+}
+
 export type SampleSelectionSnapshot = {
   version: 3;
+  /**
+   * Statistics of the collected set for §11 (M-12). Optional: selections made
+   * before 16.09 have none, and their §11 simply goes without the two
+   * paragraphs about the set — there is nothing to reconstruct them from.
+   */
+  poolStats?: PoolStats;
   /** As computed by the domain — NEVER mutated by manual rejections (overlay in `manualRejections`). */
   proposed: Candidate[];
   alternates: Candidate[];
@@ -145,8 +214,10 @@ export function toSampleSelectionSnapshot(
   for (const r of s.rejected) {
     rejectedCounts[r.reason] = (rejectedCounts[r.reason] ?? 0) + 1;
   }
+  const poolStats = poolStatsOf(s);
   return {
     version: 3,
+    ...(poolStats ? { poolStats } : {}),
     proposed: s.proposed,
     alternates: s.alternates,
     flags,

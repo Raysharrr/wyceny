@@ -4,7 +4,7 @@ Opisowe sekcje operatu — te, których nie da się złożyć z tabel — pisze 
 
 ## Co model widzi
 
-Do modelu jedzie jeden słownik faktów, ten sam dla wszystkich {PROSE_SECTIONS.length} sekcji naraz: adres i powierzchnia użytkowa, określenie rynku „wtórny, lokale mieszkalne” z nazwą miasta z adresu, dane ewidencyjne działki i budynku, pięć pól notatki z oględzin — każde pod własnym kluczem, zasilającym dokładnie jedną sekcję — oceny cech o niezerowej wadze oraz zbiorcze dane próby porównawczej — liczba transakcji przyjętych do porównań, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna, przedział cen całkowitych, a do tego obszar badania: nazwy obrębów, z których pochodzi próba, użyty promień i liczba przebadanych transakcji podana słownie. Liczby są w nim gotowymi polskimi napisami — sformatowanymi tą samą funkcją, którą formatuje je operat, bo inaczej ten sam fakt wyglądałby w dwóch miejscach dokumentu inaczej. Jedynym wyjątkiem jest liczba transakcji w próbie, która jedzie jako zwykła liczba całkowita.
+Do modelu jedzie jeden słownik faktów, ten sam dla wszystkich sekcji, które pisze model (analizy rynku model nie pisze — patrz niżej): adres i powierzchnia użytkowa, określenie rynku „wtórny, lokale mieszkalne” z nazwą miasta z adresu, dane ewidencyjne działki i budynku, pięć pól notatki z oględzin — każde pod własnym kluczem, zasilającym dokładnie jedną sekcję — oceny cech o niezerowej wadze oraz zbiorcze dane próby porównawczej — liczba transakcji przyjętych do porównań, zakres dat, pasmo powierzchni, ceny minimalna, średnia i maksymalna, przedział cen całkowitych, a do tego obszar badania: nazwy obrębów, z których pochodzi próba, użyty promień i liczba przebadanych transakcji podana słownie. Liczby są w nim gotowymi polskimi napisami — sformatowanymi tą samą funkcją, którą formatuje je operat, bo inaczej ten sam fakt wyglądałby w dwóch miejscach dokumentu inaczej. Jedynym wyjątkiem jest liczba transakcji w próbie, która jedzie jako zwykła liczba całkowita.
 
 Równie istotne jest to, czego w tym słowniku nie ma:
 
@@ -22,19 +22,21 @@ Powód usunięcia jest empiryczny. Sprawdziliśmy sześć operatów wzorcowych, 
 
 Zdanie zniknęło **u źródła**. Fakt o trendzie przestał w ogóle powstawać, więc nie ma tu żadnej straży, która pilnowałaby modelu przed napisaniem takiego zdania — nie ma czego pilnować, bo model nie dostaje ani kierunku, ani cen pojedynczych transakcji, z których mógłby go odczytać.
 
-## Obszar badania: obręby z próby, nie z domysłu
+## Analiza rynku składana z danych, nie pisana przez model
 
-Sekcja analizy rynku nazywa obszar, na którym rynek badano. Wcześniej fakty niosły wyłącznie obręb **wycenianej nieruchomości**, więc obszar badania model musiał sobie dopowiedzieć — i potrafił wskazać obręb, z którego nie pochodziła ani jedna transakcja z próby.
+Rozdział 11 operatu — „Analiza i charakterystyka rynku” — od 16 września 2026 **nie przechodzi przez model językowy**. Każdy z dziesięciu operatów wzorcowych biura pisze go według tej samej formuły, w której każda liczba pochodzi z doboru próby, więc aplikacja składa go sama:
 
-Teraz obszar badania jest faktem: nazwy obrębów wyliczone z próby **po** Twoich odrzuceniach (transakcja, którą odrzuciłeś, nie trafia do Tabeli 1, więc jej obręb nie jest obszarem, o którym operat orzeka) oraz promień, na którym zatrzymał się dobór. Nazwa obrębu użyta w tekście, a nieobecna w faktach, jest wyłapywana tak samo jak liczba spoza faktów — z tą samą jedną dodatkową próbą i tym samym skutkiem, gdy druga wersja też jej używa. Zwykła kontrola liczb byłaby tu bezradna: nazwa obrębu nie zawiera żadnej cyfry.
+- wstęp z miastem i obrębem przedmiotu,
+- „Cechy analizowanego rynku” — **kryteria** doboru, a nie wyniki: pasmo powierzchni, którym dobierano transakcje (48,2 m² ± 30%, albo Twój własny zakres z kroku 3), oraz „2 lata wstecz od daty wyceny”. Wcześniej w tym miejscu stał rozrzut powierzchni samej próby, podany tak, jakby był kryterium,
+- akapit o **zebranym zbiorze**: transakcje mieszkalne z wolnego rynku w promieniu badania i w okresie badania — rozrzut powierzchni, ceny jednostkowe ze średnią, ceny całkowite ze średnią,
+- akapit o tym, **co odrzucono**: udziały w lokalach, lokale spoza pasma powierzchni (z jego granicami) oraz — gdy ustawiłeś pasmo cen — „lokale odbiegające ceną od średniej ceny transakcyjnej”, bez podawania progu. Liczby odrzuconych i przebadanych transakcji operat nie podaje, jak żaden ze wzorców,
+- akapit o **próbie** przyjętej do porównań.
 
-Lista obrębów działa na zasadzie wszystko albo nic. Aplikacja zna nazwy części kodów obrębów Poznania; gdy choć jednej transakcji z próby nie da się nazwać, cała lista jest pomijana. Wypisanie samych rozpoznanych opisywałoby obszar węższy niż ten, na którym operat faktycznie się opiera — a takiego zdania nie wyłapałaby żadna kontrola, bo każda nazwa w nim **jest** w faktach.
+Odmiana — „1 transakcję / 2 transakcje / 5 transakcji”, „obręb / obręby”, łączenie kryteriów odrzucenia — jest sprawdzona testami dla każdego wariantu, jaki formuła może wyprodukować.
 
-## Liczba przebadanych transakcji jest słowem
+Tekst trafia do kroku 6 z plakietką „Z danych — do weryfikacji” i zachowuje się jak każda inna sekcja: możesz go poprawić i zatwierdzić, a gdy dane doboru się zmienią, sekcja wraca do przejrzenia.
 
-„Przebadano kilkaset transakcji” — nie „przebadano 137 transakcji”. Tak piszą operaty i o to prosili rzeczoznawcy. Słowo dobiera aplikacja, nie model: do dziewięciu „kilka”, do dziewiętnastu „kilkanaście”, do dziewięćdziesięciu dziewięciu „kilkadziesiąt”, do dziewięciuset dziewięćdziesięciu dziewięciu „kilkaset”, wyżej „ponad tysiąc”. Reguła w zadaniu byłaby prośbą; funkcja jest funkcją.
-
-Ma to drugi, mniej oczywisty powód. Zbiór liczb dozwolonych powstaje z **całego** słownika faktów (patrz niżej), wspólnego dla wszystkich sekcji — więc dokładna liczba przebadanych transakcji byłaby jednocześnie pozwoleniem na wpisanie tej samej liczby jako powierzchni lokalu albo ceny, w dowolnym miejscu operatu. Dokładna liczba nie ginie: widać ją w kroku 3 i w danych wyceny. Liczba transakcji **przyjętych do porównań** jest natomiast podawana dokładnie — trafia do Tabeli 1.
+**Wyceny, których próbę pobrano przed 16 września**, nie mają zapisanych danych zebranego zbioru — aplikacja wcześniej ich nie przechowywała. Ich rozdział 11 nie zawiera akapitów o zebranym zbiorze i o odrzuceniach. Żeby je uzyskać, pobierz próbę ponownie w [kroku 3](/pomoc/krok-3-proba).
 
 ## Kontrola liczb
 

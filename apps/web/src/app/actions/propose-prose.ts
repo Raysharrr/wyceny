@@ -20,6 +20,11 @@ import { recordEvent, recordFailure } from "@/app/actions/_record-failure";
 import { fingerprint } from "@/lib/fingerprint";
 import { currentTraceId, errorWithCode, withTrace } from "@/lib/trace";
 import type { ProseSection, ProseSnapshot } from "@/domain/prose-snapshot";
+import { composeMarketAnalysis } from "@/domain/market-analysis";
+import type { ProseProposal } from "@/ports/prose";
+
+/** `model` recorded when no model took part — a batch holding only §11. */
+const COMPOSED_MODEL = "dane-wyceny";
 
 export type ProposeProseResult = { prose: ProseSnapshot } | { error: string };
 
@@ -146,19 +151,31 @@ export async function proposeProse(
       return valuation.inputs.prose ? { prose: valuation.inputs.prose } : { error: NO_FACTS };
     }
 
-    const token = mintWorkerToken();
-    if (!token) return { error: NOT_CONFIGURED };
+    // §11 is composed here from the data, never asked of the worker (M-12) —
+    // see `domain/market-analysis`. It still lands as an automat proposal the
+    // appraiser reads and confirms; a batch of only §11 costs no call at all.
+    const composed = sections.includes("analiza_rynku") ? composeMarketAnalysis(factsInput) : "";
+    const remote = sections.filter((s) => s !== "analiza_rynku");
 
-    let proposal;
+    let proposal: ProseProposal = {
+      sections: {},
+      rejected: {},
+      model: valuation.inputs.prose?.model ?? COMPOSED_MODEL,
+      usage: { inputTokens: 0, outputTokens: 0 },
+    };
     try {
-      proposal = await proseProposal.fetchProposal({
-        token,
-        sections,
-        facts,
-        transactions: buildProseTransactions(valuation.inputs.comparables),
-        // Beside the facts, never inside them — see `ProseProposalRequest.propertyRight`.
-        propertyRight: valuation.propertyRight,
-      });
+      if (remote.length > 0) {
+        const token = mintWorkerToken();
+        if (!token) return { error: NOT_CONFIGURED };
+        proposal = await proseProposal.fetchProposal({
+          token,
+          sections: remote,
+          facts,
+          transactions: buildProseTransactions(valuation.inputs.comparables),
+          // Beside the facts, never inside them — see `ProseProposalRequest.propertyRight`.
+          propertyRight: valuation.propertyRight,
+        });
+      }
     } catch (error) {
       await recordFailure({
         event: "proposeProse.failed",
@@ -186,7 +203,7 @@ export async function proposeProse(
       factsHashes[section] = currentSectionFactsHash(section, factsInput);
 
     const snapshot = proseSnapshotOf({
-      sections: proposal.sections,
+      sections: composed ? { ...proposal.sections, analiza_rynku: composed } : proposal.sections,
       rejected: proposal.rejected,
       model: proposal.model,
       factsHashes,
