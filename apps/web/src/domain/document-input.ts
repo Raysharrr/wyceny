@@ -1,6 +1,8 @@
 import type { BuildDocumentInput, OperatAuthor, OperatPurpose } from "./document-model";
 import type { KcsResult } from "./kcs";
+import { insurancePageKey } from "./insurance-doc";
 import type { AppraiserProfile } from "../ports/profile";
+import { StorageNotFoundError, type PortStorage } from "../ports/storage";
 import type { Valuation } from "../ports/valuation";
 
 /**
@@ -9,15 +11,56 @@ import type { Valuation } from "../ports/valuation";
  * is a PREVIEW state (the appraiser has not filled it in yet), and B-15 is
  * what refuses the issue — this function has no business throwing on it.
  *
- * `policyPages` stays empty here; see {@link OperatAuthor}.
+ * `policyPages` są czystym wejściem — czyta je {@link policyPagesFrom}, bo ta
+ * funkcja nie ma prawa sięgać do storage (F-10). Bez nich dokument nie wymieni
+ * załącznika, co jest właściwym stanem PODGLĄDU profilu bez polisy.
  */
-export function authorFrom(profile: AppraiserProfile | null): OperatAuthor {
+export function authorFrom(
+  profile: AppraiserProfile | null,
+  policyPages: Buffer[] = [],
+): OperatAuthor {
   return {
     fullName: profile?.fullName ?? "",
     licenseNo: profile?.licenseNo ?? "",
     officeBlock: profile?.officeBlock ?? "",
-    policyPages: [],
+    policyPages,
   };
+}
+
+/**
+ * Strony polisy OC ze storage, w kolejności dokumentu (D-60). Worker rasteryzuje
+ * PDF polisy do `page-001.jpg`, `page-002.jpg`, … pod prefiksem z profilu, a
+ * liczby stron nikt nie zapisuje — więc czytamy kolejne klucze, aż jeden
+ * zniknie. Brak klucza to KONIEC dokumentu, nie błąd; każdy inny błąd storage
+ * leci dalej, bo operat bez polisy, która istnieje, jest gorszy niż odmowa.
+ *
+ * Limit stron jest twardy: bez niego uszkodzony prefiks (albo storage
+ * zwracający cokolwiek na każdy klucz) kręciłby pętlę w nieskończoność przy
+ * zatwierdzaniu.
+ */
+const MAX_POLISA_STRON = 50;
+
+export async function policyPagesFrom(
+  storage: Pick<PortStorage, "get">,
+  prefix: string | null | undefined,
+): Promise<Buffer[]> {
+  if (!prefix) return [];
+  const pages: Buffer[] = [];
+  for (let i = 0; i < MAX_POLISA_STRON; i++) {
+    let page: Buffer;
+    try {
+      page = await storage.get(insurancePageKey(prefix, i));
+    } catch (error) {
+      if (error instanceof StorageNotFoundError) break;
+      throw error;
+    }
+    // Pusta odpowiedź to też koniec dokumentu. Dokument nie ma prawa zapowiedzieć
+    // strony załącznika, dla której nie ma bajtów — a taka strona nie kończy się
+    // brakiem obrazka, tylko wywróceniem renderu na pustym buforze.
+    if (!Buffer.isBuffer(page) || page.length === 0) break;
+    pages.push(page);
+  }
+  return pages;
 }
 
 /**

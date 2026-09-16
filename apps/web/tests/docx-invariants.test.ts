@@ -140,8 +140,10 @@ describe("openDocx — parser XML bez usuwania znaczników", () => {
   it("nie gubi txbxContent — obie kopie pola tekstowego szablonu są osobnymi polami", () => {
     const doc = openDocx(TEMPLATE);
     expect(doc.textboxes.map((t) => t.copy)).toEqual(["choice", "vml"]);
-    expect(doc.textboxes[0].text).toContain("e-mail");
-    expect(doc.textboxes[1].text).toContain("e-mail");
+    // Dane kontaktowe biura były w szablonie literałem operatu źródłowego;
+    // od TP.5 obie kopie niosą ten sam tag z profilu (ADR-020 reg. 4/5).
+    expect(doc.textboxes[0].text).toContain("{biuro}");
+    expect(doc.textboxes[1].text).toContain("{biuro}");
   });
 
   it("rzuca, gdy dokument nie ma żadnego akapitu — pusty render nie przejdzie asercji", () => {
@@ -444,7 +446,12 @@ describe("effectiveRunFormat — krój i rozmiar (wersja minimalna)", () => {
     const tpl = openDocx(TEMPLATE);
     const tp22 = tpl.paragraphs.filter((p) => p.style === "Tekstpodstawowy22");
 
-    it("styl Tekstpodstawowy22 bez rPr runu daje Times New Roman 12", () => {
+    // ZMIENIONE przez b1-template (TP.0): do 15.09 sam łańcuch stylów dawał tu
+    // Times New Roman 12, a Segoe UI 10 pochodziło wyłącznie z `rPr` runów
+    // operatu źródłowego — więc każdy akapit dokładany przez generator wychodził
+    // inną czcionką (M-6). Etap 10c generatora ustawia krój i rozmiar w czterech
+    // stylach bazowych, więc dziś łańcuch daje to samo co runy.
+    it("styl Tekstpodstawowy22 bez rPr runu daje Segoe UI 10", () => {
       // Binarka nie ma runu bez rPr w tym stylu — bierzemy prawdziwy run i zdejmujemy
       // mu formatowanie bezpośrednie, żeby zmierzyć sam łańcuch stylów.
       const bare = {
@@ -452,16 +459,19 @@ describe("effectiveRunFormat — krój i rozmiar (wersja minimalna)", () => {
         rStyle: null,
         props: { ascii: null, asciiTheme: null, szHalfPt: null },
       };
-      expect(effectiveRunFormat(tpl, bare)).toEqual({ font: "Times New Roman", sizePt: 12 });
+      expect(effectiveRunFormat(tpl, bare)).toEqual({ font: "Segoe UI", sizePt: 10 });
     });
 
-    it("każdy run z tekstem w Tekstpodstawowy22 wychodzi w Segoe UI 10 tylko dzięki rPr", () => {
+    // Drugi człon tej asercji („…i niesie to w rPr") był prawdą, dopóki cały
+    // Segoe UI brał się z runów operatu źródłowego. Akapity dokładane przez
+    // generator rPr nie mają i mieć nie muszą — biorą krój ze stylu (etap 10c).
+    // Sprawdzamy więc WYNIK, nie sposób jego uzyskania.
+    it("każdy run z tekstem w Tekstpodstawowy22 wychodzi w Segoe UI 10", () => {
       const runs = tp22.flatMap((p) => p.runs).filter((r) => r.text.trim() !== "");
       expect(runs.length).toBeGreaterThan(0);
       expect(new Set(runs.map((r) => JSON.stringify(effectiveRunFormat(tpl, r))))).toEqual(
         new Set([JSON.stringify({ font: "Segoe UI", sizePt: 10 })]),
       );
-      expect(runs.every((r) => r.props.ascii === "Segoe UI" && r.props.szHalfPt === 20)).toBe(true);
     });
   });
 });

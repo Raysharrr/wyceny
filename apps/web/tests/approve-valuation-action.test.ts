@@ -402,27 +402,37 @@ describe("approveValuation — inspection photos (Slice 10, Task 8)", () => {
     fetchMapsMock.mockResolvedValue({ kind: "ok", maps: { ewidencyjna: PNG_1PX, orto: JPG_1PX } });
   };
 
-  it("reads exactly the manifest keys via storage.get and embeds maps+photos media", async () => {
+  // b1-template (TP.5, D-60): zatwierdzenie czyta jeszcze strony polisy OC —
+  // klucze `<insurance_doc_key>/page-00N.jpg`, aż jeden zniknie. Liczby stron
+  // nikt nie zapisuje, więc jedno sondowanie „o jeden za dużo" jest z definicji.
+  const POLISA_STRONA_1 = "polisa/test-user/fikcyjna/page-001.jpg";
+  const POLISA_STRONA_2 = "polisa/test-user/fikcyjna/page-002.jpg";
+
+  it("reads exactly the manifest keys via storage.get and embeds maps+photos+polisa media", async () => {
     getMock.mockResolvedValue(draftWithPhotos);
     setUpHappyMocksWithMaps();
-    storageGetMock.mockImplementation((key: string) =>
-      key === photoKeys.otoczenie || key === photoKeys.budynekZewn
-        ? Promise.resolve(JPG_1PX)
-        : Promise.reject(new Error(`unexpected storage.get(${key})`)),
-    );
+    storageGetMock.mockImplementation((key: string) => {
+      if (key === photoKeys.otoczenie || key === photoKeys.budynekZewn || key === POLISA_STRONA_1) {
+        return Promise.resolve(JPG_1PX);
+      }
+      if (key === POLISA_STRONA_2) return Promise.reject(new StorageNotFoundError(key));
+      return Promise.reject(new Error(`unexpected storage.get(${key})`));
+    });
 
     const result = await approveValuation(draftWithPhotos.id);
 
     expect(result).toBeUndefined();
-    expect(storageGetMock).toHaveBeenCalledTimes(2);
+    expect(storageGetMock).toHaveBeenCalledTimes(4);
     expect(storageGetMock).toHaveBeenCalledWith(photoKeys.otoczenie);
     expect(storageGetMock).toHaveBeenCalledWith(photoKeys.budynekZewn);
+    expect(storageGetMock).toHaveBeenCalledWith(POLISA_STRONA_1);
+    expect(storageGetMock).toHaveBeenCalledWith(POLISA_STRONA_2);
 
     const docxCall = storagePutMock.mock.calls.find(([key]) =>
       isOperatDocxKey(key, draftWithPhotos.id),
     );
     const docxBytes = docxCall?.[1] as Buffer;
-    expect(generatedMedia(docxBytes)).toHaveLength(2 + 2); // 2 maps + 2 photos
+    expect(generatedMedia(docxBytes)).toHaveLength(2 + 2 + 1); // 2 mapy + 2 zdjęcia + 1 strona polisy
   });
 
   it("aborts BEFORE repo.approve when a manifest photo key fails to resolve", async () => {

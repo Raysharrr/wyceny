@@ -77,11 +77,10 @@ const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
  * `kw.source` → document phrase for `{kw_zrodlo}` ("Badanie ksiąg wieczystych
  * na podstawie: …"). `ekw_reczne` names what the appraiser actually did — read
  * the book in the eKW browser — because the operat may never describe a
- * document nobody held (ADR-018 reg. 4). Note `kw_stub_odpis` below already
- * excludes this source from the "pełna treść odpisu pozostaje w dokumentacji"
- * sentence, which is the whole point. The §7 wording of the examination
- * protocol belongs to `b1-template`; this phrase is the honest minimum until
- * it lands.
+ * document nobody held (ADR-018 reg. 4). Since b1-template §8.2 prints the
+ * examination protocol itself, so this phrase names only HOW the book was
+ * read — the sentence about an odpis staying in the appraiser's files is gone
+ * from the template (D-21).
  */
 const KW_ZRODLO_TEXT = {
   akt: "akt notarialny",
@@ -217,11 +216,9 @@ function terminateSentence(text: string): string {
 }
 
 /**
- * T9 handoff: the template's `{#dzial3_wpisy}Dział III — wpis: {.}{/dzial3_wpisy}`
- * loop repeats the label per entry with no separator between iterations, so
- * 2+ entries would otherwise run together (`…wpisDział III — wpis: …`).
- * Template tags are FINAL — fixed here by terminating each entry with a
- * period (+ trailing space) so repeated iterations read as separate sentences.
+ * Entries of one dział, each turned into a complete sentence. The template
+ * prints them as ONE paragraph with no separator between entries, so 2+ entries
+ * would otherwise run together (`…wpisDział III — wpis: …`).
  */
 function terminateEntries(tresc: string[]): string[] {
   return tresc.map((t) => `${terminateSentence(t)} `);
@@ -254,7 +251,8 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
     rows.push(soleRow("dzial", dzial.tytul));
     // A dział marked BRAK WPISÓW gets a row SAYING so. Emitting nothing would
     // leave the reader unable to tell "examined and empty" from "skipped" —
-    // the same distinction `dzial3_brak` guards on the manual path.
+    // the same distinction `dzialOpis` keeps on the manual path, where an empty
+    // dział prints "brak wpisów." instead of nothing.
     if (dzial.brakWpisow) rows.push(soleRow("brak", "BRAK WPISÓW"));
     for (const tabela of dzial.tabele) {
       if (tabela.naglowek) rows.push(soleRow("tabela", tabela.naglowek));
@@ -406,7 +404,14 @@ export type FeatureRow = {
   nazwa: string;
   waga_pct: string;
   ui_min: string;
-  /** "—" when the feature's described scale has two levels — it has no middle (ADR-016 reg. 6). */
+  /**
+   * ZAWSZE wypełnione, także przy skali dwustopniowej. Ui min/śr/max wynikają z
+   * wagi cechy i przedziału Cmin–Cmax, nie z liczby opisanych poziomów — przy
+   * dwóch poziomach rzeczoznawca po prostu nigdy na Ui śr nie wyląduje.
+   * Rozstrzyga operat wzorcowy (Kościelna, Tabela 3): powierzchnia ma tam skalę
+   * dwustopniową, jej Ui śr to 0,100, a SUMA 1,000. Dawne D-47 o kresce w tym
+   * miejscu jest unieważnione.
+   */
   ui_sr: string;
   ui_max: string;
   ui_przedmiot: string;
@@ -453,6 +458,12 @@ export type DocumentModel = {
    * marker in `docx-render.ts`.
    */
   polisa_strony: Array<{ img: string }>;
+  /**
+   * Honest silence for §15 and „Załącznik nr 1": bez stron polisy dokument nie
+   * wymienia załącznika, którego nie ma. Osiągalne tylko w PODGLĄDZIE — B-16
+   * nie wyda operatu bez ważnej polisy.
+   */
+  ma_polise: boolean;
   // EGiB/building facts (section 8.2) — from the auto-fetched subject snapshot;
   // dashes when no subject was fetched (legacy manual-entry inputs).
   obreb: string;
@@ -481,12 +492,6 @@ export type DocumentModel = {
   kw_sad: string;
   kw_wydzial: string;
   kw_data_dok: string;
-  // STUB_KW paragraph (the {nr_kw} line): its second sentence ("Pełna treść
-  // odpisu KW pozostaje…") renders ONLY when the title info could come from a KW
-  // excerpt — legacy/manual (kw == null) and the "odpis_kw" source. Under an
-  // "akt" (deed) source it is hidden, so the operat never implies possession of a
-  // KW excerpt it may not hold (final-review #5b).
-  kw_stub_odpis: boolean;
   /**
    * §8.2's examination protocol, one dated sentence per book (D-21) — what the
    * 14.09 operat said instead of "Pełna treść odpisu KW pozostaje w
@@ -547,6 +552,21 @@ export type DocumentModel = {
   dzial3_opis: string;
   dzial4_opis: string;
   /**
+   * The SAME two sentences for the ground book (b1-template, TP.2). Its
+   * protocol sentence ends with a colon and introduces the dzialy, exactly like
+   * the lokal book's — but the ground book is never transcribed (§P1.8: its
+   * card is filled by hand), so without these the colon introduced nothing.
+   * Empty when that dział was never answered.
+   */
+  dzial3_opis_gruntu: string;
+  dzial4_opis_gruntu: string;
+  /**
+   * The lokal's number as the book states it (dział I-O). One of §8.2's facts on
+   * the manual path, where there is no transcription to quote it from; empty
+   * when the book did not give it.
+   */
+  nr_lokalu_kw: string;
+  /**
    * Dział II's deed, as §7 prints it (ADR-018 reg. 5, D-12): the kind, the Rep.
    * A number and the date, joined. `ma_akt` false means the operat says nothing
    * about a deed at all — never a sentence with blanks in it.
@@ -567,10 +587,6 @@ export type DocumentModel = {
   udzial_kw: string;
   pow_kw_present: boolean;
   pow_uzytkowa_kw: string;
-  dzial3_brak: boolean;
-  dzial3_wpisy: string[];
-  dzial4_brak: boolean;
-  dzial4_wpisy: string[];
   // Section 9 MPZP variants — `{#mpzp}`/`{#mpzp_brak}` are mutually exclusive,
   // enforced here (never both, never neither, when a subject is present).
   mpzp: MpzpBlock | null;
@@ -624,8 +640,9 @@ export type DocumentModel = {
    * each (a price tie describes every flat at it, D-53). `lokalizacja` is the
    * street without a house number, empty when the register has none; `cechy`
    * carries one line per active feature, derived from that flat's own data
-   * (D-52). `b1-template` prints these; the flat `opis_cmin`/`opis_cmax`
-   * below are the first flat's lines, the shape the template renders today.
+   * (D-52). §12.2 loops over these, so a price tie describes every flat at it —
+   * the flat `opis_cmin`/`opis_cmax` that carried only the FIRST flat's lines
+   * went out with the loop that read them (b1-template, TP.4).
    *
    * The piętro behind these lines is normalised per source
    * (`pietroOfCandidate`): RCN's kondygnacja loses one, the cooperative
@@ -638,8 +655,6 @@ export type DocumentModel = {
   /** §12.2 street of the first flat at that price; "" when unknown — the template owns the sentence. */
   lokalizacja_cmin: string;
   lokalizacja_cmax: string;
-  opis_cmin: string[];
-  opis_cmax: string[];
   opis_przedmiot: string[];
   /** §12.1 rating-scale definitions — one row per active feature; only non-empty levels print. */
   skala_ocen: Array<{ cecha: string; poziomy: Array<{ poziom: string; def: string }> }>;
@@ -753,11 +768,10 @@ export type OperatAuthor = {
   /**
    * Rasterised policy pages in document order, as JPEG.
    *
-   * ALWAYS EMPTY as of this session: the model turns the list into markers,
-   * but nothing reads the pages back out of storage yet and `docx-render.ts`
-   * has no "Załącznik nr 1" tag to dispatch them to — both belong to the
-   * template session (plan §P1.9). Filling this array is the whole change on
-   * this side when that lands.
+   * Wypełniane przez `policyPagesFrom` z prefiksu `insurance_doc_key` (jedna
+   * strona = jeden klucz `page-00N.jpg`). Model robi z nich ZNACZNIKI; bajty
+   * jadą do renderu osobno, tą samą drogą co zdjęcia z oględzin — obrazy nigdy
+   * nie podróżują wewnątrz modelu.
    */
   policyPages: Buffer[];
 };
@@ -1004,9 +1018,6 @@ export function buildDocumentModel(
   const prices = inputs.comparables.map((c) => c.pricePerM2);
   const lokaleCmin = lokaleAtPrice(Math.min(...prices));
   const lokaleCmax = lokaleAtPrice(Math.max(...prices));
-  const opisOf = (lokale: typeof lokaleCmin) =>
-    (lokale[0]?.cechy ?? []).map((c) => `${c.nazwa} – ${c.opis},`);
-
   return {
     adres: input.address,
     powierzchnia: formatNumber(input.area, 2),
@@ -1020,6 +1031,7 @@ export function buildDocumentModel(
     autor_uprawnienia: input.author.licenseNo || DASH,
     biuro: input.author.officeBlock || DASH,
     polisa_strony: input.author.policyPages.map((_, i) => ({ img: `polisa-${i}` })),
+    ma_polise: input.author.policyPages.length > 0,
     obreb: subject?.obreb || DASH,
     arkusz: subject?.arkusz || DASH,
     nr_dzialki: subject?.nrDzialki || DASH,
@@ -1039,9 +1051,6 @@ export function buildDocumentModel(
     kw_sad: kw?.sad ?? DASH,
     kw_wydzial: kw?.wydzial ?? DASH,
     kw_data_dok: kw?.dataDokumentu ? formatDatePl(kw.dataDokumentu) : DASH,
-    // Legacy/manual (kw == null) and odpis_kw source keep the sentence (accurate);
-    // an akt (deed) source hides it — no false claim of holding a KW excerpt.
-    kw_stub_odpis: kw == null || kw.source === "odpis_kw",
     protokol_ksiegi_lokalu: protokolLokalu,
     ma_protokol_ksiegi_lokalu: protokolLokalu !== "",
     protokol_ksiegi_gruntu: protokolGruntu,
@@ -1064,6 +1073,9 @@ export function buildDocumentModel(
     ma_tresc_lokalu: kw?.tresc != null,
     dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),
     dzial4_opis: dzialOpis(kw?.dzial4, "Dział IV"),
+    dzial3_opis_gruntu: dzialOpis(kwGrunt?.dzial3, "Dział III"),
+    dzial4_opis_gruntu: dzialOpis(kwGrunt?.dzial4, "Dział IV"),
+    nr_lokalu_kw: kw?.nrLokalu ?? "",
     akt_opis: aktOpis(kw?.akt),
     ma_akt: aktOpis(kw?.akt) !== "",
     ma_obciazenie: maObciazenie,
@@ -1078,14 +1090,6 @@ export function buildDocumentModel(
     udzial_kw: kw?.udzial ?? DASH,
     pow_kw_present: kw?.powUzytkowaKw != null,
     pow_uzytkowa_kw: kw?.powUzytkowaKw != null ? formatNumber(kw.powUzytkowaKw, 2) : DASH,
-    // dzialN == null means the source document carries NO dział info (e.g. an
-    // akt notarialny) — that must render NOTHING, not "brak wpisów" (a
-    // fabricated clean-title/no-mortgage claim). brak is true ONLY when the
-    // dział was actually examined (non-null) and came back empty.
-    dzial3_brak: kw != null && kw.dzial3 != null && !kw.dzial3.wpisy,
-    dzial3_wpisy: kw?.dzial3?.wpisy ? terminateEntries(kw.dzial3.tresc) : [],
-    dzial4_brak: kw != null && kw.dzial4 != null && !kw.dzial4.wpisy,
-    dzial4_wpisy: kw?.dzial4?.wpisy ? terminateEntries(kw.dzial4.tresc) : [],
     mpzp: hasMpzp
       ? {
           symbol: subject.mpzpSymbol ?? "",
@@ -1161,8 +1165,6 @@ export function buildDocumentModel(
     lokale_cmax: lokaleCmax,
     lokalizacja_cmin: lokaleCmin[0]?.lokalizacja ?? "",
     lokalizacja_cmax: lokaleCmax[0]?.lokalizacja ?? "",
-    opis_cmin: opisOf(lokaleCmin),
-    opis_cmax: opisOf(lokaleCmax),
     opis_przedmiot: activeFeatures.map((f) => {
       const position = ratingPosition(f);
       return `${f.name} – ${position ? POSITION_TEXT[position] : DASH},`;

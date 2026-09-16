@@ -64,6 +64,9 @@ import {
  */
 export const KW_TESTOWA = ["XX1X", "00000000", "0"].join("/");
 
+/** Fikcyjny numer księgi MACIERZYSTEJ (gruntu) — składany tak samo i z tego samego powodu. */
+export const KW_GRUNTU_TESTOWA = ["XX1X", "00000001", "0"].join("/");
+
 /** Piętro przedmiotu — od FH.2 trzymane w `inputs.subject.pietro` (P1.1, ADR-016 reg. 5). */
 export const PIETRO_PRZEDMIOTU = 7;
 
@@ -183,7 +186,7 @@ function features(skala: NonNullable<Wariant1409["skalaPowierzchni"]>): Feature[
 const KW_ODPIS: KwSnapshot = {
   source: "odpis_kw",
   kwLokalu: KW_TESTOWA,
-  kwGruntu: ["XX1X", "00000001", "0"].join("/"),
+  kwGruntu: KW_GRUNTU_TESTOWA,
   kwInne: [],
   deweloperski: false,
   powUzytkowaKw: AREA,
@@ -214,7 +217,7 @@ const KW_EKW_RECZNE: KwSnapshot = {
 /** Księga macierzysta — w paczce 1 zawsze ręczna (§P1.8 pkt 7). */
 const KW_GRUNT_RECZNA: KwGruntSnapshot = {
   source: "ekw_reczne",
-  nrKsiegi: ["XX1X", "00000001", "0"].join("/"),
+  nrKsiegi: KW_GRUNTU_TESTOWA,
   dataBadania: "2026-09-14",
   dzial3: { wpisy: false, tresc: [] },
   dzial4: { wpisy: false, tresc: [] },

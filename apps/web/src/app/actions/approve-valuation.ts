@@ -22,7 +22,12 @@ import {
 import type { Blocker } from "@/domain/provenance";
 import { gateContextFor } from "@/lib/gate-context";
 import { buildDocumentModel } from "@/domain/document-model";
-import { AmountMismatchError, authorFrom, documentInputFor } from "@/domain/document-input";
+import {
+  AmountMismatchError,
+  authorFrom,
+  documentInputFor,
+  policyPagesFrom,
+} from "@/domain/document-input";
 import { computeKcsOnScale } from "@/domain/feature-rules";
 import { renderOperatDocx, type RenderMaps, type RenderPhotos } from "@/adapters/docx-render";
 import { loadInspectionPhotos } from "@/lib/load-inspection-photos";
@@ -104,7 +109,9 @@ export async function approveValuation(
     // of whoever is logged in, never from the template. ONE read feeds both the
     // gate (B-15/B-16) and the render.
     const profile = await profileRepository.get(session.user.id);
-    const author = authorFrom(profile);
+    // Strony polisy idą do "Załącznika nr 1" (D-60). Czytane RAZ, tym samym
+    // odczytem profilu co bramka B-16 — dokument i bramka mówią o tej samej polisie.
+    const author = authorFrom(profile, await policyPagesFrom(storage, profile?.insuranceDocKey));
     const gateContext = gateContextFor(valuation, profile, now);
 
     // Fail fast with the first blocker before any expensive generation work.
@@ -291,7 +298,7 @@ export async function approveValuation(
           ),
         };
       }
-      const docx = renderOperatDocx(model, { maps, photos });
+      const docx = renderOperatDocx(model, { maps, photos, policyPages: author.policyPages });
       const pdf = await worker.convertToPdf(docx);
       // One key per approval (ADR-020 wariant a): the DOCX stored here is the
       // very file `signValuationAction` puts the signature on, and after
