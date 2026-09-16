@@ -92,6 +92,18 @@ Zatwierdzone opisy drukują się w operacie w sześciu miejscach:
 - **opis lokalu** — sekcja 8.3 **oraz wyciąg z operatu** (sekcja 1), czyli ten sam tekst w dwóch miejscach; wiersz „Opis nieruchomości” w wyciągu bierze się właśnie stąd,
 - **uzasadnienie wyniku** — sekcja 13.
 
+### Jak tekst z pola zamienia się w akapity operatu
+
+Tekst z edytora nie trafia do dokumentu znak w znak — jest najpierw dzielony na akapity, według jednej reguły:
+
+- **pusta linia** zaczyna nowy akapit;
+- **linia zaczynająca się od myślnika albo kropki** (`-`, `–`, `—`, `•`, `*`) też zaczyna nowy akapit, nawet bez pustej linii — dzięki temu lista kryteriów w sekcji 11 zostaje listą;
+- **pojedyncze złamanie linii w środku zdania** jest traktowane jak zawinięcie i **łączy się spacją**.
+
+Ostatnia reguła nie jest kosmetyką. Model językowy zawija odpowiedź mniej więcej co 88 znaków, a złamanie wypadające między dwoma słowami zjadało spację — w operacie z 14 września wyszło z tego „35,20 m2do 48,67 m2” i „zostałaustalona”. Przy okazji cała sekcja lądowała w **jednym** akapicie z twardymi złamaniami, a że akapit jest justowany obustronnie, Word rozciągał każdą taką linię na pełną szerokość kolumny — stąd „Cechy analizowanego rynku:”. Teraz każdy akapit tekstu jest osobnym akapitem dokumentu i nic się nie rozjeżdża.
+
+Jeśli chcesz w operacie przerwę między akapitami, zostaw w polu **pustą linię**. Samo przejście do nowej linii w środku zdania nowego akapitu nie zrobi — i tak ma być.
+
 Sekcja pusta nie zostawia po sobie w dokumencie ani nagłówka, ani pustego akapitu. Jeden wiersz jest wyjątkiem: w wyciągu z operatu pozycja „Opis nieruchomości” nigdy nie bywa pusta — bez opisu lokalu szablon drukuje w niej zdanie o powierzchni użytkowej. Przy pustej sekcji zatwierdzenie operatu i tak jest zablokowane, więc do wydanego dokumentu ten wariant nie dochodzi. Z czego składa się cały operat, opisuje [Operat i niezmienność dokumentu](/pomoc/operat-i-niezmiennosc).
 
 ## Co blokuje przejście dalej

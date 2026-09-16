@@ -10,6 +10,20 @@ import {
 } from "../src/domain/prose-snapshot";
 import { goldenInputs, syntheticDocumentInput } from "./fixtures/document-model-fixture";
 import { confirmedProse } from "./fixtures/valuation-inputs";
+import type { DocumentModel } from "../src/domain/document-model";
+import type { ProseSection } from "../src/domain/prose-snapshot";
+
+/**
+ * Tekst sekcji tak, jak trafia do dokumentu — niezależnie od tego, którym
+ * z dwóch kształtów niesie ją model (M-11). Cztery sloty samodzielne mają
+ * akapity, trzy kontynuujące literał mają tekst sklejony; oba wyrażają ten sam
+ * łańcuch, więc test o TREŚCI nie powinien wiedzieć, który to przypadek.
+ */
+function prozaTekst(model: DocumentModel, section: ProseSection): string {
+  const akapity = (model as Record<string, unknown>)[`proza_${section}_ak`];
+  if (Array.isArray(akapity)) return akapity.map((a) => (a as { tekst: string }).tekst).join(" ");
+  return String((model as Record<string, unknown>)[`proza_${section}`] ?? "");
+}
 
 /**
  * T8: the appraiser's confirmed prose reaches the operat.
@@ -46,7 +60,7 @@ function paragraphCount(docx: Buffer): number {
   return (docXml(docx).match(/<w:p[ >]/g) ?? []).length;
 }
 
-/** Multi-paragraph prose — `linebreaks: true` turns the \n into <w:br/>. */
+/** Proza wieloakapitowa — od M-11 każdy akapit ma być osobnym `<w:p>`. */
 const MULTILINE = [
   "Akapit pierwszy sekcji testowej.",
   "Akapit drugi sekcji testowej.",
@@ -73,8 +87,14 @@ describe("T8: buildDocumentModel carries the prose snapshot", () => {
     const inputs = { ...goldenInputs(), prose: confirmedProse() };
     const model = buildDocumentModel({ ...syntheticDocumentInput(), inputs });
 
+    // M-11: sekcja żyje w modelu w dwóch kształtach, bo w dwóch kształtach
+    // używa jej szablon — jako akapity (`_ak`, sloty samodzielne) i jako tekst
+    // sklejony (sloty kontynuujące literał). Żaden z nich nie niesie już znaku
+    // nowej linii, więc `linebreaks` nie ma czego zamienić na `<w:br/>`.
     for (const section of PROSE_SECTIONS) {
-      expect(model[`proza_${section}` as const]).toBe(inputs.prose.sections[section]?.value);
+      const value = inputs.prose.sections[section]?.value ?? "";
+      expect(prozaTekst(model, section)).toBe(value);
+      expect(prozaTekst(model, section)).not.toContain("\n");
     }
     expect(model.ma_proza_analiza_rynku).toBe(true);
     expect(model.ma_proza_opis_lokalu).toBe(true);
@@ -86,7 +106,7 @@ describe("T8: buildDocumentModel carries the prose snapshot", () => {
     const model = buildDocumentModel(syntheticDocumentInput());
 
     for (const section of PROSE_SECTIONS) {
-      expect(model[`proza_${section}` as const]).toBe("");
+      expect(prozaTekst(model, section)).toBe("");
     }
     expect(model.ma_proza_analiza_rynku).toBe(false);
     expect(model.ma_proza_opis_lokalu).toBe(false);
@@ -103,9 +123,11 @@ describe("T8: buildDocumentModel carries the prose snapshot", () => {
       inputs: { ...goldenInputs(), prose },
     });
 
-    expect(model.proza_standard).toBe("");
+    // Same rule for a section that is nothing but whitespace: it has no
+    // paragraphs, so it opens no block — honest silence follows the akapity.
+    expect(model.proza_standard_ak).toEqual([]);
     expect(model.ma_proza_standard).toBe(false);
-    expect(model.proza_uzasadnienie).toBe("");
+    expect(model.proza_uzasadnienie_ak).toEqual([]);
     expect(model.ma_proza_uzasadnienie).toBe(false);
     // …while the sections that WERE written are untouched.
     expect(model.ma_proza_opis_lokalu).toBe(true);
@@ -131,6 +153,39 @@ describe("T8: the prose prints in the rendered operat", () => {
         expect(withProse, `missing ${section} line: ${line}`).toContain(line);
       }
     }
+  });
+
+  /**
+   * M-11 (D-36/D-37) — DOWÓD ODBIORCZY, nie formalność.
+   *
+   * Spec zapisał niezmiennik I-08 („brak `<w:br/>` w akapicie justowanym"), ale
+   * w repo nie było ani jednego testu, który by go sprawdzał — trzeci raz po
+   * I-03 (okładka) i po teście, który miał pilnować „wg wypisu z ewidencji".
+   * Tu jest: proza trzyakapitowa musi dać TRZY akapity, ani jednego twardego
+   * łamania i żadnego sklejenia słów na granicy zawinięcia.
+   */
+  it("§11 wchodzi jako osobne akapity, bez ani jednego twardego łamania (M-11)", () => {
+    const docx = renderOperatDocx(
+      buildDocumentModel({ ...syntheticDocumentInput(), inputs: { ...goldenInputs(), prose } }),
+    );
+    const xml = docXml(docx);
+    const akapity = xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? [];
+    const zProza = akapity.filter((p) => /Akapit (pierwszy|drugi|trzeci) sekcji testowej/.test(p));
+    expect(zProza).toHaveLength(3);
+    for (const p of zProza) expect(p).not.toContain("<w:br/>");
+  });
+
+  it("zawinięcie w środku zdania łączy się spacją, a nie skleja słów (M-11, D-37)", () => {
+    // Dokładnie to, co model robił w wydanym operacie: „od 35,20 m2\ndo 48,67"
+    // wychodziło jako „m2do", bo twarde zawinięcie nie niosło spacji.
+    const zawiniete = proseWith({
+      analiza_rynku: "Powierzchnia od 35,20 m2\ndo 48,67 m2. Średnia cena\nzostała ustalona.",
+    });
+    const text = renderText({ ...goldenInputs(), prose: zawiniete });
+    expect(text).toContain("od 35,20 m2 do 48,67 m2");
+    expect(text).toContain("Średnia cena została ustalona.");
+    expect(text).not.toContain("m2do");
+    expect(text).not.toContain("cenazostała");
   });
 
   it("leaves no stub sentence and no unresolved tag behind", () => {
