@@ -30,6 +30,21 @@ Z warstwy `budynki`:
 
 I to jest cała lista. **Roku budowy w warstwie budynków nie ma** — sprawdzono to zrzutem wszystkich pól odpowiedzi (notatka w nagłówku modułu `apps/worker/app/subject.py`), więc pole roku budowy zostaje puste i uzupełnia je rzeczoznawca z dokumentacji albo z oględzin. Nie pobieramy również niczego o samym lokalu: rejestry, z których korzystamy, opisują działkę i budynek, nie mieszkanie.
 
+### Gdzie te dane trafiają w operacie
+
+Dane ewidencyjne pojawiają się w **trzech** miejscach dokumentu. W Wyciągu (strona 3, wiersz „Dane ewidencyjne”) i w paragrafie 2 drukuje się jedno zdanie identyfikujące, w brzmieniu z operatów wzorcowych:
+
+> obręb nr 0006 Żegrze, arkusz mapy 10, działka ewid. nr 1/66 o pow. 0,8225 ha
+
+W paragrafie 8.2 te same dane wyliczone są osobno, wraz z użytkiem i danymi budynku.
+
+Kilka szczegółów tego zdania:
+
+- **Numeru obrębu nie ma osobnego pola** — odczytujemy go z identyfikatora działki (`ID_DZIALKI`). Szkic wypełniony ręcznie, bez pobrania, tego identyfikatora nie ma, więc zdanie brzmi wtedy „obręb Żegrze”, bez numeru.
+- **Więcej niż jedna działka** — wpisz numery po przecinku w polu numeru działki, a w powierzchni ich sumę. Zdanie samo przejdzie wtedy na formę „działki ewid. nr 161, 162 o **łącznej** pow.”.
+- **Gmina bez arkuszy mapy** — zostaw pole arkusza puste, a człon zniknie ze zdania w całości.
+- Gdy brakuje obrębu, numeru działki albo powierzchni, oba miejsca wracają do zapisu „wg wypisu z ewidencji gruntów i budynków”. To celowe: operat nie zgaduje identyfikacji, której nie zna.
+
 Odczyt nie ma reguły wyboru „tego właściwego” obiektu. Zapytanie dopuszcza do dziesięciu obiektów w odpowiedzi, a wartości scalane są w jeden zestaw pól: wartość pusta nie nadpisuje wcześniejszej niepustej, ale gdy dwa obiekty podadzą to samo pole niepusto, zostaje wartość późniejsza. Przy zabudowie, gdzie w zasięgu ±50 m stoi więcej niż jeden budynek, dane budynku warto obejrzeć uważniej.
 
 ## Przeznaczenie w planie miejscowym — dwa źródła, dwie reguły

@@ -155,6 +155,10 @@ export const KW_AKT_NULL_UDZIAL: KwSnapshot = {
  * gates both B-02 and §9, so an incomplete fixture would print nothing at all.
  */
 export const SUBJECT_WITH_MPZP: SubjectSnapshot = {
+  // M-2: the obręb NUMBER the Wyciąg and §2 print has no field of its own —
+  // it is read off `parcelId`, so a fixture without one exercises only the
+  // degraded "obręb Jeżyce" wording and would hide the normal case.
+  parcelId: "306401_1.0021.AR_10.161",
   obreb: "Jeżyce",
   arkusz: "10",
   nrDzialki: "161",

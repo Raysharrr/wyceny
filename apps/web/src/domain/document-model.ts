@@ -7,6 +7,8 @@ import type { KsiegaTresc } from "./kw-tresc";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { isPrzeznaczenieComplete } from "./przeznaczenie";
 import { PROSE_SECTION_LABEL, type ProseSection } from "./prose-snapshot";
+import { deriveSubjectEgib } from "./egib-id";
+import type { SubjectSnapshot } from "./subject-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
 import { DASH, operatStreet } from "./street-name";
@@ -367,6 +369,48 @@ function aktOpis(akt: KwAkt | null | undefined): string {
 }
 
 /**
+ * Geodetic identification of the subject, for the Wyciąg (s. 3) and §2 — the
+ * shape all ten reference operats use, word for word: "obręb nr 0006 Żegrze,
+ * arkusz mapy 10, działka ewid. nr 1/66 o pow. 0,8225 ha". Both places print
+ * the SAME sentence; §2 only prefixes it with "Oznaczenie geodezyjne: ".
+ *
+ * Returns "" when the parts aren't there, and that emptiness IS the
+ * `ma_ewidencja` rule — one function decides both whether the sentence can be
+ * printed and how it reads, so the document can never claim a designation it
+ * cannot spell out (the M-10 lesson, applied to EGiB).
+ *
+ * Three things the reference operats force and a naive join would get wrong:
+ *   - the obręb NUMBER has no field of its own; `parcelId`
+ *     ("306401_1.0006.AR_10.1/66") carries it, so it is read off there and
+ *     nothing new has to be fetched or typed. Hand-entered drafts have no
+ *     `parcelId` and degrade to a bare "obręb Żegrze".
+ *   - `arkusz` is printed verbatim from EGiB, never through
+ *     `deriveSubjectEgib`, whose `arkusz()` strips the leading zero that
+ *     Meissnera's "arkusz mapy 04" needs. Gminas without sheets (Kórnik) drop
+ *     the segment entirely rather than printing "arkusz mapy ".
+ *   - a comma in `nrDzialki` means several parcels, and the operats then say
+ *     "działki … o ŁĄCZNEJ pow." (Kościelna: "nr 161, 162 o łącznej pow.
+ *     0,1559 ha") — `powEwidHa` is the sum in that case.
+ */
+function oznaczenieGeodezyjne(subject: SubjectSnapshot | null): string {
+  const obreb = subject?.obreb?.trim();
+  const dzialki = subject?.nrDzialki?.trim();
+  const pow = subject?.powEwidHa;
+  if (!obreb || !dzialki || pow == null || pow <= 0) return "";
+  const nr = deriveSubjectEgib(null, subject?.parcelId)?.obreb;
+  const arkusz = subject?.arkusz?.trim();
+  return [
+    nr ? `obręb nr ${nr} ${obreb}` : `obręb ${obreb}`,
+    arkusz ? `arkusz mapy ${arkusz}` : "",
+    dzialki.includes(",")
+      ? `działki ewid. nr ${dzialki} o łącznej pow. ${formatNumber(pow, 4)} ha`
+      : `działka ewid. nr ${dzialki} o pow. ${formatNumber(pow, 4)} ha`,
+  ]
+    .filter((part) => part !== "")
+    .join(", ");
+}
+
+/**
  * The manual path's sentence for one dział. Silence when the question was never
  * answered (`dzial == null`): "brak wpisów" there would fabricate a clean-title
  * or no-mortgage claim about a dział nobody read — the 14.09 failure itself.
@@ -468,6 +512,16 @@ export type DocumentModel = {
    * nie wyda operatu bez ważnej polisy.
    */
   ma_polise: boolean;
+  /**
+   * Geodetic identification for the Wyciąg (s. 3) and §2 (D-05/D-06). Until
+   * 16.09 both places printed the fixed "wg wypisu z ewidencji gruntów
+   * i budynków" while the same document spelled the data out in §8.2 — the
+   * template had masked the source operat's sentence and nobody put the tags
+   * back. `ma_ewidencja` false keeps that placeholder as the honest fallback
+   * for a subject too incomplete to name.
+   */
+  ma_ewidencja: boolean;
+  oznaczenie_geodezyjne: string;
   // EGiB/building facts (section 8.2) — from the auto-fetched subject snapshot;
   // dashes when no subject was fetched (legacy manual-entry inputs).
   obreb: string;
@@ -883,6 +937,7 @@ export function buildDocumentModel(
 ): DocumentModel {
   const { kcs, inputs } = input;
   const subject = inputs.subject ?? null;
+  const oznaczenieGeo = oznaczenieGeodezyjne(subject);
   // §9 source sentence (M-10). It prints only when EVERY part of it resolved:
   // a sentence naming a plan it cannot identify, or identifying one without the
   // symbol read out of it, says less than nothing — that is the 14.09 defect.
@@ -1023,6 +1078,8 @@ export function buildDocumentModel(
     biuro: input.author.officeBlock || DASH,
     polisa_strony: input.author.policyPages.map((_, i) => ({ img: `polisa-${i}` })),
     ma_polise: input.author.policyPages.length > 0,
+    ma_ewidencja: oznaczenieGeo !== "",
+    oznaczenie_geodezyjne: oznaczenieGeo,
     obreb: subject?.obreb || DASH,
     arkusz: subject?.arkusz || DASH,
     nr_dzialki: subject?.nrDzialki || DASH,

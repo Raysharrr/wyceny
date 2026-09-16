@@ -620,6 +620,27 @@ describe("F-12 / T-12: operat per property right", () => {
     ["spółdzielcze bez KW", coop],
     ["spółdzielcze bez KW + piwnica", coopBasement],
     ["spółdzielcze z KW", coopWithKw],
+  ])("%s: Wyciąg i §2 identyfikują działkę zamiast odsyłać do wypisu (M-2)", (_, r) => {
+    // D-05/D-06: identyfikacja geodezyjna leży POZA ogrodzeniem
+    // `{#prawo_wlasnosc}` — przy prawie spółdzielczym znika badanie ksiąg
+    // i akt notarialny, ale działka pozostaje ta sama i musi się nazwać
+    // w obu rodzajach operatu. Brzmienie dosłownie z operatów wzorcowych
+    // (Polanka, Meissnera, Milczańska); numer obrębu z `parcelId`.
+    const zdanie = "obręb nr 0021 Jeżyce, arkusz mapy 10, działka ewid. nr 161 o pow. 0,0772 ha";
+    expect(r.model.ma_ewidencja).toBe(true);
+    // Dwa razy: komórka Wyciągu (s. 3) i §2 — ta sama treść, jedno pole modelu.
+    expect(r.count(zdanie)).toBe(2);
+    expect(r.text).toContain(`Oznaczenie geodezyjne: ${zdanie}.`);
+    // Druga strona bramki: placeholder nie może przetrwać obok danych.
+    expect(r.text).not.toContain("wg wypisu z ewidencji gruntów i budynków");
+  });
+
+  it.each([
+    ["własność", own],
+    ["własność + stale hasBasement", ownStaleBasement],
+    ["spółdzielcze bez KW", coop],
+    ["spółdzielcze bez KW + piwnica", coopBasement],
+    ["spółdzielcze z KW", coopWithKw],
   ])("%s: no unresolved tags, no 'undefined', every heading of ITS OWN section list", (_, r) => {
     expect(r.text).not.toContain("undefined");
     expect(r.text).not.toMatch(/\{[a-z_#/.^]+\}/i);
@@ -768,5 +789,66 @@ describe("F-12 / T-12: operat per property right", () => {
     expect(coop.model.klauzula_brak_kw).toBe(NO_KW_SENTENCE);
     expect(coopWithKw.model.klauzula_brak_kw).toBe("");
     expect(coopBasement.model.klauzula_piwnicy).toBe(BASEMENT_CLAUSE);
+  });
+});
+
+/**
+ * M-2 (D-05/D-06) — warianty zdania identyfikującego. Operaty wzorcowe nie mają
+ * jednego kształtu: Kościelna i Polanka opisują DWIE działki („nr 161, 162
+ * o łącznej pow."), Kórnik leży w gminie bez arkuszy mapy, a szkic prowadzony
+ * ręcznie nie ma `parcelId`, z którego czytamy numer obrębu. Każdy z tych
+ * przypadków ma tu własną asercję, bo zwykłe sklejenie pól psuje każdy z nich
+ * inaczej — i bo bez danych operat musi wrócić do placeholdera, a nie wydrukować
+ * kalekie zdanie.
+ */
+describe("F-12: oznaczenie geodezyjne — warianty (M-2)", () => {
+  const modelFor = (subject: SubjectSnapshot | null) =>
+    buildDocumentModel(syntheticDocumentInput(subject ?? undefined));
+
+  it("dwie działki: 'działki … o ŁĄCZNEJ pow.' (Kościelna, Polanka)", () => {
+    const m = modelFor({ ...SUBJECT_WITH_MPZP, nrDzialki: "161, 162", powEwidHa: 0.1559 });
+    expect(m.oznaczenie_geodezyjne).toBe(
+      "obręb nr 0021 Jeżyce, arkusz mapy 10, działki ewid. nr 161, 162 o łącznej pow. 0,1559 ha",
+    );
+  });
+
+  it("gmina bez arkusza mapy: człon znika w całości, nie zostaje 'arkusz mapy ' (Kórnik)", () => {
+    const m = modelFor({ ...SUBJECT_WITH_MPZP, arkusz: "" });
+    expect(m.oznaczenie_geodezyjne).toBe(
+      "obręb nr 0021 Jeżyce, działka ewid. nr 161 o pow. 0,0772 ha",
+    );
+    expect(m.oznaczenie_geodezyjne).not.toContain("arkusz mapy");
+  });
+
+  it("arkusz z zerem wiodącym zostaje jak w EGiB ('04' u Meissnera, nie '4')", () => {
+    // Numer obrębu bierzemy z `parcelId`, ale arkusz NIGDY — `deriveSubjectEgib`
+    // obcina zero wiodące, którego operat wzorcowy wymaga.
+    const m = modelFor({ ...SUBJECT_WITH_MPZP, arkusz: "04" });
+    expect(m.oznaczenie_geodezyjne).toContain("arkusz mapy 04,");
+  });
+
+  it("szkic bez parcelId: sam obręb, bez zmyślonego numeru", () => {
+    const m = modelFor({ ...SUBJECT_WITH_MPZP, parcelId: undefined });
+    expect(m.oznaczenie_geodezyjne).toBe(
+      "obręb Jeżyce, arkusz mapy 10, działka ewid. nr 161 o pow. 0,0772 ha",
+    );
+  });
+
+  it.each([
+    ["brak snapshotu przedmiotu", null],
+    ["snapshot bez działki i powierzchni", SUBJECT_NO_MPZP],
+    ["powierzchnia zero", { ...SUBJECT_WITH_MPZP, powEwidHa: 0 }],
+  ])("%s: operat wraca do placeholdera zamiast drukować kalekie zdanie", (_, subject) => {
+    const m = modelFor(subject as SubjectSnapshot | null);
+    expect(m.ma_ewidencja).toBe(false);
+    expect(m.oznaczenie_geodezyjne).toBe("");
+  });
+
+  it("bez danych render faktycznie pokazuje placeholder w obu miejscach", () => {
+    const model = modelFor(null);
+    const xml = new PizZip(renderOperatDocx(model)).files["word/document.xml"].asText();
+    const text = xml.replace(/<[^>]+>/g, "");
+    expect(text.split("wg wypisu z ewidencji gruntów i budynków").length - 1).toBe(2);
+    expect(text).toContain("Oznaczenie geodezyjne: wg wypisu z ewidencji gruntów i budynków.");
   });
 });

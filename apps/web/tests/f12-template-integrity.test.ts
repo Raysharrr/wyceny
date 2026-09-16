@@ -48,7 +48,7 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * binarka w repo jest tą PRZEJRZANĄ, a nie że da się ją odtworzyć bajtowo;
  * odtwarzalność sprawdza się porównaniem rozpakowanych części.
  */
-const TEMPLATE_SHA256 = "57e1a7f2ae811b4911f59fb7321f82b33d4d5ba1ab3923cbe2501c879acbc2b0";
+const TEMPLATE_SHA256 = "3a75cd4258123499689dfcbefb5b912053171b9eac097a2769578e08f9c81fb6";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -215,6 +215,12 @@ const REQUIRED_PLACEHOLDERS = [
   "{budynek_rodzaj}",
   "{kondygnacje}",
   "{rok_budowy}",
+  // M-2 (D-05/D-06): the Wyciąg (s. 3) and §2 print ONE composed sentence, so
+  // both slots carry the same tag — the count is asserted below, because two
+  // places naming the subject differently is the defect this fix removes.
+  "{oznaczenie_geodezyjne}",
+  "{#ma_ewidencja}",
+  "{^ma_ewidencja}",
   // M-10: §9 and §7's source bullet branch on the SAME three flags — the two
   // must never name different documents. `prz_brak_mpzp` is the union of the
   // two no-MPZP branches; `ma_przeznaczenie` gates the whole source sentence.
@@ -479,6 +485,36 @@ describe("F-12: Table 1 follows the reference operat's layout (Slice 3d)", () =>
       afterTable1.includes("{obreb}") ||
         text.slice(0, text.indexOf("Tabela 1")).includes("{obreb}"),
     ).toBe(true);
+  });
+});
+
+/**
+ * M-2 (D-05/D-06). Do 16.09 Wyciąg i §2 drukowały stałe „wg wypisu z ewidencji
+ * gruntów i budynków", choć §8.2 tego samego operatu wyliczał te dane — generator
+ * zamaskował zdanie operatu źródłowego i nikt nie wstawił tagów z powrotem.
+ * Placeholder ZOSTAJE jako gałąź odwrotna, więc nie da się go zakazać literałem;
+ * broni tu liczność tagów, a treści broni render w `f12-document-sections`.
+ */
+describe("F-12: identyfikacja geodezyjna w Wyciągu i §2 (M-2)", () => {
+  it("prints the same composed sentence in both places, each behind the same fence", () => {
+    const text = templateText();
+    const count = (s: string) => text.split(s).length - 1;
+    expect(count("{oznaczenie_geodezyjne}")).toBe(2);
+    expect(count("{#ma_ewidencja}")).toBe(2);
+    expect(count("{^ma_ewidencja}")).toBe(2);
+    expect(count("{/ma_ewidencja}")).toBe(4);
+    // Placeholder tylko w gałęzi odwrotnej — nigdy poza ogrodzeniem.
+    expect(count("wg wypisu z ewidencji gruntów i budynków")).toBe(2);
+  });
+
+  it("keeps both slots OUTSIDE {#prawo_wlasnosc} — spółdzielczy operat też ma identyfikację", () => {
+    const text = templateText();
+    // Każdy fragment między otwarciem a zamknięciem ogrodzenia własności.
+    const inside = text
+      .split("{#prawo_wlasnosc}")
+      .slice(1)
+      .map((part) => part.split("{/prawo_wlasnosc}")[0]);
+    for (const region of inside) expect(region).not.toContain("{oznaczenie_geodezyjne}");
   });
 });
 
