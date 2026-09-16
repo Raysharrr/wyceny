@@ -1061,14 +1061,18 @@ export function buildDocumentModel(
     // not evidence anyone opened the book it names.
     nr_ksiegi_gruntu: kwReq.gruntZbadana ? (kwGrunt?.nrKsiegi ?? "") : "",
     // The lokal was carved out of the grunt, so the same court keeps both books.
-    // EMPTY when the snapshot names no court — which is the routine case, not an
-    // edge one: only `/kw-extract` ever fills `sad`, the manual eKW path has no
-    // field for it (`EMPTY_MANUAL_KW`). Empty means "§2 keeps the court text it
-    // already prints for the lokal's book", per the handoff; that text is a
-    // literal in the template (check dryfu D-3), so the model cannot repeat it
-    // and must not substitute a dash — "Dla nieruchomości gruntowej — prowadzi
-    // księgę wieczystą nr …" is a broken sentence, not a missing value.
-    sad_ksiegi_gruntu: kwReq.gruntZbadana ? [kw?.sad, kw?.wydzial].filter(Boolean).join(" ") : "",
+    // The COURT ALONE, like the lokal's own sentence two lines above it in §2 —
+    // the wydział belongs to the Wyciąg, and in all 16 reference operats §2
+    // never names one. Joining both put "Sąd Rejonowy w Środzie Wielkopolskiej
+    // V Wydział Ksiąg Wieczystych" in one sentence and the court alone in its
+    // neighbour; it went unseen while `sad` was empty on the manual path, which
+    // it no longer is (staging, 16.09).
+    //
+    // Empty when the snapshot names no court: `{^sad_ksiegi_gruntu}` then takes
+    // the sentence that needs none. A dash here would print "Dla nieruchomości
+    // gruntowej — prowadzi księgę wieczystą nr …" — a broken sentence, not a
+    // missing value.
+    sad_ksiegi_gruntu: kwReq.gruntZbadana ? (kw?.sad ?? "") : "",
     ma_ksiege_gruntu: kwReq.gruntZbadana,
     ksiega_lokalu_wiersze: kw?.tresc ? ksiegaRows(kw.tresc) : [],
     ma_tresc_lokalu: kw?.tresc != null,
