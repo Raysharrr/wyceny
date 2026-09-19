@@ -38,16 +38,11 @@ export function Topbar({
           <span className="block text-[11px] text-muted-foreground">operaty szacunkowe</span>
         </span>
       </Link>
-      {/* T-13 (S2b): the first nav item this app has had — the appraiser
-          reaches the register MID-valuation (step 3 short of transactions),
-          so it must be one click away everywhere. Mirrored in AvatarMenu so
-          it stays reachable regardless of window width. */}
-      <Link
-        href="/rejestr"
-        className="ml-2 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-      >
-        Rejestr spółdzielczy
-      </Link>
+      {/* T-22 (user's decision 19.09): the header carries NO nav items. The
+          register moved under "Narzędzia" in the avatar menu together with the
+          RCN converter, and `ToolsNav` switches between them inside the tools.
+          The direct link from step 3 of a valuation (`step-sample.tsx`) stays —
+          that is what keeps the register one click away mid-valuation (T-13). */}
       <span className="flex-1" />
       <AvatarMenu name={safeName} email={userEmail} userRole={userRole} initials={initials} />
     </header>
