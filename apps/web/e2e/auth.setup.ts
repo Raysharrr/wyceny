@@ -20,6 +20,9 @@ setup("zaloguj rzeczoznawcę zenon@wyceny.test", async ({ page }) => {
   await page.locator("#password").fill(password);
   await page.getByRole("button", { name: "Zaloguj się", exact: true }).click();
   await page.waitForURL("**/valuations");
-  await expect(page.getByRole("link", { name: "Rejestr spółdzielczy" }).first()).toBeVisible();
+  // The logged-in signal is the topbar avatar. T-22 emptied the header of nav
+  // links (the register moved under the avatar menu → Narzędzia), so the old
+  // "Rejestr spółdzielczy" link is no longer there to wait for.
+  await expect(page.getByRole("button", { name: "Konto" })).toBeVisible();
   await page.context().storageState({ path: STORAGE_STATE });
 });

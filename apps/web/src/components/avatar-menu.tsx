@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, CircleHelp, Lock, LogOut, Table2 } from "lucide-react";
+import { Building2, CircleHelp, Lock, LogOut, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,9 +66,9 @@ export function AvatarMenu({
           </span>
         </div>
         <DropdownMenuItem asChild>
-          <Link href="/rejestr" className="flex items-center gap-2.5">
-            <Table2 className="size-4" />
-            Rejestr spółdzielczy
+          <Link href="/narzedzia" className="flex items-center gap-2.5">
+            <Wrench className="size-4" />
+            Narzędzia
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

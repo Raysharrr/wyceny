@@ -66,7 +66,7 @@ export default async function RejestrPage({
   })();
 
   return (
-    <div className="mx-auto flex w-full max-w-[1240px] flex-1 flex-col gap-5 px-6 py-10">
+    <div className="mx-auto flex w-full max-w-[1240px] flex-1 flex-col gap-5 px-6 pb-10 pt-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-[.06em] text-muted-foreground">

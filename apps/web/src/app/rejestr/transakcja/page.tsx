@@ -12,7 +12,7 @@ export default async function RejestrTransakcjaPage() {
   const stats = await coopRegistry.stats();
   const cooperatives = Object.keys(stats.byCooperative).sort((a, b) => a.localeCompare(b, "pl"));
   return (
-    <div className="mx-auto flex w-full max-w-[1024px] flex-1 flex-col gap-5 px-6 py-10">
+    <div className="mx-auto flex w-full max-w-[1024px] flex-1 flex-col gap-5 px-6 pb-10 pt-5">
       <div>
         <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-[.06em] text-[var(--accent-700)]">
           Rejestr spółdzielczy

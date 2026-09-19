@@ -45,15 +45,23 @@ describe("Topbar", () => {
   });
 });
 
-describe("Topbar — Rejestr spółdzielczy (T-13, S2b)", () => {
-  it("links to /rejestr from the top bar AND from the account menu", async () => {
+describe("Topbar — Narzędzia (T-22): nagłówek bez linków, wejście w menu awatara", () => {
+  it("nie ma w pasku górnym żadnej pozycji nawigacyjnej", () => {
+    render(<Topbar userName="Zenon Dembski" userEmail="z@dembscy.pl" userRole="rzeczoznawca" />);
+    expect(screen.queryByRole("link", { name: "Rejestr spółdzielczy" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Narzędzia" })).toBeNull();
+  });
+
+  it("prowadzi do /narzedzia z menu przy awatarze, bez osobnej pozycji rejestru", async () => {
     const user = userEvent.setup();
     render(<Topbar userName="Zenon Dembski" userEmail="z@dembscy.pl" userRole="rzeczoznawca" />);
-    const bar = screen.getByRole("link", { name: "Rejestr spółdzielczy" });
-    expect(bar).toHaveAttribute("href", "/rejestr");
 
     await user.click(screen.getByRole("button", { name: "Konto" }));
-    const item = screen.getByRole("menuitem", { name: /rejestr spółdzielczy/i });
-    expect(item).toHaveAttribute("href", "/rejestr");
+
+    expect(screen.getByRole("menuitem", { name: /narzędzia/i })).toHaveAttribute(
+      "href",
+      "/narzedzia",
+    );
+    expect(screen.queryByRole("menuitem", { name: /rejestr spółdzielczy/i })).toBeNull();
   });
 });
