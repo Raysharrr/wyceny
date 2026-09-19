@@ -20,6 +20,6 @@ setup("zaloguj rzeczoznawcę zenon@wyceny.test", async ({ page }) => {
   await page.locator("#password").fill(password);
   await page.getByRole("button", { name: "Zaloguj się", exact: true }).click();
   await page.waitForURL("**/valuations");
-  await expect(page.getByRole("link", { name: "Rejestr spółdzielczy" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Konto" })).toBeVisible();
   await page.context().storageState({ path: STORAGE_STATE });
 });

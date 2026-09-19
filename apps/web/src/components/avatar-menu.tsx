@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, CircleHelp, Lock, LogOut, Table2 } from "lucide-react";
+import { Building2, CircleHelp, Lock, LogOut, Wrench } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +16,8 @@ const SIGN_OUT_FORM_ID = "topbar-sign-out";
 /**
  * Avatar dropdown rendered by `Topbar` (Task 15, mockup `account.jsx`
  * `AvatarMenu` L67-99): the ambient name/role text + avatar button open a
- * menu with the session head (name, e-mail, role badge), "Pomoc" (Slice 13,
+ * menu with the session head (name, e-mail, role badge), "Narzędzia" (the
+ * only way into `/narzedzia` — the topbar carries no nav links), "Pomoc" (Slice 13,
  * Task 5), "Profil i ustawienia", and "Wyloguj" — replacing the bare Profil
  * link / Wyloguj form that used to sit directly in the topbar. The mockup's
  * "Użytkownicy i role" item is deliberately omitted: that screen doesn't
@@ -66,9 +67,9 @@ export function AvatarMenu({
           </span>
         </div>
         <DropdownMenuItem asChild>
-          <Link href="/rejestr" className="flex items-center gap-2.5">
-            <Table2 className="size-4" />
-            Rejestr spółdzielczy
+          <Link href="/narzedzia" className="flex items-center gap-2.5">
+            <Wrench className="size-4" />
+            Narzędzia
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
