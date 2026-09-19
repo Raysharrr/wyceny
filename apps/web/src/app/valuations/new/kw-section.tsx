@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FileText } from "lucide-react";
 import { useState } from "react";
 import { Controller, useController, useWatch, type Control } from "react-hook-form";
@@ -732,8 +733,13 @@ export function KwSection(props: KwSectionProps) {
               data-testid="property-right-coop-info"
               className="rounded-md border border-border bg-muted/40 p-2 text-sm"
             >
-              Krok 3 pobierze próbę z <strong>rejestru biura</strong> (zakładka{" "}
-              <strong>Rejestr spółdzielczy</strong>).
+              {/* T-22: rejestr przestał być zakładką w nagłówku, więc zamiast
+                  opisywać drogę przez menu awatara prowadzimy wprost do niego. */}
+              Krok 3 pobierze próbę z <strong>rejestru biura</strong> (
+              <Link href="/rejestr" className="underline">
+                Rejestr spółdzielczy
+              </Link>
+              ).
             </p>
             <Controller
               control={control}

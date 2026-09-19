@@ -10,9 +10,11 @@ import { RcnPdfError, type RcnConversion, type RcnRefusal } from "@/ports/rcn-pd
 
 /**
  * The one Server Action behind `/narzedzia/rcn-pdf` (T-22), shaped like
- * `readCoopSheet`: session → token → port. Nothing is written anywhere — the
- * workbook travels back to the browser in the reply and is never stored, never
- * attached to a valuation.
+ * `readCoopSheet`: session → token → port. The workbook travels back to the
+ * browser in the reply; nothing is KEPT once the request ends, and nothing is
+ * attached to a valuation. Deliberately "kept", not "never written": Starlette
+ * spools an upload over 1 MB to a temp file for the duration of the request
+ * (review of S1), which is why the UI copy promises no storage, not no write.
  */
 const REFUSAL_TEXT: Record<RcnRefusal, string> = {
   no_text_layer:
@@ -41,7 +43,9 @@ export async function convertRcnPdf(
   return withTrace(async () => {
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      return { result: await rcnPdf.convert({ bytes, name: file.name }, token) };
+      return {
+        result: await rcnPdf.convert({ bytes, name: file.name, type: file.type }, token),
+      };
     } catch (err) {
       if (err instanceof RcnPdfError) {
         // A refused file is a statement about the PDF, not a fault of ours —

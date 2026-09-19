@@ -19,7 +19,8 @@ export default async function RcnPdfPage() {
         </h1>
         <p className="max-w-[80ch] text-[14.5px] text-muted-foreground">
           Wgraj wydruk transakcji pobrany z portalu i.Rzeczoznawca. Program przepisze go do arkusza
-          w układzie, którego używa biuro — niczego nie interpretuje i nigdzie nie zapisuje pliku.
+          w układzie, którego używa biuro — niczego nie interpretuje i nie przechowuje ani pliku,
+          ani wyniku.
         </p>
       </div>
       <RcnConverter />
