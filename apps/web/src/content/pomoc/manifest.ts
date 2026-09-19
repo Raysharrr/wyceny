@@ -243,6 +243,15 @@ export const HELP_PAGES: HelpPage[] = [
     load: () => import("./jak-korzystac/rejestr-spoldzielczy.mdx"),
   },
   {
+    slug: "narzedzia-wydruk-rcn",
+    title: "Narzędzia — wydruk z RCN do Excela",
+    tree: "jak-korzystac",
+    order: 11,
+    tags: ["narzędzia", "RCN", "PDF", "Excel", "starostwo", "transakcje"],
+    summary: "Zamiana wydruku transakcji z portalu powiatu na arkusz Excela.",
+    load: () => import("./jak-korzystac/narzedzia-wydruk-rcn.mdx"),
+  },
+  {
     slug: "metoda-kcs",
     title: "Metoda KCS — korygowanie ceny średniej",
     tree: "metodyka",
