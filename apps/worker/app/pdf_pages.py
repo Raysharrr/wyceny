@@ -9,10 +9,11 @@ bitmap — the PDF counterpart of Pillow's decompression-bomb guard in photo.py.
 Pure — no I/O, no FastAPI import (endpoint lives in main.py).
 """
 
-import threading
 from io import BytesIO
 
 import pypdfium2 as pdfium
+
+from app.pdfium_lock import PDFIUM_LOCK
 
 MAX_PDF_BYTES = 10 * 1024 * 1024
 MAX_PAGES = 10
@@ -25,18 +26,11 @@ class TooManyPages(Exception):
     pass
 
 
-# PDFium is not thread-safe (pypdfium2 docs, "Incompatibility with Threading"),
-# and sync handlers run in Starlette's threadpool: parallel uploads without this
-# lock crash the whole worker process (SIGBUS/SIGSEGV), /kw-transcribe and prose
-# included. Every PDFium call — open to close — happens under it.
-_PDFIUM_LOCK = threading.Lock()
-
-
 def render_pages(data: bytes) -> list[tuple[bytes, int, int]]:
     """(JPEG, width, height) per page, in document order. Raises TooManyPages over
     MAX_PAGES and ValueError for a PDF without pages; PDFium's own error for
     anything unreadable."""
-    with _PDFIUM_LOCK:
+    with PDFIUM_LOCK:
         pdf = pdfium.PdfDocument(data)
         try:
             if len(pdf) > MAX_PAGES:
