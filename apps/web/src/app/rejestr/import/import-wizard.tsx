@@ -279,7 +279,7 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
                       setHeaderRow(e.target.value === "none" ? null : Number(e.target.value))
                     }
                   >
-                    {sheet.rows.slice(0, 10).map((r, i) => (
+                    {sheet.rows.slice(0, 20).map((r, i) => (
                       <option key={i} value={i}>
                         wiersz {i + 1}:{" "}
                         {r.filter(Boolean).slice(0, 4).join(" · ").slice(0, 60) || "(pusty)"}
