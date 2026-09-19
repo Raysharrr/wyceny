@@ -45,14 +45,31 @@ type State =
   | { kind: "done"; name: string; result: RcnConversion }
   | { kind: "failed"; name: string; message: string };
 
+/**
+ * The order number is parsed out of an uploaded PDF, so it is untrusted text in
+ * a file name (review 1 R6). Anything outside word characters, dot and dash
+ * collapses to `_`; a number that was only punctuation or blanks falls back to
+ * a fixed name rather than producing "   .xlsx".
+ */
+function fileName(orderNumber: string): string {
+  const safe = orderNumber.replace(/[^\w.-]+/g, "_").replace(/^[_.]+|_+$/g, "");
+  return `${safe || "wydruk-rcn"}.xlsx`;
+}
+
 function download(result: RcnConversion) {
   const bytes = Uint8Array.from(atob(result.xlsxBase64), (c) => c.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([bytes], { type: XLSX_MIME }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${result.orderNumber || "wydruk-rcn"}.xlsx`;
+  link.download = fileName(result.orderNumber);
+  // In the document and revoked a tick later (review 1 R5): WebKit and Firefox
+  // can abort a download whose anchor was never in the DOM, or whose object URL
+  // is revoked in the same task as the click. The office may well be on Safari,
+  // and no gate of ours runs anything but Chromium.
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function RcnConverter() {

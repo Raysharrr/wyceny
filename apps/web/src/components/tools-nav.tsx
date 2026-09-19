@@ -11,15 +11,18 @@ const PILL = "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 tex
  * the wizard's `Stepper`. On the `/narzedzia` crossroads it renders nothing —
  * there the cards ARE the navigation. The list itself lives in
  * `components/tools.ts`, which the server-rendered crossroads also reads.
+ *
+ * NO container of its own (review 1 R1): each page renders this as the FIRST
+ * CHILD of its own container, so the pills inherit that page's width and
+ * gutter. The tool pages are not all the same width — `/rejestr/transakcja` is
+ * `max-w-[1024px]` — and a fixed `max-w-[1240px]` here left its pills hanging
+ * 108 px to the left of the heading.
  */
 export function ToolsNav() {
   const pathname = usePathname();
   if (pathname === "/narzedzia") return null;
   return (
-    <nav
-      aria-label="Narzędzia"
-      className="mx-auto flex w-full max-w-[1240px] flex-wrap items-center gap-2 px-6 pt-10"
-    >
+    <nav aria-label="Narzędzia" className="flex flex-wrap items-center gap-2">
       {TOOLS.map(({ href, label, icon: Icon }) => {
         const current = pathname.startsWith(href);
         return (

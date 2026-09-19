@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 
@@ -32,6 +32,43 @@ function pdf(name = "wydruk-rcn.pdf") {
 }
 
 const fileInput = () => screen.getByLabelText("Plik PDF") as HTMLInputElement;
+
+/**
+ * jsdom has no object URLs and navigating a real `<a download>` would print
+ * "Not implemented: navigation", so both are stubbed. `inDocument` records
+ * whether the anchor was attached AT THE MOMENT of the click — what R5 is about.
+ */
+async function withDownloadSpies(
+  body: (spies: {
+    createObjectURL: ReturnType<typeof vi.fn>;
+    revokeObjectURL: ReturnType<typeof vi.fn>;
+    clicked: HTMLAnchorElement[];
+    inDocument: boolean[];
+    revokedAtClick: number[];
+  }) => Promise<void>,
+) {
+  const createObjectURL = vi.fn((_blob: Blob) => "blob:xlsx");
+  const revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+  const clicked: HTMLAnchorElement[] = [];
+  const inDocument: boolean[] = [];
+  const revokedAtClick: number[] = [];
+  const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+    this: HTMLAnchorElement,
+  ) {
+    clicked.push(this);
+    inDocument.push(document.body.contains(this));
+    // Snapshot AT the click: `await user.click(...)` drains the task queue,
+    // so by the time the test body resumes the deferred revoke has run.
+    revokedAtClick.push(revokeObjectURL.mock.calls.length);
+  });
+  try {
+    await body({ createObjectURL, revokeObjectURL, clicked, inDocument, revokedAtClick });
+  } finally {
+    clickSpy.mockRestore();
+    vi.unstubAllGlobals();
+  }
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -114,18 +151,10 @@ describe("RcnConverter — wynik", () => {
     );
   });
 
-  it("pobranie robi Blob XLSX i nazywa plik numerem zamówienia", async () => {
-    const user = userEvent.setup();
-    const createObjectURL = vi.fn((_blob: Blob) => "blob:xlsx");
-    const revokeObjectURL = vi.fn();
-    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
-    const clicked: HTMLAnchorElement[] = [];
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
-      this: HTMLAnchorElement,
-    ) {
-      clicked.push(this);
-    });
-    try {
+  it("pobranie robi Blob XLSX, nazywa plik numerem zamówienia i wpina kotwicę w dokument", async () => {
+    await withDownloadSpies(async (spies) => {
+      const { createObjectURL, revokeObjectURL, clicked, inDocument, revokedAtClick } = spies;
+      const user = userEvent.setup();
       render(<RcnConverter />);
       await user.upload(fileInput(), pdf());
       await user.click(await screen.findByRole("button", { name: /pobierz plik xlsx/i }));
@@ -133,12 +162,64 @@ describe("RcnConverter — wynik", () => {
       expect(createObjectURL.mock.calls[0]![0].type).toBe(XLSX_MIME);
       expect(clicked[0]!.download).toBe("GKG.GZW.4061.0000.2026.xlsx");
       expect(clicked[0]!.href).toContain("blob:xlsx");
+      // R5: kotwica musi być W dokumencie w chwili kliknięcia (WebKit/Firefox
+      // potrafią przerwać pobranie z kotwicy spoza DOM) i nie może tam zostać.
+      expect(inDocument[0]).toBe(true);
+      expect(document.body.contains(clicked[0]!)).toBe(false);
+      // R5: w chwili kliknięcia adres jeszcze żyje.
+      expect(revokedAtClick[0]).toBe(0);
       expect(revokeObjectURL).toHaveBeenCalledWith("blob:xlsx");
-    } finally {
-      clickSpy.mockRestore();
-      vi.unstubAllGlobals();
-    }
+    });
   });
+
+  it("R5: adres obiektu jest unieważniany dopiero w kolejnym zadaniu, nie zaraz po kliknięciu", async () => {
+    // `await user.click(…)` opróżnia kolejkę zadań, więc po jego powrocie
+    // `URL.revokeObjectURL(url)` tuż po `click()` i `setTimeout(…, 0)` wyglądają
+    // identycznie. Dlatego samo pobranie odpalamy SYNCHRONICZNIE (`fireEvent`)
+    // z przechwyconym `setTimeout`: to, co zostało odroczone, widać wprost.
+    // Safari przy synchronicznym revoke potrafi przerwać rozpoczęte pobranie.
+    await withDownloadSpies(async ({ revokeObjectURL }) => {
+      const user = userEvent.setup();
+      render(<RcnConverter />);
+      await user.upload(fileInput(), pdf());
+      const button = await screen.findByRole("button", { name: /pobierz plik xlsx/i });
+
+      const realSetTimeout = globalThis.setTimeout;
+      const deferred: (() => void)[] = [];
+      vi.stubGlobal("setTimeout", (fn: () => void) => {
+        deferred.push(fn);
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      });
+      try {
+        fireEvent.click(button);
+        expect(revokeObjectURL).not.toHaveBeenCalled();
+        expect(deferred).toHaveLength(1);
+      } finally {
+        vi.stubGlobal("setTimeout", realSetTimeout);
+      }
+      deferred.forEach((fn) => fn());
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:xlsx");
+    });
+  });
+
+  it.each([
+    ["GKG/GZW 4061.0000.2026", "GKG_GZW_4061.0000.2026.xlsx"],
+    ["   ", "wydruk-rcn.xlsx"],
+    ["...", "wydruk-rcn.xlsx"],
+  ])(
+    "R6: numer zamówienia %j z wgranego PDF-a jest sanityzowany do %j",
+    async (orderNumber, expected) => {
+      convertRcnPdf.mockResolvedValue({ result: { ...RESULT, orderNumber } });
+      await withDownloadSpies(async ({ clicked }) => {
+        const user = userEvent.setup();
+        render(<RcnConverter />);
+        await user.upload(fileInput(), pdf());
+        await user.click(await screen.findByRole("button", { name: /pobierz plik xlsx/i }));
+
+        expect(clicked[0]!.download).toBe(expected);
+      });
+    },
+  );
 
   it("„Wgraj inny plik” wraca do stanu pustego, bez śladu poprzedniego pliku", async () => {
     const user = userEvent.setup();
@@ -168,6 +249,34 @@ describe("RcnConverter — błąd", () => {
     );
     expect(screen.queryByText("Odczytywanie transakcji…")).toBeNull();
     expect(fileInput()).not.toBeDisabled();
+  });
+
+  it("R2: przekierowanie wygasłej sesji nie jest połykane jako błąd konwersji", async () => {
+    // Next sygnalizuje redirect rzuceniem obiektu z `digest`. Gdyby `catch`
+    // go połknął, rzeczoznawca z wygasłą sesją zostałby na ekranie, który nie
+    // może już działać, z komunikatem „spróbuj ponownie" — i próbowałby w
+    // kółko, zamiast zostać przeniesionym na /login.
+    const user = userEvent.setup();
+    const redirectError = Object.assign(new Error("NEXT_REDIRECT"), {
+      digest: "NEXT_REDIRECT;replace;/login;307;",
+    });
+    convertRcnPdf.mockRejectedValue(redirectError);
+    const escaped: unknown[] = [];
+    const onError = (e: ErrorEvent) => {
+      escaped.push(e.error);
+      e.preventDefault();
+    };
+    window.addEventListener("error", onError);
+    try {
+      render(<RcnConverter />);
+      await user.upload(fileInput(), pdf());
+
+      await waitFor(() => expect(escaped).toContain(redirectError));
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText("Nie udało się przetworzyć pliku. Spróbuj ponownie.")).toBeNull();
+    } finally {
+      window.removeEventListener("error", onError);
+    }
   });
 
   it("pokazuje komunikat akcji dosłownie i zostawia wybór pliku odblokowany", async () => {

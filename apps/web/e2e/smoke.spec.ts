@@ -173,4 +173,26 @@ test("narzędzia: rozdroże renderuje obie karty i prowadzi do konwertera i do r
   await nav.getByRole("link", { name: "Rejestr spółdzielczy" }).click();
   await page.waitForURL("**/rejestr");
   await expect(page.getByRole("heading", { name: "Rejestr spółdzielczy" })).toBeVisible();
+
+  // Review 1 R1: the pills are the first child of each page's OWN container, so
+  // they line up with that page's heading — including `/rejestr/transakcja`,
+  // which is `max-w-[1024px]` while the others are `max-w-[1240px]`. A fixed
+  // width on the nav itself left that one hanging 108 px to the left.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const path of ["/rejestr", "/rejestr/import", "/rejestr/transakcja", "/narzedzia/rcn-pdf"]) {
+    await page.goto(path);
+    // The FIRST PILL, not the `<nav>` box: a nav with its own horizontal
+    // padding sits flush with the container while its pills are still indented,
+    // so measuring the wrapper would pass on exactly the layout R1 is about.
+    const pillBox = await page
+      .getByRole("navigation", { name: "Narzędzia" })
+      .getByRole("link")
+      .first()
+      .boundingBox();
+    const headingBox = await page.locator("h1").first().boundingBox();
+    expect(pillBox, `${path}: brak pigułek nawigacji narzędzi`).not.toBeNull();
+    expect(Math.round(headingBox!.x), `${path}: pigułki nie trzymają kontenera strony`).toBe(
+      Math.round(pillBox!.x),
+    );
+  }
 });

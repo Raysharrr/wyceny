@@ -24,7 +24,10 @@ const REFUSAL_TEXT: Record<RcnRefusal, string> = {
   no_transactions: "W pliku nie ma żadnej transakcji.",
 };
 const STATUS_TEXT: Record<number, string> = {
-  413: "Plik jest za duży (limit 4 MB).",
+  // The worker answers 413 for BOTH limits — bytes AND pages — and the status
+  // alone cannot tell them apart, so the sentence names both rather than
+  // telling a 2 MB / 500-page printout that it is too large (review 1 R4).
+  413: "Plik jest za duży (limit 4 MB i 400 stron).",
   415: "To nie jest plik PDF.",
 };
 const FALLBACK = "Nie udało się przetworzyć pliku. Spróbuj ponownie.";

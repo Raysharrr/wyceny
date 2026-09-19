@@ -3,13 +3,15 @@ import { getSession } from "@/auth/session";
 import { RcnConverter } from "./converter";
 
 export const dynamic = "force-dynamic";
+import { ToolsNav } from "@/components/tools-nav";
 
 /** `/narzedzia/rcn-pdf` (T-22, makiety 3–6) — a tool beside the valuation flow: PDF in, XLSX out, nothing stored. */
 export default async function RcnPdfPage() {
   const session = await getSession();
   if (!session) redirect("/login");
   return (
-    <div className="mx-auto flex w-full max-w-[1240px] flex-1 flex-col gap-5 px-6 pb-10 pt-5">
+    <div className="mx-auto flex w-full max-w-[1240px] flex-1 flex-col gap-5 px-6 py-10">
+      <ToolsNav />
       <div>
         <p className="mb-2 text-[11.5px] font-semibold uppercase tracking-[.06em] text-[var(--accent-700)]">
           Narzędzia

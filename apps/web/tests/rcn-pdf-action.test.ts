@@ -116,12 +116,18 @@ describe("convertRcnPdf", () => {
   );
 
   it.each([
-    [413, "Plik jest za duży (limit 4 MB)."],
+    // R4: one 413 covers both worker limits, so the sentence names both.
+    [413, "Plik jest za duży (limit 4 MB i 400 stron)."],
     [415, "To nie jest plik PDF."],
-  ])("maps status %i to its own sentence", async (status, text) => {
-    convert.mockRejectedValue(new RcnPdfError(status, null));
-    expect(await convertRcnPdf(form(pdf()))).toEqual({ error: text });
-  });
+  ])(
+    "maps status %i to its own sentence, and it is still a statement about the FILE — no failure recorded",
+    async (status, text) => {
+      convert.mockRejectedValue(new RcnPdfError(status, null));
+      expect(await convertRcnPdf(form(pdf()))).toEqual({ error: text });
+      // R3: "za duży" and "to nie PDF" are verdicts on the upload, not outages.
+      expect(recordFailure).not.toHaveBeenCalled();
+    },
+  );
 
   it("any other breakage is the fallback sentence AND a recorded failure", async () => {
     convert.mockRejectedValue(new Error("fetch failed"));

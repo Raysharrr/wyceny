@@ -67,7 +67,7 @@ describe("httpRcnPdf", () => {
   });
 
   it("a textual detail (413) leaves the code null — that is a call failure, not a file refusal", async () => {
-    mockFetch({ detail: "Plik jest za duży (limit 4 MB)." }, 413);
+    mockFetch({ detail: "Plik jest za duży (limit 4 MB i 400 stron)." }, 413);
     const err = await convert().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RcnPdfError);
     expect((err as RcnPdfError).status).toBe(413);
