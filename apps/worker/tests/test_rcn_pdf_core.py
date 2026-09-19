@@ -4,6 +4,9 @@
 (x0, top, "text with spaces"); each space-separated token becomes a Word a few
 points to the right of the previous one, inside the same column band."""
 
+import os
+from pathlib import Path
+
 import pytest
 
 from app import rcn_pdf
@@ -180,3 +183,17 @@ def test_refusals():
         rcn_pdf.parse([words((31, 60, "Umowa sprzedaży"))])
     with pytest.raises(rcn_pdf.NoTransactions):
         rcn_pdf.parse([HEADER + section(145)])
+
+
+SAMPLE = os.environ.get("RCN_SAMPLE_PDF")
+
+
+@pytest.mark.skipif(not SAMPLE, reason="real county printout stays outside the repo (PII)")
+def test_sample_printout_counters():
+    printout = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(SAMPLE).read_bytes()))
+    rows = printout.rows
+    assert [r.lp for r in rows] == list(range(1, 29))
+    assert printout.file_warnings == [] and not any(r.warnings for r in rows)
+    assert sum(r.price for r in rows) == 24_336_900.0
+    assert round(sum(r.area for r in rows), 2) == 2734.70
+    assert sum(r.annex for r in rows) == 3

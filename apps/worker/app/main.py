@@ -26,6 +26,7 @@ import app.street_index as street_index
 import app.subject as subject
 from app import coop_xls
 from app import kw as kw_core
+from app import rcn_pdf, rcn_xlsx
 from app import kw_transcribe, kw_validate
 import app.maps as maps
 from app import pdf_pages as pdf_pages_core
@@ -796,6 +797,65 @@ def coop_sheet(file: UploadFile = File(...), token: str = Form(...)) -> CoopShee
     # F-13: counts only — never a cell, never a file name.
     logger.info("coop_sheet_read", sheets=len(sheets), rows=sum(len(s["rows"]) for s in sheets))
     return CoopSheetResponse(sheets=[CoopSheet(**s) for s in sheets])
+
+
+# --- T-22: „WYDRUK Z RCN" (PDF) -> XLSX ---------------------------------------
+
+
+class RcnPdfResponse(BaseModel):
+    orderNumber: str
+    unit: str
+    count: int
+    flaggedRows: int
+    fileWarnings: list[str]
+    xlsxBase64: str
+
+
+_RCN_REFUSALS = {
+    rcn_pdf.NoTextLayer: "no_text_layer",
+    rcn_pdf.NotRcnPrintout: "not_rcn_printout",
+    rcn_pdf.NoTransactions: "no_transactions",
+}
+
+
+@app.post("/rcn-pdf-to-xlsx")
+def rcn_pdf_to_xlsx(file: UploadFile = File(...), token: str = Form(...)) -> RcnPdfResponse:
+    """A county RCN printout as the office's XLSX plus counters — zero interpretation,
+    nothing persisted."""
+    _require_token(token)
+    if file.content_type != "application/pdf" and not (file.filename or "").lower().endswith(
+        ".pdf"
+    ):
+        raise HTTPException(status_code=415, detail="To nie jest plik PDF.")
+    data = file.file.read()
+    if len(data) > rcn_pdf.MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="Plik jest za duży (limit 4 MB).")
+    started = time.monotonic()
+    try:
+        pages = rcn_pdf.words_from_pdf(data)
+        printout = rcn_pdf.parse(pages)
+    except rcn_pdf.TooManyPages as exc:
+        raise HTTPException(status_code=413, detail="Plik ma za dużo stron.") from exc
+    except tuple(_RCN_REFUSALS) as exc:
+        raise HTTPException(status_code=422, detail={"code": _RCN_REFUSALS[type(exc)]}) from exc
+    except Exception as exc:  # PDFium's own error for unreadable bytes
+        raise HTTPException(status_code=422, detail={"code": "not_rcn_printout"}) from exc
+    # F-13: counts only — never a cell, a file name or the order number.
+    logger.info(
+        "rcn_pdf_converted",
+        pages=len(pages),
+        rows=len(printout.rows),
+        warnings=sum(len(r.warnings) for r in printout.rows) + len(printout.file_warnings),
+        ms=round((time.monotonic() - started) * 1000),
+    )
+    return RcnPdfResponse(
+        orderNumber=printout.order_number,
+        unit=printout.unit,
+        count=len(printout.rows),
+        flaggedRows=sum(1 for r in printout.rows if r.warnings),
+        fileWarnings=printout.file_warnings,
+        xlsxBase64=base64.b64encode(rcn_xlsx.to_xlsx(printout)).decode(),
+    )
 
 
 # 20, not 50: a chunk that goes entirely through the Nominatim fallback costs
