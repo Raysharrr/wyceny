@@ -15,6 +15,7 @@ import { profileRepo } from "@/adapters/profile-drizzle";
 import { eventLogRepo } from "@/adapters/event-log-drizzle";
 import { coopRegistryRepo } from "@/adapters/coop-registry-drizzle";
 import { httpCoopSheet } from "@/adapters/coop-sheet-http";
+import { httpRcnPdf } from "@/adapters/rcn-pdf-http";
 import { httpGeocoder } from "@/adapters/geocoder-http";
 import { log } from "@/lib/log";
 import { googleStreetView } from "@/adapters/street-view-google";
@@ -48,6 +49,8 @@ export const eventLog = eventLogRepo(db);
 /** T-13 (S2a): the office's cooperative register, the XLSX reader and the batch geocoder behind it. */
 export const coopRegistry = coopRegistryRepo(db);
 export const coopSheet = httpCoopSheet(process.env.WORKER_URL ?? "http://localhost:8000");
+/** T-22: the RCN printout converter — a tool beside the valuation flow; nothing it touches is persisted. */
+export const rcnPdf = httpRcnPdf(process.env.WORKER_URL ?? "http://localhost:8000");
 export const geocoder = httpGeocoder(process.env.WORKER_URL ?? "http://localhost:8000", (errName) =>
   log.warn({ event: "coop.geocode.chunk_failed", errName }),
 );
