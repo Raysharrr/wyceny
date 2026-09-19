@@ -1,0 +1,60 @@
+Wydruki „WYDRUK Z RCN” z portalu powiatu poznańskiego rozpisują każdą transakcję na kilkanaście linii, a do wyceny potrzebna jest płaska tabela. To narzędzie robi z takiego PDF-a arkusz Excela w układzie, którego biuro już używa — bez przepisywania ręką. Znajdziesz je w menu przy awatarze: **Narzędzia** → **Wydruk z RCN → Excel** ([otwórz](/narzedzia/rcn-pdf)).
+
+Narzędzie stoi obok wyceny: nie wiąże się z żadną wyceną i niczego nie interpretuje. Wgrywasz plik, dostajesz arkusz.
+
+## Skąd wziąć plik
+
+1. Zaloguj się do portalu **GEO-INFO i.Rzeczoznawca** powiatu poznańskiego.
+2. Wejdź w zakładkę **Zamówienia** i otwórz zrealizowane zamówienie.
+3. Pobierz materiał w formacie **PDF** („WYDRUK Z RCN”) — nie GML.
+4. Ten sam plik wgraj w narzędziu. Limit to 4 MB.
+
+## Co jest w arkuszu
+
+Jeden arkusz `transakcje`. W wierszu 1 tytuł z numerem zamówienia i jednostką ewidencyjną, w wierszu 2 nagłówki, od wiersza 3 jedna transakcja w jednym wierszu — w tej samej kolejności co w wydruku.
+
+| Kolumna | Nagłówek    | Skąd                                                                           |
+| ------- | ----------- | ------------------------------------------------------------------------------ |
+| A       | DATA        | data dokumentu, format `DD.MM.YYYY`                                            |
+| B       | MIEJSCOWOŚĆ | z adresu lokalu (po przecinku), nie z nazwy obrębu                             |
+| C       | ULICA       | adres bez przedrostka `ul.`                                                    |
+| D       | NR BUD      | numer budynku                                                                  |
+| E       | NR LOK      | numer lokalu (po `m.`)                                                         |
+| F       | PU          | „3. Użytk. lokalu [m2]”                                                        |
+| G       | CENA        | „Cena ogółem – brutto [PLN]”                                                   |
+| H       | CENA J      | formuła `=G/F`                                                                 |
+| I       | P.P         | `tak`, gdy wydruk podaje powierzchnię pomieszczeń przynależnych; inaczej `nie` |
+| J       | RODZAJ BUD  | pusta — do uzupełnienia ręcznie                                                |
+
+Nazwa pobranego pliku to numer zamówienia, np. `GKG.GZW.4061.0000.2026.xlsx` — nie nazwa pliku, który wgrałeś.
+
+## Dlaczego RODZAJ BUD jest pusta
+
+Wydruk podaje wyłącznie „Rodzaj budynku: Mieszkalny”. Tego, czy to bliźniak, szeregówka czy budynek wolnostojący, w wydruku po prostu nie ma — więc narzędzie nie zgaduje, tylko zostawia kolumnę pustą. Mówi o tym też komentarz w nagłówku kolumny J w samym arkuszu. Rodzaj zabudowy uzupełniasz sam, po konwersji.
+
+## CENA J to formuła, nie liczba
+
+W kolumnie H siedzi `=G{wiersz}/F{wiersz}`, a nie wyliczona wartość. Jeśli poprawisz powierzchnię albo cenę, cena jednostkowa przeliczy się sama. Gdy transakcja nie ma powierzchni użytkowej, komórka zostaje pusta — dzielenie przez zero nie jest ceną.
+
+## Żółte wiersze
+
+Wiersz z żółtym tłem (`FFF2CC`) to transakcja, której narzędzie nie odczytało w całości. Powód czyta się w komentarzu przypiętym do komórki w kolumnie A:
+
+- **Transakcja bez lokalu — brak powierzchni użytkowej.** W wydruku nie ma wiersza „Lokal”; adres wzięty z pierwszej działki, PU i numer lokalu puste.
+- **Transakcja obejmuje kilka lokali — wpisano pierwszy mieszkalny.** Jedno zdarzenie obejmowało więcej niż jeden lokal.
+- **Nie udało się rozbić adresu — cały adres jest w kolumnie ULICA.** Zapis adresu odbiegał od wzorca, więc kolumny MIEJSCOWOŚĆ, NR BUD i NR LOK zostały puste.
+- **W wydruku brakuje daty, ceny albo powierzchni.** Pole, którego w wydruku nie było.
+
+Na ekranie widzisz tylko, ile takich wierszy jest — treść ostrzeżenia czytasz w arkuszu, przy konkretnej transakcji.
+
+Osobno pojawia się ostrzeżenie do całego pliku: **numeracja transakcji w wydruku ma przerwę**. Wtedy porównaj liczbę wierszy w arkuszu z liczbą transakcji na wydruku, zanim zaczniesz z niego korzystać.
+
+## Czego narzędzie nie czyta
+
+- **Skanów.** Plik bez warstwy tekstowej (zdjęcie albo skan wydruku papierowego) zostanie odrzucony z komunikatem. Pobierz PDF z portalu zamiast skanować papier.
+- **Innych układów wydruku.** Obsługiwany jest wyłącznie układ „WYDRUK Z RCN” z GEO-INFO i.Rzeczoznawca. Inny plik dostaje czytelną odmowę — nie dziurawą tabelę.
+- **GML-i.** Paczki GML z portalu narzędzie pomija.
+
+## Co dzieje się z plikiem
+
+Nic. Wgrany PDF nie jest nigdzie zapisywany, nie trafia do żadnej wyceny i nie zostaje na serwerze. Arkusz powstaje w locie i wraca prosto do przeglądarki — jeśli zamkniesz stronę bez pobrania, plik trzeba wygenerować od nowa.
