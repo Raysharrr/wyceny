@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import hmac
+import json
 import time
 from io import BytesIO
 
@@ -101,3 +102,38 @@ def test_refusals_are_422_with_a_code(content, code):
 def test_garbage_bytes_are_422():
     r = post(mint(), b"%PDF-1.4 not really")
     assert (r.status_code, r.json()["detail"]) == (422, {"code": "not_rcn_printout"})
+
+
+# R1/R4: the success log is the office's only trace of a conversion, so it must
+# mean "the file is on its way back", and it must carry counters and nothing else.
+
+STRUCTLOG_ALWAYS = {"event", "level", "timestamp", "trace_id"}
+
+
+def events(captured: str, name: str) -> list[dict]:
+    lines = [json.loads(line) for line in captured.splitlines() if line.strip()]
+    assert lines, "no log line captured — the test would be blind"
+    return [line for line in lines if line["event"] == name]
+
+
+def test_success_is_logged_with_counters_only(capsys):
+    r = post(mint())
+    assert r.status_code == 200
+    (done,) = events(capsys.readouterr().out, "rcn_pdf_converted")
+    assert set(done) - STRUCTLOG_ALWAYS == {"pages", "rows", "warnings", "ms"}
+    assert (done["pages"], done["rows"], done["warnings"]) == (1, 1, 0)
+
+
+def test_a_workbook_that_cannot_be_built_is_not_logged_as_converted(monkeypatch, capsys):
+    def boom(_printout):
+        raise RuntimeError("openpyxl said no")
+
+    monkeypatch.setattr(main.rcn_xlsx, "to_xlsx", boom)
+    silent = TestClient(main.app, raise_server_exceptions=False)
+    r = silent.post(
+        "/rcn-pdf-to-xlsx",
+        data={"token": mint()},
+        files={"file": ("wydruk.pdf", PRINTOUT, "application/pdf")},
+    )
+    assert r.status_code == 500
+    assert events(capsys.readouterr().out, "rcn_pdf_converted") == []

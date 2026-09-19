@@ -840,6 +840,9 @@ def rcn_pdf_to_xlsx(file: UploadFile = File(...), token: str = Form(...)) -> Rcn
         raise HTTPException(status_code=422, detail={"code": _RCN_REFUSALS[type(exc)]}) from exc
     except Exception as exc:  # PDFium's own error for unreadable bytes
         raise HTTPException(status_code=422, detail={"code": "not_rcn_printout"}) from exc
+    # The workbook first: "rcn_pdf_converted" is the office's only trace of a
+    # conversion, so it may not be written before the bytes it claims exist.
+    xlsx = rcn_xlsx.to_xlsx(printout)
     # F-13: counts only — never a cell, a file name or the order number.
     logger.info(
         "rcn_pdf_converted",
@@ -854,7 +857,7 @@ def rcn_pdf_to_xlsx(file: UploadFile = File(...), token: str = Form(...)) -> Rcn
         count=len(printout.rows),
         flaggedRows=sum(1 for r in printout.rows if r.warnings),
         fileWarnings=printout.file_warnings,
-        xlsxBase64=base64.b64encode(rcn_xlsx.to_xlsx(printout)).decode(),
+        xlsxBase64=base64.b64encode(xlsx).decode(),
     )
 
 
