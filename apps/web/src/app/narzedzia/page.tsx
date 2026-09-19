@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { getSession } from "@/auth/session";
 import { Button } from "@/components/ui/button";
-import { TOOLS } from "@/components/tools-nav";
+import { TOOLS } from "@/components/tools";
 
 export const dynamic = "force-dynamic";
 

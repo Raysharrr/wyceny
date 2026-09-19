@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
-import { TOOLS, ToolsNav } from "@/components/tools-nav";
+import { TOOLS } from "@/components/tools";
+import { ToolsNav } from "@/components/tools-nav";
 
 const pathname = vi.hoisted(() => ({ value: "/rejestr/import" }));
 vi.mock("next/navigation", () => ({ usePathname: () => pathname.value }));

@@ -2,42 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileSpreadsheet, Table2, type LucideIcon } from "lucide-react";
-
-/**
- * The office tools — ONE list behind both the in-tool nav below and the cards
- * on `/narzedzia` (T-22, user's decision 19.09: the cooperative register is a
- * tool too). The app header carries no nav items any more; the way in is the
- * avatar menu → Narzędzia.
- */
-export const TOOLS: readonly {
-  href: string;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-}[] = [
-  {
-    href: "/rejestr",
-    label: "Rejestr spółdzielczy",
-    description:
-      "Wspólny rejestr transakcji ze spółdzielni mieszkaniowych — przeglądanie i import z plików XLS.",
-    icon: Table2,
-  },
-  {
-    href: "/narzedzia/rcn-pdf",
-    label: "Wydruk z RCN → Excel",
-    description:
-      "Wgraj PDF z transakcjami pobrany z portalu powiatu i pobierz gotowy arkusz — bez przepisywania.",
-    icon: FileSpreadsheet,
-  },
-];
+import { TOOLS } from "@/components/tools";
 
 const PILL = "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium";
 
 /**
  * Pills over the tool screens (`/rejestr/*`, `/narzedzia/rcn-pdf`), styled like
  * the wizard's `Stepper`. On the `/narzedzia` crossroads it renders nothing —
- * there the cards ARE the navigation.
+ * there the cards ARE the navigation. The list itself lives in
+ * `components/tools.ts`, which the server-rendered crossroads also reads.
  */
 export function ToolsNav() {
   const pathname = usePathname();
