@@ -19,7 +19,14 @@ export function httpRcnPdf(baseUrl: string): PortRcnPdf {
   return {
     async convert(file, token): Promise<RcnConversion> {
       const form = new FormData();
-      form.set("file", new Blob([file.bytes as BlobPart], { type: "application/pdf" }), file.name);
+      // The file's OWN type, not a hard-coded "application/pdf": the worker's
+      // 415 check reads `content_type`, so relabelling here would hide every
+      // wrong-format upload behind a 422 about the layout.
+      form.set(
+        "file",
+        new Blob([file.bytes as BlobPart], { type: file.type || "application/pdf" }),
+        file.name,
+      );
       form.set("token", token);
       const response = await fetch(`${baseUrl}/rcn-pdf-to-xlsx`, {
         method: "POST",

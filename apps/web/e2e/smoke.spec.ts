@@ -137,3 +137,40 @@ test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", asy
   expect((await pdfResponse.body()).subarray(0, 5).toString()).toBe("%PDF-");
   await expect(page.getByRole("link", { name: "Pobierz DOCX", exact: true })).toBeVisible();
 });
+
+// T-22: the tools screens rendered by a REAL server. Both the crossroads and
+// `ToolsNav` build their links from one `TOOLS` list, and while that list lived
+// in the `"use client"` module next to `ToolsNav` the crossroads crashed with
+// "TOOLS.map is not a function" — a plain value exported from a client island
+// reaches a Server Component as a client reference, not as the array. jsdom has
+// no RSC boundary and `next build` does not execute the page, so only a request
+// to a running server sees it (same class of bug as the step-1 regression net
+// above). No upload here: CI is network-free and has no worker.
+test("narzędzia: rozdroże renderuje obie karty i prowadzi do konwertera i do rejestru", async ({
+  page,
+}) => {
+  await login(page);
+
+  await page.goto("/narzedzia");
+  await expect(page.getByRole("heading", { name: "Narzędzia biura" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rejestr spółdzielczy" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Wydruk z RCN → Excel" })).toBeVisible();
+
+  await page
+    .locator("section")
+    .filter({ hasText: "Wydruk z RCN → Excel" })
+    .getByRole("link", { name: "Otwórz" })
+    .click();
+  await page.waitForURL("**/narzedzia/rcn-pdf");
+  await expect(page.getByText("Wybierz plik")).toBeVisible();
+  await expect(page.getByText("PDF, do 4 MB")).toBeVisible();
+
+  const nav = page.getByRole("navigation", { name: "Narzędzia" });
+  await expect(nav.getByRole("link", { name: "Wydruk z RCN → Excel" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await nav.getByRole("link", { name: "Rejestr spółdzielczy" }).click();
+  await page.waitForURL("**/rejestr");
+  await expect(page.getByRole("heading", { name: "Rejestr spółdzielczy" })).toBeVisible();
+});

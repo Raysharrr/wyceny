@@ -28,8 +28,12 @@ function mockFetch(body: unknown, status = 200) {
   return fn;
 }
 
-function convert(bytes = new Uint8Array([37, 80, 68, 70]), name = "wydruk.pdf") {
-  return httpRcnPdf("http://w").convert({ bytes, name }, "tok");
+function convert(
+  bytes = new Uint8Array([37, 80, 68, 70]),
+  name = "wydruk.pdf",
+  type = "application/pdf",
+) {
+  return httpRcnPdf("http://w").convert({ bytes, name, type }, "tok");
 }
 
 describe("httpRcnPdf", () => {
@@ -44,6 +48,14 @@ describe("httpRcnPdf", () => {
     const file = form.get("file") as File;
     expect(file.name).toBe("wydruk.pdf");
     expect(file.type).toBe("application/pdf");
+  });
+
+  it("nie przebiera pliku za PDF — inaczej worker nie może odpowiedzieć 415", async () => {
+    const fn = mockFetch(OK);
+    await convert(new Uint8Array([80, 75]), "rejestr.xlsx", "application/vnd.ms-excel");
+    const file = (fn.mock.calls[0]![1].body as FormData).get("file") as File;
+    expect(file.type).toBe("application/vnd.ms-excel");
+    expect(file.name).toBe("rejestr.xlsx");
   });
 
   it("turns a 422 refusal into an RcnPdfError carrying its code", async () => {

@@ -46,7 +46,8 @@ function form(file?: File) {
   return fd;
 }
 
-const pdf = () => new File([new Uint8Array([37, 80, 68, 70])], "wydruk.pdf");
+const pdf = () =>
+  new File([new Uint8Array([37, 80, 68, 70])], "wydruk.pdf", { type: "application/pdf" });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -81,6 +82,18 @@ describe("convertRcnPdf", () => {
     expect(token).toBe("tok");
     expect(file.name).toBe("wydruk.pdf");
     expect(Array.from(file.bytes as Uint8Array)).toEqual([37, 80, 68, 70]);
+    expect(file.type).toBe("application/pdf");
+  });
+
+  it("podaje prawdziwy typ pliku, żeby worker mógł odmówić 415 na nie-PDF", async () => {
+    const xlsx = new File([new Uint8Array([80, 75])], "rejestr.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    convert.mockRejectedValue(new RcnPdfError(415, null));
+    expect(await convertRcnPdf(form(xlsx))).toEqual({ error: "To nie jest plik PDF." });
+    expect(convert.mock.calls[0]![0].type).toBe(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
   });
 
   it.each([

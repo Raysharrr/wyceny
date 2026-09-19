@@ -36,5 +36,15 @@ export class RcnPdfError extends Error {
 }
 
 export interface PortRcnPdf {
-  convert(file: { bytes: Uint8Array; name: string }, token: string): Promise<RcnConversion>;
+  /**
+   * `type` is the browser's own MIME for the picked file and travels through
+   * verbatim. The worker refuses a non-PDF with 415 ("To nie jest plik PDF."),
+   * and it can only do that if we DON'T relabel every upload as
+   * `application/pdf` on the way out — doing so turned a wrong-format file into
+   * the misleading "Nie rozpoznaję tego układu" (caught in the live run).
+   */
+  convert(
+    file: { bytes: Uint8Array; name: string; type: string },
+    token: string,
+  ): Promise<RcnConversion>;
 }
