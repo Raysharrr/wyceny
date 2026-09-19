@@ -22,6 +22,19 @@ import type { RcnConversion } from "@/ports/rcn-pdf";
  */
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+/** The same sentence the action returns for breakage it catches itself (spec §7.4). */
+const FALLBACK = "Nie udało się przetworzyć pliku. Spróbuj ponownie.";
+
+/** Next signals a redirect by throwing; `digest` is how it is recognised across the RSC boundary. */
+function isRedirect(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    typeof (err as { digest?: unknown }).digest === "string" &&
+    (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
+}
+
 const FILE_WARNING_TEXT: Record<string, string> = {
   lp_gap: "Numeracja transakcji w wydruku ma przerwę — porównaj liczbę wierszy z wydrukiem.",
 };
@@ -52,12 +65,23 @@ export function RcnConverter() {
     const formData = new FormData();
     formData.set("file", file);
     startTransition(async () => {
-      const outcome = await convertRcnPdf(formData);
-      setState(
-        "result" in outcome
-          ? { kind: "done", name: file.name, result: outcome.result }
-          : { kind: "failed", name: file.name, message: outcome.error },
-      );
+      try {
+        const outcome = await convertRcnPdf(formData);
+        setState(
+          "result" in outcome
+            ? { kind: "done", name: file.name, result: outcome.result }
+            : { kind: "failed", name: file.name, message: outcome.error },
+        );
+      } catch (err) {
+        // The action itself can reject, not just return an error: a file over
+        // the Server Action body limit, a dead session store, a deploy in
+        // flight. Without this the screen would sit in "Odczytywanie
+        // transakcji…" for ever. A redirect is NOT an error — Next signals an
+        // expired session by throwing one, and swallowing it would strand the
+        // appraiser on a screen that can no longer work.
+        if (isRedirect(err)) throw err;
+        setState({ kind: "failed", name: file.name, message: FALLBACK });
+      }
     });
   }
 

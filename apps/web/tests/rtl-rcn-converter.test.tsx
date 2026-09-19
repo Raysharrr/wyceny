@@ -155,6 +155,21 @@ describe("RcnConverter — wynik", () => {
 });
 
 describe("RcnConverter — błąd", () => {
+  it("odrzucona akcja też kończy się komunikatem, nie wiecznym „Odczytywanie…”", async () => {
+    const user = userEvent.setup();
+    // Akcja może odrzucić, a nie zwrócić błąd: plik ponad limit ciała Server
+    // Action, padnięta sesja, deploy w locie.
+    convertRcnPdf.mockRejectedValue(new Error("Body exceeded 12mb limit"));
+    render(<RcnConverter />);
+    await user.upload(fileInput(), pdf());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Nie udało się przetworzyć pliku. Spróbuj ponownie.",
+    );
+    expect(screen.queryByText("Odczytywanie transakcji…")).toBeNull();
+    expect(fileInput()).not.toBeDisabled();
+  });
+
   it("pokazuje komunikat akcji dosłownie i zostawia wybór pliku odblokowany", async () => {
     const user = userEvent.setup();
     const message =
