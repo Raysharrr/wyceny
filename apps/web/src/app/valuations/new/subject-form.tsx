@@ -372,15 +372,17 @@ export function SubjectForm({
     const seqRef = book === "lokal" ? kwSeq : kwGruntSeq;
     const setTranscribe = book === "lokal" ? setKwTranscribe : setKwGruntTranscribe;
     const seq = ++seqRef.current;
-    if (book === "lokal") lastKwWejscie.current = wejscie;
     // Akt: tylko pola, żadnej transkrypcji (deed ma zero działów) — jak dziś.
-    const expectedType: "akt" | "odpis_kw" =
-      book === "lokal" && kwSource === "akt" ? "akt" : "odpis_kw";
-    const { czytaPola, transcribes, dozwolony } = planOdczytuKw(wejscie, book, kwSource);
+    // Reguła „to jest akt" pada RAZ, w `planOdczytuKw`, i stamtąd wraca.
+    const { akt, czytaPola, transcribes, dozwolony } = planOdczytuKw(wejscie, book, kwSource);
+    const expectedType: "akt" | "odpis_kw" = akt ? "akt" : "odpis_kw";
     if (!dozwolony) {
       setTranscribe({ status: "failed", code: "kw_kanal_niedozwolony" });
       return;
     }
+    // Zapamiętane dopiero PO strażniku: „Spróbuj ponownie" odtwarza ostatnie
+    // wejście, więc odrzucone nie może tam zostać (finding z review PR #80).
+    if (book === "lokal") lastKwWejscie.current = wejscie;
     if (czytaPola) setKwState({ status: "loading" });
     setTranscribe({ status: transcribes ? "loading" : "idle" });
 

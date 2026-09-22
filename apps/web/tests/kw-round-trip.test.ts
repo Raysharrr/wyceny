@@ -128,6 +128,7 @@ describe("F7: kanał tekstowy na ścieżce aktu nie jest odczytem", () => {
 
   it("akt + tekst: nie ma czego odczytać ani przepisać, więc odczyt jest niedozwolony", () => {
     expect(planOdczytuKw(tekst, "lokal", "akt")).toEqual({
+      akt: true,
       czytaPola: false,
       transcribes: false,
       dozwolony: false,
@@ -136,16 +137,20 @@ describe("F7: kanał tekstowy na ścieżce aktu nie jest odczytem", () => {
 
   it("akt + PDF czyta pola bez transkrypcji; pozostałe kombinacje przepisują treść", () => {
     expect(planOdczytuKw(pdf, "lokal", "akt")).toMatchObject({
+      akt: true,
       czytaPola: true,
       transcribes: false,
       dozwolony: true,
     });
     expect(planOdczytuKw(tekst, "lokal", "ekw_wklej")).toMatchObject({
+      akt: false,
       transcribes: true,
       dozwolony: true,
     });
     // Karta gruntu nie czyta pól przez /kw-extract — bierze je z nagłówka treści.
+    // Karta gruntu nie zna ścieżki aktu — `akt` jest tam zawsze fałszem.
     expect(planOdczytuKw(pdf, "grunt", "akt")).toMatchObject({
+      akt: false,
       czytaPola: false,
       transcribes: true,
       dozwolony: true,
