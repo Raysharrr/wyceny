@@ -363,3 +363,43 @@ describe("pozostałe trzy wywołania reguły — bez zmian po KE.4", () => {
     ).toBe(own && c.kwNumber == null);
   });
 });
+
+describe("ADR-021: grunt zbadany tą samą regułą co lokal (źródło + numer + data + działy)", () => {
+  const gruntZTresci: KwGruntSnapshot = {
+    ...gruntZbadana,
+    source: "ekw_wklej",
+    sad: "Sąd Rejonowy w Testowie",
+    wydzial: "I Wydział Ksiąg Wieczystych",
+  };
+
+  it("kanał tekstowy i PDF liczą się jak badanie ręczne", () => {
+    for (const source of ["ekw_wklej", "odpis_kw", "ekw_reczne"] as const) {
+      const r = kwRequirements(
+        "wlasnosc_lokalu",
+        { ...lokalZbadana, source },
+        { ...gruntZTresci, source },
+      );
+      expect(r.lokalZbadana, source).toBe(true);
+      expect(r.gruntZbadana, source).toBe(true);
+      expect(r.brakBadania, source).toBe(false);
+    }
+  });
+
+  it("grunt bez numeru albo bez działu IV nie jest zbadany, choć ma treść", () => {
+    expect(
+      kwRequirements("wlasnosc_lokalu", lokalZbadana, { ...gruntZTresci, nrKsiegi: null })
+        .gruntZbadana,
+    ).toBe(false);
+    expect(
+      kwRequirements("wlasnosc_lokalu", lokalZbadana, { ...gruntZTresci, dzial4: null })
+        .gruntZbadana,
+    ).toBe(false);
+  });
+
+  it("akt nigdy nie bada księgi — ta sama straż dla obu ksiąg", () => {
+    // Typ gruntu wyklucza "akt"; straż jest wspólna, więc sprawdzamy ją po stronie lokalu.
+    expect(kwRequirements("wlasnosc_lokalu", { ...lokalZbadana, source: "akt" }).lokalZbadana).toBe(
+      false,
+    );
+  });
+});
