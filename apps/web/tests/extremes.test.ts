@@ -260,8 +260,7 @@ describe("jedno miejsce wyboru lokali o cenie skrajnej (R4)", () => {
       if (entry.isDirectory()) return sources(full);
       return /\.tsx?$/.test(entry.name) ? [full] : [];
     });
-  // TODO(Zadanie 3): odblokować po przeniesieniu lokaleAtPrice
-  it.skip("żaden plik w src/ poza domain/extremes.ts nie łączy Math.min/max z filtrem pricePerM2 ===", () => {
+  it("żaden plik w src/ poza domain/extremes.ts nie łączy Math.min/max z filtrem pricePerM2 ===", () => {
     const offenders = sources(SRC)
       .filter((file) => {
         const text = fs.readFileSync(file, "utf8");

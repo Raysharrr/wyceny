@@ -417,6 +417,86 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
   });
 });
 
+/**
+ * ADR-022: §12.2 drukuje OCENY rzeczoznawcy z kroku 4. Kolejność: ocena na
+ * opisanym poziomie → progi (D-52) → OCENA_SPOZA_REJESTRU. Istniejący
+ * describe wyżej jest kontrolą pozytywną: bez `comparableRatings` nic się
+ * nie zmienia.
+ */
+describe("document model — §12.2 z ocen rzeczoznawcy (ADR-022)", () => {
+  const CMAX = "TEST-TX-12|TEST-LOK-12";
+  const withRatings = (ratings: KcsInput["comparableRatings"]) => {
+    const v = wycena1409Anon();
+    v.inputs.comparableRatings = ratings;
+    return buildDocumentModel(v);
+  };
+  const opis = (m: ReturnType<typeof buildDocumentModel>, nazwa: string) =>
+    m.lokale_cmax[0].cechy.find((c) => c.nazwa === nazwa)!.opis;
+
+  it("ocena rzeczoznawcy wygrywa z progami: Cmax na 3. piętrze oceniony „lepsza” drukuje „najwyższa”", () => {
+    const m = withRatings({
+      [CMAX]: {
+        "standard-wykonczenia": "lepsza",
+        "polozenie-na-pietrze": "lepsza",
+        lokalizacja: "lepsza",
+        "powierzchnia-uzytkowa": "gorsza",
+        "pomieszczenia-przynalezne": "lepsza",
+        dodatkowe: "gorsza",
+      },
+    });
+    expect(m.lokale_cmax[0].cechy).toEqual([
+      { nazwa: "Standard wykończenia", opis: "wartość najwyższa cechy" },
+      // Progi mówią „pośrednia” (3. piętro) — ocena rzeczoznawcy jest ważniejsza.
+      { nazwa: "Położenie na piętrze", opis: "wartość najwyższa cechy" },
+      // Dwa opisane poziomy (lepsza/przeciętna): „lepsza” to max.
+      { nazwa: "Lokalizacja szczegółowa", opis: "wartość najwyższa cechy" },
+      // Progi mówią „lepsza” (35,9 m²) — ocena „gorsza” drukuje najniższą.
+      { nazwa: "Powierzchnia użytkowa", opis: "wartość najniższa cechy" },
+      { nazwa: "Pomieszczenia przynależne", opis: "wartość najwyższa cechy" },
+      { nazwa: "Dodatkowe", opis: "wartość najniższa cechy" },
+    ]);
+  });
+
+  it("ocena częściowa: oceniona cecha z oceny, mierzalna bez oceny z progów, reszta „brak danych”", () => {
+    const m = withRatings({ [CMAX]: { "standard-wykonczenia": "gorsza" } });
+    expect(opis(m, "Standard wykończenia")).toBe("wartość najniższa cechy");
+    expect(opis(m, "Położenie na piętrze")).toBe("wartość pośrednia cechy");
+    expect(opis(m, "Lokalizacja szczegółowa")).toBe(OCENA_SPOZA_REJESTRU);
+  });
+
+  it("ocena na nieopisanym poziomie liczy się jak brak oceny → „brak danych” (ADR-016 reg. 4)", () => {
+    // Pomieszczenia przynależne opisują tylko lepsza/gorsza.
+    const m = withRatings({ [CMAX]: { "pomieszczenia-przynalezne": "przecietna" } });
+    expect(opis(m, "Pomieszczenia przynależne")).toBe(OCENA_SPOZA_REJESTRU);
+  });
+
+  it("oceny pod cudzym kluczem nie dotykają tego lokalu (kontrola: identycznie jak bez ocen)", () => {
+    const bez = withRatings(null);
+    const cudze = withRatings({ "INNY|LOKAL": { "standard-wykonczenia": "lepsza" } });
+    expect(cudze.lokale_cmax).toEqual(bez.lokale_cmax);
+    expect(cudze.lokale_cmin).toEqual(bez.lokale_cmin);
+  });
+
+  it("remis Cmin: każdy lokal drukuje SWOJE oceny", () => {
+    const m = withRatings({
+      "TEST-TX-01|TEST-LOK-01": { "standard-wykonczenia": "lepsza" },
+      "TEST-TX-02|TEST-LOK-02": { "standard-wykonczenia": "gorsza" },
+    });
+    const standard = (i: number) =>
+      m.lokale_cmin[i].cechy.find((c) => c.nazwa === "Standard wykończenia")!.opis;
+    expect([standard(0), standard(1)]).toEqual([
+      "wartość najwyższa cechy",
+      "wartość najniższa cechy",
+    ]);
+  });
+
+  it("klucz lokalu nigdy nie trafia do modelu dokumentu (F-12)", () => {
+    const json = JSON.stringify(withRatings({ [CMAX]: { "standard-wykonczenia": "lepsza" } }));
+    expect(json).not.toContain("TEST-TX-");
+    expect(json).not.toContain("TEST-LOK-");
+  });
+});
+
 describe("document model — opis przedmiotu i Tabela 3 (FH.3, D-54, I-11 U)", () => {
   it("opis przedmiotu idzie z pozycji w opisanej skali, nie z klucza oceny (D-54)", () => {
     const m = buildDocumentModel(wycena1409Anon());
