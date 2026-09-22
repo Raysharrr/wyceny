@@ -45,6 +45,10 @@ export const HELP_PAGES: HelpPage[] = [
       "powierzchnia",
       "księga wieczysta",
       "KW",
+      "przeglądarka KW",
+      "eKW",
+      "e-odpis",
+      "treść księgi",
       "akt notarialny",
       "MPZP",
       "EGiB",
@@ -56,7 +60,7 @@ export const HELP_PAGES: HelpPage[] = [
       "piwnica",
     ],
     summary:
-      "Adres uruchamia pobranie danych działki, budynku i planu; rodzaj prawa (własność albo spółdzielcze); KW z dokumentu albo z ręki.",
+      "Adres uruchamia pobranie danych działki, budynku i planu; rodzaj prawa (własność albo spółdzielcze); treść obu ksiąg wklejona z przeglądarki KW albo z PDF.",
     load: () => import("./jak-korzystac/krok-1-przedmiot.mdx"),
   },
   {

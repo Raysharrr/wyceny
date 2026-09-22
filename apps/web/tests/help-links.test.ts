@@ -168,7 +168,12 @@ describe("etykiety przyciskow cytowane w Pomocy", () => {
     // dodane w `zasady-zatwierdzania` dla operatu, ktorego kwoty nie da sie dzis
     // odtworzyc z jego danych (I-21); etykieta byla juz cytowana, wiec unikalnych
     // nadal 19.
-    expect(cytaty.length).toBe(47);
+    // 48 / 19 od ADR-021 (Gluszyna PR-2): karta ksiegi ma dwa sposoby zamiast
+    // sciezki recznej, wiec `krok-1-przedmiot` cytuje „Wgraj PDF" o raz wiecej
+    // (przelacznik i przycisk „Odczytaj i przepisz ksiege" opisane w jednym
+    // akapicie); etykieta byla juz cytowana, wiec unikalnych nadal 19.
+    // PRZELICZONE uruchomieniem tego testu na scalonym drzewie, nie arytmetyka.
+    expect(cytaty.length).toBe(48);
     expect(new Set(cytaty.map((c) => c.etykieta)).size).toBe(19);
   });
 
