@@ -12,12 +12,13 @@ from types import SimpleNamespace
 
 import anthropic
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from app import main
 from app.kw import EXTRACTION_PROMPT, KwExtractPayload
-from app.llm import INVALID_OUTPUT, AnthropicAdapter, LlmResult
+from app.llm import INVALID_OUTPUT, AnthropicAdapter, LlmClient, LlmResult
 
 SECRET = "test-secret"
 APP = Path(__file__).resolve().parents[1] / "app"
@@ -49,8 +50,13 @@ def message(content: list[dict], stop_reason: str = "end_turn") -> dict:
 
 
 def parse_with(sdk) -> LlmResult:
-    return AnthropicAdapter(sdk).parse_pdf(
-        model="claude-sonnet-5", pdf_b64="JVBERg==", prompt="p", schema=Schema, max_tokens=100
+    return AnthropicAdapter(sdk).parse(
+        model="claude-sonnet-5",
+        documents=["JVBERg=="],
+        text=None,
+        prompt="p",
+        schema=Schema,
+        max_tokens=100,
     )
 
 
@@ -227,3 +233,98 @@ def test_kw_extract_without_parsed_output_is_the_same_502(monkeypatch):
     assert resp.json()["detail"] == (
         "Nie udało się odczytać dokumentu — spróbuj ponownie albo wpisz dane ręcznie."
     )
+
+
+# --- one port method for PDFs and/or a pasted book (ADR-021, R3) ------------------
+
+
+def document_block(pdf_b64: str) -> dict:
+    return {
+        "type": "document",
+        "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+    }
+
+
+def content_sent(sdk: RecordingSdk) -> list[dict]:
+    assert sdk.kwargs is not None
+    (turn,) = sdk.kwargs["messages"]
+    assert turn["role"] == "user"
+    return turn["content"]
+
+
+def test_two_documents_become_two_document_blocks_in_order_then_the_prompt():
+    sdk = RecordingSdk(Schema(a="x"))
+    result = AnthropicAdapter(sdk).parse(
+        model="claude-sonnet-5",
+        documents=["JVBERg==", "JVBERi0x"],
+        text=None,
+        prompt="p",
+        schema=Schema,
+        max_tokens=100,
+    )
+    assert result.parsed == Schema(a="x")
+    assert content_sent(sdk) == [
+        document_block("JVBERg=="),
+        document_block("JVBERi0x"),
+        {"type": "text", "text": "p"},
+    ]
+    assert sdk.kwargs["output_format"] is Schema
+    assert sdk.kwargs["max_tokens"] == 100
+    assert "thinking" not in sdk.kwargs
+
+
+def test_text_alone_is_one_block_fenced_in_tresc_ksiegi_then_the_prompt():
+    sdk = RecordingSdk(Schema(a="x"))
+    AnthropicAdapter(sdk).parse(
+        model="claude-sonnet-5",
+        documents=[],
+        text="DZIAŁ I-O\nNumer działki | 1/2 | 1",
+        prompt="p",
+        schema=Schema,
+        max_tokens=100,
+    )
+    assert content_sent(sdk) == [
+        {
+            "type": "text",
+            "text": "<tresc_ksiegi>\nDZIAŁ I-O\nNumer działki | 1/2 | 1\n</tresc_ksiegi>",
+        },
+        {"type": "text", "text": "p"},
+    ]
+
+
+def test_documents_and_text_together_are_documents_then_text_then_prompt():
+    sdk = RecordingSdk(Schema(a="x"))
+    AnthropicAdapter(sdk).parse(
+        model="claude-sonnet-5",
+        documents=["JVBERg=="],
+        text="DZIAŁ IV\nBRAK WPISÓW",
+        prompt="p",
+        schema=Schema,
+        max_tokens=100,
+        thinking={"type": "adaptive"},
+    )
+    assert content_sent(sdk) == [
+        document_block("JVBERg=="),
+        {"type": "text", "text": "<tresc_ksiegi>\nDZIAŁ IV\nBRAK WPISÓW\n</tresc_ksiegi>"},
+        {"type": "text", "text": "p"},
+    ]
+    assert sdk.kwargs["thinking"] == {"type": "adaptive"}
+
+
+def test_nothing_to_read_is_a_programming_error_and_never_a_request():
+    sdk = RecordingSdk(Schema(a="x"))
+    with pytest.raises(ValueError):
+        AnthropicAdapter(sdk).parse(
+            model="claude-sonnet-5",
+            documents=[],
+            text=None,
+            prompt="p",
+            schema=Schema,
+            max_tokens=100,
+        )
+    assert sdk.kwargs is None
+
+
+def test_parse_pdf_is_gone_from_the_port_and_the_adapter():
+    assert not hasattr(LlmClient, "parse_pdf")
+    assert not hasattr(AnthropicAdapter, "parse_pdf")

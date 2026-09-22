@@ -1,7 +1,7 @@
 """Port for the LLM calls that read KW documents (user decision 15.09: KW code
 never calls the Anthropic SDK directly — only through `LlmClient`).
 
-One method, one adapter. A second adapter and moving the prose call behind this
+One method (`parse`: PDFs and/or a text, ADR-021), one adapter. A second adapter and moving the prose call behind this
 port are ADR-021 (spec §11), not this file's business. This is the only
 `import anthropic` on the KW path; the prose call in main.py keeps its own.
 """
@@ -28,19 +28,43 @@ class LlmResult:
 
 
 class LlmClient(Protocol):
-    def parse_pdf(
+    def parse(
         self,
         *,
         model: str,
-        pdf_b64: str,
+        documents: list[str],
+        text: str | None,
         prompt: str,
         schema: type[BaseModel],
         max_tokens: int,
         thinking: dict | None = None,
     ) -> LlmResult:
-        """Structured answer for one PDF + prompt. `parsed is None` means no usable
+        """Structured answer for a set of base64 PDFs and/or one text, followed by
+        the prompt (ADR-021: one prompt reads a printout, a pasted book, or both).
+        At least one of `documents`, `text` is required — otherwise `ValueError`,
+        a programming error, not a model answer. `parsed is None` means no usable
         answer; `stop_reason` says why. Never raises for an unusable answer."""
         ...
+
+
+def content_blocks(documents: list[str], text: str | None, prompt: str) -> list[dict]:
+    """The user turn: `document` blocks in the given order, the text (when any)
+    fenced in `<tresc_ksiegi>` so the model cannot mistake it for instructions,
+    the prompt last. With one document and no text this is byte for byte the
+    pre-port `parse_pdf` turn (test_llm regression for /kw-extract)."""
+    if not documents and text is None:
+        raise ValueError("parse needs at least one document or a text")
+    blocks: list[dict] = [
+        {
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+        }
+        for pdf_b64 in documents
+    ]
+    if text is not None:
+        blocks.append({"type": "text", "text": f"<tresc_ksiegi>\n{text}\n</tresc_ksiegi>"})
+    blocks.append({"type": "text", "text": prompt})
+    return blocks
 
 
 class AnthropicAdapter:
@@ -49,16 +73,18 @@ class AnthropicAdapter:
         # client needs ANTHROPIC_API_KEY, which CI does not have.
         self._client = client
 
-    def parse_pdf(
+    def parse(
         self,
         *,
         model: str,
-        pdf_b64: str,
+        documents: list[str],
+        text: str | None,
         prompt: str,
         schema: type[BaseModel],
         max_tokens: int,
         thinking: dict | None = None,
     ) -> LlmResult:
+        content = content_blocks(documents, text, prompt)  # ValueError before any I/O
         client = self._client or anthropic.Anthropic()  # ANTHROPIC_API_KEY from worker env
         # `thinking` omitted when None: the model's own default applies.
         extra = {} if thinking is None else {"thinking": thinking}
@@ -67,22 +93,7 @@ class AnthropicAdapter:
                 model=model,
                 max_tokens=max_tokens,
                 **extra,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "document",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "application/pdf",
-                                    "data": pdf_b64,
-                                },
-                            },
-                            {"type": "text", "text": prompt},
-                        ],
-                    }
-                ],
+                messages=[{"role": "user", "content": content}],
                 output_format=schema,
             )
         except pydantic.ValidationError:

@@ -597,9 +597,10 @@ def kw_llm() -> LlmClient:
 def _extract_kw_payload(pdf_b64: str) -> kw_core.KwExtractPayload:
     """Monkeypatched in every CI test.
     thinking disabled: spike showed identical quality, pure-JSON output."""
-    result = kw_llm().parse_pdf(
+    result = kw_llm().parse(
         model=KW_MODEL,
-        pdf_b64=pdf_b64,
+        documents=[pdf_b64],
+        text=None,
         prompt=kw_core.EXTRACTION_PROMPT,
         schema=kw_core.KwExtractPayload,
         max_tokens=4096,

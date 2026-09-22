@@ -74,7 +74,8 @@ def test_transcription_of_the_synthetic_book_comes_back_verbatim(monkeypatch):
     assert fake.calls == [
         dict(
             model="claude-opus-5",
-            pdf_b64=base64.standard_b64encode(pdf).decode(),
+            documents=[base64.standard_b64encode(pdf).decode()],
+            text=None,
             prompt=kw_transcribe.PROMPT,
             schema=KsiegaTresc,
             max_tokens=16000,
@@ -158,7 +159,7 @@ def test_only_a_real_truncation_is_called_too_large(monkeypatch):
 
 def test_a_failing_model_call_is_a_retryable_502(monkeypatch):
     class Boom:
-        def parse_pdf(self, **kwargs):
+        def parse(self, **kwargs):
             raise ConnectionError("upstream down")
 
     monkeypatch.setattr(main, "kw_llm", lambda: Boom())

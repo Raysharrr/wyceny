@@ -137,9 +137,10 @@ class TranscriptionFailed(Exception):
 def transcribe(llm: LlmClient, pdf_b64: str) -> LlmResult:
     """The model's transcription of the book. Raises `TranscriptionFailed` when
     there is none; the returned result always has `parsed`."""
-    result = llm.parse_pdf(
+    result = llm.parse(
         model=TRANSCRIBE_MODEL,
-        pdf_b64=pdf_b64,
+        documents=[pdf_b64],
+        text=None,
         prompt=PROMPT,
         schema=KsiegaTresc,
         max_tokens=MAX_TOKENS,

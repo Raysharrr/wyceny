@@ -141,7 +141,7 @@ def test_exception_quoting_the_content_leaks_nothing(monkeypatch, capsys):
     value = sorted(FORBIDDEN)[0]
 
     class Quoting:
-        def parse_pdf(self, **kwargs):
+        def parse(self, **kwargs):
             raise ValueError(f"nie pasuje: {value}")
 
     monkeypatch.setattr(main, "kw_llm", lambda: Quoting())
