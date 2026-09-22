@@ -72,6 +72,19 @@ export const ksiegaTrescSchema = z.object({
 export type KsiegaTresc = z.infer<typeof ksiegaTrescSchema>;
 
 /**
+ * Czy nagłówek nazywa księgę GRUNTOWĄ. Ta sama reguła, co `is_land_book`
+ * w `apps/worker/app/kw_validate.py` (PR #77, 1f20f8c) — i musi nią zostać:
+ * web i worker mają jednakowo rozstrzygać, których pól księga w ogóle ma.
+ * eKW pisze rodzaj na trzy sposoby („NIERUCHOMOŚĆ GRUNTOWA", „GRUNT ODDANY
+ * W UŻYTKOWANIE WIECZYSTE" i ten sam z budynkiem), więc wspólnym rdzeniem
+ * jest „GRUNT", a nie „GRUNTOW". Żaden rodzaj lokalowy nie zawiera „GRUNT",
+ * więc test nie zadziała w drugą stronę. Brak rodzaju to NIE księga gruntu.
+ */
+export function jestKsiegaGruntu(rodzaj: string | null | undefined): boolean {
+  return rodzaj != null && rodzaj.toUpperCase().includes("GRUNT");
+}
+
+/**
  * The worker's deterministic verdict (check digits, PESEL checksums, fields vs
  * content, structure). Error classes never carry a value, e.g.
  * `kw_cyfra_kontrolna:kwGruntu`, `pesel_suma`, `pole_niezgodne:repA`.
