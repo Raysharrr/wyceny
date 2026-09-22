@@ -1,7 +1,22 @@
 """Deterministic checks of a KW transcription (spike KW report: "Mitygacja" and
-"Rekomendacja wdrożeniowa"). With no acceptance gate before deployment (plan
-§P1.8 pt 9) these are the only automatic guard of fidelity before the operat:
-web stores the content only when `ok`.
+"Rekomendacja wdrożeniowa"). The verdict is a standing warning in step 1 and in
+the operat preview, never a gate (ADR-021: the paste or upload is the
+appraiser's confirmation; web stores the content whatever the verdict).
+
+Rules follow the kind of book (`naglowek.rodzajKsiegi`), and the reduced set is
+opt-in: ONLY a book whose kind names the land gets it — the check digit of the
+book's OWN number, PESEL, `brakWpisow`, separator rows, Rep. A. Out of it fall
+every rule reading a unit field, the check digits of `kwLokalu` and `kwGruntu`
+among them: in a land book those two point at nothing (they exist in a unit book
+as its pointer at itself and at its land). Every other kind, INCLUDING a missing
+one, is judged in full. The unit-field rules (`kwLokalu`, `kwGruntu`,
+`numerLokalu`, `udzial`) gave three false positives on a land book in the spike
+of 21.09 and a fourth measured E2E on 22.09 — the model wrote the plot area from
+I-O into `kwGruntu`, whose check digit then failed — but dropping them on a book
+of unknown kind would silently retire the only automatic guard of fidelity on
+today's production path — a visible false `ok: false` beats a silent gap. A book
+pasted tab by tab may lack sections: each missing one is `dzialy_niekompletne`,
+and a rule reading a section that is not there is skipped rather than cascading.
 
 The verdict judges and never corrects. Error classes carry NO values (F-13) —
 they end up in logs and in the answer — only a class and, where the rule points
@@ -37,6 +52,18 @@ _KW_RE = re.compile(r"([A-Z0-9]{4})/(\d{8})/(\d)")
 _PESEL_WEIGHTS = (1, 3, 7, 9, 1, 3, 7, 9, 1, 3)
 _PESEL_RE = re.compile(r"\b\d{11}\b")
 _REP_CORE_RE = re.compile(r"\d+/\d+")
+
+DZIALY = ("I-O", "I-Sp", "II", "III", "IV")
+
+
+def is_land_book(rodzaj: str | None) -> bool:
+    """True only when the kind explicitly names the land. eKW writes it three
+    ways — „NIERUCHOMOŚĆ GRUNTOWA", „GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE" and
+    that one plus a building — so the shared core is „GRUNT", not „GRUNTOW": the
+    middle form has no „GRUNTOWA" in it. No unit kind contains „GRUNT", so the
+    test never fires the other way. A missing or unknown kind is NOT a land book
+    and keeps every rule (user decision 22.09)."""
+    return rodzaj is not None and "GRUNT" in rodzaj.upper()
 
 
 def kw_check_digit_ok(number: str) -> bool:
@@ -94,12 +121,17 @@ def validate(tresc: KsiegaTresc) -> Walidacja:
             bledy.append(blad)
 
     pola = tresc.polaDodatkowe
+    present = {d.kod for d in tresc.dzialy}
+    ksiega_gruntu = is_land_book(tresc.naglowek.rodzajKsiegi)
 
-    for field, number in (
-        ("numerKsiegi", tresc.naglowek.numerKsiegi),
-        ("kwLokalu", pola.kwLokalu),
-        ("kwGruntu", pola.kwGruntu),
-    ):
+    for kod in DZIALY:
+        if kod not in present:
+            fail("dzialy_niekompletne", kod)
+
+    numery = [("numerKsiegi", tresc.naglowek.numerKsiegi)]
+    if not ksiega_gruntu:
+        numery += [("kwLokalu", pola.kwLokalu), ("kwGruntu", pola.kwGruntu)]
+    for field, number in numery:
         if number is not None and not kw_check_digit_ok(number):
             fail(f"kw_cyfra_kontrolna:{field}")
 
@@ -112,18 +144,25 @@ def validate(tresc: KsiegaTresc) -> Walidacja:
                         if any(not pesel_ok(p) for p in _PESEL_RE.findall(value)):
                             fail("pesel_suma", kod)
 
-    kw_gruntu_i_o = _loose(_rubric_value(tresc, "I-O", "przyłączenie"))
-    kw_gruntu_i_sp = _loose(_rubric_value(tresc, "I-Sp", "numer księgi wieczystej"))
-    if not (_loose(pola.kwGruntu) == kw_gruntu_i_o == kw_gruntu_i_sp):
-        fail("pole_niezgodne:kwGruntu")
-    if _loose(pola.kwLokalu) != _loose(tresc.naglowek.numerKsiegi):
-        fail("pole_niezgodne:kwLokalu")
-    if _collapsed(pola.numerLokalu) != _collapsed(_rubric_value(tresc, "I-O", "numer lokalu")):
-        fail("pole_niezgodne:numerLokalu", "I-O")
-    if _loose(pola.udzial) != _loose(_rubric_value(tresc, "I-Sp", "wielkość udziału")):
-        fail("pole_niezgodne:udzial", "I-Sp")
+    if not ksiega_gruntu:
+        if {"I-O", "I-Sp"} <= present:
+            kw_gruntu_i_o = _loose(_rubric_value(tresc, "I-O", "przyłączenie"))
+            kw_gruntu_i_sp = _loose(_rubric_value(tresc, "I-Sp", "numer księgi wieczystej"))
+            if not (_loose(pola.kwGruntu) == kw_gruntu_i_o == kw_gruntu_i_sp):
+                fail("pole_niezgodne:kwGruntu")
+        if _loose(pola.kwLokalu) != _loose(tresc.naglowek.numerKsiegi):
+            fail("pole_niezgodne:kwLokalu")
+        if "I-O" in present and _collapsed(pola.numerLokalu) != _collapsed(
+            _rubric_value(tresc, "I-O", "numer lokalu")
+        ):
+            fail("pole_niezgodne:numerLokalu", "I-O")
+        if "I-Sp" in present and _loose(pola.udzial) != _loose(
+            _rubric_value(tresc, "I-Sp", "wielkość udziału")
+        ):
+            fail("pole_niezgodne:udzial", "I-Sp")
+
     rep_a = _loose(pola.podstawaNabycia.repA if pola.podstawaNabycia else None)
-    if rep_a is not None:
+    if rep_a is not None and "II" in present:
         # The model spells Rep. A with or without "REP. A NR" — compare the
         # "number/year" core, as a whole number ("497/2018" is not "6497/2018").
         core = _REP_CORE_RE.search(rep_a)

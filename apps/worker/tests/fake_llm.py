@@ -10,6 +10,6 @@ class FakeLlmClient:
         self.result = result
         self.calls: list[dict] = []
 
-    def parse_pdf(self, **kwargs) -> LlmResult:
+    def parse(self, **kwargs) -> LlmResult:
         self.calls.append(kwargs)
         return self.result

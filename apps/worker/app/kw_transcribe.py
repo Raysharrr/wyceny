@@ -1,6 +1,8 @@
-"""Full transcription of the five sections of a unit's land-register book
-(I-O, I-Sp, II, III, IV) from an eKW printout PDF — operat §8.2 as the appraiser
-pastes it (spike tools/spike/2026-09-15-kw-pelne-dzialy, PASS on claude-opus-5).
+"""Full transcription of the five sections of a land-register book (I-O, I-Sp,
+II, III, IV) — a unit's or the land's — from one or more eKW printout PDFs, from
+the text pasted out of the eKW browser tabs, or both (ADR-021; spikes
+tools/spike/2026-09-15-kw-pelne-dzialy and 2026-09-21-kw-wklej-tekst, PASS on
+claude-opus-5). Operat §8.2 as the appraiser pastes it.
 
 A separate call next to `/kw-extract`, which stays as it is. Persons' data stays
 in on purpose (user decision 15.09, ADR-018 "Zmiana 15.09"): no `scrub_extract`
@@ -19,6 +21,11 @@ from app.llm import INVALID_OUTPUT, LlmClient, LlmResult
 TRANSCRIBE_MODEL = os.environ.get("LLM_KW_TRANSCRIBE_MODEL", "claude-opus-5")
 # Non-streaming 16k, as measured in the spike: a unit's book is ~4.9k output tokens.
 MAX_TOKENS = 16000
+
+# Channel limits of /kw-transcribe (spec Głuszyna §3.2): up to five printouts
+# (one per eKW tab) within Anthropic's 32 MB request, or a paste of the tabs.
+MAX_FILES = 5
+MAX_TEXT_BYTES = 200 * 1024
 
 # --- schema: 1:1 with the spike (spike.py `KsiegaTresc`, RAPORT "Proponowany schemat")
 
@@ -97,7 +104,9 @@ class KsiegaTresc(BaseModel):
 
 # The spike's prompt verbatim, plus production fix no. 1 from its report: the
 # "Lp. N. | ---" row opening an entry is not a rubric (both models duplicated it).
-PROMPT = """Załączony PDF to wydruk treści księgi wieczystej z przeglądarki eKW (działy I-O, I-Sp, II, III, IV).
+# First line is carrier-neutral (ADR-021): PDFs, a paste, or both; the rules
+# below are the spike's verbatim.
+PROMPT = """Załączone dokumenty lub tekst to treść księgi wieczystej z przeglądarki eKW lub e-odpisu (działy I-O, I-Sp, II, III, IV); każda zakładka lub strona może powtarzać nagłówek „TREŚĆ KSIĘGI WIECZYSTEJ NR …” — to jedna księga, nagłówek przepisz raz. Gdy tekst ma wiersze `etykieta | wartość | nr podstawy`, kolumny są rozdzielone znakiem „|”: pierwsza to etykieta rubryki, środkowe to jej wartości, ostatnia to „Nr podstawy wpisu”.
 Przepisz PEŁNĄ treść wszystkich działów do schematu — dosłownie, znak w znak: bez poprawiania, skracania, streszczania i bez pomijania osób fizycznych (imiona, nazwiska, imiona rodziców i PESEL przepisz tak, jak są w dokumencie; to materiał do operatu szacunkowego).
 
 Zasady:
@@ -134,12 +143,15 @@ class TranscriptionFailed(Exception):
         return "kw_transkrypcja_blad"
 
 
-def transcribe(llm: LlmClient, pdf_b64: str) -> LlmResult:
-    """The model's transcription of the book. Raises `TranscriptionFailed` when
-    there is none; the returned result always has `parsed`."""
-    result = llm.parse_pdf(
+def transcribe(llm: LlmClient, pdfs: list[str], text: str | None) -> LlmResult:
+    """The model's transcription of the book read from `pdfs` (base64, in the
+    order uploaded), from `text` (the pasted tabs) or both. Raises
+    `TranscriptionFailed` when there is none; the returned result always has
+    `parsed`."""
+    result = llm.parse(
         model=TRANSCRIBE_MODEL,
-        pdf_b64=pdf_b64,
+        documents=pdfs,
+        text=text,
         prompt=PROMPT,
         schema=KsiegaTresc,
         max_tokens=MAX_TOKENS,
