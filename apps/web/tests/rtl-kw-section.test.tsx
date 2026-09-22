@@ -2321,6 +2321,70 @@ describe("KwSection — full-form wiring", () => {
     expect(zapisane.tresc).toEqual(tresc);
   });
 
+  /**
+   * F6 recenzji PR #86 — druga droga tego samego przecieku. Na karcie lokalu
+   * z kanałem PDF obok transkrypcji biegnie `/kw-extract`, a `??` przepuszczało
+   * wyzerowane `null` z transkrypcji dalej do ekstraktu: pola księgi gruntowej
+   * wracały drugimi drzwiami do `kw_gruntu` i `udzial_kw` w operacie, w dodatku
+   * bez podpisu, bo ten siedzi pod numerem księgi.
+   */
+  it("księga gruntu wgrana jako PDF na kartę lokalu: pola lokalowe nie wracają z odczytu pól (F6)", async () => {
+    const tresc = transcribedBook();
+    tresc.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
+    tresc.polaDodatkowe.kwGruntu = "0,0163 HA";
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await uploadOdpis(user);
+
+    await screen.findByTestId("kw-werdykt-lokal");
+    const wartosc = (id: string) => (document.getElementById(id) as HTMLInputElement).value;
+    // Trzy pola w jednej asercji: przeciek wraca dwoma z nich naraz
+    // (`kwGruntu` i `udzial` z ekstraktu), a rozbite `expect` pokazałyby tylko
+    // pierwsze i ukryły rozmiar defektu.
+    expect({
+      kwGruntu: wartosc("kw-gruntu"),
+      udzial: wartosc("kw-udzial"),
+      nrLokalu: wartosc("kw-nr-lokalu"),
+    }).toEqual({ kwGruntu: "", udzial: "", nrLokalu: "" });
+    // Nagłówek i powierzchnia z odczytu pól zostają — straż dotyczy wyłącznie
+    // trzech pól, których w księdze gruntu nie ma.
+    expect(wartosc("kw-sad")).toBe(OK_ODPIS.kind === "ok" ? OK_ODPIS.extract.sad : "");
+  });
+
+  it("kontrola pozytywna do F6: przy księdze LOKALU pola z odczytu pól przechodzą", async () => {
+    const tresc = transcribedBook();
+    // Transkrypcja milczy o tych trzech polach, więc rozstrzyga odczyt pól —
+    // dokładnie ten fallback, który dla księgi gruntu jest odcięty.
+    tresc.polaDodatkowe.numerLokalu = null;
+    tresc.polaDodatkowe.udzial = null;
+    tresc.polaDodatkowe.kwGruntu = null;
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await uploadOdpis(user);
+
+    const extract = OK_ODPIS.kind === "ok" ? OK_ODPIS.extract : null;
+    await waitFor(() =>
+      expect((document.getElementById("kw-gruntu") as HTMLInputElement).value).toBe(
+        extract!.kwGruntu,
+      ),
+    );
+    expect((document.getElementById("kw-udzial") as HTMLInputElement).value).toBe(extract!.udzial);
+  });
+
   it("zmiana sposobu przy wpisanych danych pyta o zgodę z listą tego, co zniknie; „Zostaw jak jest” nic nie rusza (makieta 5)", async () => {
     const tresc = transcribedBook();
     vi.mocked(transcribeKw).mockResolvedValue({

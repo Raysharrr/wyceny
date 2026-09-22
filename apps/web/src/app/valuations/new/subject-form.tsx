@@ -29,8 +29,9 @@ import {
   polaZTresci,
 } from "@/domain/kw-z-tresci";
 import { rodzajNiezgodny, type KartaKsiegi } from "@/domain/kw-niezgodnosci";
+import { jestKsiegaGruntu } from "@/domain/kw-tresc";
 import { MAX_TEKST_BAJTOW } from "@/domain/kw-wklej";
-import type { KwWerdykt } from "@/domain/kw-snapshot";
+import type { KwSnapshot, KwWerdykt } from "@/domain/kw-snapshot";
 import {
   EMPTY_SUBJECT,
   planOdczytuKw,
@@ -470,6 +471,22 @@ export function SubjectForm({
 
     const extract = result?.kind === "ok" ? result.extract : null;
     const zTresci = tresc ? polaZTresci(tresc) : null;
+    /**
+     * Pola LOKALOWE karty lokalu, jedną strażą dla wszystkich trzech naraz.
+     * W księdze gruntu nie mają na co wskazywać, więc nie bierze ich ani
+     * transkrypcja (`polaZTresci` zeruje je u źródła), ani odczyt pól: `??`
+     * przepuszczało wyzerowane `null` dalej do ekstraktu i na kanale PDF
+     * obszar działki wracał tą drugą drogą, w dodatku bez podpisu — ten
+     * siedzi pod numerem księgi, nie pod tymi polami (F6 recenzji PR #86).
+     */
+    const polaLokalu = (): Pick<KwSnapshot, "nrLokalu" | "udzial" | "kwGruntu"> =>
+      tresc && jestKsiegaGruntu(tresc.naglowek.rodzajKsiegi)
+        ? { nrLokalu: null, udzial: null, kwGruntu: null }
+        : {
+            nrLokalu: zTresci?.nrLokalu ?? null,
+            udzial: zTresci?.udzial ?? extract?.udzial ?? null,
+            kwGruntu: zTresci?.kwGruntu ?? extract?.kwGruntu ?? null,
+          };
     setValue(
       "kw",
       {
@@ -485,10 +502,8 @@ export function SubjectForm({
         // full-fidelity pass. Where it states nothing, the field read stands.
         ...(zTresci
           ? {
-              nrLokalu: zTresci.nrLokalu,
               akt: zTresci.akt,
-              udzial: zTresci.udzial ?? extract?.udzial ?? null,
-              kwGruntu: zTresci.kwGruntu ?? extract?.kwGruntu ?? null,
+              ...polaLokalu(),
               // Header facts, the other way round: the field read has asked for
               // these since Slice 6 and the header often omits them.
               sad: extract?.sad ?? zTresci.sad,
