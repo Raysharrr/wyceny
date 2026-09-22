@@ -396,3 +396,38 @@ def test_file_alias_and_files_together_are_one_list_alias_first(monkeypatch):
     assert resp.status_code == 200
     (call,) = fake.calls
     assert call["documents"] == [b64(PDF), b64(other)]
+
+
+# --- an empty or corrupt file never becomes an empty `document` block (review F5) ----
+
+
+@pytest.mark.parametrize("content", [b"", b"nie-pdf-tylko-smieci"])
+def test_an_empty_or_corrupt_file_is_415_and_never_reaches_the_model(monkeypatch, content):
+    """A browser can hand over a zero-byte file. Without this guard it went to the
+    model as `documents=[""]`, the API refused the block and the appraiser saw a
+    generic 502 instead of being told which file to replace."""
+    fake = use_llm(monkeypatch, ok_result())
+    resp = post_form(mint(), files=[("pusta-ksiega.pdf", content, "application/pdf")])
+    assert resp.status_code == 415
+    assert resp.json()["detail"] == "Pusty lub uszkodzony plik PDF."
+    # The name is the appraiser's own, often the book's number — never echoed (F-13).
+    assert "pusta-ksiega" not in resp.text
+    assert fake.calls == []
+
+
+def test_an_empty_file_next_to_a_good_one_stops_the_whole_request(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    resp = post_form(
+        mint(),
+        files=[("kw.pdf", PDF, "application/pdf"), ("pusty.pdf", b"", "application/pdf")],
+    )
+    assert resp.status_code == 415
+    assert fake.calls == []
+
+
+def test_an_empty_file_does_not_block_a_paste(monkeypatch):
+    """The guard judges the files it was given, not the request as a whole: a paste
+    with no files at all still goes through."""
+    fake = use_llm(monkeypatch, ok_result())
+    assert post_form(mint(), tekst="DZIAŁ IV\nBRAK WPISÓW").status_code == 200
+    assert fake.calls[0]["documents"] == []

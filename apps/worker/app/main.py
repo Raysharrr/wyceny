@@ -738,6 +738,13 @@ def kw_transcribe_book(
         total += len(data)
         if total > kw_max_bytes():
             raise HTTPException(status_code=413, detail="Pliki są za duże (łącznie limit 32 MB).")
+        if not data.startswith(b"%PDF"):
+            # A browser can hand over a zero-byte file. An empty or non-PDF
+            # `document` block is refused by the API, which the endpoint could
+            # only report as a generic 502 — say which kind of file it was
+            # instead. The name is never echoed: appraisers name files after
+            # the book (F-13).
+            raise HTTPException(status_code=415, detail="Pusty lub uszkodzony plik PDF.")
         documents.append(base64.standard_b64encode(data).decode())
     kanal = "+".join(
         name for name, used in (("pdf", bool(documents)), ("tekst", text is not None)) if used
