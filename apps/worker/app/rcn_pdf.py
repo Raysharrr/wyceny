@@ -58,9 +58,27 @@ OBJECT_LABELS = ("Obiekt", "Lokal", "Działka", "Budynek")
 HEADER_LABELS = ("Lp.", "Rodzaj", "transakcji", "Nieruchomość")
 PAGE_FURNITURE = ("STAROSTA", "POZNAŃSKI", "_")
 
+KIND_UNIT = "lokal"
+KIND_BUILT = "zabudowana"
+KIND_PLOT = "niezabudowana"
+KINDS = (KIND_UNIT, KIND_BUILT, KIND_PLOT)
+
 _DATE = re.compile(r"\d{4}-\d\d-\d\d")
-_SECTION = re.compile(r"Obręb: \S+ - .+? Jedn\. ewidencyjna: (\S+ - .+?) Rodzaj: ")
+_SECTION = re.compile(
+    r"Obręb: \S+ - (?P<district>.+?) Jedn\. ewidencyjna: (?P<unit>\S+ - .+?) Rodzaj: "
+)
 _ORDER = re.compile(r"[A-Z]{2,4}\.[A-Z]{2,4}\.\d+\.\d+\.\d{4}")
+# The generator stamps two lines at the foot of the LAST page only. They sit in
+# the object columns, so without this they land in the last transaction's cells
+# (a town of "dnia: 30.06.2026 Automatyczny Generator"). Gap-tolerant, because a
+# row is joined left-to-right and nothing guarantees the words stay adjacent.
+_FOOTER = re.compile(r"Wygenerowano\b.*\bdnia:|Dokument\b.*\bsprządzony|Automatyczny\s+Generator")
+_MARKER = re.compile(r"\d\.")
+# A narrow column breaks a word across lines WITHOUT a hyphen ("mieszkaniow" +
+# "e"), so a 1–2-letter lowercase tail belongs to the token before it — unless
+# it is a word in its own right.
+_FRAGMENT = re.compile(r"([a-ząćęłńóśźż]{1,2}),?")
+_CONJUNCTIONS = frozenset("i w z o u a".split())
 _ADDRESS = re.compile(
     r"^(?:(?:ul|al|pl|os)\.\s*)?(?P<street>.+?)\s+(?P<building>\d+[A-Za-z]?(?:/\d+[A-Za-z]?)?)"
     r"(?:\s+m\.\s*(?P<unit>\S+?))?,\s*(?P<town>.+)$"
@@ -92,6 +110,10 @@ class Word:
 
 @dataclass
 class Row:
+    """One transaction. `kind` decides which sheet it lands on and therefore
+    which fields are filled: `area`/`unit`/`annex` belong to a flat, the plot
+    fields to land."""
+
     lp: int
     date: str | None
     town: str
@@ -102,6 +124,11 @@ class Row:
     price: float | None
     annex: bool
     warnings: list[str] = field(default_factory=list)
+    kind: str = KIND_UNIT
+    plot_ids: list[str] = field(default_factory=list)
+    plot_area_m2: int | None = None
+    share: str = ""
+    plan: str = ""
 
 
 @dataclass
@@ -173,6 +200,26 @@ def _put(cell: dict[str, list[str]], bands, row: list[Word]) -> None:
         cell.setdefault(_band(bands, word.x0), []).append(word.text)
 
 
+def _glued(tokens: list[str]) -> str:
+    out: list[str] = []
+    for token in tokens:
+        fragment = _FRAGMENT.fullmatch(token)
+        if out and fragment and fragment[1] not in _CONJUNCTIONS:
+            out[-1] += token  # the comma after a fragment stays: "wewnętrznyc" + "h," -> "…ych,"
+        else:
+            out.append(token)
+    return " ".join(out)
+
+
+def _cell_text(cell: dict[str, list[str]], band: str, *, glue: bool = False) -> str:
+    """A cell's text without the object's ordinal marker ("1." on a plot, "3." on
+    a flat). Only a bare marker token is dropped — never "0.0486"."""
+    tokens = cell.get(band, [])
+    if tokens and _MARKER.fullmatch(tokens[0]):
+        tokens = tokens[1:]
+    return (_glued(tokens) if glue else " ".join(tokens)).strip()
+
+
 def _number(text: str) -> float | None:
     digits = re.sub(r"[^\d.]", "", text)
     return float(digits) if re.search(r"\d", digits) else None
@@ -195,6 +242,7 @@ def parse(pages: list[list[Word]]) -> Printout:
 
     transactions: list[dict] = []
     unit_name = ""
+    district = ""
     cell: dict[str, list[str]] | None = None
     bands = OBJECT_BANDS
     skip_section_id = False
@@ -208,11 +256,13 @@ def parse(pages: list[list[Word]]) -> Printout:
                 or "WYDRUK Z RCN" in text
                 or text in PAGE_FURNITURE
                 or (leads and _ORDER.fullmatch(text))
+                or _FOOTER.search(text)
             ):
                 continue
             if head.text == "Numer" and "Obręb:" in text:
                 section = _SECTION.search(text)
-                unit_name = section[1] if section else unit_name
+                if section:
+                    unit_name, district = section["unit"], section["district"]
                 cell, skip_section_id = None, True
                 continue
             if skip_section_id and leads and re.fullmatch(r"[0-9A-F]+", head.text):
@@ -222,7 +272,7 @@ def parse(pages: list[list[Word]]) -> Printout:
                 cell = None
                 continue
             if leads and head.text.isdigit() and any(_DATE.fullmatch(w.text) for w in row):
-                transactions.append({"head": {}, "price": {}, "objects": []})
+                transactions.append({"head": {}, "price": {}, "objects": [], "district": district})
                 cell, bands = transactions[-1]["head"], TRANSACTION_BANDS
                 _put(cell, bands, row)
                 continue
@@ -245,45 +295,107 @@ def parse(pages: list[list[Word]]) -> Printout:
     return Printout(order[0] if order else "", unit_name, rows, file_warnings)
 
 
-def _to_row(transaction: dict) -> Row:
-    head, price = transaction["head"], transaction["price"]
-    units = [o for o in transaction["objects"] if o["label"][0] == "Lokal"]
-    plots = [o for o in transaction["objects"] if o["label"][0] == "Działka"]
-    warnings: list[str] = []
-    unit = next(
-        (u for u in units if "mieszkalna" in u.get("desc", [])), units[0] if units else None
-    )
-    if not units:
-        warnings.append("no_unit")
-    elif len(units) > 1:
-        warnings.append("many_units")
+def _split_address(text: str) -> tuple[str, str, str, str] | None:
+    matched = _ADDRESS.match(text)
+    if not matched:
+        return None
+    return matched["town"], matched["street"], matched["building"], matched["unit"] or ""
 
-    source = unit or (plots[0] if plots else {})
-    raw_address = re.sub(r"^\d\.\s*", "", " ".join(source.get("address", [])))
-    matched = _ADDRESS.match(raw_address)
-    if matched:
-        town, street = matched["town"], matched["street"]
-        building, unit_no = matched["building"], matched["unit"] or ""
+
+def _to_row(transaction: dict) -> Row:
+    """The kind comes from the objects, never from the section header: a section
+    titled NIEZABUDOWANA can hold a transaction with two buildings."""
+    head, price = transaction["head"], transaction["price"]
+    objects = transaction["objects"]
+    units = [o for o in objects if o["label"][0] == "Lokal"]
+    base = dict(
+        lp=int(head["lp"][0]),
+        date=next((t for t in head.get("date", []) if _DATE.fullmatch(t)), None),
+        price=_number("".join(price.get("price", []))),
+    )
+    build = _unit_row if units else _land_row
+    return build(base, transaction)
+
+
+def _unit_row(base: dict, transaction: dict) -> Row:
+    units = [o for o in transaction["objects"] if o["label"][0] == "Lokal"]
+    warnings = ["many_units"] if len(units) > 1 else []
+    unit = next((u for u in units if "mieszkalna" in u.get("desc", [])), units[0])
+
+    raw_address = _cell_text(unit, "address")
+    parts = _split_address(raw_address)
+    if parts:
+        town, street, building, unit_no = parts
     else:
         town, street, building, unit_no = "", raw_address, "", ""
         warnings.append("address_unparsed")
 
-    area_tokens = unit.get("area", []) if unit else []
+    area_tokens = unit.get("area", [])
     area = _after_marker(area_tokens, "3.")
-    annex = (_after_marker(area_tokens, "4.") or 0) > 0
-    date = next((t for t in head.get("date", []) if _DATE.fullmatch(t)), None)
-    total = _number("".join(price.get("price", [])))
-    if date is None or total is None or (unit is not None and area is None):
+    if base["date"] is None or base["price"] is None or area is None:
         warnings.append("missing_field")
     return Row(
-        lp=int(head["lp"][0]),
-        date=date,
+        **base,
         town=town,
         street=street,
         building=building,
         unit=unit_no,
         area=area,
-        price=total,
-        annex=annex,
+        annex=(_after_marker(area_tokens, "4.") or 0) > 0,
         warnings=warnings,
+        kind=KIND_UNIT,
+    )
+
+
+def _unique(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(v for v in values if v))
+
+
+def _land_row(base: dict, transaction: dict) -> Row:
+    objects = transaction["objects"]
+    buildings = [o for o in objects if o["label"][0] == "Budynek"]
+    plots = [o for o in objects if o["label"][0] == "Działka"]
+    holdings = [o for o in objects if o["label"][0] == "Obiekt"]
+    kind = KIND_BUILT if buildings else KIND_PLOT
+    warnings: list[str] = []
+
+    areas = [_number(_cell_text(p, "area")) for p in plots]
+    # A missing area on ANY plot makes the sum a lie, so there is no sum at all.
+    area_m2 = sum(round(a * 10000) for a in areas) if plots and None not in areas else None
+    if len(plots) > 1:
+        warnings.append("many_plots")
+    # "1/1" is the norm and says nothing; only a fraction of the right is news.
+    shares = _unique([s for s in (_cell_text(h, "share") for h in holdings) if s != "1/1"])
+    if shares:
+        warnings.append("partial_share")
+
+    # The address of the dwelling, else of the first plot (spec §2).
+    home = next((b for b in buildings if "Mieszkalny" in b.get("desc", [])), None)
+    sources = [o for o in (home, plots[0] if plots else None) if o is not None]
+    raw_address = next((t for t in (_cell_text(o, "address") for o in sources) if t), "")
+    parts = _split_address(raw_address)
+    town, street, building = transaction["district"], "", ""
+    if parts:
+        town, street, building = parts[0], parts[1], parts[2]
+    elif kind == KIND_BUILT:
+        # Only the built sheet has ULICA / NR BUD, so only there is a missing
+        # address a gap; on bare land the district name is answer enough.
+        street = raw_address
+        warnings.append("address_unparsed")
+    if base["date"] is None or base["price"] is None or area_m2 is None:
+        warnings.append("missing_field")
+    return Row(
+        **base,
+        town=town,
+        street=street,
+        building=building,
+        unit="",
+        area=None,
+        annex=False,
+        warnings=warnings,
+        kind=kind,
+        plot_ids=[_cell_text(p, "ident") for p in plots],
+        plot_area_m2=area_m2,
+        share="; ".join(shares),
+        plan="; ".join(_unique([_cell_text(p, "plan", glue=True) for p in plots])),
     )

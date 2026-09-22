@@ -6,6 +6,11 @@ const wireSchema = z.object({
   orderNumber: z.string(),
   unit: z.string(),
   count: z.number(),
+  byKind: z.object({
+    lokale: z.number(),
+    zabudowane: z.number(),
+    niezabudowane: z.number(),
+  }),
   flaggedRows: z.number(),
   fileWarnings: z.array(z.string()),
   xlsxBase64: z.string(),

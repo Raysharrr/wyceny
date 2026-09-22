@@ -12,6 +12,7 @@ const OK = {
   orderNumber: "GKG.GZW.4061.0000.2026",
   unit: "000000_0 - Przykładowo - obszar wiejski",
   count: 28,
+  byKind: { lokale: 28, zabudowane: 0, niezabudowane: 0 },
   flaggedRows: 1,
   fileWarnings: ["lp_gap"],
   xlsxBase64: "UEsDBA==",
