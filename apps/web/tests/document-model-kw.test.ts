@@ -431,13 +431,42 @@ describe("ksiega_lokalu_wiersze — the five dzialy flattened for §8.2", () => 
     });
   });
 
-  it("carries the documents section of each dział", () => {
+  /**
+   * Zgłoszenie koordynatora po zrzucie §8.2 (22.09): opis dokumentu jechał w
+   * `kol2`, a ta kolumna ma w szablonie 600 dxa — Word łamał w niej długie
+   * nazwy po trzy, cztery znaki na wiersz („WYP / IS Z / REJ…”). Wiersz
+   * dokumentu ma więc ten sam kształt co wiersz `lp`: identyfikator w wąskiej
+   * pierwszej kolumnie, pusta kolumna Lp., cała treść w szerokiej `kol3`.
+   */
+  it("carries the documents section of each dział in the wide column", () => {
     const tresc = transcribedBook();
     const rows = modelOf({ kw: { ...EXAMINED_LOKAL, tresc } }).ksiega_lokalu_wiersze;
     const doc = tresc.dzialy[2].dokumenty[0];
     const row = rows.find((r) => r.typ === "dokument" && r.kol1 === doc.nrPodstawyWpisu);
     expect(row).toBeDefined();
-    expect(row!.kol2).toContain(doc.dokument);
+    expect(row!.kol2).toBe("");
+    expect(row!.kol3).toContain(doc.dokument);
+    if (doc.dokumentOpisPol) expect(row!.kol3).toContain(doc.dokumentOpisPol);
+    if (doc.wniosek) expect(row!.kol3).toContain(doc.wniosek);
+    if (doc.wniosekOpisPol) expect(row!.kol3).toContain(doc.wniosekOpisPol);
+  });
+
+  it("tekst dokumentu nigdy nie trafia do kol2 — w żadnym dziale, w obu księgach", () => {
+    const tresc = transcribedBook();
+    const model = modelOf({
+      kw: { ...EXAMINED_LOKAL, tresc },
+      kwGrunt: { ...EXAMINED_GRUNT, tresc },
+    });
+    const dokumenty = [...model.ksiega_lokalu_wiersze, ...model.ksiega_gruntu_wiersze].filter(
+      (r) => r.typ === "dokument",
+    );
+    expect(dokumenty.length).toBeGreaterThan(0);
+    expect(dokumenty.filter((r) => r.kol2 !== "")).toEqual([]);
+    // Bez znaku nowej linii: render ma `linebreaks: true`, więc `\n` stałoby się
+    // `<w:br/>` — a to jest dokładnie defekt klasy D-30 w akapicie justowanym.
+    // Człony rozdziela ten sam separator co wartości rubryk.
+    expect(dokumenty.filter((r) => r.kol3.includes("\n"))).toEqual([]);
+    expect(dokumenty.some((r) => r.kol3.includes(" | "))).toBe(true);
   });
 
   /**

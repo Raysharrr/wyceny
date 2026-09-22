@@ -303,11 +303,25 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
       // dropped as chrome.
       const join = (line: string | null, opis: string | null) =>
         [line, opis].filter((p) => p != null && p !== "").join(" ");
+      // Middle column EMPTY, whole text in kol3 — same shape as the `lp` row.
+      // kol2 is the template's Lp. column at 600 dxa; a document name is long
+      // ("WYPIS Z REJESTRU GRUNTÓW I WYRYS Z MAPY EWIDENCYJNEJ; …"), so Word
+      // broke it three or four characters to a line and the cell was
+      // unreadable (coordinator's review of the §8.2 render, 22.09).
+      //
+      // The two lines are joined with KSIEGA_CELL_SEP, NOT "\n": the render
+      // runs docxtemplater with `linebreaks: true`, so a newline would become
+      // a `<w:br/>` inside a justified paragraph — the D-30 defect class.
       rows.push({
         typ: "dokument",
         kol1: dokument.nrPodstawyWpisu,
-        kol2: join(dokument.dokument, dokument.dokumentOpisPol),
-        kol3: join(dokument.wniosek, dokument.wniosekOpisPol),
+        kol2: "",
+        kol3: [
+          join(dokument.dokument, dokument.dokumentOpisPol),
+          join(dokument.wniosek, dokument.wniosekOpisPol),
+        ]
+          .filter((p) => p !== "")
+          .join(KSIEGA_CELL_SEP),
       });
     }
   }
