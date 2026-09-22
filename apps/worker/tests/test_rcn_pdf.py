@@ -69,7 +69,7 @@ def test_printout_comes_back_as_counters_and_a_workbook():
         0,
         [],
     )
-    ws = load_workbook(BytesIO(base64.b64decode(body["xlsxBase64"])))["transakcje"]
+    ws = load_workbook(BytesIO(base64.b64decode(body["xlsxBase64"])))["lokale"]
     assert ws["G3"].value == 870000 and ws["H3"].value == "=G3/F3"
 
 
