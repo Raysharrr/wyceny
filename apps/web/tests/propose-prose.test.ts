@@ -30,6 +30,7 @@ import { PROSE_WORKER_RESPONDED_PREFIX, ProseWorkerDetailError } from "@/adapter
 import { buildProseFacts } from "@/domain/prose";
 import { currentSectionFactsHash } from "@/domain/prose-hash";
 import { composeMarketAnalysis } from "@/domain/market-analysis";
+import { currentTraceId, withTrace } from "@/lib/trace";
 import { confirmedProseFor } from "./fixtures/valuation-inputs";
 import type { KcsInput } from "@/domain/kcs";
 import type { ProseSection } from "@/domain/prose-snapshot";
@@ -413,6 +414,21 @@ describe("proposeProse — failures after the call", () => {
 
     expect(await proposeProse(VALUATION_ID)).toEqual({
       error: withCode("Nieprawidłowy lub wygasły token — odśwież stronę i spróbuj ponownie."),
+    });
+    expect(saveProseMock).not.toHaveBeenCalled();
+  });
+
+  it("a worker detail that already quotes this run's trace id is NOT suffixed with it again (PR-1)", async () => {
+    getMock.mockResolvedValue(draft);
+    // `withTrace` reuses the ambient id, so the action below runs under THIS
+    // one — the same id the adapter sends as X-Request-Id and the worker
+    // quotes back in its config sentence.
+    await withTrace(async () => {
+      const id = currentTraceId()!;
+      const detail = `Usługa generowania opisów odrzuciła klucz dostępu albo nie ma środków — to błąd konfiguracji po stronie administratora, ponowna próba nie pomoże. Zgłoś, podając kod: ${id}.`;
+      fetchProposalMock.mockRejectedValue(new ProseWorkerDetailError(detail));
+
+      expect(await proposeProse(VALUATION_ID)).toEqual({ error: detail });
     });
     expect(saveProseMock).not.toHaveBeenCalled();
   });
