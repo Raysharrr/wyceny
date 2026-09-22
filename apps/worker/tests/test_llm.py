@@ -84,7 +84,14 @@ def test_on_the_kw_path_only_the_adapter_imports_anthropic():
     assert anthropic_imports(APP / "kw.py") == []
     assert anthropic_imports(APP / "kw_validate.py") == []
     # The prose call stays as it was (ADR-021 moves it behind the port, not this block).
-    assert anthropic_imports(APP / "main.py") == ["_generate_prose_section"]
+    # PR-1 Głuszyna adds a SECOND, read-only touchpoint: `_prose_failure_kind`
+    # imports the SDK for its exception classes to tell a refused key from a
+    # dropped connection, and calls nothing. The list stays closed — anything
+    # else in main.py reaching for the SDK is still a failure.
+    assert anthropic_imports(APP / "main.py") == [
+        "_generate_prose_section",
+        "_prose_failure_kind",
+    ]
 
 
 def test_success_carries_parsed_output_and_usage():

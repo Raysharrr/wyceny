@@ -5,11 +5,15 @@ zero API key in CI. Fixtures are fictional (ul. Klonowa, m. Nowogród — F-9)."
 import hashlib
 import hmac
 import inspect
+import json
 import sys
 import threading
 import time
+from collections.abc import Callable
 from types import ModuleType, SimpleNamespace
 
+import anthropic  # real SDK: the classifier sorts by ITS classes, so the tests throw them
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -52,7 +56,7 @@ def secret_env(monkeypatch):
     monkeypatch.setenv("WORKER_SHARED_SECRET", SECRET)
 
 
-def post(token: str, sekcje=("opis_lokalu",), fakty=None, transakcje=None):
+def post(token: str, sekcje=("opis_lokalu",), fakty=None, transakcje=None, headers=None):
     return client.post(
         "/prose-proposal",
         json={
@@ -61,7 +65,70 @@ def post(token: str, sekcje=("opis_lokalu",), fakty=None, transakcje=None):
             "fakty": FAKTY if fakty is None else fakty,
             "transakcje": list(transakcje or []),
         },
+        headers=headers or {},
     )
+
+
+def api_error(cls: type, status: int, message: str) -> Exception:
+    """A real `anthropic` status error, built the way the SDK builds them
+    (`APIStatusError(message, *, response, body)`)."""
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    return cls(message, response=httpx.Response(status, request=request), body=None)
+
+
+def raising(make: Callable[[], Exception]):
+    """`_generate_prose_section` stand-in that raises a FRESH exception per call
+    (sections run in parallel threads — one shared instance would be raised twice)."""
+
+    def boom(section, prompt, correction=None):
+        raise make()
+
+    return boom
+
+
+CONFIG_ERRORS = [
+    pytest.param(
+        lambda: api_error(anthropic.AuthenticationError, 401, "invalid x-api-key"), id="401"
+    ),
+    pytest.param(
+        lambda: api_error(anthropic.PermissionDeniedError, 403, "Your API key lacks permission"),
+        id="403",
+    ),
+    pytest.param(
+        lambda: api_error(
+            anthropic.BadRequestError,
+            400,
+            "Your credit balance is too low to access the Anthropic API.",
+        ),
+        id="400-credit",
+    ),
+    # F1 (recenzja PR #78): brak ANTHROPIC_API_KEY nie dociera do hierarchii
+    # wyjątków SDK — klient powstaje z `api_key=None`, a samo wywołanie rzuca
+    # goły TypeError. Komunikat dosłownie z `anthropic` 0.117 (sprawdzony w .venv).
+    pytest.param(
+        lambda: TypeError(
+            '"Could not resolve authentication method. Expected one of api_key, '
+            "auth_token, or credentials to be set. Or for one of the `X-Api-Key` "
+            'or `Authorization` headers to be explicitly omitted"'
+        ),
+        id="brak-klucza",
+    ),
+]
+TRANSIENT_ERRORS = [
+    pytest.param(
+        lambda: anthropic.APIConnectionError(
+            request=httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+        ),
+        id="connection",
+    ),
+    pytest.param(lambda: api_error(anthropic.RateLimitError, 429, "rate limited"), id="429"),
+    pytest.param(lambda: api_error(anthropic.InternalServerError, 500, "overloaded"), id="500"),
+    pytest.param(
+        lambda: api_error(anthropic.BadRequestError, 400, "max_tokens: must be a positive integer"),
+        id="400-not-credit",
+    ),
+    pytest.param(lambda: RuntimeError("sekcja opis_lokalu: pusta odpowiedź"), id="runtime"),
+]
 
 
 # Guard-clean: "71,63" is a fact and the digit in "m2" is not a number (style rule).
@@ -321,6 +388,9 @@ def test_anthropic_touchpoint_is_confined_to_the_llm_helper():
     assert "import anthropic" in inspect.getsource(main._generate_prose_section)
     for fn in (main._prose_section, main.prose_proposal):
         assert "anthropic" not in inspect.getsource(fn)
+    # PR-1: the classifier is the second, read-only touchpoint — it imports the
+    # SDK for its exception classes and calls nothing.
+    assert "import anthropic" in inspect.getsource(main._prose_failure_kind)
 
 
 def test_f11_no_market_value_on_either_side():
@@ -397,6 +467,127 @@ def test_one_failing_section_does_not_discard_the_others(monkeypatch):
     body = resp.json()
     assert sorted(body["sekcje"]) == ["analiza_rynku", "opis_lokalu"]
     assert body["odrzucone"] == {"otoczenie": []}
+
+
+# --- Głuszyna 18.09 (ADR-021 blok, PR-1): the appraiser pressed „Wygeneruj ponownie” all
+# day against an expired key and was told each time to try again. A refused key,
+# a missing permission or an exhausted balance stay refused on every retry — the
+# worker has to say so, and say it ONLY for those.
+
+
+@pytest.mark.parametrize("make", CONFIG_ERRORS)
+def test_failure_kind_config(make):
+    assert main._prose_failure_kind(make()) == "config"
+
+
+@pytest.mark.parametrize("make", TRANSIENT_ERRORS)
+def test_failure_kind_other(make):
+    assert main._prose_failure_kind(make()) == "other"
+
+
+def test_section_outcome_carries_the_failure_kind(monkeypatch):
+    """`_prose_section` never raises; the KIND of failure rides on the outcome so
+    the handler can tell a dead key from a dropped connection."""
+    monkeypatch.setattr(main, "_generate_prose_section", raising(CONFIG_ERRORS[0].values[0]))
+    config = main._prose_section("opis_lokalu", FAKTY)
+    assert config.failed_kind == "config"
+    assert config.text == "" and config.violations == []
+
+    monkeypatch.setattr(main, "_generate_prose_section", raising(TRANSIENT_ERRORS[0].values[0]))
+    assert main._prose_section("opis_lokalu", FAKTY).failed_kind == "other"
+
+    monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({}))
+    landed = main._prose_section("opis_lokalu", FAKTY)
+    assert landed.failed_kind is None and landed.text == CLEAN
+
+
+def log_lines(out: str, event: str) -> list[dict]:
+    return [json.loads(line) for line in out.splitlines() if f'"{event}"' in line]
+
+
+@pytest.mark.parametrize("make", CONFIG_ERRORS)
+def test_prose_config_error_detail(monkeypatch, capsys, make):
+    """Spec §2: nothing landed and every failure is a config one → the 502 says
+    a retry will not help and names the trace id the web sent as X-Request-Id
+    (the same one the appraiser reads back over the phone)."""
+    monkeypatch.setattr(main, "_generate_prose_section", raising(make))
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"], headers={"X-Request-Id": "g1u5zyna"})
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert detail == main.PROSE_CONFIG_DETAIL.format(trace_id="g1u5zyna")
+    assert "ponowna próba nie pomoże" in detail
+    assert "spróbuj ponownie" not in detail.lower()
+
+    out = capsys.readouterr().out
+    assert len(log_lines(out, "prose_config_error")) == 1
+    assert log_lines(out, "prose_no_call_landed") == []
+    failed = log_lines(out, "prose_section_failed")
+    assert {line["kind"] for line in failed} == {"config"}
+    # The sentence promises a code to report; that code has to reach the ONE
+    # line carrying `err`, the only one that tells a refused key from a missing
+    # permission. Those lines are written from pool threads (F2).
+    assert len(failed) == 2
+    assert {line["trace_id"] for line in failed} == {"g1u5zyna"}
+
+
+def test_prose_config_detail_names_the_minted_id_when_no_header_came(monkeypatch):
+    """Called without X-Request-Id the middleware mints an id and echoes it in
+    the response header — the sentence must quote THAT one, or the code the
+    appraiser reads out leads nowhere."""
+    monkeypatch.setattr(main, "_generate_prose_section", raising(CONFIG_ERRORS[0].values[0]))
+    resp = post(mint())
+    assert resp.status_code == 502
+    minted = resp.headers["x-request-id"]
+    assert len(minted) == 8
+    assert resp.json()["detail"].endswith(f"kod: {minted}.")
+
+
+@pytest.mark.parametrize("make", TRANSIENT_ERRORS)
+def test_transient_failure_on_every_section_keeps_the_retry_detail(monkeypatch, capsys, make):
+    """Positive control: the old sentence stays for everything a retry CAN fix."""
+    monkeypatch.setattr(main, "_generate_prose_section", raising(make))
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"])
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == main.PROSE_FAILED_DETAIL
+    out = capsys.readouterr().out
+    assert log_lines(out, "prose_config_error") == []
+    assert len(log_lines(out, "prose_no_call_landed")) == 1
+
+
+def test_config_error_on_one_section_leaves_the_batch_a_200(monkeypatch):
+    """Mixed batch (spec §2): one section refused by the key, the rest generated.
+    Whatever landed is returned and paid for; the refused one comes back with
+    the empty list that already means „the call never landed”."""
+    ok = FakeLlm({})
+    dead_key = raising(CONFIG_ERRORS[0].values[0])
+
+    def flaky(section, prompt, correction=None):
+        if section == "opis_lokalu":
+            return dead_key(section, prompt, correction)
+        return ok(section, prompt, correction)
+
+    monkeypatch.setattr(main, "_generate_prose_section", flaky)
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"])
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sekcje"] == {"otoczenie": CLEAN}
+    assert body["odrzucone"] == {"opis_lokalu": []}
+
+
+def test_config_mixed_with_transient_keeps_the_retry_detail(monkeypatch):
+    """ALL failures have to be config ones for the config sentence: a dead key on
+    one section and a dropped connection on the other says nothing certain about
+    the key, and the web side's automatic retry still covers the blip."""
+    dead_key = raising(CONFIG_ERRORS[0].values[0])
+    dropped = raising(TRANSIENT_ERRORS[0].values[0])
+
+    def flaky(section, prompt, correction=None):
+        return (dead_key if section == "opis_lokalu" else dropped)(section, prompt, correction)
+
+    monkeypatch.setattr(main, "_generate_prose_section", flaky)
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"])
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == main.PROSE_FAILED_DETAIL
 
 
 # --- The interior of `_generate_prose_section`: the ONE place where a wrong SDK
