@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -11,6 +11,7 @@ import { valuationFormSchema } from "@/lib/valuation-form-schema";
 import {
   KwSection,
   type KwFetchState,
+  type KwKanalUi,
   type KwSource,
   type KwTranscribeState,
 } from "@/app/valuations/new/kw-section";
@@ -159,9 +160,22 @@ function Harness(props: {
   deweloperski?: boolean;
   extract?: boolean;
   kw?: Partial<FormInput["kw"]>;
+  kwGrunt?: Partial<FormInput["kwGrunt"]>;
   propertyRight?: "wlasnosc_lokalu" | "spoldzielcze_wlasnosciowe";
   onSourceChange?: (s: KwSource) => void;
   onUseDocumentArea?: () => void;
+  // Od ADR-021 obie karty mają te same kanały, więc harness musi umieć podać
+  // je osobno — inaczej testy kanału gruntu jechałyby na propsach lokalu.
+  lokalSource?: KwSource;
+  gruntSource?: KwKanalUi;
+  lokalTranscribe?: KwTranscribeState;
+  gruntTranscribe?: KwTranscribeState;
+  onLokalTekst?: (tekst: string) => void;
+  onLokalFiles?: (files: File[]) => void;
+  onGruntTekst?: (tekst: string) => void;
+  onGruntFiles?: (files: File[]) => void;
+  onLokalSourceChange?: (s: KwSource) => void;
+  onGruntSourceChange?: (s: KwKanalUi) => void;
 }) {
   // The editable extract fields only render once a real `kw` extract exists
   // (KwSection's `hasExtract` gate) — so seed one whenever a test needs them.
@@ -171,6 +185,7 @@ function Harness(props: {
       ...(withExtract
         ? ({ kw: { source: "akt", deweloperski: !!props.deweloperski, ...props.kw } } as FormInput)
         : {}),
+      ...(props.kwGrunt ? ({ kwGrunt: props.kwGrunt } as FormInput) : {}),
       ...(props.propertyRight ? { propertyRight: props.propertyRight } : {}),
     },
   });
@@ -178,67 +193,25 @@ function Harness(props: {
     <KwSection
       control={control}
       lokal={{
-        source: props.source ?? "ekw_wklej",
+        source: props.lokalSource ?? props.source ?? "ekw_wklej",
         state: props.state ?? { status: "idle" },
-        transcribe: props.transcribe ?? { status: "idle" },
-        onSourceChange: props.onSourceChange ?? (() => {}),
-        onFiles: () => {},
-        onTekst: () => {},
+        transcribe: props.lokalTranscribe ?? props.transcribe ?? { status: "idle" },
+        onSourceChange: props.onLokalSourceChange ?? props.onSourceChange ?? (() => {}),
+        onFiles: props.onLokalFiles ?? (() => {}),
+        onTekst: props.onLokalTekst ?? (() => {}),
         onRetry: () => {},
       }}
       grunt={{
-        source: "ekw_wklej",
-        transcribe: { status: "idle" },
-        onSourceChange: () => {},
-        onFiles: () => {},
-        onTekst: () => {},
+        source: props.gruntSource ?? "ekw_wklej",
+        transcribe: props.gruntTranscribe ?? { status: "idle" },
+        onSourceChange: props.onGruntSourceChange ?? (() => {}),
+        onFiles: props.onGruntFiles ?? (() => {}),
+        onTekst: props.onGruntTekst ?? (() => {}),
       }}
       today={props.today ?? "2026-09-15"}
       onUseDocumentArea={props.onUseDocumentArea ?? (() => {})}
       areaMismatch={props.areaMismatch ?? null}
     />
-  );
-}
-
-// W6 harness: exposes the live kw.dzial3.tresc value so a textarea edit's
-// split-into-string[] can be asserted (not just the DOM value).
-function Dzial3Harness() {
-  const { control } = useForm<FormInput, unknown, FormOutput>({
-    defaultValues: {
-      kw: {
-        source: "akt",
-        deweloperski: false,
-        dzial3: { wpisy: true, tresc: ["wpis A", "wpis B"] },
-      },
-    } as FormInput,
-  });
-  const tresc = useWatch({ control, name: "kw.dzial3.tresc" });
-  return (
-    <>
-      <KwSection
-        control={control}
-        lokal={{
-          source: "ekw_wklej",
-          state: { status: "idle" },
-          transcribe: { status: "idle" },
-          onSourceChange: () => {},
-          onFiles: () => {},
-          onTekst: () => {},
-          onRetry: () => {},
-        }}
-        grunt={{
-          source: "ekw_wklej",
-          transcribe: { status: "idle" },
-          onSourceChange: () => {},
-          onFiles: () => {},
-          onTekst: () => {},
-        }}
-        today="2026-09-15"
-        onUseDocumentArea={() => {}}
-        areaMismatch={null}
-      />
-      <output data-testid="dzial3-json">{JSON.stringify(tresc)}</output>
-    </>
   );
 }
 
@@ -318,28 +291,6 @@ describe("KwSection", () => {
     expect(screen.getAllByText("Do zbadania")).toHaveLength(2);
   });
 
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("offers Wgraj PDF / Wpisz ręcznie for the lokal's book only — the grunt's is manual in paczka 1", () => {
-    render(<Harness />);
-    const groups = screen.getAllByRole("radiogroup", { name: "Źródło danych księgi lokalu" });
-    expect(groups).toHaveLength(1);
-    expect(
-      within(groups[0])
-        .getAllByRole("radio")
-        .map((r) => r.textContent),
-    ).toEqual(["Wgraj PDF", "Wpisz ręcznie"]);
-    expect(screen.queryByRole("radiogroup", { name: "Źródło danych księgi gruntu" })).toBeNull();
-  });
-
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("warns, in manual mode, that the operat gets a description instead of the dzialy", () => {
-    const { rerender } = render(<Harness source="ekw_wklej" />);
-    // Both cards are manual: the lokal's by choice, the grunt's by design.
-    expect(screen.getAllByText(/trafią do operatu jako opis/)).toHaveLength(2);
-    rerender(<Harness source="odpis_kw" />);
-    expect(screen.getAllByText(/trafią do operatu jako opis/)).toHaveLength(1);
-  });
-
   it("defaults the examination date to today — a book never prints when it was read", () => {
     render(<Harness today="2026-09-15" />);
     expect(
@@ -415,7 +366,7 @@ describe("KwSection", () => {
     const alert = screen.getByRole("alert");
     expect(alert.getAttribute("data-kind")).toBe("error");
     expect(alert.textContent).toBe(
-      "Nie udało się odczytać pliku PDF księgi — wgraj inny plik albo wpisz dane ręcznie.",
+      "Nie udało się odczytać pól z pliku — wgraj inny plik albo wklej treść z przeglądarki KW.",
     );
     expect(screen.getByRole("button", { name: /spróbuj ponownie/i })).toBeDefined();
   });
@@ -559,24 +510,23 @@ describe("KwSection", () => {
     expect(screen.getByText("Księga gruntu")).toBeDefined();
   });
 
-  // B-07 (ADR-018 reg. 6): the choice appears when — and only when — the LOKAL's
-  // dział III has an entry. The grunt's entries are described in §8.2 and
-  // encumber nothing here (RAPORT-diff D-02).
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("asks how the value treats an encumbrance only for an entry in the lokal's dział III", async () => {
-    const user = userEvent.setup();
-    render(<Harness />);
+  // B-07 (ADR-018 reg. 6): pytanie staje, gdy dział III księgi LOKALU ma wpis.
+  // Od ADR-021 dział III nie jest odpowiedzią w formularzu, tylko wyliczeniem z
+  // przepisanej treści (`dzialyZTresci`) — pyta więc księga, nie klik w radio.
+  // Wpisy w dziale III księgi GRUNTU opisuje §8.2 i nic tu nie obciążają.
+  it("asks how the value treats an encumbrance only for an entry in the lokal's dział III", () => {
+    const zTresci = dzialyZTresci(transcribedBook());
+    render(
+      <Harness
+        kw={{ dzial3: { wpisy: false, tresc: [] }, dzial4: null } as Partial<FormInput["kw"]>}
+      />,
+    );
     expect(screen.queryByTestId("kw-encumbrance")).toBeNull();
 
-    // Two dział III groups on screen: the lokal's card first, the grunt's second.
-    const [lokalGroup, gruntGroup] = screen.getAllByRole("radiogroup", {
-      name: "Dział III — prawa, roszczenia i ograniczenia",
-    });
-    // An entry in the GRUNT's dział III: still no question.
-    await user.click(within(gruntGroup).getByRole("radio", { name: "Są wpisy" }));
-    expect(screen.queryByTestId("kw-encumbrance")).toBeNull();
-
-    await user.click(within(lokalGroup).getByRole("radio", { name: "Są wpisy" }));
+    // Nowy montaż, nie `rerender`: `defaultValues` czyta się raz, więc
+    // przerysowanie tego samego formularza nie zmieniłoby migawki.
+    cleanup();
+    render(<Harness kw={zTresci as Partial<FormInput["kw"]>} />);
     const choice = screen.getByTestId("kw-encumbrance");
     expect(choice.textContent).toContain("Księga lokalu ma wpis w dziale III.");
     expect(
@@ -587,58 +537,35 @@ describe("KwSection", () => {
     expect(within(choice).getByLabelText("Podstawa")).toBeDefined();
   });
 
-  // W6: dział III/IV textareas render joined entries and edits split back to string[].
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("renders dział III textarea joined and propagates edits as string[] (W6)", async () => {
-    render(<Dzial3Harness />);
-    const textarea = document.querySelector("#kw-dzial3") as HTMLTextAreaElement;
-    expect(textarea.value).toBe("wpis A\nwpis B");
-    expect(screen.getByTestId("dzial3-json").textContent).toBe(
-      JSON.stringify(["wpis A", "wpis B"]),
-    );
-    await userEvent.clear(textarea);
-    await userEvent.type(textarea, "nowy{enter}wpis");
-    await waitFor(() =>
-      expect(screen.getByTestId("dzial3-json").textContent).toBe(JSON.stringify(["nowy", "wpis"])),
-    );
-  });
-
   /**
    * A filled screen over an empty save is the same class of defect as a field
    * missing from `.pick()`: the operat would claim a book number the record
    * never got. The suggestion must survive being typed AFTER the grunt card
    * was first touched — the order an appraiser who starts at dział III uses.
    */
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("saves the suggested grunt book number even when it is typed after the grunt card was touched", async () => {
+  it("saves the suggested grunt book number even when it is typed after the grunt card was touched", async () => {
     const user = userEvent.setup();
     render(
       <StateHarness
-        seed={{ kw: { source: "ekw_reczne", deweloperski: false } } as Partial<FormInput>}
+        seed={{ kw: { source: "ekw_wklej", deweloperski: false } } as Partial<FormInput>}
       />,
     );
     const json = () => JSON.parse(screen.getByTestId("kwgrunt-json").textContent || "null");
 
-    // First touch of the grunt card while the lokal's "Numer księgi gruntu" is
-    // still blank: the snapshot is created with no number.
-    const [, gruntDzial3] = screen.getAllByRole("radiogroup", {
-      name: "Dział III — prawa, roszczenia i ograniczenia",
-    });
-    await user.click(within(gruntDzial3).getByRole("radio", { name: "Brak wpisów" }));
+    // Pierwsze dotknięcie karty gruntu, gdy „Numer księgi gruntu” na karcie
+    // lokalu jest jeszcze pusty: migawka powstaje bez numeru.
+    await user.type(document.querySelector("#kwg-sad") as HTMLInputElement, "Sąd Rejonowy");
     await waitFor(() => expect(json()).not.toBeNull());
     expect(json().nrKsiegi).toBeNull();
 
-    // Now the number is typed on the LOKAL card…
+    // Teraz numer zostaje wpisany na karcie LOKALU…
     await user.type(document.querySelector("#kw-gruntu") as HTMLInputElement, "AB1C/2/7");
-    // …the grunt card shows it…
+    // …karta gruntu go pokazuje…
     await waitFor(() =>
       expect((document.querySelector("#kwg-nr") as HTMLInputElement).value).toBe("AB1C/2/7"),
     );
-    // …and the next edit of the grunt card persists it rather than freezing null.
-    const [, gruntDzial4] = screen.getAllByRole("radiogroup", {
-      name: "Dział IV — hipoteka",
-    });
-    await user.click(within(gruntDzial4).getByRole("radio", { name: "Brak wpisów" }));
+    // …a kolejna edycja karty gruntu zapisuje go, zamiast zamrozić null.
+    await user.type(document.querySelector("#kwg-wydzial") as HTMLInputElement, "V");
     await waitFor(() => expect(json().nrKsiegi).toBe("AB1C/2/7"));
   });
 
@@ -718,26 +645,219 @@ describe("KwSection", () => {
    * entries". An unanswered dział shows neither radio selected and no
    * textarea, and the gate keeps the draft shut until one is chosen.
    */
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("leaves a dział unanswered until the appraiser picks Brak wpisów / Są wpisy", async () => {
-    const user = userEvent.setup();
-    render(<Harness />);
-    const [lokalDzial3] = screen.getAllByRole("radiogroup", {
-      name: "Dział III — prawa, roszczenia i ograniczenia",
-    });
-    expect(
-      within(lokalDzial3)
-        .getAllByRole("radio")
-        .every((r) => r.getAttribute("aria-checked") === "false"),
-    ).toBe(true);
-    expect(document.querySelector("#kw-dzial3")).toBeNull();
+});
 
-    await user.click(within(lokalDzial3).getByRole("radio", { name: "Brak wpisów" }));
-    // "Brak wpisów" is an answer, not an empty text field — no textarea for it.
-    expect(document.querySelector("#kw-dzial3")).toBeNull();
+// ---------------------------------------------------------------------------
+// ADR-021 / makiety 1–6: obie karty przyjmują treść dwoma kanałami.
+// ---------------------------------------------------------------------------
+describe("KwSection — kanały (makiety 1, 2, 6)", () => {
+  it("obie karty mają przełącznik „Wklej z przeglądarki KW” (domyślnie) / „Wgraj PDF” i pole wklejania", () => {
+    render(<Harness />);
+    for (const ksiega of ["lokalu", "gruntu"]) {
+      const grupa = screen.getByRole("radiogroup", { name: `Źródło danych księgi ${ksiega}` });
+      expect(
+        within(grupa)
+          .getAllByRole("radio")
+          .map((r) => r.textContent),
+      ).toEqual(["Wklej z przeglądarki KW", "Wgraj PDF"]);
+      expect(
+        within(grupa)
+          .getByRole("radio", { name: "Wklej z przeglądarki KW" })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+    }
+    expect(screen.getAllByRole("textbox", { name: "Treść z przeglądarki KW" })).toHaveLength(2);
+    // Ścieżki ręcznej nie ma: ani przełącznika, ani pól działów (ADR-021 reg. 1).
+    expect(screen.queryByRole("radio", { name: "Wpisz ręcznie" })).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: /^Dział I(II|V)/ })).toBeNull();
+    expect(screen.getByText(/Zbadane księgi:/).textContent).toContain(
+      "Wklej treść z przeglądarki KW albo wgraj PDF.",
+    );
+    // Karta gruntu: cztery pola z makiety 1.
+    for (const id of ["kwg-nr", "kwg-data-badania", "kwg-sad", "kwg-wydzial"]) {
+      expect(document.getElementById(id)).not.toBeNull();
+    }
     expect(
-      within(lokalDzial3).getByRole("radio", { name: "Brak wpisów" }).getAttribute("aria-checked"),
-    ).toBe("true");
+      screen.getByRole("link", { name: "przeglądarce ksiąg wieczystych" }).getAttribute("href"),
+    ).toBe("https://przegladarka-ekw.ms.gov.pl/eukw_prz/KsiegiWieczyste/wyszukiwanieKW");
+  });
+
+  it("wklejenie HTML ze schowka daje wiersze „td | td | td”, kolejne wklejenia dopisują, licznik liczy działy (makieta 2)", async () => {
+    const onLokalTekst = vi.fn();
+    render(<Harness onLokalTekst={onLokalTekst} />);
+    const pole = screen.getByTestId("kw-wklej-lokal") as HTMLTextAreaElement;
+    const przycisk = screen
+      .getByTestId("kw-book-lokal")
+      .querySelector("button[data-testid='kw-przepisz-lokal']") as HTMLButtonElement;
+    expect(przycisk.disabled).toBe(true);
+    expect(screen.getByTestId("kw-book-lokal").textContent).toContain("0 z 5");
+
+    fireEvent.paste(pole, {
+      clipboardData: {
+        getData: (t: string) =>
+          t === "text/html"
+            ? "<h2>DZIAŁ I-O - OZNACZENIE NIERUCHOMOŚCI</h2><table><tr><td>Numer działki</td><td>103/1</td><td>1, 10</td></tr></table>"
+            : "DZIAŁ I-O - OZNACZENIE NIERUCHOMOŚCI\nNumer działki 103/1 1, 10",
+      },
+    });
+    expect(pole.value).toBe("DZIAŁ I-O - OZNACZENIE NIERUCHOMOŚCI\nNumer działki | 103/1 | 1, 10");
+    fireEvent.paste(pole, {
+      clipboardData: {
+        getData: (t: string) =>
+          t === "text/plain" ? "DZIAŁ I-SP - SPIS PRAW\nDZIAŁ II - WŁASNOŚĆ" : "",
+      },
+    });
+    expect(pole.value).toContain("\n\nDZIAŁ I-SP - SPIS PRAW");
+    expect(screen.getByTestId("kw-book-lokal").textContent).toContain("3 z 5");
+    expect(screen.getByText(/Brakuje działów/).textContent).toBe(
+      "Brakuje działów III i IV — wklej pozostałe zakładki. Bez nich operat nie opisze praw, roszczeń ani hipotek.",
+    );
+    expect(przycisk.disabled).toBe(false);
+    await userEvent.click(przycisk);
+    expect(onLokalTekst).toHaveBeenCalledWith(pole.value);
+  });
+
+  it("kanał PDF: wiele plików z listą, rozmiarem i „Usuń”; „Odczytaj i przepisz księgę” oddaje pozostałe pliki (makieta 6)", async () => {
+    const onLokalFiles = vi.fn();
+    render(<Harness lokalSource="odpis_kw" onLokalFiles={onLokalFiles} />);
+    const input = screen.getByTestId("kw-file-input") as HTMLInputElement;
+    expect(input.multiple).toBe(true);
+    expect(screen.getByText(/Wydruk z przeglądarki KW \(jeden plik na zakładkę\)/)).toBeDefined();
+    const pdf = (name: string, size: number) =>
+      new File([new Uint8Array(size)], name, { type: "application/pdf" });
+    await userEvent.upload(input, [
+      pdf("a.pdf", 62 * 1024),
+      pdf("b.pdf", 48 * 1024),
+      pdf("c.pdf", 91 * 1024),
+    ]);
+    expect(screen.getByText("3 pliki · 201 kB")).toBeDefined();
+    expect(onLokalFiles).not.toHaveBeenCalled(); // dopiero przycisk
+    await userEvent.click(screen.getAllByRole("button", { name: "Usuń" })[1]);
+    expect(screen.getByText("2 pliki · 153 kB")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "Odczytaj i przepisz księgę" }));
+    expect(onLokalFiles.mock.calls[0][0].map((f: File) => f.name)).toEqual(["a.pdf", "c.pdf"]);
+  });
+
+  it("status po udanej transkrypcji z listą działów i przyciskiem „Wklej ponownie” (makieta 3)", async () => {
+    render(
+      <Harness
+        lokalTranscribe={{ status: "ok", dzialy: ["I-O", "I-Sp", "II", "III", "IV"] }}
+        kw={{ tresc: transcribedBook() } as Partial<FormInput["kw"]>}
+      />,
+    );
+    expect(screen.getByTestId("kw-transcribe-status").textContent).toBe(
+      "✓ Przepisano 5 działów (I-O, I-Sp, II, III, IV) — sprawdzenie treści wypadło pomyślnie. Pola poniżej wypełniono z księgi.",
+    );
+    expect(screen.queryByTestId("kw-wklej-lokal")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Wklej ponownie" }));
+    expect(screen.getByTestId("kw-wklej-lokal")).toBeDefined();
+  });
+
+  it("„Zostaw jak jest” nie kasuje wklejonego tekstu ani licznika działów (F1)", async () => {
+    const user = userEvent.setup();
+    // Karta niepusta (numer księgi), więc zmiana sposobu przechodzi przez pytanie.
+    render(<Harness kw={{ kwLokalu: "AB1C/1/9" } as Partial<FormInput["kw"]>} />);
+    const pole = screen.getByTestId("kw-wklej-lokal") as HTMLTextAreaElement;
+    fireEvent.paste(pole, {
+      clipboardData: {
+        getData: (t: string) =>
+          t === "text/plain" ? "DZIAŁ I-O - OZNACZENIE\nDZIAŁ I-SP - SPIS PRAW" : "",
+      },
+    });
+    const tekst = pole.value;
+    expect(screen.getByTestId("kw-book-lokal").textContent).toContain("2 z 5");
+
+    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    await user.click(screen.getByRole("button", { name: "Zostaw jak jest" }));
+
+    // Panel wraca z TYM SAMYM tekstem: odmowa ma być bezskutkowa.
+    expect((screen.getByTestId("kw-wklej-lokal") as HTMLTextAreaElement).value).toBe(tekst);
+    expect(screen.getByTestId("kw-book-lokal").textContent).toContain("2 z 5");
+  });
+
+  it.each([
+    [["I-O"], "Przepisano 1 dział"],
+    [["I-O", "I-Sp", "II"], "Przepisano 3 działy"],
+    [["I-O", "I-Sp", "II", "III", "IV"], "Przepisano 5 działów"],
+  ])("status odmienia liczebnik: %s → %s (F2)", (dzialy, oczekiwane) => {
+    render(
+      <Harness
+        lokalTranscribe={{ status: "ok", dzialy: dzialy as string[] }}
+        kw={{ tresc: transcribedBook() } as Partial<FormInput["kw"]>}
+      />,
+    );
+    expect(screen.getByTestId("kw-transcribe-status").textContent).toContain(oczekiwane);
+  });
+
+  it("baner werdyktu odmienia liczebnik tak samo jak status (F2)", () => {
+    const tresc = transcribedBook();
+    const trzyDzialy = { ...tresc, dzialy: tresc.dzialy.slice(0, 3) };
+    render(
+      <Harness
+        kw={
+          {
+            tresc: trzyDzialy,
+            transkrypcja: {
+              ok: false,
+              bledy: [{ klasa: "dzialy_niekompletne", dzial: "III" }],
+              kanal: "tekst",
+              plikow: 0,
+              at: "2026-09-22T08:00:00.000Z",
+            },
+          } as unknown as Partial<FormInput["kw"]>
+        }
+      />,
+    );
+    expect(screen.getByTestId("kw-werdykt-lokal").textContent).toContain(
+      "Przepisano 3 działy, ale",
+    );
+  });
+
+  it("przy jednym brakującym dziale baner mówi „Brakuje działu III” (F2)", () => {
+    render(<Harness />);
+    const pole = screen.getByTestId("kw-wklej-lokal") as HTMLTextAreaElement;
+    fireEvent.paste(pole, {
+      clipboardData: {
+        getData: (t: string) =>
+          t === "text/plain" ? "DZIAŁ I-O\nDZIAŁ I-SP\nDZIAŁ II\nDZIAŁ IV" : "",
+      },
+    });
+    expect(screen.getByText(/Brakuje/).textContent).toBe(
+      "Brakuje działu III — wklej pozostałe zakładki. Bez nich operat nie opisze praw, roszczeń ani hipotek.",
+    );
+  });
+
+  it("karta gruntu podpisuje swoje pole numeru z WŁASNEGO werdyktu (makieta 4 dla obu ksiąg)", () => {
+    render(
+      <Harness
+        kwGrunt={
+          {
+            source: "ekw_wklej",
+            nrKsiegi: "AB1C/2/7",
+            transkrypcja: {
+              ok: false,
+              bledy: [{ klasa: "kw_cyfra_kontrolna:numerKsiegi" }],
+              kanal: "tekst",
+              plikow: 0,
+              at: "2026-09-22T08:00:00.000Z",
+            },
+          } as unknown as Partial<FormInput["kwGrunt"]>
+        }
+      />,
+    );
+    const pole = document.getElementById("kwg-nr") as HTMLInputElement;
+    expect(pole.className).toContain("border-[var(--amber)]");
+    expect(
+      within(screen.getByTestId("kw-book-grunt")).getByText(
+        "Cyfra kontrolna nie zgadza się z numerem.",
+      ),
+    ).toBeDefined();
+    // Karta lokalu ma swój własny werdykt — tu żadnego, więc żadnych podpisów.
+    expect(
+      within(screen.getByTestId("kw-book-lokal")).queryByText(
+        "Cyfra kontrolna nie zgadza się z numerem.",
+      ),
+    ).toBeNull();
   });
 });
 
@@ -807,6 +927,7 @@ describe("KwSection — full-form wiring", () => {
       screen.getByTestId("kw-file-input") as HTMLInputElement,
       new File(["%PDF-1.4 fake"], "odpis.pdf", { type: "application/pdf" }),
     );
+    await odczytajIPrzepisz(user);
     await screen.findByText(/Odczytano/);
 
     await waitFor(() => expect(screen.getByText(/Zbadane księgi:/).textContent).toContain("1 z 2"));
@@ -822,6 +943,32 @@ describe("KwSection — full-form wiring", () => {
   // KR.1 — the second read of the same PDF: the full content of the dzialy.
   // -------------------------------------------------------------------------
 
+  /**
+   * Makieta 5: zmiana sposobu przy NIEPUSTEJ karcie jest wycofaniem badania, więc
+   * przechodzi przez pytanie. Pusta karta przełącza się od razu — helper radzi
+   * sobie z obydwoma, bo testy poniżej mierzą skutek zmiany, nie samo pytanie.
+   */
+  async function zmienSposob(
+    user: ReturnType<typeof userEvent.setup>,
+    ksiega: "lokal" | "grunt",
+    etykieta: "Wgraj PDF" | "Wklej z przeglądarki KW",
+  ) {
+    await user.click(within(kartaKsiegi(ksiega)).getByRole("radio", { name: etykieta }));
+    const dialog = screen.queryByRole("alertdialog", {
+      name: "Zmiana sposobu wprowadzenia księgi",
+    });
+    if (dialog) {
+      await user.click(within(dialog).getByRole("button", { name: "Zmień sposób i usuń dane" }));
+    }
+  }
+
+  /** Makieta 6: wybór plików niczego nie wysyła — robi to dopiero przycisk. */
+  async function odczytajIPrzepisz(user: ReturnType<typeof userEvent.setup>, karta?: HTMLElement) {
+    await user.click(
+      (karta ? within(karta) : screen).getByRole("button", { name: "Odczytaj i przepisz księgę" }),
+    );
+  }
+
   /** Uploads a KW excerpt in "Wgraj PDF" mode and waits for both reads to settle. */
   async function uploadOdpis(user: ReturnType<typeof userEvent.setup>) {
     // Od ADR-021 obie karty mają ten sam przełącznik kanału, więc klikamy w
@@ -831,6 +978,7 @@ describe("KwSection — full-form wiring", () => {
       screen.getByTestId("kw-file-input") as HTMLInputElement,
       new File(["%PDF-1.4 fake"], "ksiega-lokalu.pdf", { type: "application/pdf" }),
     );
+    await odczytajIPrzepisz(user);
     await screen.findByText(/Odczytano/);
   }
 
@@ -1117,7 +1265,7 @@ describe("KwSection — full-form wiring", () => {
 
     const warn = await screen.findByTestId("kw-transcribe-warn");
     expect(warn.textContent).toContain("zbyt obszerna");
-    expect(screen.queryByText(/Nie udało się odczytać pliku PDF księgi/)).toBeNull();
+    expect(screen.queryByText(/Nie udało się odczytać pól z pliku/)).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
     await waitFor(() => expect(createDraft).toHaveBeenCalled());
@@ -1144,8 +1292,9 @@ describe("KwSection — full-form wiring", () => {
       screen.getByTestId("kw-file-input") as HTMLInputElement,
       new File(["%PDF-1.4 fake"], "ksiega-lokalu.pdf", { type: "application/pdf" }),
     );
+    await odczytajIPrzepisz(user);
 
-    await screen.findByText(/Nie udało się odczytać pliku PDF księgi/);
+    await screen.findByText(/Nie udało się odczytać pól z pliku/);
     expect(screen.queryByTestId("kw-transcribe-warn")).toBeNull();
   });
 
@@ -1170,11 +1319,9 @@ describe("KwSection — full-form wiring", () => {
     await uploadOdpis(user);
     await screen.findByTestId("kw-transcribe-warn");
 
-    await user.click(
-      within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wklej z przeglądarki KW" }),
-    );
+    await zmienSposob(user, "lokal", "Wklej z przeglądarki KW");
     expect(screen.queryByTestId("kw-transcribe-warn")).toBeNull();
-    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    await zmienSposob(user, "lokal", "Wgraj PDF");
     expect(screen.queryByTestId("kw-transcribe-warn")).toBeNull();
   });
 
@@ -1286,19 +1433,22 @@ describe("KwSection — full-form wiring", () => {
    * no input displays — the button did nothing and said nothing. The save must
    * go through (the draft keeps what was typed) and step 7 must still block.
    */
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("submits step 1 with a basis typed before any variant was chosen (W4 class)", async () => {
+  it("submits step 1 with a basis typed before any variant was chosen (W4 class)", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
     const user = userEvent.setup();
     render(<SubjectForm />);
 
     await fillRequiredExceptKw(user);
-    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
-    const [lokalDzial3] = screen.getAllByRole("radiogroup", {
-      name: "Dział III — prawa, roszczenia i ograniczenia",
-    });
-    await user.click(within(lokalDzial3).getByRole("radio", { name: "Są wpisy" }));
+    // Wpis w dziale III bierze się z przepisanej treści (ADR-021 reg. 1) —
+    // fikstura workera ma go w każdym dziale, więc pytanie o obciążenie staje.
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
     await user.type(
-      within(screen.getByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
       "Zgodnie z poleceniem Zleceniodawcy.",
     );
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
@@ -1311,14 +1461,14 @@ describe("KwSection — full-form wiring", () => {
       wariant: null,
       podstawa: "Zgodnie z poleceniem Zleceniodawcy.",
     });
-    // …and the gate is the thing that refuses it, on a path step 1 shows.
+    // …a odmawia tego bramka, na ścieżce, którą krok 1 pokazuje.
     expect(
       encumbranceDecisionNeeded(
         {
-          source: "ekw_reczne",
-          kwLokalu: "AB1C/1/9",
+          source: "ekw_wklej",
+          kwLokalu: tresc.naglowek.numerKsiegi,
           deweloperski: false,
-          dzial3: { wpisy: true, tresc: [] },
+          dzial3: dzialyZTresci(tresc).dzial3,
         },
         submitted.encumbranceTreatment as EncumbranceTreatment,
       ),
@@ -1336,28 +1486,24 @@ describe("KwSection — full-form wiring", () => {
    * over. The isolated harness cannot see this: its `onSourceChange` is a
    * plain `useState` that resets nothing.
    */
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("does not resurrect the manual book when the developer checkbox is ticked (W7 class)", async () => {
+  it("does not resurrect the manual book when the developer checkbox is ticked (W7 class)", async () => {
     const user = userEvent.setup();
     render(<SubjectForm />);
 
     await fillRequiredExceptKw(user);
     await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
-    const [lokalDzial3] = screen.getAllByRole("radiogroup", {
-      name: "Dział III — prawa, roszczenia i ograniczenia",
-    });
-    await user.click(within(lokalDzial3).getByRole("radio", { name: "Brak wpisów" }));
+    await user.type(screen.getByLabelText("Sąd prowadzący księgi"), "Sąd Rejonowy");
 
     await user.click(screen.getByRole("checkbox", { name: /zakup deweloperski/i }));
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
 
     await waitFor(() => expect(createDraft).toHaveBeenCalled());
     const submitted = vi.mocked(createDraft).mock.calls[0][0] as {
-      kw?: { deweloperski?: boolean; kwLokalu?: string | null; dzial3?: unknown };
+      kw?: { deweloperski?: boolean; kwLokalu?: string | null; sad?: string | null };
     };
     expect(submitted.kw?.deweloperski).toBe(true);
     expect(submitted.kw?.kwLokalu ?? null).toBeNull();
-    expect(submitted.kw?.dzial3 ?? null).toBeNull();
+    expect(submitted.kw?.sad ?? null).toBeNull();
   });
 
   /**
@@ -1365,27 +1511,26 @@ describe("KwSection — full-form wiring", () => {
    * question hangs off `kw.dzial3`, which `resetKwSection` clears, so the
    * decision must go with it rather than ride invisibly into the save.
    */
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("clears the encumbrance decision when the lokal book's source is switched", async () => {
+  it("clears the encumbrance decision when the lokal book's source is switched", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
     const user = userEvent.setup();
     render(<SubjectForm />);
 
     await fillRequiredExceptKw(user);
-    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
-    const [lokalDzial3] = screen.getAllByRole("radiogroup", {
-      name: "Dział III — prawa, roszczenia i ograniczenia",
-    });
-    await user.click(within(lokalDzial3).getByRole("radio", { name: "Są wpisy" }));
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
     await user.type(
-      within(screen.getByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
       "Zgodnie z poleceniem Zleceniodawcy.",
     );
 
-    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    await zmienSposob(user, "lokal", "Wgraj PDF");
     expect(screen.queryByTestId("kw-encumbrance")).toBeNull();
-    await user.click(
-      within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wklej z przeglądarki KW" }),
-    );
+    await zmienSposob(user, "lokal", "Wklej z przeglądarki KW");
     await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
 
@@ -1478,17 +1623,22 @@ describe("KwSection — full-form wiring", () => {
    * to `null` would fail validation on a path no field renders and the button
    * would go dead silently. Submitting is the assertion that matters.
    */
-  // TODO(gluszyna-s3b): opisuje pola działów / ścieżkę ręczną sprzed ADR-021 — Task 4 przepisuje
-  it.skip("still submits after the property right is switched (the clear must be a valid value)", async () => {
+  it("still submits after the property right is switched (the clear must be a valid value)", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
     const user = userEvent.setup();
     render(<SubjectForm />);
 
     await fillRequiredExceptKw(user);
-    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
-    const [lokalDzial3] = screen.getAllByRole("radiogroup", {
-      name: "Dział III — prawa, roszczenia i ograniczenia",
-    });
-    await user.click(within(lokalDzial3).getByRole("radio", { name: "Są wpisy" }));
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
+    await user.type(
+      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      "Zgodnie z poleceniem Zleceniodawcy.",
+    );
 
     await user.click(
       screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
@@ -1611,6 +1761,7 @@ describe("KwSection — full-form wiring", () => {
       screen.getByTestId("kw-file-input") as HTMLInputElement,
       new File(["%PDF-1.4 fake"], "odpis.pdf", { type: "application/pdf" }),
     );
+    await odczytajIPrzepisz(user);
     await waitFor(() => expect(extractKw).toHaveBeenCalled());
     expect(vi.mocked(extractKw).mock.calls[0][0]).toMatchObject({ expectedType: "odpis_kw" });
   });
@@ -1778,11 +1929,9 @@ describe("KwSection — full-form wiring", () => {
     render(<SubjectForm valuationId="val-src" defaults={stored} />);
     expect(screen.getByTestId("kw-encumbrance")).toBeDefined();
 
-    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    await zmienSposob(user, "lokal", "Wgraj PDF");
     expect(screen.queryByTestId("kw-encumbrance")).toBeNull();
-    await user.click(
-      within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wklej z przeglądarki KW" }),
-    );
+    await zmienSposob(user, "lokal", "Wklej z przeglądarki KW");
     await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
 
@@ -1822,11 +1971,10 @@ describe("KwSection — full-form wiring", () => {
     const fileInput = screen.getByTestId("kw-file-input") as HTMLInputElement;
     const pdf = new File(["%PDF-1.4 fake"], "akt.pdf", { type: "application/pdf" });
     await user.upload(fileInput, pdf);
+    await odczytajIPrzepisz(user);
     await screen.findByText(/Odczytano/);
 
-    await user.click(
-      within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wklej z przeglądarki KW" }),
-    );
+    await zmienSposob(user, "lokal", "Wklej z przeglądarki KW");
     await user.type(screen.getByLabelText("Numer księgi lokalu"), "KW-MANUAL-1");
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
 
@@ -1861,14 +2009,13 @@ describe("KwSection — full-form wiring", () => {
       fileInput,
       new File(["%PDF-1.4 fake"], "akt.pdf", { type: "application/pdf" }),
     );
+    await odczytajIPrzepisz(user);
     await screen.findByText(/Odczytano/);
     // Auto-seeded from OK_EXTRACT.extract.powUzytkowaKw (69.56) into the blank field.
     await waitFor(() => expect(areaInput.value).toBe("69.56"));
 
     // Switch to manual → the doc-seeded (unedited) area is dropped.
-    await user.click(
-      within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wklej z przeglądarki KW" }),
-    );
+    await zmienSposob(user, "lokal", "Wklej z przeglądarki KW");
     await waitFor(() => expect(areaInput.value).toBe(""));
 
     // Empty area fails the required-positive schema rule, so submit is blocked:
@@ -1891,12 +2038,13 @@ describe("KwSection — full-form wiring", () => {
     await user.type(screen.getByLabelText("Numer księgi lokalu"), "KW-MANUAL-3");
 
     // Switch to akt + upload → extract populates kw.* (kwLokalu AB1C/1/9).
-    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    await zmienSposob(user, "lokal", "Wgraj PDF");
     const fileInput = screen.getByTestId("kw-file-input") as HTMLInputElement;
     await user.upload(
       fileInput,
       new File(["%PDF-1.4 fake"], "akt.pdf", { type: "application/pdf" }),
     );
+    await odczytajIPrzepisz(user);
     await screen.findByText(/Odczytano/);
 
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
@@ -1929,6 +2077,7 @@ describe("KwSection — full-form wiring", () => {
     const fileInput = screen.getByTestId("kw-file-input") as HTMLInputElement;
     // 1) A valid PDF starts an extraction we hold unresolved (in-flight).
     await user.upload(fileInput, new File(["%PDF-1.4"], "akt.pdf", { type: "application/pdf" }));
+    await odczytajIPrzepisz(user);
     await waitFor(() => expect(extractKw).toHaveBeenCalled());
 
     // 2) A non-PDF is rejected client-side → inline error, and bumps kwSeq.
@@ -1959,6 +2108,7 @@ describe("KwSection — full-form wiring", () => {
     await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
     const fileInput = screen.getByTestId("kw-file-input") as HTMLInputElement;
     await user.upload(fileInput, new File(["%PDF-1.4"], "akt.pdf", { type: "application/pdf" }));
+    await odczytajIPrzepisz(user);
     // In-flight: the mint has resolved and extractKw was called but not resolved.
     await waitFor(() => expect(extractKw).toHaveBeenCalled());
 
@@ -1982,5 +2132,197 @@ describe("KwSection — full-form wiring", () => {
     expect(submitted.kw?.kwLokalu).toBe("KW-MANUAL-2");
     // Nothing from the stale extract leaked into the manual snapshot.
     expect(submitted.kw?.sad ?? null).toBeNull();
+  });
+
+  /**
+   * Makieta 4. Werdykt „nie wypadło pomyślnie" nie jest stanem sekcji — żyje
+   * PRZY migawce, więc wraca z każdym otwarciem szkicu. Defaults budowane
+   * przez `step1DefaultsFromInputs`, czyli funkcję, której używa strona edycji.
+   */
+  it("baner werdyktu ok:false jest TRWAŁY: widoczny po ponownym otwarciu szkicu, z nazwami po polsku i podpisami pól (makieta 4)", async () => {
+    const tresc = transcribedBook();
+    const stored = {
+      ...step1DefaultsFromInputs({
+        address: "ul. Testowa 1, Poznań",
+        area: 44.23,
+        purpose: "sprzedaz",
+        propertyRight: "wlasnosc_lokalu",
+        kwNumber: tresc.naglowek.numerKsiegi,
+        client: "Jan Testowy",
+        inputs: {
+          kw: {
+            source: "ekw_wklej",
+            kwLokalu: tresc.naglowek.numerKsiegi,
+            kwGruntu: tresc.polaDodatkowe.kwGruntu,
+            kwInne: [],
+            deweloperski: false,
+            powUzytkowaKw: null,
+            udzial: tresc.polaDodatkowe.udzial,
+            sad: tresc.naglowek.sad,
+            wydzial: tresc.naglowek.wydzial,
+            dataDokumentu: null,
+            ...dzialyZTresci(tresc),
+            dataBadania: "2026-09-21",
+            nrLokalu: tresc.polaDodatkowe.numerLokalu,
+            akt: null,
+            tresc,
+            transkrypcja: {
+              ok: false,
+              bledy: [
+                { klasa: "kw_cyfra_kontrolna:kwGruntu" },
+                { klasa: "pole_niezgodne:udzial", dzial: "I-Sp" },
+              ],
+              kanal: "tekst",
+              plikow: 0,
+              at: "2026-09-21T10:00:00.000Z",
+            },
+          },
+        },
+      } as unknown as Parameters<typeof step1DefaultsFromInputs>[0]),
+      inspectionDate: "2026-09-21",
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+    render(<SubjectForm valuationId="val-werdykt" defaults={stored} />);
+    const baner = screen.getByTestId("kw-werdykt-lokal");
+    expect(baner.textContent).toBe(
+      "Przepisano 5 działów, ale sprawdzenie treści nie wypadło pomyślnie — niezgodności: cyfra kontrolna numeru księgi gruntu, udział w nieruchomości wspólnej. Porównaj pola i treść z księgą i popraw, co trzeba — operat zacytuje to, co tu zostanie.",
+    );
+    // F-13: klasy, nigdy wartości z księgi.
+    expect(baner.textContent).not.toContain(tresc.polaDodatkowe.udzial!);
+    expect(screen.getByText("W dziale I-Sp księga podaje inny udział.")).toBeDefined();
+    expect(screen.getByText("Cyfra kontrolna nie zgadza się z numerem.")).toBeDefined();
+    expect(screen.getByText("Zbadana")).toBeDefined(); // ostrzeżenie, nie blokada
+  });
+
+  /**
+   * Ten sam werdykt, ale prosto z odczytu — ścieżka, której test „trwały" nie
+   * dotyka: `stanTranskrypcji` zwraca przy `ok:false` `idle`, więc gdyby baner
+   * albo schowanie pola wklejania wisiały na stanie sekcji, karta po udanym
+   * przepisaniu z niezgodnościami wyglądałaby jak nietknięta.
+   */
+  it("werdykt ok:false z odczytu chowa pole wklejania i pokazuje baner od razu (makieta 4)", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: false, bledy: [{ klasa: "pole_niezgodne:udzial", dzial: "I-Sp" }] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
+
+    const baner = await screen.findByTestId("kw-werdykt-lokal");
+    expect(baner.textContent).toContain("udział w nieruchomości wspólnej");
+    expect(screen.queryByTestId("kw-wklej-lokal")).toBeNull();
+    expect((document.getElementById("kw-lokalu") as HTMLInputElement).value).toBe(
+      tresc.naglowek.numerKsiegi,
+    );
+    await user.click(screen.getByRole("button", { name: "Wklej ponownie" }));
+    expect(screen.getByTestId("kw-wklej-lokal")).toBeDefined();
+  });
+
+  it("zmiana sposobu przy wpisanych danych pyta o zgodę z listą tego, co zniknie; „Zostaw jak jest” nic nie rusza (makieta 5)", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
+    await screen.findByTestId("kw-transcribe-status");
+    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    const dialog = screen.getByRole("alertdialog", { name: "Zmiana sposobu wprowadzenia księgi" });
+    expect(dialog.textContent).toContain(
+      "Zmiana sposobu na „Wgraj PDF” usunie dane wpisane dla księgi lokalu:",
+    );
+    expect(
+      within(dialog)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual([
+      "numer księgi, data badania, sąd i wydział",
+      "numer lokalu, powierzchnia, udział, numer księgi gruntu",
+      `podstawa nabycia (${tresc.polaDodatkowe.podstawaNabycia!.tytulAktu}, Rep. A ${tresc.polaDodatkowe.podstawaNabycia!.repA})`,
+      "przepisana treść pięciu działów",
+    ]);
+    await user.click(within(dialog).getByRole("button", { name: "Zostaw jak jest" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect((document.getElementById("kw-lokalu") as HTMLInputElement).value).toBe(
+      tresc.naglowek.numerKsiegi,
+    );
+    expect(
+      within(kartaKsiegi("lokal"))
+        .getByRole("radio", { name: "Wklej z przeglądarki KW" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+
+    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    await user.click(screen.getByRole("button", { name: "Zmień sposób i usuń dane" }));
+    expect((document.getElementById("kw-lokalu") as HTMLInputElement).value).toBe("");
+    expect(screen.getByTestId("kw-file-input")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    // Pusta karta w trybie PDF: W4 — komunikat przy numerze księgi, zapisu nie ma.
+    await screen.findByTestId("kw-upload-error");
+    expect(createDraft).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Panel otwarty przyciskiem „Wklej ponownie" zamyka dopiero NOWA treść. Reguła
+   * porównuje migawkę przez tożsamość, więc gdyby react-hook-form oddawał przy
+   * każdej edycji sklonowane `kw`, poprawka sądu albo udziału zatrzaskiwałaby
+   * pole w trakcie wklejania.
+   */
+  it("„Wklej ponownie” przeżywa edycję innego pola karty", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
+    await screen.findByTestId("kw-transcribe-status");
+
+    await user.click(screen.getByRole("button", { name: "Wklej ponownie" }));
+    expect(screen.getByTestId("kw-wklej-lokal")).toBeDefined();
+    await user.type(document.getElementById("kw-sad") as HTMLInputElement, "X");
+    expect(screen.getByTestId("kw-wklej-lokal")).toBeDefined();
+  });
+
+  it("pusta karta przełącza sposób bez pytania", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByTestId("kw-file-input")).toBeDefined();
+  });
+
+  it("werdykt i treść gruntu znikają razem z kartą gruntu przy zmianie jej sposobu; lokal nietknięty", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: false, bledy: [{ klasa: "pesel_suma", dzial: "II" }] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await wklejIPrzepisz(user, "gruntu", tekstZakladek(tresc));
+    await screen.findByTestId("kw-werdykt-grunt");
+    await user.click(
+      within(screen.getByRole("radiogroup", { name: "Źródło danych księgi gruntu" })).getByRole(
+        "radio",
+        { name: "Wgraj PDF" },
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Zmień sposób i usuń dane" }));
+    expect(screen.queryByTestId("kw-werdykt-grunt")).toBeNull();
+    expect((document.getElementById("kwg-nr") as HTMLInputElement).value).toBe("");
+    expect(screen.getAllByText("Do zbadania")).toHaveLength(2);
   });
 });

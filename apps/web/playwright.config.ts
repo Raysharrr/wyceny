@@ -48,9 +48,10 @@ export default defineConfig({
       dependencies: ["setup"],
       use: { storageState: STORAGE_STATE },
     },
-    // Manual, never in CI: zrzuty stanów karty KW do opisu PR (b1-kw-read).
-    // Wymaga serwera zbudowanego z NEXT_PUBLIC_WORKER_URL wskazującym na atrapę
-    // workera — patrz komentarz w e2e/kw-read-zrzuty.spec.ts.
+    // Manual, never in CI: zrzuty stanów karty KW do opisu PR (ADR-021).
+    // Atrapa `/kw-transcribe` siedzi w przeglądarce (`page.route`), więc nie
+    // trzeba już osobnego serwera ani zmiennej środowiskowej — patrz
+    // e2e/support/kw-transcribe-route.ts.
     {
       name: "zrzuty",
       testMatch: /kw-read-zrzuty\.spec\.ts/,

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { rateAllFeatures } from "./pages/wizard";
+import { SubjectStep, rateAllFeatures } from "./pages/wizard";
 
 // Offline smoke: manual-entry paths only (the RCN fetch needs live GUGiK).
 // The admin password is read from the SAME variable the seed script uses
@@ -30,15 +30,10 @@ async function createDraftStep1(page: import("@playwright/test").Page) {
   await page.locator("#area").fill("54.3");
   await page.locator("#purpose").selectOption("sprzedaz");
   await page.locator("#client").fill("p. Test Testowy");
-  // ADR-018: both books examined, manually — without it step 7 blocks on B-06
-  // no matter how complete the rest of the draft is.
-  await page.locator("#kw-lokalu").fill("KW-TEST-1");
-  await page.locator("#kw-gruntu").fill("KW-TEST-2");
-  await page.locator("#kwg-nr").fill("KW-TEST-2");
-  for (const group of await page.getByRole("radiogroup", { name: /^Dział I(II|V)/ }).all()) {
-    await group.getByRole("radio", { name: "Brak wpisów" }).click();
-  }
-  await expect(page.getByText(/Zbadane księgi: 2 z 2/)).toBeVisible();
+  // ADR-021: obie księgi zbadane przez PRZEPISANIE treści (atrapa
+  // /kw-transcribe w przeglądarce) — bez tego krok 7 blokuje na B-06,
+  // niezależnie od tego, jak kompletny jest reszta szkicu.
+  await new SubjectStep(page).examineBooks({ kwLokalu: "KW-TEST-1", kwGruntu: "KW-TEST-2" });
   // M-10: §9 nazywa dokument, z którego odczytano przeznaczenie. Bez kompletu
   // pięciu części B-02 nie wypuści operatu, a §9 nie wydrukuje o przeznaczeniu
   // nic — dokładnie to zgłosiła Aneta 14.09.

@@ -232,9 +232,12 @@ export function planOdczytuKw(
   wejscie: KwWejscie,
   book: "lokal" | "grunt",
   source: "akt" | "odpis_kw" | "ekw_wklej",
-): { czytaPola: boolean; transcribes: boolean; dozwolony: boolean } {
+): { akt: boolean; czytaPola: boolean; transcribes: boolean; dozwolony: boolean } {
+  // `akt` wychodzi na zewnątrz, bo to ta sama reguła, którą formularz wybiera
+  // `expectedType` dla `/kw-extract` — liczona dwa razy zaczęłaby się rozjeżdżać
+  // (finding z review PR #80).
   const akt = book === "lokal" && source === "akt";
   const czytaPola = book === "lokal" && wejscie.kanal === "pdf";
   const transcribes = !akt;
-  return { czytaPola, transcribes, dozwolony: czytaPola || transcribes };
+  return { akt, czytaPola, transcribes, dozwolony: czytaPola || transcribes };
 }

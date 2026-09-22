@@ -47,12 +47,22 @@ describe("fitness: kanały KW bez ścieżki ręcznej", () => {
     expect(tekst.match(/["']reczny["']/g) ?? []).toEqual([]);
   });
 
-  // W S3a ta asercja jest CELOWO odłożona: Task 3 zostawił skipy z markerem
-  // `TODO(gluszyna-s3b)`, które zdejmuje Task 4 w sesji S3b. Wtedy `it.todo`
-  // zamienia się w zwykłe `it` z ciałem poniżej i bramka zaczyna pilnować, że
-  // żaden test nie został odłożony na stałe:
-  //
-  //   const testy = fs.readFileSync(path.join(process.cwd(), "tests/rtl-kw-section.test.tsx"), "utf8");
-  //   expect(testy).not.toContain("TODO(gluszyna-s3b)");
-  it.todo("po sesji S3b nie zostaje żaden test odłożony z S3a");
+  /**
+   * Uzbrojone w S3b (Task 4 Step 5): skipy z markerem `TODO(gluszyna-s3b)` są
+   * zdjęte — każdy przepisany albo usunięty. Bramka pilnuje, żeby nie wróciły
+   * ani one, ani żaden inny odłożony test w tym pliku: odłożony test kroku 1 to
+   * reguła, której nikt już nie mierzy.
+   *
+   * Wzorzec obejmuje `describe`/`test`/`it` i kończy się na `\b`, a nie na
+   * nawiasie — inaczej `describe.skip(`, `test.skip(` i `it.skip.each(`
+   * przeszłyby przez bramkę bez szmeru (finding F6 z review PR #83).
+   */
+  it("po sesji S3b nie zostaje żaden test odłożony z S3a", () => {
+    const testy = fs.readFileSync(
+      path.join(process.cwd(), "tests/rtl-kw-section.test.tsx"),
+      "utf8",
+    );
+    expect(testy).not.toContain("TODO(gluszyna-s3b)");
+    expect(testy.match(/\b(it|test|describe)\.(skip|todo)\b/g) ?? []).toEqual([]);
+  });
 });

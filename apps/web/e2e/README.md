@@ -23,7 +23,12 @@ export NEXT_PUBLIC_SUBJECT_AUTOFETCH=off NEXT_PUBLIC_ADDRESS_SUGGEST=off NEXT_PU
 pnpm build && pnpm e2e                    # smoke + spoldzielcze
 pnpm exec playwright test --project=spoldzielcze                 # tylko blok
 pnpm exec playwright test --project=spoldzielcze --repeat-each=3 # stabilność
+pnpm exec playwright test --project=zrzuty                       # zrzuty karty KW do opisu PR
 ```
+
+Projekt `zrzuty` (ADR-021) nie wchodzi do `pnpm e2e`: robi zrzuty stanów karty
+„Księga lokalu" do `e2e-zrzuty/`, z atrapą `/kw-transcribe` w przeglądarce
+(`page.route`) — bez osobnego serwera i bez zmiennych środowiskowych.
 
 Inny port niż 3000: `E2E_PORT=3006` (i `BETTER_AUTH_URL` na ten sam port).
 

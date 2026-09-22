@@ -311,10 +311,10 @@ export function SubjectForm({
     // `retractExamination` in kw-section.tsx, the one place that decides what
     // disappears — and it has to be, because `resetField` restores the DEFAULT,
     // which on a loaded draft is the stored decision rather than nothing.
-    // Hard-reset the flat manual number too: a kwNumber typed in "reczny" must
-    // not silently become `{nr_kw}` in the operat next to a DIFFERENT set of
-    // extracted numbers after switching to an upload source. Switching back to
-    // reczny starts clean — consistent with the section's reset philosophy.
+    // Hard-reset the flat number too: a kwNumber typed straight into the card
+    // must not silently become `{nr_kw}` in the operat next to a DIFFERENT set
+    // of numbers read from a document after the channel changes. Every switch
+    // starts clean — consistent with the section's reset philosophy.
     resetField("kwNumber");
     // Drop a doc-seeded area the appraiser never edited (still equals the
     // seeded value) — otherwise a stale LLM `powUzytkowaKw` would persist as a
@@ -372,15 +372,17 @@ export function SubjectForm({
     const seqRef = book === "lokal" ? kwSeq : kwGruntSeq;
     const setTranscribe = book === "lokal" ? setKwTranscribe : setKwGruntTranscribe;
     const seq = ++seqRef.current;
-    if (book === "lokal") lastKwWejscie.current = wejscie;
     // Akt: tylko pola, żadnej transkrypcji (deed ma zero działów) — jak dziś.
-    const expectedType: "akt" | "odpis_kw" =
-      book === "lokal" && kwSource === "akt" ? "akt" : "odpis_kw";
-    const { czytaPola, transcribes, dozwolony } = planOdczytuKw(wejscie, book, kwSource);
+    // Reguła „to jest akt" pada RAZ, w `planOdczytuKw`, i stamtąd wraca.
+    const { akt, czytaPola, transcribes, dozwolony } = planOdczytuKw(wejscie, book, kwSource);
+    const expectedType: "akt" | "odpis_kw" = akt ? "akt" : "odpis_kw";
     if (!dozwolony) {
       setTranscribe({ status: "failed", code: "kw_kanal_niedozwolony" });
       return;
     }
+    // Zapamiętane dopiero PO strażniku: „Spróbuj ponownie" odtwarza ostatnie
+    // wejście, więc odrzucone nie może tam zostać (finding z review PR #80).
+    if (book === "lokal") lastKwWejscie.current = wejscie;
     if (czytaPola) setKwState({ status: "loading" });
     setTranscribe({ status: transcribes ? "loading" : "idle" });
 

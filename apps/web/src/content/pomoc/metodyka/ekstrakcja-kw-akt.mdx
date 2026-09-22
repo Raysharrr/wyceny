@@ -2,9 +2,9 @@ Numer księgi wieczystej, udział w nieruchomości wspólnej, sąd i wydział, t
 
 Uwaga na jedno rozróżnienie, które wraca niżej kilka razy: **odczyt pól** i **przepisanie pełnej treści działów** to dwa osobne wywołania o różnych zasadach. Pierwsze celowo pomija dane osób; drugie celowo je zachowuje.
 
-## Wgranie PDF-a i wpis ręczny są równorzędne
+## Trzy sposoby, jedna treść
 
-Biuro bada księgi w przeglądarce eKW, nie przez odpis PDF — i od 15.09.2026 taka ścieżka jest pełnoprawnym źródłem, zapisywanym dokładnie tym samym zestawem pól co odczyt z dokumentu. Różnica dotyczy jednej rzeczy: **pełnej treści działów**. Z PDF-a operat może ją zacytować; z wpisu ręcznego dostaje opis tego, co wpisałeś, i karta w kroku 1 uprzedza o tym wprost.
+Od ADR-021 (21.09.2026) treść obu ksiąg — lokalu i gruntu — żyje w jednej strukturze niezależnie od tego, jak weszła: z PDF-a (jeden lub kilka plików: wydruk z przeglądarki KW albo e-odpis), z tekstu wklejonego z zakładek przeglądarki KW albo, dla lokalu bez własnej księgi, z aktu notarialnego (tylko pola). Wpisywanie działów ręcznie nie istnieje: działy III i IV operat wylicza z przepisanej treści.
 
 **Data badania nie pochodzi z dokumentu ani z odczytu.** Księga nigdy nie zawiera dnia, w którym ją przeglądano, więc to pole wypełnia zawsze rzeczoznawca — aplikacja podpowiada dzisiejszą datę i nigdy nie wstawia jej za Ciebie w tle. Bez niej księga nie liczy się jako zbadana i [krok 7 blokuje zatwierdzenie](/pomoc/zasady-zatwierdzania).
 
@@ -27,7 +27,7 @@ Przepisana treść przechodzi zestaw **deterministycznych** sprawdzeń (nie ocen
 - **zgodność pól z treścią**: numer księgi gruntu z działu I-O i I-Sp, numer księgi lokalu z nagłówkiem, numer lokalu i wielkość udziału z odpowiednimi rubrykami, numer Rep. A z dokumentem podstawy wpisu w dziale II,
 - **spójność struktury**: dział oznaczony „BRAK WPISÓW” nie może zawierać tabel, a wiersz otwierający wpis nie może zostać zapisany jako rubryka.
 
-**Gdy któreś sprawdzenie nie przejdzie, treść działów NIE zostaje zapisana.** Pola wypełnione z odczytu zostają — do sprawdzenia z księgą — a karta pokazuje ostrzeżenie z nazwami niezgodności (np. `pole_niezgodne:udzial`, `pesel_suma`). Same nazwy klas, nigdy wartości: nazwa mówi, gdzie patrzeć, i nic z księgi nie wycieka do komunikatu. Operat opisze wtedy działy tak jak przy wpisie ręcznym, bez cytowania treści.
+**Gdy któreś sprawdzenie nie przejdzie, treść i tak zostaje zapisana** — werdykt jest ostrzeżeniem, nie blokadą (ADR-021). Karta w kroku 1 pokazuje niezgodności po polsku (np. „udział w nieruchomości wspólnej”, „numer PESEL w dziale II”) i podpisuje pola, których dotyczą; baner jest trwały. Same nazwy klas, nigdy wartości: nazwa mówi, gdzie patrzeć, i nic z księgi nie wycieka do komunikatu. Operat cytuje treść tak, jak została przepisana — dlatego trzeba ją porównać z księgą przed zatwierdzeniem; podgląd w kroku 7 otwiera tabelę działów wierszem ostrzeżenia, którego w wydanym operacie nie ma.
 
 Nieudane przepisanie treści przy udanym odczycie pól też kończy się ostrzeżeniem, nie błędem — plik został przecież odczytany. Najczęstsze powody to zbyt obszerna księga (nie mieści się w jednym wywołaniu) albo treść, której model nie potrafi odczytać z tego pliku.
 
@@ -35,11 +35,11 @@ Nieudane przepisanie treści przy udanym odczycie pól też kończy się ostrze�
 
 Przepisana treść trafia do operatu bez Twojej dodatkowej akceptacji w kroku 1 — **miejscem jej przeglądu jest podgląd operatu w kroku 7**. Tam widać ją dokładnie tak, jak trafi do wydanego dokumentu, i tam należy ją porównać z księgą przed zatwierdzeniem. Nie ma osobnego ekranu do przeglądania samych działów.
 
-**Księgi gruntu na razie nie przepisujemy.** Jej kartę wypełnia się ręcznie: numer podpowiadamy z księgi lokalu, datę badania i oba działy wpisujesz sam. Powód jest praktyczny — księga macierzysta bywa wielokrotnie obszerniejsza od księgi lokalu i jej przepisanie w całości wymaga innego podejścia niż jedno wywołanie.
+**Księga gruntu przechodzi tę samą drogę.** Walidator rozpoznaje rodzaj księgi po nagłówku: dla księgi gruntowej pomija reguły lokalowe (numer lokalu, udział, potrójna zgodność numerów), zostają cyfry kontrolne, PESEL, spójność „brak wpisów”, rubryki i Rep. A.
 
 ## Jakie dokumenty przyjmujemy
 
-- **Wyłącznie PDF.** Plik innego typu odrzuca przeglądarka, zanim cokolwiek zostanie wysłane; worker odrzuca go drugi raz u siebie.
+- **PDF albo tekst.** Plik innego typu odrzuca przeglądarka, zanim cokolwiek zostanie wysłane; worker odrzuca go drugi raz u siebie. Tekst wklejony z przeglądarki KW idzie jako tekst (do 200 kB), a wiersze tabel — jako „etykieta | wartość | numer podstawy”, żeby kolumny były jednoznaczne.
 - **Do 32 MB.** Próg pochodzi z ograniczenia zapytania do API modelu. Sprawdzany jest dwukrotnie — w przeglądarce przed wysłaniem i w workerze przy odbiorze — dwiema osobnymi stałymi opisującymi tę samą granicę.
 - **Skan i zdjęcie są w porządku.** Model dostaje cały dokument jako PDF i nie wymaga warstwy tekstowej.
 - **Dwa rodzaje dokumentu**: akt notarialny i odpis księgi wieczystej. Rodzaj deklarujesz przed wgraniem, ale rozstrzyga to, co wykryje model.
@@ -117,4 +117,4 @@ Odmowy są trzy i różnią się tym, co da się z nimi zrobić:
 
 Przepisanie treści działów ma własne, osobne niepowodzenia — **treść zbyt obszerna**, **treść nieczytelna dla modelu** i **błąd wywołania** — opisane wyżej przy walidatorach. Żadne z nich nie unieważnia odczytu pól: jeśli pola się odczytały, zostają, a zmienia się tylko to, że operat opisze działy zamiast je zacytować.
 
-W każdym z tych przypadków zostaje wpis ręczny. Numer księgi wpisany z ręki jest pełnoprawnym wejściem do operatu i — jak każda dana wpisana przez rzeczoznawcę — nie wymaga potwierdzania.
+W każdym z tych przypadków treść trzeba podać jeszcze raz — drugim sposobem albo tym samym. Same pola karty pozostają edytowalne i to, co w nich wpiszesz, jest pełnoprawnym wejściem do operatu (jak każda dana od rzeczoznawcy, nie wymaga potwierdzania) — ale bez przepisanej treści księga zostaje **Do zbadania** i krok 7 nie wypuści operatu.
