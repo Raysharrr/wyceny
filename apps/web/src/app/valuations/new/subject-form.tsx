@@ -311,10 +311,10 @@ export function SubjectForm({
     // `retractExamination` in kw-section.tsx, the one place that decides what
     // disappears — and it has to be, because `resetField` restores the DEFAULT,
     // which on a loaded draft is the stored decision rather than nothing.
-    // Hard-reset the flat manual number too: a kwNumber typed in "reczny" must
-    // not silently become `{nr_kw}` in the operat next to a DIFFERENT set of
-    // extracted numbers after switching to an upload source. Switching back to
-    // reczny starts clean — consistent with the section's reset philosophy.
+    // Hard-reset the flat number too: a kwNumber typed straight into the card
+    // must not silently become `{nr_kw}` in the operat next to a DIFFERENT set
+    // of numbers read from a document after the channel changes. Every switch
+    // starts clean — consistent with the section's reset philosophy.
     resetField("kwNumber");
     // Drop a doc-seeded area the appraiser never edited (still equals the
     // seeded value) — otherwise a stale LLM `powUzytkowaKw` would persist as a

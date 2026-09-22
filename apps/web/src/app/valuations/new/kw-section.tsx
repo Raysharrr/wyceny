@@ -406,7 +406,7 @@ function KwFetchStatusBar({ state, onRetry }: { state: KwFetchState; onRetry: ()
       return (
         <div data-testid="kw-fetch-status" className="flex flex-col gap-2">
           <AutoBanner kind="error">
-            Nie udało się odczytać pliku PDF księgi — wgraj inny plik albo wpisz dane ręcznie.
+            Nie udało się przepisać treści — wgraj inny plik albo wklej treść z przeglądarki KW.
           </AutoBanner>
           {/* The cause, under the guidance: "wgraj inny plik" is useless advice
               if the appraiser cannot tell a timeout from a 40 MB scan. */}
@@ -902,10 +902,10 @@ export function KwSection(props: KwSectionProps) {
   const coop = propertyRight === "spoldzielcze_wlasnosciowe";
   /**
    * ONE carrier, and it is the record — the thing the gate counts and the
-   * operat prints. `source` keeps its other two jobs (the Wgraj PDF / Wpisz
-   * ręcznie choice for the lokal's book, and the section key `resetKwSection`
-   * resets on); it just stops being a second place where "developer purchase"
-   * is written down. That duplication is what broke: a developer stub is saved
+   * operat prints. `source` keeps its other two jobs (the Wklej z przeglądarki
+   * KW / Wgraj PDF choice for the lokal's book — plus `akt` for the deed path —
+   * and the section key `resetKwSection` resets on); it just stops being a
+   * second place where "developer purchase" is written down. That duplication is what broke: a developer stub is saved
    * as `ekw_reczne` (nothing was read from a document), so the section key
    * reopened the draft with the box UNTICKED over a record that still said
    * `true`, and §8.2 would have printed the developer variant behind the
