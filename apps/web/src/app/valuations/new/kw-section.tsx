@@ -699,8 +699,8 @@ function KwWerdyktBanner({
     <AutoBanner kind="warn">
       <span data-testid={`kw-werdykt-${book}`}>
         Przepisano {liczbaDzialow(dzialow)}, ale sprawdzenie treści nie wypadło pomyślnie —
-        niezgodności: <b>{nazwyNiezgodnosci(werdykt.bledy).join(", ")}</b>. Porównaj pola i treść z
-        księgą i popraw, co trzeba — operat zacytuje to, co tu zostanie.
+        niezgodności: <b>{nazwyNiezgodnosci(werdykt.bledy, book).join(", ")}</b>. Porównaj pola i
+        treść z księgą i popraw, co trzeba — operat zacytuje to, co tu zostanie.
       </span>
     </AutoBanner>
   );

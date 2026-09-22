@@ -772,7 +772,7 @@ describe("werdykt ok:false — marker TYLKO w podglądzie (spec §3.4)", () => {
     const model = build(true);
     const [lokal] = model.ksiega_lokalu_wiersze;
     expect(lokal.typ).toBe("dzial");
-    expect(lokal.kol1).toBe(previewMarkerRow(zly.bledy).kol1);
+    expect(lokal.kol1).toBe(previewMarkerRow(zly.bledy, "lokal").kol1);
     expect(lokal.kol1).toContain("[PODGLĄD: SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE]");
     expect(lokal.kol1).toContain(
       "udział w nieruchomości wspólnej, cyfra kontrolna numeru księgi gruntu",

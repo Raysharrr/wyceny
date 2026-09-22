@@ -8,11 +8,26 @@ import { listaDzialow, type KodDzialu } from "./kw-wklej";
 
 export type Niezgodnosc = { klasa: string; dzial?: string };
 
+/** Która z dwóch kart kroku 1 przyjęła treść. */
+export type KartaKsiegi = "lokal" | "grunt";
+
+/**
+ * Czyja jest cyfra kontrolna. `numerKsiegi` to numer WŁASNY przepisanej
+ * księgi, więc nazywa go karta, na której stoi baner: na karcie gruntu to
+ * „numer księgi gruntu”, nie lokalu (F1 recenzji całości KW — mapa nazywała
+ * go lokalowym bezwarunkowo). `kwLokalu` i `kwGruntu` to pola samej karty
+ * lokalu — dla księgi gruntu walidator ich nie liczy — więc mówią same za
+ * siebie i od karty nie zależą.
+ */
 const KSIEGA: Record<string, string> = {
-  numerKsiegi: "lokalu",
   kwLokalu: "lokalu",
   kwGruntu: "gruntu",
 };
+
+function czyjaKsiega(pole: string, ksiega: KartaKsiegi): string {
+  if (pole === "numerKsiegi") return ksiega === "grunt" ? "gruntu" : "lokalu";
+  return KSIEGA[pole] ?? "lokalu";
+}
 const RODZAJ: Record<string, string> = {
   grunt_na_lokalu: "rodzaj księgi (treść opisuje nieruchomość gruntową, a to karta księgi lokalu)",
   lokal_na_gruncie:
@@ -26,11 +41,11 @@ const POLE: Record<string, string> = {
   repA: "numer Rep. A aktu",
 };
 
-export function nazwaNiezgodnosci(b: Niezgodnosc): string {
+export function nazwaNiezgodnosci(b: Niezgodnosc, ksiega: KartaKsiegi): string {
   const [rodzaj, pole = ""] = b.klasa.split(":");
   switch (rodzaj) {
     case "kw_cyfra_kontrolna":
-      return `cyfra kontrolna numeru księgi ${KSIEGA[pole] ?? "lokalu"}`;
+      return `cyfra kontrolna numeru księgi ${czyjaKsiega(pole, ksiega)}`;
     case "pesel_suma":
       return `numer PESEL w dziale ${b.dzial ?? "II"}`;
     case "rodzaj_ksiegi":
@@ -53,11 +68,13 @@ export function nazwaNiezgodnosci(b: Niezgodnosc): string {
  * OSOBNO dla każdego brakującego działu (plan workera Task 3); tu składają
  * się w jedną nazwę „brak działów III i IV”, w kolejności eKW.
  */
-export function nazwyNiezgodnosci(bledy: Niezgodnosc[]): string[] {
+export function nazwyNiezgodnosci(bledy: Niezgodnosc[], ksiega: KartaKsiegi): string[] {
   const brakujace = bledy
     .filter((b) => b.klasa === "dzialy_niekompletne")
     .map((b) => b.dzial ?? "?");
-  const reszta = bledy.filter((b) => b.klasa !== "dzialy_niekompletne").map(nazwaNiezgodnosci);
+  const reszta = bledy
+    .filter((b) => b.klasa !== "dzialy_niekompletne")
+    .map((b) => nazwaNiezgodnosci(b, ksiega));
   if (brakujace.length === 0) return reszta;
   const lista =
     brakujace.length === 1
@@ -93,9 +110,6 @@ export function podpisyPol(bledy: Niezgodnosc[]): Partial<Record<PoleKarty, stri
   }
   return out;
 }
-
-/** Która z dwóch kart kroku 1 przyjęła treść. */
-export type KartaKsiegi = "lokal" | "grunt";
 
 /**
  * Niezgodność, której worker zobaczyć nie może: on zna tylko rodzaj księgi

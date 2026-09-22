@@ -827,6 +827,43 @@ describe("KwSection — kanały (makiety 1, 2, 6)", () => {
     );
   });
 
+  /**
+   * F1 recenzji całości KW: `kw_cyfra_kontrolna:numerKsiegi` to numer WŁASNY
+   * przepisanej księgi, więc na karcie gruntu baner musi mówić o numerze
+   * księgi GRUNTU. Do 22.09 mówił o lokalu — na karcie, na której księgi
+   * lokalu w ogóle nie ma.
+   */
+  it("baner karty gruntu nazywa cyfrę kontrolną numerem księgi GRUNTU, baner lokalu dalej lokalu (F1)", () => {
+    const werdykt = {
+      ok: false,
+      bledy: [{ klasa: "kw_cyfra_kontrolna:numerKsiegi" }],
+      kanal: "tekst",
+      plikow: 0,
+      at: "2026-09-22T08:00:00.000Z",
+    };
+    render(
+      <Harness
+        kw={
+          { tresc: transcribedBook(), transkrypcja: werdykt } as unknown as Partial<FormInput["kw"]>
+        }
+        kwGrunt={
+          {
+            source: "ekw_wklej",
+            nrKsiegi: "AB1C/2/7",
+            tresc: transcribedBook(),
+            transkrypcja: werdykt,
+          } as unknown as Partial<FormInput["kwGrunt"]>
+        }
+      />,
+    );
+    expect(screen.getByTestId("kw-werdykt-grunt").textContent).toContain(
+      "cyfra kontrolna numeru księgi gruntu",
+    );
+    expect(screen.getByTestId("kw-werdykt-lokal").textContent).toContain(
+      "cyfra kontrolna numeru księgi lokalu",
+    );
+  });
+
   it("karta gruntu podpisuje swoje pole numeru z WŁASNEGO werdyktu (makieta 4 dla obu ksiąg)", () => {
     render(
       <Harness
