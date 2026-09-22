@@ -297,13 +297,21 @@ def test_every_form_of_a_land_book_skips_the_unit_field_rules(rodzaj):
         None,
         "LOKAL STANOWIĄCY ODRĘBNĄ NIERUCHOMOŚĆ",
         "SPÓŁDZIELCZE WŁASNOŚCIOWE PRAWO DO LOKALU",
+        "NIERUCHOMOŚĆ BUDYNKOWA",
+        "BUDYNEK STANOWIĄCY ODRĘBNĄ NIERUCHOMOŚĆ",
     ],
 )
 def test_anything_that_is_not_a_land_book_keeps_the_unit_rules(rodzaj):
     """Control for the mutation "an unknown kind goes to the reduced set": the land
     fixture labelled as anything but a land book trips the spike's false positives.
     A missing kind is deliberately on this side — silently dropping four field
-    rules on a unit book is worse than a false `ok: false` we can see."""
+    rules on a unit book is worse than a false `ok: false` we can see.
+
+    The two building kinds are on this side by the same deliberate choice: nobody
+    has measured them yet, so they keep every rule and any mismatch shows up as a
+    visible `ok: false` rather than as rules quietly not running. The composite
+    kind „GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE I BUDYNEK…" names the land, so it
+    goes to the reduced set instead — the two lists do not collide."""
     doc = grunt()
     doc["naglowek"]["rodzajKsiegi"] = rodzaj
     assert klasy(doc) == {
