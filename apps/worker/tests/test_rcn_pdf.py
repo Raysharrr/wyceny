@@ -59,6 +59,7 @@ def test_printout_comes_back_as_counters_and_a_workbook():
         "orderNumber",
         "unit",
         "count",
+        "byKind",
         "flaggedRows",
         "fileWarnings",
         "xlsxBase64",
@@ -69,8 +70,48 @@ def test_printout_comes_back_as_counters_and_a_workbook():
         0,
         [],
     )
+    assert body["byKind"] == {"lokale": 1, "zabudowane": 0, "niezabudowane": 0}
     ws = load_workbook(BytesIO(base64.b64decode(body["xlsxBase64"])))["lokale"]
     assert ws["G3"].value == 870000 and ws["H3"].value == "=G3/F3"
+
+
+LAND = pdf(
+    [
+        (399, 61, "WYDRUK Z RCN"),
+        (31, 119, "GKG.GZW.4061.0000.2026"),
+        (31, 210, "2"),
+        (334, 210, "2026-06-17"),
+        (31, 250, "wolny rynek"),
+        (98, 250, "412 000.00"),
+        (31, 290, "Obiekt"),
+        (505, 290, "3/18"),
+        (31, 300, "Działka"),
+        (108, 300, "1. 000000_0.0001.12/3"),
+        (541, 300, "1. 0.0900"),
+        # The MPZP column is narrow, so the printout breaks the last word over
+        # three lines and without a hyphen.
+        (681, 300, "1. tereny dróg"),
+        (681, 310, "wewnętrznyc"),
+        (681, 320, "h"),
+        (734, 300, "1. ul. Lipowa 4, Testowo"),
+    ]
+)
+
+
+def test_a_land_transaction_answers_with_its_own_kind_and_sheet():
+    body = post(mint(), LAND).json()
+    assert body["byKind"] == {"lokale": 0, "zabudowane": 0, "niezabudowane": 1}
+    assert (body["count"], body["flaggedRows"]) == (1, 1)  # udział 3/18
+    book = load_workbook(BytesIO(base64.b64decode(body["xlsxBase64"])))
+    assert book.sheetnames == ["niezabudowane"]
+    ws = book["niezabudowane"]
+    assert [ws["B3"].value, ws["C3"].value, ws["D3"].value, ws["E3"].value] == [
+        "Testowo",
+        "000000_0.0001.12/3",
+        900,
+        "3/18",
+    ]
+    assert (ws["F3"].value, ws["H3"].value) == ("tereny dróg wewnętrznych", "=G3/D3")
 
 
 def test_bad_token_is_401():

@@ -5,6 +5,7 @@
 points to the right of the previous one, inside the same column band."""
 
 import os
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -356,3 +357,68 @@ def test_sample_printout_counters():
     assert sum(r.price for r in rows) == 24_336_900.0
     assert round(sum(r.area for r in rows), 2) == 2734.70
     assert sum(r.annex for r in rows) == 3
+    assert {r.kind for r in rows} == {rcn_pdf.KIND_UNIT}
+
+
+# Counters from the three land printouts of 22.09, recomputed from scratch here.
+# The spec's figures for Dopiewo (94 plots / 175 196 m² / 22 partial shares) were
+# taken before the kind split and include the ONE flat transaction's own 17
+# plots (11 247 m², one partial share) — those now belong to the `lokale` sheet,
+# which has no plot columns at all, so the land totals are 17 / 11 247 / 1 lower.
+LAND_SAMPLES = {
+    "RCN_SAMPLE_PDF_ZAB": (11, {rcn_pdf.KIND_BUILT: 11}, 5_140_000.0, 21_979, 13, 1),
+    "RCN_SAMPLE_PDF_NIEZAB": (8, {rcn_pdf.KIND_PLOT: 8}, 11_073_149.67, 82_223, 15, 1),
+    "RCN_SAMPLE_PDF_DOPIEWO": (
+        34,
+        {rcn_pdf.KIND_UNIT: 1, rcn_pdf.KIND_PLOT: 33},
+        21_991_096.84,
+        163_949,
+        77,
+        21,
+    ),
+}
+
+
+@pytest.mark.parametrize("variable", LAND_SAMPLES)
+def test_land_sample_counters(variable):
+    path = os.environ.get(variable)
+    if not path:
+        pytest.skip("real county printout stays outside the repo (PII)")
+    expected_rows, expected_kinds, total, area, plots, partial = LAND_SAMPLES[variable]
+    rows = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(path).read_bytes())).rows
+    assert [r.lp for r in rows] == list(range(1, expected_rows + 1))
+    assert Counter(r.kind for r in rows) == Counter(expected_kinds)
+    assert round(sum(r.price for r in rows), 2) == total
+    land = [r for r in rows if r.kind != rcn_pdf.KIND_UNIT]
+    assert sum(r.plot_area_m2 or 0 for r in land) == area
+    assert sum(len(r.plot_ids) for r in land) == plots
+    assert sum(1 for r in land if "partial_share" in r.warnings) == partial
+    # The generator's footer used to end up in the last transaction's cells.
+    assert not any("Generator" in r.town or "Generator" in r.plan for r in rows)
+
+
+@pytest.mark.skipif(
+    not os.environ.get("RCN_SAMPLE_PDF_ZAB"), reason="real county printout stays outside the repo"
+)
+def test_the_first_built_transaction_reads_whole():
+    path = os.environ["RCN_SAMPLE_PDF_ZAB"]
+    row = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(path).read_bytes())).rows[0]
+    assert (row.kind, row.town, row.street, row.building) == (
+        rcn_pdf.KIND_BUILT,
+        "Mściszewo",
+        "Radzimska",
+        "5",
+    )
+    assert (len(row.plot_ids), row.plot_area_m2) == (2, 984)
+
+
+@pytest.mark.skipif(
+    not os.environ.get("RCN_SAMPLE_PDF_NIEZAB"),
+    reason="real county printout stays outside the repo",
+)
+def test_bare_land_sample_takes_its_town_from_the_district_and_not_the_footer():
+    path = os.environ["RCN_SAMPLE_PDF_NIEZAB"]
+    rows = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(path).read_bytes())).rows
+    assert (rows[0].town, rows[0].plot_area_m2) == ("Buk", 26_485)
+    assert rows[0].plan.startswith("budownictwo mieszkaniowe wielorodzinne")
+    assert rows[-1].town == "Niepruszewo"

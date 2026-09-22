@@ -5,17 +5,50 @@ import pytest
 from app import rcn_pdf
 
 
+# A hand-written PDF string is Latin-1, which has no Polish letters — and the
+# printout's own row labels ("Działka") do. Each one gets a spare code and an
+# Adobe glyph name in the font's /Differences, which PDFium maps back to the
+# right character on extraction.
+POLISH = {
+    "ą": "aogonek",
+    "ć": "cacute",
+    "ę": "eogonek",
+    "ł": "lslash",
+    "ń": "nacute",
+    "ś": "sacute",
+    "ź": "zacute",
+    "ż": "zdotaccent",
+    "Ą": "Aogonek",
+    "Ć": "Cacute",
+    "Ę": "Eogonek",
+    "Ł": "Lslash",
+    "Ń": "Nacute",
+    "Ś": "Sacute",
+    "Ź": "Zacute",
+    "Ż": "Zdotaccent",
+}
+_CODES = {char: 0x80 + index for index, char in enumerate(POLISH)}
+_DIFFERENCES = " ".join(f"{_CODES[char]} /{name}" for char, name in POLISH.items())
+_FONT = (
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding "
+    f"<< /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [{_DIFFERENCES}] >> >>"
+)
+
+
 def pdf(*pages: list[tuple[float, float, str]]) -> bytes:
     """Minimal PDF: one Helvetica 8 pt text run per (x, y_from_top, text); A4 landscape."""
     objects = ["<< /Type /Catalog /Pages 2 0 R >>", ""]
     kids = []
     for cells in pages:
-        stream = "".join(f"BT /F1 8 Tf {x} {595 - y} Td ({t}) Tj ET\n" for x, y, t in cells)
+        stream = "".join(
+            f"BT /F1 8 Tf {x} {595 - y} Td ({''.join(chr(_CODES.get(c, ord(c))) for c in t)}) Tj ET\n"
+            for x, y, t in cells
+        )
         objects.append(f"<< /Length {len(stream)} >>\nstream\n{stream}endstream")
         content = len(objects)
         objects.append(
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 841 595] /Contents {content} 0 R "
-            "/Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>"
+            f"/Resources << /Font << /F1 {_FONT} >> >> >>"
         )
         kids.append(f"{len(objects)} 0 R")
     objects[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>"

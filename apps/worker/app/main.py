@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -854,10 +855,20 @@ def coop_sheet(file: UploadFile = File(...), token: str = Form(...)) -> CoopShee
 # --- T-22: „WYDRUK Z RCN" (PDF) -> XLSX ---------------------------------------
 
 
+class RcnByKind(BaseModel):
+    """How many transactions landed on each sheet — zero for a kind the printout
+    does not contain. Counters, never a cell (F-13)."""
+
+    lokale: int
+    zabudowane: int
+    niezabudowane: int
+
+
 class RcnPdfResponse(BaseModel):
     orderNumber: str
     unit: str
     count: int
+    byKind: RcnByKind
     flaggedRows: int
     fileWarnings: list[str]
     xlsxBase64: str
@@ -903,10 +914,16 @@ def rcn_pdf_to_xlsx(file: UploadFile = File(...), token: str = Form(...)) -> Rcn
         warnings=sum(len(r.warnings) for r in printout.rows) + len(printout.file_warnings),
         ms=round((time.monotonic() - started) * 1000),
     )
+    kinds = Counter(r.kind for r in printout.rows)
     return RcnPdfResponse(
         orderNumber=printout.order_number,
         unit=printout.unit,
         count=len(printout.rows),
+        byKind=RcnByKind(
+            lokale=kinds[rcn_pdf.KIND_UNIT],
+            zabudowane=kinds[rcn_pdf.KIND_BUILT],
+            niezabudowane=kinds[rcn_pdf.KIND_PLOT],
+        ),
         flaggedRows=sum(1 for r in printout.rows if r.warnings),
         fileWarnings=printout.file_warnings,
         xlsxBase64=base64.b64encode(xlsx).decode(),
