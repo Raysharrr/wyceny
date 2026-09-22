@@ -86,7 +86,6 @@ export default defineConfig({
         // smoke from spending LLM tokens.
         env: {
           NEXT_PUBLIC_SUBJECT_AUTOFETCH: "off",
-          NEXT_PUBLIC_KW_UPLOAD: "off",
           NEXT_PUBLIC_PHOTO_UPLOAD: "off",
           NEXT_PUBLIC_PROSE: "off",
           // Slice 3: keeps Street View thumbnails/iframe off so the smoke stays network-free and key-free.

@@ -29,6 +29,8 @@ EXCLUDE_PATHSPECS=(
   # and PESELs carry VALID check digits on purpose — the KW transcription
   # validators need them as the positive case, so they cannot be broken here.
   ':(exclude)apps/worker/tests/fixtures/kw_transcribe_sample.json'
+  # Same for the synthetic land book (a company as owner, no persons).
+  ':(exclude)apps/worker/tests/fixtures/kw_transcribe_grunt_sample.json'
 )
 
 fail=0

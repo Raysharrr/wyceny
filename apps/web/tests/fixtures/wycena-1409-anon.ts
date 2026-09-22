@@ -87,11 +87,17 @@ export type Wariant1409 = {
    * `brak` — `inputs.kw = null`, numer wpisany ręcznie (stan z 14.09);
    * `odpis_z_wpisem_dzial_iii` — upload odpisu, wpis w dziale III;
    * `ekw_reczne_obie_ksiegi` — obie księgi badane ręcznie w eKW (ADR-018);
-   * `pdf_lokalu_z_trescia` — jw. plus pełna treść działów z transkrypcji PDF.
-   * Dwa ostatnie dopisane w b1-kw-read; domyślny wariant bez zmian, żeby
-   * goldeny nie drgnęły.
+   * `pdf_lokalu_z_trescia` — jw. plus pełna treść działów z transkrypcji PDF;
+   * `pdf_obu_ksiag_z_trescia` — obie księgi z transkrypcji (ADR-021).
+   * Trzy ostatnie dopisane w b1-kw-read i ADR-021; domyślny wariant bez zmian,
+   * żeby goldeny nie drgnęły.
    */
-  kw?: "brak" | "odpis_z_wpisem_dzial_iii" | "ekw_reczne_obie_ksiegi" | "pdf_lokalu_z_trescia";
+  kw?:
+    | "brak"
+    | "odpis_z_wpisem_dzial_iii"
+    | "ekw_reczne_obie_ksiegi"
+    | "pdf_lokalu_z_trescia"
+    | "pdf_obu_ksiag_z_trescia";
 };
 
 /**
@@ -251,6 +257,30 @@ export function trescSyntetycznejKsiegi(): KsiegaTresc {
   return ksiegaTrescSchema.parse(wire);
 }
 
+/**
+ * Pełna treść pięciu działów księgi GRUNTOWEJ — czytana W MIEJSCU z własnej
+ * fikstury workera (`kw_transcribe_grunt_sample.json`, spółka jako właściciel,
+ * bez osób), tak samo jak fikstura księgi lokalu i z tego samego powodu: jej
+ * numery mają kształt KW z poprawną cyfrą kontrolną.
+ */
+export function trescSyntetycznejKsiegiGruntu(): KsiegaTresc {
+  const wire = JSON.parse(
+    readFileSync(
+      path.join(
+        process.cwd(),
+        "..",
+        "worker",
+        "tests",
+        "fixtures",
+        "kw_transcribe_grunt_sample.json",
+      ),
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
+  delete wire.walidacja;
+  return ksiegaTrescSchema.parse(wire);
+}
+
 const PROSE_TEXT: Record<ProseSection, string> = {
   analiza_rynku:
     "Analizą objęto rynek lokali mieszkalnych w budynkach wielorodzinnych w bezpośrednim sąsiedztwie przedmiotu wyceny. Dane fikcyjne.",
@@ -301,11 +331,30 @@ export function wycena1409Anon(wariant: Wariant1409 = {}): BuildDocumentInput {
         ? KW_ODPIS
         : kw === "ekw_reczne_obie_ksiegi"
           ? KW_EKW_RECZNE
-          : { ...KW_EKW_RECZNE, tresc: trescSyntetycznejKsiegi() };
+          : kw === "pdf_obu_ksiag_z_trescia"
+            ? { ...KW_EKW_RECZNE, source: "odpis_kw", tresc: trescSyntetycznejKsiegi() }
+            : { ...KW_EKW_RECZNE, tresc: trescSyntetycznejKsiegi() };
   // Księga macierzysta i decyzja o obciążeniu idą z wariantami ADR-018: obie
   // księgi zbadane, a dział III lokalu ma wpis, więc B-07 wymaga wariantu.
   const kwGruntSnapshot: KwGruntSnapshot | null =
-    kw === "ekw_reczne_obie_ksiegi" || kw === "pdf_lokalu_z_trescia" ? KW_GRUNT_RECZNA : null;
+    kw === "pdf_obu_ksiag_z_trescia"
+      ? {
+          ...KW_GRUNT_RECZNA,
+          source: "odpis_kw",
+          sad: "Sąd Rejonowy w Testowie",
+          wydzial: "I Wydział Ksiąg Wieczystych",
+          tresc: trescSyntetycznejKsiegiGruntu(),
+          transkrypcja: {
+            ok: true,
+            bledy: [],
+            kanal: "pdf",
+            plikow: 5,
+            at: "2026-09-21T10:00:00.000Z",
+          },
+        }
+      : kw === "ekw_reczne_obie_ksiegi" || kw === "pdf_lokalu_z_trescia"
+        ? KW_GRUNT_RECZNA
+        : null;
   const obciazenie: EncumbranceTreatment | null = kwSnapshot?.dzial3?.wpisy ? OBCIAZENIE_BEZ : null;
   const base: KcsInput = {
     area: AREA,

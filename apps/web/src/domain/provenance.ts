@@ -13,7 +13,11 @@ import {
   type EncumbranceTreatment,
   type KwDzialSnapshot,
   type KwGruntSnapshot,
+  type KwMetaSnapshot,
+  type KwSource,
+  type KwWerdykt,
 } from "./kw-snapshot";
+import type { KsiegaTresc } from "./kw-tresc";
 import type { PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 import { isPrzeznaczenieComplete } from "./przeznaczenie";
@@ -70,7 +74,7 @@ export type GateInput = {
   // them is the operat's cover.
   inspection?: InspectionSnapshot | null;
   kw?: {
-    source: "akt" | "odpis_kw" | "ekw_reczne";
+    source: KwSource;
     kwLokalu: string | null;
     kwGruntu: string | null;
     deweloperski: boolean;
@@ -79,7 +83,16 @@ export type GateInput = {
     dataBadania?: string | null;
     dzial3?: KwDzialSnapshot | null;
     dzial4?: KwDzialSnapshot | null;
+    // Proweniencja pyta, czy odczyt się odbył, a nie jakim kanałem stała karta
+    // (decyzja koordynatora 22.09) — stąd te dwa pola w kształcie wejścia.
+    tresc?: KsiegaTresc | null;
+    transkrypcja?: KwWerdykt | null;
   } | null;
+  /**
+   * Metryka odczytu pól przez `/kw-extract`. Proweniencja pyta o nią razem z
+   * migawką: jej obecność jest jednym z trzech śladów, że odczyt się odbył (F1).
+   */
+  kwMeta?: KwMetaSnapshot | null;
   /** Examination of the grunt's book (ADR-018) — its own snapshot, not part of `kw`. */
   kwGrunt?: KwGruntSnapshot | null;
   /** The appraiser's call on a dział III entry in the lokal's book (B-07). */
@@ -294,7 +307,7 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
     const kwProv = input.provenance?.kw;
     const sK = sourced(
       "kw",
-      kwProv?.source ?? kwProvenanceSource(input.kw.source),
+      kwProv?.source ?? kwProvenanceSource(input.kw, input.kwMeta),
       kwProv?.status ?? "none",
     );
     if (isBlocking(sK)) {

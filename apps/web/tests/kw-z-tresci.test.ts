@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ksiegaTrescSchema, type KsiegaTresc } from "@/domain/kw-tresc";
-import { aktZTresci, polaZTresci } from "@/domain/kw-z-tresci";
+import {
+  aktZTresci,
+  dzialyZTresci,
+  numerKsiegiZTresci,
+  polaGruntuZTresci,
+  polaZTresci,
+} from "@/domain/kw-z-tresci";
 
 /**
  * The worker's own fixture — the synthetic book with fictional persons and
@@ -146,5 +152,50 @@ describe("aktZTresci — dział II as the operat's three fields (ADR-018 reg. 1,
 
   it("does not carry the notary — the operat's §7 sentence names the deed, not the office", () => {
     expect(Object.keys(aktZTresci(sample())!).sort()).toEqual(["data", "rep", "rodzaj"]);
+  });
+});
+
+describe("dzialyZTresci — działy III i IV wyliczane z treści (R1, ADR-021 reg. 1)", () => {
+  it("dział z wpisami: wpisy=true, każda rubryka jako „nazwa: wartości” w kolejności eKW", () => {
+    const { dzial3 } = dzialyZTresci(sample());
+    const d3 = sample().dzialy.find((d) => d.kod === "III")!;
+    const pierwsza = d3.tabele[0].wpisy[0].rubryki[0];
+    expect(dzial3?.wpisy).toBe(true);
+    expect(dzial3?.tresc[0]).toBe(`${pierwsza.nazwa}: ${pierwsza.wartosci.join(" | ")}`);
+    const rubryk = d3.tabele.flatMap((t) => t.wpisy.flatMap((w) => w.rubryki)).length;
+    expect(dzial3?.tresc).toHaveLength(rubryk);
+  });
+
+  it("dział BRAK WPISÓW: wpisy=false i pusta treść — odpowiedź, nie milczenie", () => {
+    const tresc = sample();
+    tresc.dzialy = tresc.dzialy.map((d) =>
+      d.kod === "IV" ? { ...d, brakWpisow: true, tabele: [], dokumenty: [] } : d,
+    );
+    expect(dzialyZTresci(tresc).dzial4).toEqual({ wpisy: false, tresc: [] });
+  });
+
+  it("dział nieobecny w treści (wklejono 3 z 5 zakładek) zostaje null — nieodpowiedziany", () => {
+    const tresc = sample();
+    tresc.dzialy = tresc.dzialy.filter((d) => d.kod !== "III" && d.kod !== "IV");
+    expect(dzialyZTresci(tresc)).toEqual({ dzial3: null, dzial4: null });
+  });
+});
+
+describe("numer i nagłówek z treści — kanał tekstowy nie ma /kw-extract", () => {
+  it("numer księgi z nagłówka, a gdy pusty — z pól dodatkowych", () => {
+    const tresc = sample();
+    expect(numerKsiegiZTresci(tresc)).toBe(tresc.naglowek.numerKsiegi);
+    tresc.naglowek.numerKsiegi = "  ";
+    expect(numerKsiegiZTresci(tresc)).toBe(tresc.polaDodatkowe.kwLokalu);
+  });
+
+  it("polaGruntuZTresci: numer, sąd i wydział z nagłówka, przycięte, puste → null", () => {
+    const tresc = sample();
+    tresc.naglowek.wydzial = "   ";
+    expect(polaGruntuZTresci(tresc)).toEqual({
+      nrKsiegi: tresc.naglowek.numerKsiegi,
+      sad: tresc.naglowek.sad,
+      wydzial: null,
+    });
   });
 });

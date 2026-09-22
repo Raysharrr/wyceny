@@ -18,7 +18,7 @@ cd apps/worker && WORKER_SHARED_SECRET=dev GEOCODER_STUB=1 uv run uvicorn app.ma
 # web: build z flagami jak w CI, potem Playwright sam robi `pnpm start`
 cd apps/web
 export NEXT_PUBLIC_SUBJECT_AUTOFETCH=off NEXT_PUBLIC_ADDRESS_SUGGEST=off NEXT_PUBLIC_STREET_VIEW=off \
-       NEXT_PUBLIC_KW_UPLOAD=off NEXT_PUBLIC_PHOTO_UPLOAD=off NEXT_PUBLIC_PROSE=off MAPS_FETCH=off \
+       NEXT_PUBLIC_PHOTO_UPLOAD=off NEXT_PUBLIC_PROSE=off MAPS_FETCH=off \
        WORKER_SHARED_SECRET=dev SEED_ADMIN_PASSWORD=… SEED_APPRAISER_PASSWORD=…
 pnpm build && pnpm e2e                    # smoke + spoldzielcze
 pnpm exec playwright test --project=spoldzielcze                 # tylko blok

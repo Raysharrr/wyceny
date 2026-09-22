@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ksiegaTrescSchema, kwTranscribeResponseSchema } from "@/domain/kw-tresc";
+import { transcribeKw } from "@/lib/kw-transcribe-client";
 
 // The worker's own fixture — the same file its endpoint test asserts the wire
 // shape against — read in place, never copied (it is the synthetic book with
@@ -56,5 +57,58 @@ describe("kw-transcribe contract (worker fixture ↔ KsiegaTresc)", () => {
     const { polaDodatkowe, ...withoutPola } = workerSample();
     expect(polaDodatkowe).toBeDefined();
     expect(ksiegaTrescSchema.safeParse(withoutPola).success).toBe(false);
+  });
+});
+
+describe("transcribeKw — multipart: files[] i/lub tekst, nigdy stare `file`", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function przechwycFetch() {
+    const calls: FormData[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        calls.push(init.body as FormData);
+        return new Response(JSON.stringify(workerSample()), { status: 200 });
+      }),
+    );
+    return calls;
+  }
+
+  it("trzy PDF-y idą jako powtarzane pole `files`", async () => {
+    const calls = przechwycFetch();
+    const pdf = (n: string) => new File(["%PDF-1.4"], n, { type: "application/pdf" });
+    const wynik = await transcribeKw({
+      files: [pdf("a.pdf"), pdf("b.pdf"), pdf("c.pdf")],
+      token: "t",
+      workerUrl: "http://w",
+    });
+    expect(wynik.kind).toBe("ok");
+    expect(calls[0].getAll("files")).toHaveLength(3);
+    expect(calls[0].get("file")).toBeNull();
+    expect(calls[0].get("tekst")).toBeNull();
+    expect(calls[0].get("token")).toBe("t");
+  });
+
+  it("tekst idzie jako pole `tekst`, bez plików", async () => {
+    const calls = przechwycFetch();
+    await transcribeKw({
+      tekst: "DZIAŁ I-O - OZNACZENIE NIERUCHOMOŚCI\nUlica | TESTOWA | 1",
+      token: "t",
+      workerUrl: "http://w",
+    });
+    expect(calls[0].getAll("files")).toHaveLength(0);
+    expect(calls[0].get("tekst")).toContain("Ulica | TESTOWA | 1");
+  });
+
+  it("413 (worker: tekst za długi, bez echa treści) i 422 bez kodu zapadają w klasę ogólną", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 413 })),
+    );
+    expect(await transcribeKw({ tekst: "x", token: "t", workerUrl: "http://w" })).toEqual({
+      kind: "error",
+      code: "kw_transkrypcja_blad",
+    });
   });
 });

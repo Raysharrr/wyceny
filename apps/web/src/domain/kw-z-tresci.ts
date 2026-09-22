@@ -1,5 +1,5 @@
 import type { KsiegaTresc } from "./kw-tresc";
-import type { KwAkt, KwSnapshot } from "./kw-snapshot";
+import type { KwAkt, KwGruntSnapshot, KwSnapshot } from "./kw-snapshot";
 
 /**
  * The transcription's own reading of the book, as snapshot fields
@@ -95,5 +95,47 @@ export function polaZTresci(
     sad: trimToNull(tresc.naglowek.sad),
     wydzial: trimToNull(tresc.naglowek.wydzial),
     akt: aktZTresci(tresc),
+  };
+}
+
+const SEP_WARTOSCI = " | ";
+
+/**
+ * Działy III i IV WYLICZANE z treści (ADR-021 reg. 1, refaktor R1) — jedno
+ * źródło prawdy o działach zamiast pola wpisywanego ręcznie obok transkrypcji.
+ * Dział nieobecny w treści zostaje `null` (nieodpowiedziany): wklejenie trzech
+ * zakładek z pięciu nie może wyprodukować „brak wpisów” o dziale, którego
+ * nikt nie przepisał — to ten sam błąd, co operat z 14.09.
+ */
+export function dzialyZTresci(tresc: KsiegaTresc): Pick<KwSnapshot, "dzial3" | "dzial4"> {
+  const dzial = (kod: "III" | "IV") => {
+    const d = tresc.dzialy.find((x) => x.kod === kod);
+    if (!d) return null;
+    if (d.brakWpisow) return { wpisy: false, tresc: [] };
+    return {
+      wpisy: true,
+      tresc: d.tabele.flatMap((t) =>
+        t.wpisy.flatMap((w) =>
+          w.rubryki.map((r) => `${r.nazwa}: ${r.wartosci.join(SEP_WARTOSCI)}`),
+        ),
+      ),
+    };
+  };
+  return { dzial3: dzial("III"), dzial4: dzial("IV") };
+}
+
+/** Numer księgi, którą przepisano — nagłówek, a gdy go nie ma, pole dodatkowe. */
+export function numerKsiegiZTresci(tresc: KsiegaTresc): string | null {
+  return trimToNull(tresc.naglowek.numerKsiegi) ?? trimToNull(tresc.polaDodatkowe.kwLokalu);
+}
+
+/** Karta gruntu z kanału tekstowego lub PDF: wszystko, co ma, bierze z nagłówka. */
+export function polaGruntuZTresci(
+  tresc: KsiegaTresc,
+): Pick<KwGruntSnapshot, "nrKsiegi" | "sad" | "wydzial"> {
+  return {
+    nrKsiegi: trimToNull(tresc.naglowek.numerKsiegi),
+    sad: trimToNull(tresc.naglowek.sad),
+    wydzial: trimToNull(tresc.naglowek.wydzial),
   };
 }

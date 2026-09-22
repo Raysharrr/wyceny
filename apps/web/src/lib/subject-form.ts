@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import type { PropertyRight } from "@/domain/property-right";
 import type { KcsInput } from "@/domain/kcs";
-import type { KwSnapshot } from "@/domain/kw-snapshot";
+import type { KwGruntSnapshot, KwSnapshot } from "@/domain/kw-snapshot";
 import type { SubjectSnapshot } from "@/domain/subject-snapshot";
 import type { SubjectProposal } from "@/ports/subject";
 import type { subjectSchema, valuationFormSchema } from "@/lib/valuation-form-schema";
@@ -150,6 +150,27 @@ function coerceLegacyKw(kw: Partial<KwSnapshot>): Required<KwSnapshot> {
     // The transcribed dzialy. Losing these on re-entry would not blank a field
     // the appraiser can see — it would silently stop §8.2 quoting the book.
     tresc: kw.tresc ?? null,
+    transkrypcja: kw.transkrypcja ?? null,
+  };
+}
+
+/**
+ * Karta gruntu w kształcie karty lokalu (ADR-021). `Required<>` z tego samego
+ * powodu co wyżej: cztery nowe pola są opcjonalne na typie, więc bez tego
+ * pominięcie któregoś byłoby cichą utratą treści księgi gruntu przy ponownym
+ * wejściu w krok 1 — dokładnie klasa błędu z b1-kw-read.
+ */
+export function coerceLegacyKwGrunt(kwGrunt: Partial<KwGruntSnapshot>): Required<KwGruntSnapshot> {
+  return {
+    source: kwGrunt.source ?? "ekw_reczne",
+    nrKsiegi: kwGrunt.nrKsiegi ?? null,
+    dataBadania: kwGrunt.dataBadania ?? null,
+    dzial3: kwGrunt.dzial3 ?? null,
+    dzial4: kwGrunt.dzial4 ?? null,
+    sad: kwGrunt.sad ?? null,
+    wydzial: kwGrunt.wydzial ?? null,
+    tresc: kwGrunt.tresc ?? null,
+    transkrypcja: kwGrunt.transkrypcja ?? null,
   };
 }
 
@@ -183,8 +204,37 @@ export function step1DefaultsFromInputs(v: {
     // `applySubjectUpdate` but were not read back here — re-entering step 1
     // wiped a book that had been examined and a decision that had been made,
     // and step 7 re-raised B-06/B-07 with nothing on screen to explain why.
-    kwGrunt: v.inputs?.kwGrunt ?? undefined,
+    kwGrunt: v.inputs?.kwGrunt ? coerceLegacyKwGrunt(v.inputs.kwGrunt) : undefined,
     encumbranceTreatment: v.inputs?.encumbranceTreatment ?? undefined,
     kwMeta: v.inputs?.kwMeta ?? undefined,
   };
+}
+
+/** Wejście jednego przepisania: pliki albo tekst z przeglądarki KW (ADR-021). */
+export type KwWejscie = { kanal: "pdf"; files: File[] } | { kanal: "tekst"; tekst: string };
+
+/**
+ * Co da się odczytać z danego wejścia dla danej księgi. Czysta reguła, bo to
+ * ona decyduje, czy `runKwExtraction` ma w ogóle co robić:
+ *
+ * - pola czyta `/kw-extract` i tylko dla księgi LOKALU z PDF-a (grunt bierze
+ *   swoje pola z nagłówka przepisanej treści),
+ * - treść przepisuje `/kw-transcribe` wszędzie poza ścieżką aktu — akt nie ma
+ *   pięciu działów, więc nie ma czego przepisywać.
+ *
+ * Gdy oba są fałszywe — jedyny taki przypadek to tekst wklejony na ścieżce
+ * aktu — odczyt jest NIEDOZWOLONY. Bez tej straży formularz doszedłby do
+ * zapisu migawki i skasował stub deweloperski razem z `deweloperski: true`
+ * (finding F7). Dziś z UI nieosiągalne; Task 4 przepisuje kartę, więc reguła
+ * mieszka tutaj, a nie w układzie panelu.
+ */
+export function planOdczytuKw(
+  wejscie: KwWejscie,
+  book: "lokal" | "grunt",
+  source: "akt" | "odpis_kw" | "ekw_wklej",
+): { czytaPola: boolean; transcribes: boolean; dozwolony: boolean } {
+  const akt = book === "lokal" && source === "akt";
+  const czytaPola = book === "lokal" && wejscie.kanal === "pdf";
+  const transcribes = !akt;
+  return { czytaPola, transcribes, dozwolony: czytaPola || transcribes };
 }

@@ -2,10 +2,11 @@ import type { KsiegaTresc, KwWalidacja } from "@/domain/kw-tresc";
 import { kwTranscribeResponseSchema } from "@/domain/kw-tresc";
 
 /**
- * Browser-side client for the worker's POST /kw-transcribe (b1-kw-read) —
- * the same road, the same token and the same worker as `kw-extract-client.ts`,
- * for the second, independent read of the very same PDF: `/kw-extract` reads a
- * handful of fields, this one transcribes the five dzialy in full.
+ * Browser-side client for the worker's POST /kw-transcribe (b1-kw-read,
+ * ADR-021) — the same road, the same token and the same worker as
+ * `kw-extract-client.ts`. Transcribes the five dzialy in full out of one or
+ * many PDFs, or out of the text pasted from the eKW browser; `/kw-extract`
+ * reads its handful of fields from the first PDF only.
  *
  * Two calls rather than one because the spike measured them as different jobs:
  * the field read runs on the cheaper model, the transcription needs
@@ -57,12 +58,15 @@ async function codeOf(response: Response): Promise<KwTranscribeErrorCode> {
 }
 
 export async function transcribeKw(args: {
-  file: File;
+  files?: File[];
+  tekst?: string;
   token: string;
   workerUrl: string;
 }): Promise<KwTranscribeResult> {
   const form = new FormData();
-  form.set("file", args.file);
+  // Pole POWTARZANE, nie `files[]` — FastAPI czyta `list[UploadFile]` po nazwie.
+  for (const file of args.files ?? []) form.append("files", file);
+  if (args.tekst != null && args.tekst !== "") form.set("tekst", args.tekst);
   form.set("token", args.token);
 
   let response: Response;

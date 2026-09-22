@@ -674,9 +674,19 @@ describe("every to_verify a legacy draft can hold has a step that clears it (T8)
     const after = (await repo.get(created.id, appraiserA))!.inputs!;
     // `tresc: null` materialises on the way back through `coerceLegacyKw`, like
     // `dataBadania`/`nrLokalu`/`akt` before it: this snapshot was typed by hand,
-    // so there is no transcription to keep (b1-kw-read).
-    expect(after.kw).toEqual({ ...examined.kw, tresc: null });
-    expect(after.kwGrunt).toEqual(examined.kwGrunt);
+    // so there is no transcription to keep (b1-kw-read) — and since ADR-021 no
+    // verdict either.
+    expect(after.kw).toEqual({ ...examined.kw, tresc: null, transkrypcja: null });
+    // Karta gruntu wraca przez `coerceLegacyKwGrunt`, więc migawka sprzed
+    // ADR-021 dostaje cztery jawne null-e — tak samo jak księga lokalu
+    // dostała je przy ADR-018. Dane zapisane wcześniej zostają nietknięte.
+    expect(after.kwGrunt).toEqual({
+      ...examined.kwGrunt,
+      sad: null,
+      wydzial: null,
+      tresc: null,
+      transkrypcja: null,
+    });
     expect(after.encumbranceTreatment).toEqual(examined.encumbranceTreatment);
   });
 
