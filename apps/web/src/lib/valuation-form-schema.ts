@@ -214,6 +214,9 @@ export const candidateSchema = z.object({
   // S3 — coop register rows only; absent on RCN rows and older pools.
   rightType: z.enum(PROPERTY_RIGHTS).nullable().optional(),
   cooperative: z.string().optional(),
+  // ADR-022 — P.P z rejestru biura; `.optional()`, bo pule i migawki sprzed
+  // kolumny go nie mają. Bez tego wpisu zod obcinałby go na każdym zapisie kroku 3.
+  annex: z.boolean().nullable().optional(),
 });
 
 /**

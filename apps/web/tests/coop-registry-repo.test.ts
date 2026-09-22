@@ -64,6 +64,25 @@ describe("coopRegistryRepo", () => {
     expect(await repo.existingKeys([])).toEqual(new Set());
   });
 
+  it("annex (P.P) przechodzi przez insert i odczyt — true/false/null bez domyślnej wartości (ADR-022)", async () => {
+    const base = rows[0]!;
+    const trio = [true, false, null].map((annex, i) => {
+      const x = {
+        ...base,
+        cooperative: `${COOP} pp`,
+        flatNumber: `${base.flatNumber}|pp${i}`,
+        annex,
+      };
+      return { ...x, dedupeKey: coopDedupeKey(x) };
+    });
+    await repo.upsertMany(trio, { userId: USER, batchId: null });
+    const { rows: read } = await repo.list({ cooperative: `${COOP} pp` });
+    const byFlat = new Map(read.map((r) => [r.flatNumber, r.annex]));
+    expect(byFlat.get(`${base.flatNumber}|pp0`)).toBe(true);
+    expect(byFlat.get(`${base.flatNumber}|pp1`)).toBe(false);
+    expect(byFlat.get(`${base.flatNumber}|pp2`)).toBeNull();
+  });
+
   it("upsertMany inserts the fixture rows; the same file again inserts 0", async () => {
     expect(parsed.rows).toHaveLength(5);
     expect(await repo.upsertMany(rows, { userId: USER, batchId: "batch-1" })).toEqual({

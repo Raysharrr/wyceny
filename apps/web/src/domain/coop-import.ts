@@ -27,6 +27,7 @@ export const COOP_FIELDS = [
   { key: "floor", label: "Piętro", required: false },
   { key: "rooms", label: "Liczba pokoi", required: false },
   { key: "buildYear", label: "Rok budowy", required: false },
+  { key: "annex", label: "Pomieszczenia przynależne (P.P)", required: false },
 ] as const;
 export type CoopFieldKey = (typeof COOP_FIELDS)[number]["key"];
 /**
@@ -211,6 +212,14 @@ export function parseFloor(s: string): number | null {
   return null;
 }
 
+/** „tak”/„t”/„1” → true, „nie”/„n”/„0” → false, puste lub inne → null (P.P z wydruku RCN, ADR-022). */
+export function parseAnnex(s: string): boolean | null {
+  const t = s.trim().toLowerCase();
+  if (/^(tak|t|1|true)$/.test(t)) return true;
+  if (/^(nie|n|0|false)$/.test(t)) return false;
+  return null;
+}
+
 function parseIntOrNull(s: string): number | null {
   return /^\d+$/.test(s.trim()) ? Number(s.trim()) : null;
 }
@@ -329,6 +338,8 @@ export function parseCoopSheet(
       floor: parseFloor(cell("floor")),
       rooms: parseIntOrNull(cell("rooms")),
       buildYear: parseIntOrNull(cell("buildYear")),
+      annex:
+        mapping.annex === null || mapping.annex === undefined ? null : parseAnnex(cell("annex")),
       pos: null,
       source: "xls",
       dedupeKey: "",
