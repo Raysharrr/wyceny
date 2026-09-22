@@ -20,6 +20,7 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+import structlog
 
 import app.rcn as rcn
 import app.street_index as street_index
@@ -1190,12 +1191,14 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
 
     sekcje: dict[str, str] = {}
     odrzucone: dict[str, list[str]] = {}
+    failed_kinds: list[str] = []
     input_tokens = output_tokens = 0
     for section, outcome in zip(sections, outcomes):
         input_tokens += outcome.input_tokens  # retries included — the tokens were spent
         output_tokens += outcome.output_tokens
         if outcome.failed_kind:
             odrzucone[section] = []  # empty list = the call failed, no offending numbers
+            failed_kinds.append(outcome.failed_kind)
         elif outcome.violations:
             odrzucone[section] = outcome.violations
         else:
@@ -1213,6 +1216,16 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
     # again. A batch where nothing landed stays an error, so the web side's
     # automatic retry still covers an ordinary network blip.
     if not sekcje and not any(odrzucone.values()):
+        if failed_kinds and all(kind == "config" for kind in failed_kinds):
+            # Every call was refused for a reason no retry fixes (PR-1 Głuszyna):
+            # say so, and quote the trace id the web sent as X-Request-Id — the
+            # same one the middleware echoes, so the appraiser reads back a code
+            # that leads to this very run.
+            trace_id = structlog.contextvars.get_contextvars().get("trace_id", "brak")
+            logger.error("prose_config_error", sections=list(odrzucone))
+            raise HTTPException(
+                status_code=502, detail=PROSE_CONFIG_DETAIL.format(trace_id=trace_id)
+            )
         logger.error("prose_no_call_landed", sections=list(odrzucone))
         raise HTTPException(status_code=502, detail=PROSE_FAILED_DETAIL)
     if not sekcje:

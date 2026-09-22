@@ -5,6 +5,7 @@ zero API key in CI. Fixtures are fictional (ul. Klonowa, m. Nowogród — F-9)."
 import hashlib
 import hmac
 import inspect
+import json
 import sys
 import threading
 import time
@@ -376,6 +377,9 @@ def test_anthropic_touchpoint_is_confined_to_the_llm_helper():
     assert "import anthropic" in inspect.getsource(main._generate_prose_section)
     for fn in (main._prose_section, main.prose_proposal):
         assert "anthropic" not in inspect.getsource(fn)
+    # PR-1: the classifier is the second, read-only touchpoint — it imports the
+    # SDK for its exception classes and calls nothing.
+    assert "import anthropic" in inspect.getsource(main._prose_failure_kind)
 
 
 def test_f11_no_market_value_on_either_side():
@@ -484,6 +488,89 @@ def test_section_outcome_carries_the_failure_kind(monkeypatch):
     monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({}))
     landed = main._prose_section("opis_lokalu", FAKTY)
     assert landed.failed_kind is None and landed.text == CLEAN
+
+
+def log_lines(out: str, event: str) -> list[dict]:
+    return [json.loads(line) for line in out.splitlines() if f'"{event}"' in line]
+
+
+@pytest.mark.parametrize("make", CONFIG_ERRORS)
+def test_prose_config_error_detail(monkeypatch, capsys, make):
+    """Spec §2: nothing landed and every failure is a config one → the 502 says
+    a retry will not help and names the trace id the web sent as X-Request-Id
+    (the same one the appraiser reads back over the phone)."""
+    monkeypatch.setattr(main, "_generate_prose_section", raising(make))
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"], headers={"X-Request-Id": "g1u5zyna"})
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert detail == main.PROSE_CONFIG_DETAIL.format(trace_id="g1u5zyna")
+    assert "ponowna próba nie pomoże" in detail
+    assert "spróbuj ponownie" not in detail.lower()
+
+    out = capsys.readouterr().out
+    assert len(log_lines(out, "prose_config_error")) == 1
+    assert log_lines(out, "prose_no_call_landed") == []
+    assert {line["kind"] for line in log_lines(out, "prose_section_failed")} == {"config"}
+
+
+def test_prose_config_detail_names_the_minted_id_when_no_header_came(monkeypatch):
+    """Called without X-Request-Id the middleware mints an id and echoes it in
+    the response header — the sentence must quote THAT one, or the code the
+    appraiser reads out leads nowhere."""
+    monkeypatch.setattr(main, "_generate_prose_section", raising(CONFIG_ERRORS[0].values[0]))
+    resp = post(mint())
+    assert resp.status_code == 502
+    minted = resp.headers["x-request-id"]
+    assert len(minted) == 8
+    assert resp.json()["detail"].endswith(f"kod: {minted}.")
+
+
+@pytest.mark.parametrize("make", TRANSIENT_ERRORS)
+def test_transient_failure_on_every_section_keeps_the_retry_detail(monkeypatch, capsys, make):
+    """Positive control: the old sentence stays for everything a retry CAN fix."""
+    monkeypatch.setattr(main, "_generate_prose_section", raising(make))
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"])
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == main.PROSE_FAILED_DETAIL
+    out = capsys.readouterr().out
+    assert log_lines(out, "prose_config_error") == []
+    assert len(log_lines(out, "prose_no_call_landed")) == 1
+
+
+def test_config_error_on_one_section_leaves_the_batch_a_200(monkeypatch):
+    """Mixed batch (spec §2): one section refused by the key, the rest generated.
+    Whatever landed is returned and paid for; the refused one comes back with
+    the empty list that already means „the call never landed”."""
+    ok = FakeLlm({})
+    dead_key = raising(CONFIG_ERRORS[0].values[0])
+
+    def flaky(section, prompt, correction=None):
+        if section == "opis_lokalu":
+            return dead_key(section, prompt, correction)
+        return ok(section, prompt, correction)
+
+    monkeypatch.setattr(main, "_generate_prose_section", flaky)
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"])
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["sekcje"] == {"otoczenie": CLEAN}
+    assert body["odrzucone"] == {"opis_lokalu": []}
+
+
+def test_config_mixed_with_transient_keeps_the_retry_detail(monkeypatch):
+    """ALL failures have to be config ones for the config sentence: a dead key on
+    one section and a dropped connection on the other says nothing certain about
+    the key, and the web side's automatic retry still covers the blip."""
+    dead_key = raising(CONFIG_ERRORS[0].values[0])
+    dropped = raising(TRANSIENT_ERRORS[0].values[0])
+
+    def flaky(section, prompt, correction=None):
+        return (dead_key if section == "opis_lokalu" else dropped)(section, prompt, correction)
+
+    monkeypatch.setattr(main, "_generate_prose_section", flaky)
+    resp = post(mint(), sekcje=["opis_lokalu", "otoczenie"])
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == main.PROSE_FAILED_DETAIL
 
 
 # --- The interior of `_generate_prose_section`: the ONE place where a wrong SDK
