@@ -62,8 +62,16 @@ function cand(
 }
 
 // Cmax: kondygnacja 4 (3. piętro), 41,70 m², P.P tak; Cmin: parter, 57,90 m², P.P nie; środek: 50 m².
+/**
+ * Identyfikatory w kształcie EGiB — z KROPKAMI (i ukośnikiem w numerze
+ * działki), bo cały sens reguły „oceny zapisywane całą mapą, nigdy ścieżką
+ * react-hook-form" jest w kropce: RHF czyta kropkę w nazwie pola jako
+ * zejście w głąb obiektu. Na fiksturze „A"/„B"/„C" (klucze `A|L-A`) zapis
+ * ścieżką RHF przechodził bez jednego czerwonego testu (F3 recenzji całości
+ * bloku).
+ */
 const A = cand({
-  transactionId: "A",
+  transactionId: "306401_1.0006.12/3",
   pricePerM2: 8847.74,
   area: 41.7,
   floor: 4,
@@ -72,7 +80,7 @@ const A = cand({
   annex: true,
 });
 const B = cand({
-  transactionId: "B",
+  transactionId: "306401_1.0006.12/4",
   pricePerM2: 6338.03,
   area: 57.9,
   floor: 1,
@@ -80,7 +88,7 @@ const B = cand({
   date: "2025-11-05",
   annex: false,
 });
-const C = cand({ transactionId: "C", pricePerM2: 7000, area: 50 });
+const C = cand({ transactionId: "306401_1.0006.12/5", pricePerM2: 7000, area: 50 });
 
 function selectionOf(candidates: Candidate[]): SampleSelectionSnapshot {
   return {
@@ -260,8 +268,13 @@ describe("StepFeatures — lokale o cenie skrajnej (ADR-022, makieta 7)", () => 
     await user.click(submit);
     await waitFor(() => expect(saveFeaturesAction).toHaveBeenCalled());
     const sent = saveFeaturesAction.mock.calls[0][1] as { comparableRatings: ComparableRatings };
-    expect(Object.keys(sent.comparableRatings).sort()).toEqual(["A|L-A", "B|L-B"]);
-    expect(Object.keys(sent.comparableRatings["A|L-A"]).sort()).toEqual(FEATURE_KEYS);
+    expect(Object.keys(sent.comparableRatings).sort()).toEqual([
+      "306401_1.0006.12/3|L-306401_1.0006.12/3",
+      "306401_1.0006.12/4|L-306401_1.0006.12/4",
+    ]);
+    expect(
+      Object.keys(sent.comparableRatings["306401_1.0006.12/3|L-306401_1.0006.12/3"]).sort(),
+    ).toEqual(FEATURE_KEYS);
   });
 
   /**
@@ -275,7 +288,10 @@ describe("StepFeatures — lokale o cenie skrajnej (ADR-022, makieta 7)", () => 
     const user = userEvent.setup();
     saveFeaturesAction.mockClear();
     saveFeaturesAction.mockResolvedValue({ ok: true });
-    const zapisane = ratingsFor(["A|L-A", "B|L-B"]);
+    const zapisane = ratingsFor([
+      "306401_1.0006.12/3|L-306401_1.0006.12/3",
+      "306401_1.0006.12/4|L-306401_1.0006.12/4",
+    ]);
     renderStep({ comparableRatings: zapisane });
     expect(card().textContent).toContain("oceniono 2 z 2");
 
@@ -305,7 +321,11 @@ describe("StepFeatures — lokale o cenie skrajnej (ADR-022, makieta 7)", () => 
   });
 
   it("zapisane oceny pod żywym kluczem wracają zaznaczone (tryb edycji)", () => {
-    renderStep({ comparableRatings: { "A|L-A": { "standard-wykonczenia": "gorsza" } } });
+    renderStep({
+      comparableRatings: {
+        "306401_1.0006.12/3|L-306401_1.0006.12/3": { "standard-wykonczenia": "gorsza" },
+      },
+    });
     const g = group(0, "Standard wykończenia", "najwyższej");
     expect(
       within(g)

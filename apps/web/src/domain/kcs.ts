@@ -124,6 +124,27 @@ export type Comparable = {
   status?: ProvenanceStatus;
 };
 
+/**
+ * A comparable row's identity BY CONTENT — the three fields the appraiser
+ * reads off the row (month, area, unit price), ignoring the fetched id
+ * entirely. One definition of "the same row by content", shared by every
+ * caller that must not lean on `transactionId`:
+ * - `promoteStoredRcnRows`/`comparableKey` (`domain/valuation.ts`) — dropping
+ *   the id is the move being caught, so it cannot be part of the comparison;
+ * - the rating key of a hand-typed extreme-priced flat
+ *   (`lokalOfRow`, `domain/extremes.ts`) — such a row has no id at all, and
+ *   its POSITION in the sample is not an identity (see the docstring over
+ *   `comparableKey`).
+ *
+ * Lives here, next to {@link Comparable} itself, rather than in either
+ * caller: `valuation.ts` already imports `extremes.ts`, so exporting it from
+ * there would close an import cycle through a module that documents itself as
+ * a leaf.
+ */
+export function comparableContentKey(c: Comparable): string {
+  return `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
+}
+
 /** One band of a measurable scale; whole numbers, an absent edge is unbounded on that side. */
 export type MeasureBound = { od?: number; do?: number };
 

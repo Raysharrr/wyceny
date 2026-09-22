@@ -7,7 +7,8 @@ import {
   OCENA_SPOZA_REJESTRU,
 } from "../src/domain/document-model";
 import { PIETRO_PRZEDMIOTU, wycena1409Anon } from "./fixtures/wycena-1409-anon";
-import { computeKcs, type KcsInput } from "../src/domain/kcs";
+import { computeKcs, type FeatureRating, type KcsInput } from "../src/domain/kcs";
+import { extremeLokale } from "../src/domain/extremes";
 import { computeKcsOnScale } from "../src/domain/feature-rules";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 import { FEATURE_PRESETS } from "../src/domain/feature-presets";
@@ -513,6 +514,89 @@ describe("document model — §12.2 z ocen rzeczoznawcy (ADR-022)", () => {
     // Cmax siedzi na kondygnacji 4, czyli 3. piętrze → progi mówią „pośrednia”.
     expect(opisu("Położenie na piętrze")).toBe("wartość pośrednia cechy");
     expect(opisu("Lokalizacja szczegółowa")).toBe(OCENA_SPOZA_REJESTRU);
+  });
+
+  /**
+   * F2 z recenzji całości bloku: warunek „ocena liczy się TYLKO na poziomie
+   * OPISANYM” (`describedLevels(feature).includes(rating)` w
+   * `comparableFeatureText`) nie miał żadnego testu — ani po stronie bramki,
+   * ani po stronie dokumentu. Cecha MIERZALNA jest tu jedynym nośnikiem:
+   * dla cechy BEZ progów siatką jest `ratingPosition`, które i tak zwraca
+   * `null` dla poziomu bez definicji, więc mutacja przez nią przechodzi.
+   *
+   * „Powierzchnia użytkowa” w wariancie `jak_zgloszono` ma skalę
+   * DWUPOZIOMOWĄ z mediany próby (do 43 m² / od 44 m²), więc `przecietna`
+   * jest poziomem NIEOPISANYM. Ocena na takim poziomie nie liczy się jak
+   * ocena: model spada na progi i dla Cmaxa (41,70 m² → „do 43 m²”) drukuje
+   * wartość najwyższą — zdanie, którego rzeczoznawca nie wybrał, ale wprost
+   * wyprowadzone z rejestru (spec §4.4). §12.2 renderuje się PRZED
+   * zatwierdzeniem, więc B-18 nie jest tu siatką.
+   */
+  describe("ocena liczy się tylko na poziomie opisanym — cecha mierzalna (F2)", () => {
+    const powierzchnia = (rating: FeatureRating) =>
+      opis(withRatings({ [CMAX]: { "powierzchnia-uzytkowa": rating } }), "Powierzchnia użytkowa");
+
+    it("ocena „przeciętna” na skali dwupoziomowej nie jest oceną — model wraca do progów", () => {
+      expect(powierzchnia("przecietna")).toBe("wartość najwyższa cechy");
+    });
+
+    it("ocena „gorsza” (poziom opisany) wygrywa z progami i drukuje najniższą", () => {
+      expect(powierzchnia("gorsza")).toBe("wartość najniższa cechy");
+    });
+
+    it("ocena „lepsza” (poziom opisany) drukuje najwyższą", () => {
+      expect(powierzchnia("lepsza")).toBe("wartość najwyższa cechy");
+    });
+  });
+
+  /**
+   * F1 z recenzji całości bloku. Wiersz dopisany ręcznie w kroku 3 nie ma
+   * żadnego identyfikatora, więc jego klucz ocen musi wynikać z TREŚCI
+   * wiersza — nigdy z pozycji w próbie. Scenariusz recenzenta: próba z
+   * rejestru z dwoma wierszami ręcznymi (X najdroższy, Y najtańszy), oceny
+   * wystawione w kroku 4, potem usunięcie WCZEŚNIEJSZEGO wiersza z rejestru.
+   * Pod kluczem pozycyjnym Cmin drukował wtedy ocenę wystawioną Cmaxowi —
+   * zdanie przypisane nie temu lokalowi, w dokumencie o skutkach prawnych.
+   */
+  it("usunięcie wcześniejszego wiersza próby nie przepina ocen wierszy ręcznych (F1)", () => {
+    const RECZNY = { source: "manual" as const, status: "confirmed" as const };
+    const X = { date: "2026-04", area: 40, pricePerM2: 20_000, ...RECZNY };
+    const Y = { date: "2026-05", area: 60, pricePerM2: 3_000, ...RECZNY };
+    const zRejestru = wycena1409Anon().inputs.comparables;
+    const zProba = (comparables: KcsInput["comparables"]) => {
+      const v = wycena1409Anon();
+      v.inputs.comparables = comparables;
+      v.kcs = computeKcs(v.inputs);
+      return v;
+    };
+
+    // Krok 4 zapisuje oceny pod kluczami lokali skrajnych BIEŻĄCEJ próby.
+    const przed = zProba([...zRejestru.slice(0, 4), X, Y]);
+    const klucz = (side: "min" | "max") =>
+      extremeLokale(przed.inputs).find((l) => l.side === side)!.key;
+    const ratings: KcsInput["comparableRatings"] = {
+      [klucz("max")]: { "standard-wykonczenia": "lepsza" },
+      [klucz("min")]: { "standard-wykonczenia": "gorsza" },
+    };
+
+    // Krok 3: rzeczoznawca wyrzuca wiersz WCZEŚNIEJSZY niż oba ręczne.
+    const po = zProba([...zRejestru.slice(1, 4), X, Y]);
+    po.inputs.comparableRatings = ratings;
+    const m = buildDocumentModel(po);
+    const standard = (cechy: { nazwa: string; opis: string }[]) =>
+      cechy.find((c) => c.nazwa === "Standard wykończenia")!.opis;
+
+    // Model dokumentu nie niesie cen lokali skrajnych (F-12), więc kontrolę
+    // „to wciąż te dwa wiersze ręczne” robimy na wejściu, nie na wyjściu.
+    const skrajne = extremeLokale(po.inputs);
+    expect(skrajne.map((l) => [l.side, l.pricePerM2])).toEqual([
+      ["max", X.pricePerM2],
+      ["min", Y.pricePerM2],
+    ]);
+    expect(m.lokale_cmax).toHaveLength(1);
+    expect(m.lokale_cmin).toHaveLength(1);
+    expect(standard(m.lokale_cmax[0].cechy)).toBe("wartość najwyższa cechy");
+    expect(standard(m.lokale_cmin[0].cechy)).toBe("wartość najniższa cechy");
   });
 
   it("klucz lokalu nigdy nie trafia do modelu dokumentu (F-12)", () => {

@@ -1,3 +1,4 @@
+import { comparableContentKey } from "./kcs";
 import type {
   Comparable,
   ComparableRatings,
@@ -22,8 +23,14 @@ export type ExtremeSide = "min" | "max";
 export type ExtremeLokal = {
   /**
    * Klucz ocen w `inputs.comparableRatings`: `candidateKey` (transactionId|lokalId)
-   * dla wierszy z rejestru; `manual:<indeks>` dla wiersza wpisanego ręcznie,
-   * który nie ma tożsamości poza pozycją w próbie.
+   * dla wierszy z rejestru; `manual:<data|powierzchnia|cena>` (`comparableContentKey`)
+   * dla wiersza wpisanego ręcznie, który nie ma żadnego identyfikatora.
+   *
+   * NIGDY pozycja w tablicy `comparables`. Pozycja nie jest tożsamością:
+   * usunięcie wcześniejszego wiersza w kroku 3 przesuwa indeks, a mapa ocen
+   * zostaje nietknięta — §12.2 wydrukowałby wtedy dla jednego lokalu ocenę,
+   * którą rzeczoznawca wystawił INNEMU (recenzja całości bloku, F1). Ta sama
+   * reguła, z tego samego powodu, rządzi `comparableKey` w `domain/valuation.ts`.
    */
   key: string;
   comparable: Comparable;
@@ -71,16 +78,14 @@ export function candidateOf(
   return { candidate, matched };
 }
 
-function lokalOfRow(
-  comparable: Comparable,
-  index: number,
-  selection: KcsInput["sampleSelection"],
-): ExtremeLokal {
+function lokalOfRow(comparable: Comparable, selection: KcsInput["sampleSelection"]): ExtremeLokal {
   const join = candidateOf(comparable, selection);
   return {
     key: comparable.transactionId
       ? candidateKey({ transactionId: comparable.transactionId, lokalId: comparable.lokalId ?? "" })
-      : `manual:${index}`,
+      : // ponytail: dwa wiersze ręczne o identycznej dacie|powierzchni|cenie dzielą
+        // ocenę; trwały id wiersza, jeśli to kiedyś zaboli.
+        `manual:${comparableContentKey(comparable)}`,
     comparable,
     candidate: join?.matched ? join.candidate : null,
     pricePerM2: comparable.pricePerM2,
@@ -92,7 +97,7 @@ export function extremeComparables(
   inputs: Pick<KcsInput, "comparables" | "sampleSelection">,
 ): Extremes {
   if (inputs.comparables.length === 0) return { min: [], max: [] };
-  const rows = inputs.comparables.map((c, i) => lokalOfRow(c, i, inputs.sampleSelection));
+  const rows = inputs.comparables.map((c) => lokalOfRow(c, inputs.sampleSelection));
   const prices = rows.map((r) => r.pricePerM2);
   const lowest = Math.min(...prices);
   const highest = Math.max(...prices);

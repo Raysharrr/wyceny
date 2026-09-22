@@ -2,7 +2,13 @@ import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers, formatDatePl } from "./document-model";
 import { computeKcsOnScale, describedLevels, featureIssues, kcsReady } from "./feature-rules";
 import { extremeLokale } from "./extremes";
-import { isRegistrySourced, type Comparable, type ComparableRatings, type KcsInput } from "./kcs";
+import {
+  comparableContentKey,
+  isRegistrySourced,
+  type Comparable,
+  type ComparableRatings,
+  type KcsInput,
+} from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
@@ -329,16 +335,6 @@ export function applyProseConfirmation(
  */
 function comparableKey(c: Comparable): string {
   return c.transactionId || comparableContentKey(c);
-}
-
-/**
- * The same key built from the three fields the appraiser reads off the row,
- * ignoring the fetched id entirely — what {@link promoteStoredRcnRows}
- * matches on. The id cannot be part of that comparison, because dropping it
- * is the move being caught. One definition of "the same row by content".
- */
-function comparableContentKey(c: Comparable): string {
-  return `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
 }
 
 /**
