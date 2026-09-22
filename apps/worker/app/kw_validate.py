@@ -3,13 +3,16 @@
 the operat preview, never a gate (ADR-021: the paste or upload is the
 appraiser's confirmation; web stores the content whatever the verdict).
 
-Rules follow the kind of book (`naglowek.rodzajKsiegi`): a unit's book gets
-every rule; a land book (and any other kind) only the ones that hold for it —
-check digits, PESEL, `brakWpisow`, separator rows, Rep. A. The unit-field rules
-(`kwLokalu`, `kwGruntu`, `numerLokalu`, `udzial`) gave three false positives on
-a land book in the spike of 21.09. A book pasted tab by tab may lack sections:
-each missing one is `dzialy_niekompletne`, and a rule reading a section that is
-not there is skipped rather than cascading.
+Rules follow the kind of book (`naglowek.rodzajKsiegi`), and the reduced set is
+opt-in: ONLY a book whose kind names the land gets it — check digits, PESEL,
+`brakWpisow`, separator rows, Rep. A. Every other kind, INCLUDING a missing one,
+is judged in full. The unit-field rules (`kwLokalu`, `kwGruntu`, `numerLokalu`,
+`udzial`) gave three false positives on a land book in the spike of 21.09, but
+dropping them on a book of unknown kind would silently retire the only automatic
+guard of fidelity on today's production path — a visible false `ok: false` beats
+a silent gap. A book pasted tab by tab may lack sections: each missing one is
+`dzialy_niekompletne`, and a rule reading a section that is not there is skipped
+rather than cascading.
 
 The verdict judges and never corrects. Error classes carry NO values (F-13) —
 they end up in logs and in the answer — only a class and, where the rule points
@@ -49,11 +52,14 @@ _REP_CORE_RE = re.compile(r"\d+/\d+")
 DZIALY = ("I-O", "I-Sp", "II", "III", "IV")
 
 
-def is_unit_book(rodzaj: str | None) -> bool:
-    """„LOKAL STANOWIĄCY ODRĘBNĄ NIERUCHOMOŚĆ" and the like. An unknown or
-    missing kind gets the reduced rules — a wrong `ok: false` on a land book is
-    exactly the defect this branch removes."""
-    return rodzaj is not None and "LOKAL" in rodzaj.upper()
+def is_land_book(rodzaj: str | None) -> bool:
+    """True only when the kind explicitly names the land. eKW writes it three
+    ways — „NIERUCHOMOŚĆ GRUNTOWA", „GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE" and
+    that one plus a building — so the shared core is „GRUNT", not „GRUNTOW": the
+    middle form has no „GRUNTOWA" in it. No unit kind contains „GRUNT", so the
+    test never fires the other way. A missing or unknown kind is NOT a land book
+    and keeps every rule (user decision 22.09)."""
+    return rodzaj is not None and "GRUNT" in rodzaj.upper()
 
 
 def kw_check_digit_ok(number: str) -> bool:
@@ -134,7 +140,7 @@ def validate(tresc: KsiegaTresc) -> Walidacja:
                         if any(not pesel_ok(p) for p in _PESEL_RE.findall(value)):
                             fail("pesel_suma", kod)
 
-    if is_unit_book(tresc.naglowek.rodzajKsiegi):
+    if not is_land_book(tresc.naglowek.rodzajKsiegi):
         if {"I-O", "I-Sp"} <= present:
             kw_gruntu_i_o = _loose(_rubric_value(tresc, "I-O", "przyłączenie"))
             kw_gruntu_i_sp = _loose(_rubric_value(tresc, "I-Sp", "numer księgi wieczystej"))

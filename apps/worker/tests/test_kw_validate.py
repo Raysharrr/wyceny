@@ -274,24 +274,56 @@ def test_the_synthetic_land_book_is_valid():
     assert walidacja.bledy == []
 
 
-def test_the_land_book_would_fail_the_unit_rules_so_only_the_branch_keeps_it_green():
-    """Control for the mutation "drop the branch on rodzajKsiegi": the same book
-    labelled as a unit's trips exactly the spike's false positives."""
+@pytest.mark.parametrize(
+    "rodzaj",
+    [
+        "NIERUCHOMOŚĆ GRUNTOWA",
+        "GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE",
+        "GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE I BUDYNEK STANOWIĄCY ODRĘBNĄ NIERUCHOMOŚĆ",
+    ],
+)
+def test_every_form_of_a_land_book_skips_the_unit_field_rules(rodzaj):
+    """All three spellings eKW uses for a land book share the core "GRUNT" — the
+    one in the middle has no "GRUNTOWA" in it, which is why the discriminator
+    cannot key on that longer form."""
     doc = grunt()
-    doc["naglowek"]["rodzajKsiegi"] = sample()["naglowek"]["rodzajKsiegi"]
+    doc["naglowek"]["rodzajKsiegi"] = rodzaj
+    assert klasy(doc) == set()
+
+
+@pytest.mark.parametrize(
+    "rodzaj",
+    [
+        None,
+        "LOKAL STANOWIĄCY ODRĘBNĄ NIERUCHOMOŚĆ",
+        "SPÓŁDZIELCZE WŁASNOŚCIOWE PRAWO DO LOKALU",
+    ],
+)
+def test_anything_that_is_not_a_land_book_keeps_the_unit_rules(rodzaj):
+    """Control for the mutation "an unknown kind goes to the reduced set": the land
+    fixture labelled as anything but a land book trips the spike's false positives.
+    A missing kind is deliberately on this side — silently dropping four field
+    rules on a unit book is worse than a false `ok: false` we can see."""
+    doc = grunt()
+    doc["naglowek"]["rodzajKsiegi"] = rodzaj
     assert klasy(doc) == {
         ("pole_niezgodne:kwGruntu", None),
         ("pole_niezgodne:kwLokalu", None),
     }
 
 
-@pytest.mark.parametrize(
-    "rodzaj", ["NIERUCHOMOŚĆ GRUNTOWA", "GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE", None]
-)
-def test_any_kind_but_a_unit_skips_the_unit_field_rules(rodzaj):
-    doc = grunt()
-    doc["naglowek"]["rodzajKsiegi"] = rodzaj
-    assert klasy(doc) == set()
+def test_a_unit_book_without_the_kind_header_still_catches_its_field_mismatches():
+    """The kind is the one header the model can drop, and it used to take four
+    field rules with it. A unit book with no kind is still judged in full."""
+    doc = sample()
+    doc["naglowek"]["rodzajKsiegi"] = None
+    doc["polaDodatkowe"]["numerLokalu"] += "1"
+    doc["polaDodatkowe"]["kwLokalu"] = other_digit(doc["polaDodatkowe"]["kwLokalu"])
+    assert klasy(doc) == {
+        ("kw_cyfra_kontrolna:kwLokalu", None),
+        ("pole_niezgodne:kwLokalu", None),
+        ("pole_niezgodne:numerLokalu", "I-O"),
+    }
 
 
 def test_the_unit_book_keeps_all_its_rules():
