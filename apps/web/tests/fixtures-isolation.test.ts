@@ -49,6 +49,10 @@ describe("izolacja fikstur — żadna fabryka nie wydaje cudzych obiektów", () 
     ["wycena1409Anon()", () => wycena1409Anon()],
     ["wycena1409Anon({ kw })", () => wycena1409Anon({ kw: "odpis_z_wpisem_dzial_iii" })],
     [
+      "wycena1409Anon({ kw: pdf_obu_ksiag_z_trescia })",
+      () => wycena1409Anon({ kw: "pdf_obu_ksiag_z_trescia" }),
+    ],
+    [
       "wycena1409Anon({ skalaPowierzchni })",
       () => wycena1409Anon({ skalaPowierzchni: "poprawiona" }),
     ],

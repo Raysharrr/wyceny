@@ -1,4 +1,4 @@
-import type { EncumbranceTreatment, KwGruntSnapshot, KwSnapshot } from "./kw-snapshot";
+import type { EncumbranceTreatment, KwGruntSnapshot, KwSnapshot, KwSource } from "./kw-snapshot";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 
 /**
@@ -41,17 +41,25 @@ export type KwExamination = Pick<KwSnapshot, "source" | "kwLokalu" | "dewelopers
   Partial<Pick<KwSnapshot, "dataBadania" | "dzial3" | "dzial4">>;
 
 /**
- * A book counts as examined when it was read (a PDF excerpt or eKW by hand —
- * a deed is not a book), it has a number, the appraiser recorded WHEN they
+ * A book counts as examined when it was read (a PDF excerpt, content pasted
+ * out of eKW, or — for snapshots saved before ADR-021 — eKW read by hand; a
+ * deed is not a book), it has a number, the appraiser recorded WHEN they
  * read it, and both dzialy were answered. `dzialN == null` means the
  * Brak wpisów / Są wpisy question was never answered, which is exactly the
  * hole the 14.09 operat fell into: it described a dział III nobody had looked
  * at. An `akt` never satisfies this — it is a deed, not the register.
  */
+/**
+ * Źródła, które są BADANIEM księgi: odczyt jej treści (PDF, wklejenie z eKW)
+ * albo lektura w eKW sprzed ADR-021. Akt to nie rejestr.
+ */
+const ZRODLA_BADANIA: ReadonlyArray<KwSource> = ["odpis_kw", "ekw_wklej", "ekw_reczne"];
+const zrodloZbadane = (source: KwSource) => ZRODLA_BADANIA.includes(source);
+
 function ksiegaLokaluZbadana(kw: KwExamination | null | undefined): boolean {
   return (
     kw != null &&
-    (kw.source === "odpis_kw" || kw.source === "ekw_reczne") &&
+    zrodloZbadane(kw.source) &&
     !!kw.kwLokalu &&
     !!kw.dataBadania &&
     kw.dzial3 != null &&
@@ -59,10 +67,11 @@ function ksiegaLokaluZbadana(kw: KwExamination | null | undefined): boolean {
   );
 }
 
-/** Same rule for the mother book; its `source` is manual-only in paczka 1. */
+/** Ta sama reguła dla księgi macierzystej — od ADR-021 ma te same kanały co lokal. */
 function ksiegaGruntuZbadana(kwGrunt: KwGruntSnapshot | null | undefined): boolean {
   return (
     kwGrunt != null &&
+    zrodloZbadane(kwGrunt.source) &&
     !!kwGrunt.nrKsiegi &&
     !!kwGrunt.dataBadania &&
     kwGrunt.dzial3 != null &&

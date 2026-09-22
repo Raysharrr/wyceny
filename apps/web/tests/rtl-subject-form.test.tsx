@@ -132,34 +132,55 @@ describe("SubjectForm — validation", () => {
 });
 
 describe("SubjectForm — edit mode KW init", () => {
+  const zMigawka = (patch: Partial<FormInput> = {}): Partial<FormInput> => ({
+    address: "ul. Kościelna 33, Poznań",
+    area: "69.56",
+    purpose: "sprzedaz" as never,
+    client: "Jan Kowalski",
+    kw: {
+      source: "akt",
+      kwLokalu: "AB1C/1/9",
+      kwGruntu: "AB1C/2/7",
+      kwInne: [],
+      deweloperski: false,
+      powUzytkowaKw: 69.56,
+      udzial: null,
+      sad: null,
+      wydzial: null,
+      dataDokumentu: null,
+      dzial3: null,
+      dzial4: null,
+    },
+    ...patch,
+  });
+
+  /** Ślad odczytu pól — `/kw-extract` zapisuje go przy każdym powodzeniu. */
+  const KW_META = {
+    model: "gpt-4o",
+    extractedAt: "2026-09-22T08:00:00.000Z",
+    docTypeDetected: "akt" as const,
+    docTypeDeclared: "akt" as const,
+  };
+
   it("seeds kwSource/kwState from defaults.kw with a done summary", () => {
-    const defaults: Partial<FormInput> = {
-      address: "ul. Kościelna 33, Poznań",
-      area: "69.56",
-      purpose: "sprzedaz" as never,
-      client: "Jan Kowalski",
-      kw: {
-        source: "akt",
-        kwLokalu: "AB1C/1/9",
-        kwGruntu: "AB1C/2/7",
-        kwInne: [],
-        deweloperski: false,
-        powUzytkowaKw: 69.56,
-        udzial: null,
-        sad: null,
-        wydzial: null,
-        dataDokumentu: null,
-        dzial3: null,
-        dzial4: null,
-      },
-    };
-    render(<SubjectForm valuationId="val-1" defaults={defaults} />);
+    render(<SubjectForm valuationId="val-1" defaults={zMigawka({ kwMeta: KW_META } as never)} />);
     const status = screen.getByTestId("kw-fetch-status");
     // 2 KW numbers (kwLokalu + kwGruntu) + the extract's own area — mirrors
     // runKwExtraction's summary format (subject-form.tsx).
     expect(status.textContent).toContain("2 KW");
     expect(status.textContent).toContain("69,56");
     expect(status.textContent).toContain("do potwierdzenia");
+  });
+
+  /**
+   * F7: pasek opowiada o ODCZYCIE PÓL, którego kanał tekstowy nie robi.
+   * Migawka bez `kwMeta` pochodzi z samego przepisania treści — ponownie
+   * otwarty szkic ma wtedy wyglądać jak świeży formularz po tej samej
+   * operacji, czyli bez paska „Odczytano: 0 KW — do potwierdzenia".
+   */
+  it("migawka bez kwMeta (sama transkrypcja) nie pokazuje paska odczytu pól (F7)", () => {
+    render(<SubjectForm valuationId="val-2" defaults={zMigawka()} />);
+    expect(screen.queryByTestId("kw-fetch-status")).toBeNull();
   });
 });
 
@@ -180,6 +201,17 @@ describe("SubjectForm — legacy kw snapshot (Slice 12 Task 1 parity fix)", () =
       kw: {
         source: "odpis_kw",
         kwLokalu: "AB1C/1/9",
+      },
+      // `kwMeta` CELOWO obecne, choć migawka jest sprzed 11a: od F7 pasek
+      // odczytu pól wisi na tym śladzie, a bez niego inicjalizator wraca
+      // `idle` PRZED spreadem `...kw.kwInne` i ten strażnik przestałby pilnować
+      // crasha, o który mu chodzi. Odczyt pól zapisywał `kwMeta` także w
+      // Slice 10, więc ta fikstura jest tak samo realna jak poprzednia.
+      kwMeta: {
+        model: "gpt-4o",
+        extractedAt: "2026-07-18T00:00:00.000Z",
+        docTypeDetected: "odpis_kw",
+        docTypeDeclared: "odpis_kw",
       },
     } as unknown as KcsInput;
 
@@ -212,6 +244,37 @@ describe("SubjectForm — legacy kw snapshot (Slice 12 Task 1 parity fix)", () =
     const payload = call?.[1] as { kw?: { kwInne: string[]; deweloperski: boolean } };
     expect(payload.kw?.kwInne).toEqual([]);
     expect(payload.kw?.deweloperski).toBe(false);
+  });
+
+  /**
+   * Ta sama migawka sprzed 11a, ale bez `kwMeta` — czyli bez śladu odczytu
+   * pól. Formularz ma się wyrenderować i NIE pokazać paska „Odczytano" (F7).
+   */
+  it("migawka sprzed 11a bez kwMeta renderuje się bez paska odczytu pól (F7)", () => {
+    const legacyInputs = {
+      area: 61.2,
+      comparables: [],
+      features: [],
+      kw: { source: "odpis_kw", kwLokalu: "AB1C/1/9" },
+    } as unknown as KcsInput;
+
+    render(
+      <SubjectForm
+        valuationId="legacy-2"
+        defaults={step1DefaultsFromInputs({
+          address: "ul. Legacy 3, Poznań",
+          area: 61.2,
+          purpose: "sprzedaz",
+          propertyRight: "wlasnosc_lokalu",
+          kwNumber: null,
+          client: "Jan Legacy",
+          inputs: legacyInputs,
+        })}
+      />,
+    );
+
+    expect(screen.queryByTestId("kw-fetch-status")).toBeNull();
+    expect(screen.getByRole("button", { name: /dane się zgadzają — dalej/i })).toBeDefined();
   });
 });
 
@@ -305,6 +368,9 @@ describe("step1DefaultsFromInputs", () => {
       nrLokalu: null,
       akt: null,
       tresc: null,
+      // Tak samo werdykt walidacji (ADR-021): migawka sprzed niego nie ma go
+      // wcale, a formularz ma widzieć jawne „nie było transkrypcji”.
+      transkrypcja: null,
     });
     expect(defaults.kwMeta).toEqual(inputs.kwMeta);
   });

@@ -2,7 +2,8 @@ import type { Feature, KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { LEVEL_LABEL } from "./feature-presets";
 import { describedLevels, ratingPosition, type RatingPosition } from "./feature-rules";
 import { kwRequirements } from "./kw-requirements";
-import type { KwAkt, KwDzialSnapshot } from "./kw-snapshot";
+import { nazwyNiezgodnosci, type KartaKsiegi, type Niezgodnosc } from "./kw-niezgodnosci";
+import type { KwAkt, KwDzialSnapshot, KwWerdykt } from "./kw-snapshot";
 import type { KsiegaTresc } from "./kw-tresc";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { isPrzeznaczenieComplete } from "./przeznaczenie";
@@ -104,6 +105,8 @@ const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 const KW_ZRODLO_TEXT = {
   akt: "akt notarialny",
   odpis_kw: "odpis księgi wieczystej",
+  // Wklejenie z przeglądarki KW to lektura w eKW, tylko przepisana przez program.
+  ekw_wklej: "badanie księgi wieczystej w systemie eKW",
   ekw_reczne: "badanie księgi wieczystej w systemie eKW",
 } as const;
 
@@ -279,11 +282,16 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
         // Only an entry that eKW itself opened with "Lp. N." gets the row; a
         // single-entry table has `lp: null` and needs no opener.
         if (wpis.lp != null) {
+          // The nr podstawy wpisu is a NUMBER, so it rides the ordinal column
+          // (600 dxa) like the document row's does. It sat in the widest kol3
+          // before, which put a bare number where every other row carries the
+          // book's text, and left the ordinal column empty on the one row that
+          // had an ordinal to show.
           rows.push({
             typ: "lp",
             kol1: `Lp. ${wpis.lp}.`,
-            kol2: "",
-            kol3: wpis.nrPodstawyWpisu ?? "",
+            kol2: wpis.nrPodstawyWpisu ?? "",
+            kol3: "",
           });
         }
         for (const rubryka of wpis.rubryki) {
@@ -302,10 +310,22 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
       // dropped as chrome.
       const join = (line: string | null, opis: string | null) =>
         [line, opis].filter((p) => p != null && p !== "").join(" ");
+      // Split by COLUMN WIDTH, and the document is kept apart from the wniosek
+      // — they are two different facts the book states, not one sentence.
+      // The document name is long ("WYPIS Z REJESTRU GRUNTÓW I WYRYS Z MAPY
+      // EWIDENCYJNEJ; …"), so it takes kol1 (3400 dxa, where the rubryka
+      // labels already live); the nr podstawy wpisu is a number and takes the
+      // ordinal kol2 (600 dxa); the DZ. KW. wniosek takes the widest kol3.
+      // Putting the document text in kol2 was the review finding of 22.09:
+      // Word broke it three or four characters to a line.
+      //
+      // Every part joins with a space or KSIEGA_CELL_SEP, NEVER "\n": the
+      // render runs docxtemplater with `linebreaks: true`, so a newline would
+      // become a `<w:br/>` inside a justified paragraph — the D-30 defect class.
       rows.push({
         typ: "dokument",
-        kol1: dokument.nrPodstawyWpisu,
-        kol2: join(dokument.dokument, dokument.dokumentOpisPol),
+        kol1: join(dokument.dokument, dokument.dokumentOpisPol),
+        kol2: dokument.nrPodstawyWpisu,
         kol3: join(dokument.wniosek, dokument.wniosekOpisPol),
       });
     }
@@ -458,6 +478,35 @@ export type TransactionRow = {
   pow: string;
   cena_jedn: string;
 };
+
+/**
+ * PREVIEW ONLY — wiersz otwierający tabelę działów, gdy walidator odmówił
+ * poręczenia za treść (ADR-021 reg. 5: ostrzeżenie, nie blokada). Wiersz, nie
+ * osobny tag: nie wymaga slotu w szablonie, a `typ: "dzial"` drukuje go
+ * pogrubieniem na całą szerokość. W wydanym operacie nie istnieje — rzeczoznawca
+ * widział ostrzeżenie w kroku 1 i tutaj. Nazwy klas po polsku, nigdy wartości.
+ */
+export function previewMarkerRow(bledy: Niezgodnosc[], ksiega: KartaKsiegi): KsiegaRow {
+  return soleRow(
+    "dzial",
+    "[PODGLĄD: SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE] niezgodności: " +
+      `${nazwyNiezgodnosci(bledy, ksiega).join(", ")} ${DASH} porównaj pola i treść z księgą w kroku 1; ` +
+      "w wydanym operacie tego wiersza nie będzie.",
+  );
+}
+
+/** Wiersze §8.2 jednej księgi — obie księgi tą samą funkcją (R2); marker tylko pod `preview`. */
+function wierszeKsiegi(
+  book: { tresc?: KsiegaTresc | null; transkrypcja?: KwWerdykt | null } | null | undefined,
+  preview: boolean,
+  ksiega: KartaKsiegi,
+): KsiegaRow[] {
+  if (!book?.tresc) return [];
+  const rows = ksiegaRows(book.tresc);
+  return preview && book.transkrypcja?.ok === false
+    ? [previewMarkerRow(book.transkrypcja.bledy, ksiega), ...rows]
+    : rows;
+}
 
 /**
  * One row of §8.2's transcribed book. Three columns, because that is what the
@@ -624,6 +673,9 @@ export type DocumentModel = {
    */
   ksiega_lokalu_wiersze: KsiegaRow[];
   ma_tresc_lokalu: boolean;
+  /** Księga gruntu ma te same kanały i tę samą tabelę (ADR-021 reg. 6) — pusta lista i `false`, gdy nie było transkrypcji. */
+  ksiega_gruntu_wiersze: KsiegaRow[];
+  ma_tresc_gruntu: boolean;
   /** §8.2's sentences for the manual path — used when there is no transcription to quote. */
   dzial3_opis: string;
   dzial4_opis: string;
@@ -1121,10 +1173,12 @@ export function buildDocumentModel(
     // the sentence that needs none. A dash here would print "Dla nieruchomości
     // gruntowej — prowadzi księgę wieczystą nr …" — a broken sentence, not a
     // missing value.
-    sad_ksiegi_gruntu: kwReq.gruntZbadana ? (kw?.sad ?? "") : "",
+    sad_ksiegi_gruntu: kwReq.gruntZbadana ? (kwGrunt?.sad ?? kw?.sad ?? "") : "",
     ma_ksiege_gruntu: kwReq.gruntZbadana,
-    ksiega_lokalu_wiersze: kw?.tresc ? ksiegaRows(kw.tresc) : [],
+    ksiega_lokalu_wiersze: wierszeKsiegi(kw, opts?.preview === true, "lokal"),
     ma_tresc_lokalu: kw?.tresc != null,
+    ksiega_gruntu_wiersze: wierszeKsiegi(kwGrunt, opts?.preview === true, "grunt"),
+    ma_tresc_gruntu: kwGrunt?.tresc != null,
     dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),
     dzial4_opis: dzialOpis(kw?.dzial4, "Dział IV"),
     dzial3_opis_gruntu: dzialOpis(kwGrunt?.dzial3, "Dział III"),

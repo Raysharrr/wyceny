@@ -15,6 +15,15 @@ import {
   type KwGruntSnapshot,
   type KwSnapshot,
 } from "../src/domain/kw-snapshot";
+import type { KsiegaTresc } from "../src/domain/kw-tresc";
+
+/** Metryka odczytu `/kw-extract` — jej obecność JEST śladem, że dokument przeczytano. */
+const META = {
+  model: "claude-opus-5",
+  extractedAt: "2026-09-21T10:00:00.000Z",
+  docTypeDetected: "odpis_kw" as const,
+  docTypeDeclared: "odpis_kw" as const,
+};
 import { assignSubjectProvenance } from "../src/lib/assign-provenance";
 
 /** An upload-shaped snapshot: exactly the fields the extractor has always emitted. */
@@ -89,10 +98,15 @@ describe("normalizeKw — one implementation for all three sources", () => {
 });
 
 describe("a manual examination is the appraiser's own work (ADR-010 × ADR-018)", () => {
-  it("maps `ekw_reczne` to `rzeczoznawca` — the Shared Kernel never learns the new source", () => {
-    expect(kwProvenanceSource("ekw_reczne")).toBe("rzeczoznawca");
-    expect(kwProvenanceSource("odpis_kw")).toBe("odpis_kw");
-    expect(kwProvenanceSource("akt")).toBe("akt");
+  it("maps an examination with nothing read to `rzeczoznawca` — the Shared Kernel never learns the eKW sources", () => {
+    expect(kwProvenanceSource({ source: "ekw_reczne" })).toBe("rzeczoznawca");
+    // Sam wybór kanału to nie odczyt: karta „Wgraj PDF" bez pliku jest pracą
+    // własną rzeczoznawcy tak samo jak karta wklejania bez wklejenia (F1).
+    expect(kwProvenanceSource({ source: "odpis_kw" })).toBe("rzeczoznawca");
+    expect(kwProvenanceSource({ source: "akt" })).toBe("rzeczoznawca");
+    // Ślad odczytu przywraca nazwę dokumentu, każdemu źródłu jego własną.
+    expect(kwProvenanceSource({ source: "odpis_kw" }, META)).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "akt" }, META)).toBe("akt");
   });
 
   it("enters `rzeczoznawca/confirmed`, not `to_verify` against a document nobody holds", () => {
@@ -105,25 +119,29 @@ describe("a manual examination is the appraiser's own work (ADR-010 × ADR-018)"
   });
 
   it("an uploaded excerpt keeps its document provenance (no regression)", () => {
+    // `kwMeta` jak w produkcji: udany odczyt pól zawsze ją zapisuje
+    // (`setValue("kwMeta", result.meta)`), a od F1 to ona — nie sam `source` —
+    // odróżnia przeczytany odpis od numeru wpisanego na karcie „Wgraj PDF".
     const p = assignSubjectProvenance({
       area: 44.23,
       kw: normalizeKw(uploaded),
-      kwMeta: undefined,
+      kwMeta: META,
     });
     expect(p.kw).toEqual({ source: "odpis_kw", status: "to_verify" });
     expect(p.area).toEqual({ source: "odpis_kw", status: "to_verify" });
   });
 });
 
-describe("normalizeKwGrunt", () => {
-  const grunt: KwGruntSnapshot = {
-    source: "ekw_reczne",
-    nrKsiegi: "  PO1P/2/4 ",
-    dataBadania: " 2026-09-15 ",
-    dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu", ""] },
-    dzial4: null,
-  };
+/** Migawka gruntu sprzed ADR-021 — pięć pól, używana w dwóch `describe`. */
+const grunt: KwGruntSnapshot = {
+  source: "ekw_reczne",
+  nrKsiegi: "  PO1P/2/4 ",
+  dataBadania: " 2026-09-15 ",
+  dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu", ""] },
+  dzial4: null,
+};
 
+describe("normalizeKwGrunt", () => {
   it("trims the number and the date, filters the dzial lines, keeps `null` as `null`", () => {
     expect(normalizeKwGrunt(grunt)).toEqual({
       source: "ekw_reczne",
@@ -138,5 +156,109 @@ describe("normalizeKwGrunt", () => {
     const out = normalizeKwGrunt({ ...grunt, dzial3: null });
     expect(out.dzial3).toBeNull();
     expect(out.dzial3).not.toEqual({ wpisy: false, tresc: [] });
+  });
+});
+
+describe("ADR-021: ekw_wklej i werdykt przy migawce", () => {
+  it("o proweniencji decyduje odczyt, nie kanał karty (decyzja koordynatora 22.09)", () => {
+    const werdykt = {
+      ok: true,
+      bledy: [],
+      kanal: "tekst" as const,
+      plikow: 0,
+      at: "2026-09-21T10:00:00.000Z",
+    };
+    const tresc = { naglowek: {}, dzialy: [], polaDodatkowe: {} } as unknown as KsiegaTresc;
+    // Karta stała na kanale wklejania, ale nic nie przepisano: pola wpisał
+    // człowiek, więc są jego własną pracą.
+    expect(kwProvenanceSource({ source: "ekw_wklej" })).toBe("rzeczoznawca");
+    // Przepisane — czy to werdykt, czy sama treść — wchodzi jak dokument.
+    expect(kwProvenanceSource({ source: "ekw_wklej", transkrypcja: werdykt })).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "ekw_wklej", tresc })).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "ekw_reczne", tresc })).toBe("odpis_kw");
+    // Odczyt samych pól bez transkrypcji też jest odczytem: PDF był w ręku,
+    // więc odpis zostaje dokumentem, choćby transkrypcja padła.
+    expect(kwProvenanceSource({ source: "odpis_kw" }, META)).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "akt" }, META)).toBe("akt");
+  });
+
+  it("F1: numer wpisany ręcznie na karcie „Wgraj PDF”, bez pliku → rzeczoznawca/confirmed", () => {
+    const kw = normalizeKw({ ...uploaded, source: "odpis_kw", powUzytkowaKw: 44.23 });
+    const p = assignSubjectProvenance({ area: 44.23, kw, kwMeta: undefined });
+    expect(p.kw).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+    expect(p.area).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+  });
+
+  it("numer i powierzchnia wpisane na kanale wklejania BEZ transkrypcji → rzeczoznawca/confirmed", () => {
+    const kw = normalizeKw({ ...uploaded, source: "ekw_wklej", powUzytkowaKw: 44.23 });
+    const p = assignSubjectProvenance({ area: 44.23, kw, kwMeta: undefined });
+    expect(p.kw).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+    expect(p.area).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+  });
+
+  it("ta sama karta PO transkrypcji → odpis_kw/to_verify, potwierdzane zapisem kroku 1", () => {
+    const tresc = { naglowek: {}, dzialy: [], polaDodatkowe: {} } as unknown as KsiegaTresc;
+    const kw = normalizeKw({
+      ...uploaded,
+      source: "ekw_wklej",
+      powUzytkowaKw: 44.23,
+      tresc,
+      transkrypcja: {
+        ok: true,
+        bledy: [],
+        kanal: "tekst",
+        plikow: 0,
+        at: "2026-09-21T10:00:00.000Z",
+      },
+    });
+    const p = assignSubjectProvenance({ area: 44.23, kw, kwMeta: undefined });
+    expect(p.kw).toEqual({ source: "odpis_kw", status: "to_verify" });
+    expect(p.area).toEqual({ source: "odpis_kw", status: "to_verify" });
+  });
+
+  it("normalizeKw przenosi werdykt bez zmian — klasy i kody działów, nigdy wartości", () => {
+    const werdykt = {
+      ok: false,
+      bledy: [{ klasa: "pole_niezgodne:udzial", dzial: "I-Sp" }],
+      kanal: "tekst" as const,
+      plikow: 0,
+      at: "2026-09-21T10:00:00.000Z",
+    };
+    expect(
+      normalizeKw({ ...uploaded, source: "ekw_wklej", transkrypcja: werdykt }).transkrypcja,
+    ).toEqual(werdykt);
+  });
+
+  it("normalizeKwGrunt przycina sąd i wydział i NIE gubi treści ani werdyktu (R2)", () => {
+    const tresc = { naglowek: {}, dzialy: [], polaDodatkowe: {} } as unknown as KsiegaTresc;
+    const out = normalizeKwGrunt({
+      ...grunt,
+      source: "ekw_wklej",
+      sad: "  Sąd Rejonowy w Testowie ",
+      wydzial: " ",
+      tresc,
+      transkrypcja: {
+        ok: true,
+        bledy: [],
+        kanal: "tekst",
+        plikow: 0,
+        at: "2026-09-21T10:00:00.000Z",
+      },
+    });
+    expect(out.source).toBe("ekw_wklej");
+    expect(out.sad).toBe("Sąd Rejonowy w Testowie");
+    expect(out.wydzial).toBeNull();
+    expect(out.tresc).toBe(tresc);
+    expect(out.transkrypcja?.ok).toBe(true);
+  });
+
+  it("stara migawka gruntu bez nowych pól normalizuje się bez zmian (odczyt legacy)", () => {
+    expect(normalizeKwGrunt(grunt)).toEqual({
+      source: "ekw_reczne",
+      nrKsiegi: "PO1P/2/4",
+      dataBadania: "2026-09-15",
+      dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu"] },
+      dzial4: null,
+    });
   });
 });

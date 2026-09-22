@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { rateAllFeatures } from "./pages/wizard";
+import { SubjectStep, rateAllFeatures } from "./pages/wizard";
+import { atrapaTranskrypcji, tekstZakladek } from "./support/kw-transcribe-route";
 
 // Offline smoke: manual-entry paths only (the RCN fetch needs live GUGiK).
 // The admin password is read from the SAME variable the seed script uses
@@ -30,15 +31,10 @@ async function createDraftStep1(page: import("@playwright/test").Page) {
   await page.locator("#area").fill("54.3");
   await page.locator("#purpose").selectOption("sprzedaz");
   await page.locator("#client").fill("p. Test Testowy");
-  // ADR-018: both books examined, manually — without it step 7 blocks on B-06
-  // no matter how complete the rest of the draft is.
-  await page.locator("#kw-lokalu").fill("KW-TEST-1");
-  await page.locator("#kw-gruntu").fill("KW-TEST-2");
-  await page.locator("#kwg-nr").fill("KW-TEST-2");
-  for (const group of await page.getByRole("radiogroup", { name: /^Dział I(II|V)/ }).all()) {
-    await group.getByRole("radio", { name: "Brak wpisów" }).click();
-  }
-  await expect(page.getByText(/Zbadane księgi: 2 z 2/)).toBeVisible();
+  // ADR-021: obie księgi zbadane przez PRZEPISANIE treści (atrapa
+  // /kw-transcribe w przeglądarce) — bez tego krok 7 blokuje na B-06,
+  // niezależnie od tego, jak kompletny jest reszta szkicu.
+  await new SubjectStep(page).examineBooks({ kwLokalu: "KW-TEST-1", kwGruntu: "KW-TEST-2" });
   // M-10: §9 nazywa dokument, z którego odczytano przeznaczenie. Bez kompletu
   // pięciu części B-02 nie wypuści operatu, a §9 nie wydrukuje o przeznaczeniu
   // nic — dokładnie to zgłosiła Aneta 14.09.
@@ -136,6 +132,32 @@ test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", asy
   expect(pdfResponse.status()).toBe(200);
   expect((await pdfResponse.body()).subarray(0, 5).toString()).toBe("%PDF-");
   await expect(page.getByRole("link", { name: "Pobierz DOCX", exact: true })).toBeVisible();
+});
+
+/**
+ * Wariant NEGATYWNY reguły rodzaju księgi (S3d): księga LOKALU wklejona na
+ * kartę gruntu. Poza testami RTL ta ścieżka nie miała pokrycia — a to właśnie
+ * ona przewróciła smoke, gdy atrapa podawała obu kartom tę samą księgę.
+ * Werdykt jest OSTRZEŻENIEM, nie blokadą (ADR-021 reg. 5): treść zostaje,
+ * baner nazywa niezgodność, zielonej linii nie ma.
+ */
+test("karta gruntu ostrzega, gdy wklejono na nią księgę lokalu", async ({ page }) => {
+  await login(page);
+  await atrapaTranskrypcji(page, "ok", "lokal");
+  await page.goto("/valuations/new");
+  await page.getByTestId("kw-wklej-grunt").fill(tekstZakladek(undefined, "lokal"));
+  await page.getByTestId("kw-przepisz-grunt").click();
+
+  const karta = page.getByTestId("kw-book-grunt");
+  await expect(karta.getByTestId("kw-werdykt-grunt")).toContainText(
+    "rodzaj księgi (treść nie opisuje nieruchomości gruntowej, a to karta księgi gruntu)",
+    { timeout: 30_000 },
+  );
+  await expect(karta.getByText("Sprawdź, czy wklejono właściwą księgę.")).toBeVisible();
+  // Zielonej linii nie ma: sprawdzenie treści nie wypadło pomyślnie.
+  await expect(karta.getByTestId("kw-transcribe-status")).toHaveCount(0);
+  // Treść jednak przepisana — ostrzeżenie, nie blokada: numer z nagłówka wszedł.
+  await expect(page.locator("#kwg-nr")).not.toHaveValue("");
 });
 
 // T-22: the tools screens rendered by a REAL server. Both the crossroads and

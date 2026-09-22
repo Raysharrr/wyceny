@@ -190,6 +190,12 @@ describe("createDraft", () => {
           dzial3: null,
           dzial4: null,
         },
+        kwMeta: {
+          model: "claude-opus-5",
+          extractedAt: "2026-07-14T09:00:00.000Z",
+          docTypeDetected: "odpis_kw",
+          docTypeDeclared: "odpis_kw",
+        },
       }),
     ).rejects.toThrow("REDIRECT:/valuations/draft-2?step=2");
 
@@ -229,6 +235,18 @@ describe("createDraft", () => {
 });
 
 describe("saveSubjectAction", () => {
+  /**
+   * Metryka odczytu `/kw-extract` — od findingu F1 to ona, a nie samo `source`,
+   * dowodzi, że dokument w ogóle przeczytano; bez niej migawka jest polami
+   * wpisanymi z klawiatury i wchodzi jako praca własna rzeczoznawcy.
+   */
+  const KW_META = {
+    model: "claude-opus-5",
+    extractedAt: "2026-07-14T09:00:00.000Z",
+    docTypeDetected: "akt" as const,
+    docTypeDeclared: "akt" as const,
+  };
+
   const rawKw: KwSnapshot = {
     source: "akt",
     kwLokalu: "  PO1P/1/1  ",
@@ -251,6 +269,7 @@ describe("saveSubjectAction", () => {
       ...validStep1Input,
       kwNumber: undefined,
       kw: rawKw,
+      kwMeta: KW_META,
     });
 
     expect(result).toEqual({ ok: true });
@@ -267,7 +286,7 @@ describe("saveSubjectAction", () => {
       kw: normalizeKw(rawKw),
       kwGrunt: null,
       encumbranceTreatment: null,
-      kwMeta: null,
+      kwMeta: KW_META,
       provenance: {
         address: { source: "rzeczoznawca", status: "confirmed" },
         area: { source: "rzeczoznawca", status: "confirmed" },

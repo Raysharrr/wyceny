@@ -21,15 +21,31 @@ import { getSubjectData } from "@/app/actions/get-subject-data";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { PURPOSE_LABEL } from "@/domain/document-model";
 import { extractKw } from "@/lib/kw-extract-client";
-import { transcribeKw } from "@/lib/kw-transcribe-client";
-import { polaZTresci } from "@/domain/kw-z-tresci";
-import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
+import { transcribeKw, type KwTranscribeResult } from "@/lib/kw-transcribe-client";
+import {
+  dzialyZTresci,
+  numerKsiegiZTresci,
+  polaGruntuZTresci,
+  polaZTresci,
+} from "@/domain/kw-z-tresci";
+import { rodzajNiezgodny, type KartaKsiegi } from "@/domain/kw-niezgodnosci";
+import { jestKsiegaGruntu } from "@/domain/kw-tresc";
+import { MAX_TEKST_BAJTOW } from "@/domain/kw-wklej";
+import type { KwSnapshot, KwWerdykt } from "@/domain/kw-snapshot";
+import {
+  EMPTY_SUBJECT,
+  planOdczytuKw,
+  proposalToSubjectValues,
+  type KwWejscie,
+} from "@/lib/subject-form";
 import { cn } from "@/lib/utils";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 import {
+  EMPTY_KW_FIELDS,
   KwSection,
   localToday,
   type KwFetchState,
+  type KwKanalUi,
   type KwSource,
   type KwTranscribeState,
 } from "./kw-section";
@@ -52,6 +68,15 @@ const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? "http://localhost:8000"
 // the cast is contained to this one line.
 type FormInput = z.input<typeof valuationFormSchema>;
 type FormOutput = z.output<typeof valuationFormSchema>;
+
+/** Która księga jedzie danym torem — obie mają te same kanały (ADR-021 R2). */
+/** Która karta — ta sama para co `KartaKsiegi`, jeden słownik na obie. */
+export type KwBook = KartaKsiegi;
+export type { KwWejscie };
+
+/** Odrzucenia klientowe przed siecią (D9) — limity kontraktu workera. */
+const MAX_PLIKOW = 5;
+const MAX_BAJTOW = 32 * 1024 * 1024;
 const step1Resolver = zodResolver(step1Schema) as unknown as Resolver<
   FormInput,
   unknown,
@@ -113,16 +138,29 @@ export function SubjectForm({
   // the subject fetch lands "done". NOT persisted: the operat's frozen copy
   // is fetched independently at approve (spec decision 1).
   const [mapPreview, setMapPreview] = useState<MapPreviewState>({ status: "idle" });
-  // KW "Stan prawny" section. The UI `kwSource` (akt|odpis_kw|reczny) is the
+  // KW "Stan prawny" section. The UI `kwSource` (akt|odpis_kw|ekw_wklej) is the
   // section key — distinct from the snapshot's own `kw.source`. A snapshot
-  // saved from a manual eKW examination (`ekw_reczne`) reopens on the manual
-  // path, which is where its data was typed.
+  // saved before ADR-021 (`ekw_reczne`) opens on the default channel: its data
+  // stays in the fields, only the dzialy cannot be touched any other way than
+  // by transcribing the book again.
   const [kwSource, setKwSource] = useState<KwSource>(() => {
     const saved = defaults?.kw?.source;
-    return saved == null || saved === "ekw_reczne" ? "reczny" : saved;
+    return saved === "akt" || saved === "odpis_kw" ? saved : "ekw_wklej";
   });
+  const [kwGruntSource, setKwGruntSource] = useState<KwKanalUi>(() =>
+    defaults?.kwGrunt?.source === "odpis_kw" ? "odpis_kw" : "ekw_wklej",
+  );
   const [kwState, setKwState] = useState<KwFetchState>(() => {
-    if (!defaults?.kw) return { status: "idle" };
+    /**
+     * Pasek „Odczytano: N KW" opowiada o ODCZYCIE PÓL, nie o tym, że migawka
+     * w ogóle jest. Po przepisaniu treści samym tekstem odczytu pól nie było,
+     * więc ponownie otwarty szkic pokazywał „✓ Odczytano: 0 KW — do
+     * potwierdzenia" obok banera „Przepisano 5 działów", choć świeży formularz
+     * po tej samej operacji paska nie ma. `kwMeta` jest jedynym trwałym śladem
+     * odczytu pól: zapisuje je `/kw-extract` przy powodzeniu, a
+     * `retractExamination` zdejmuje razem z wycofanym badaniem (F7).
+     */
+    if (!defaults?.kw || defaults.kwMeta == null) return { status: "idle" };
     const kwCount = [defaults.kw.kwLokalu, defaults.kw.kwGruntu, ...defaults.kw.kwInne].filter(
       Boolean,
     ).length;
@@ -147,12 +185,15 @@ export function SubjectForm({
    * days ago.
    */
   const [kwTranscribe, setKwTranscribe] = useState<KwTranscribeState>({ status: "idle" });
-  const lastKwFile = useRef<File | null>(null);
+  /** Księga gruntu ma własny tor: własny stan i własną straż kolejności (R2). */
+  const [kwGruntTranscribe, setKwGruntTranscribe] = useState<KwTranscribeState>({ status: "idle" });
+  const lastKwWejscie = useRef<KwWejscie | null>(null);
   // Same out-of-order guard as `fetchSeq` below, for the KW extraction: a
   // source switch (or a retry) mid-flight invalidates the in-flight upload so
   // a late-resolving stale extract can't repopulate `kw` after the section was
   // reset — which would silently submit a stale legal KW snapshot.
   const kwSeq = useRef(0);
+  const kwGruntSeq = useRef(0);
   // The numeric area value auto-seeded from a KW extract's `powUzytkowaKw`
   // (into a blank field). `resetKwSection` uses it to drop a doc-seeded area on
   // a section reset — a stale LLM number must never survive as a
@@ -275,17 +316,17 @@ export function SubjectForm({
     // it is a field of `kw`, which `retractExamination` nulls — but a warning
     // about a book the form no longer holds would outlive its subject.
     setKwTranscribe({ status: "idle" });
-    lastKwFile.current = null;
+    lastKwWejscie.current = null;
     resetField("kw");
     resetField("kwMeta");
     // NOTE: the encumbrance decision is NOT cleared here. It is withdrawn by
     // `retractExamination` in kw-section.tsx, the one place that decides what
     // disappears — and it has to be, because `resetField` restores the DEFAULT,
     // which on a loaded draft is the stored decision rather than nothing.
-    // Hard-reset the flat manual number too: a kwNumber typed in "reczny" must
-    // not silently become `{nr_kw}` in the operat next to a DIFFERENT set of
-    // extracted numbers after switching to an upload source. Switching back to
-    // reczny starts clean — consistent with the section's reset philosophy.
+    // Hard-reset the flat number too: a kwNumber typed straight into the card
+    // must not silently become `{nr_kw}` in the operat next to a DIFFERENT set
+    // of numbers read from a document after the channel changes. Every switch
+    // starts clean — consistent with the section's reset philosophy.
     resetField("kwNumber");
     // Drop a doc-seeded area the appraiser never edited (still equals the
     // seeded value) — otherwise a stale LLM `powUzytkowaKw` would persist as a
@@ -299,145 +340,256 @@ export function SubjectForm({
     areaSeededFromKw.current = null;
   };
 
-  const runKwExtraction = async (file: File, expectedType: "akt" | "odpis_kw") => {
-    const seq = ++kwSeq.current;
-    lastKwFile.current = file;
-    setKwState({ status: "loading" });
+  /**
+   * Zmiana kanału księgi gruntu. Bez `resetField("kwGrunt")`: w trybie edycji
+   * `resetField` przywraca ZAPISANĄ migawkę, a nie pustkę — właściwe wycofanie
+   * robi `retractExamination` w `kw-section.tsx` jawną wartością `null`.
+   */
+  const resetKwGruntSection = (next: KwKanalUi) => {
+    kwGruntSeq.current++;
+    setKwGruntSource(next);
+    setKwGruntTranscribe({ status: "idle" });
+  };
+
+  /**
+   * Werdykt walidatora zapisywany PRZY migawce (ADR-021 reg. 4): klasy i kody
+   * działów, kanał, liczba plików i chwila odczytu — nigdy wartość z księgi.
+   */
+  const werdyktZ = (
+    t: KwTranscribeResult,
+    wejscie: KwWejscie,
+    karta: KartaKsiegi,
+  ): KwWerdykt | null => {
+    if (t.kind !== "ok") return null;
+    // Reguła, której worker postawić nie może: on widzi rodzaj księgi, ale nie
+    // kartę, na którą ją wklejono. Dokłada się do werdyktu workera, nie
+    // zastępuje go — obie listy niezgodności trafiają do jednego banera.
+    const rodzaj = rodzajNiezgodny(t.tresc, karta);
+    return {
+      ok: t.walidacja.ok && rodzaj == null,
+      bledy: rodzaj ? [...t.walidacja.bledy, rodzaj] : t.walidacja.bledy,
+      kanal: wejscie.kanal,
+      plikow: wejscie.kanal === "pdf" ? wejscie.files.length : 0,
+      at: new Date().toISOString(),
+    };
+  };
+
+  /**
+   * Stan sekcji: baner `ok:false` czyta werdykt z migawki (trwały), nie stąd.
+   * Czyta jednak WERDYKT, nie `walidacja.ok` workera — inaczej karta z księgą
+   * gruntu wklejoną na lokal pokazałaby naraz zieloną linię „wypadło
+   * pomyślnie" i bursztynowy baner, że nie wypadło.
+   */
+  const stanTranskrypcji = (t: KwTranscribeResult, werdykt: KwWerdykt | null): KwTranscribeState =>
+    t.kind === "error"
+      ? { status: "failed", code: t.code }
+      : werdykt?.ok
+        ? { status: "ok", dzialy: t.tresc.dzialy.map((d) => d.kod) }
+        : { status: "idle" };
+
+  const setKwNumberFromKw = () => {
+    // Operat czyta `nr_kw` z `kwNumber`, a kanał tekstowy nie ma odczytu pól,
+    // który by go ustawił (przy wpisywaniu ręcznym robi to `patchKw`).
+    setValue("kwNumber", getValues("kw")?.kwLokalu ?? "", { shouldDirty: true });
+  };
+
+  const runKwExtraction = async (wejscie: KwWejscie, book: KwBook) => {
+    const seqRef = book === "lokal" ? kwSeq : kwGruntSeq;
+    const setTranscribe = book === "lokal" ? setKwTranscribe : setKwGruntTranscribe;
+    const seq = ++seqRef.current;
+    // Akt: tylko pola, żadnej transkrypcji (deed ma zero działów) — jak dziś.
+    // Reguła „to jest akt" pada RAZ, w `planOdczytuKw`, i stamtąd wraca.
+    const { akt, czytaPola, transcribes, dozwolony } = planOdczytuKw(wejscie, book, kwSource);
+    const expectedType: "akt" | "odpis_kw" = akt ? "akt" : "odpis_kw";
+    if (!dozwolony) {
+      setTranscribe({ status: "failed", code: "kw_kanal_niedozwolony" });
+      return;
+    }
+    // Zapamiętane dopiero PO strażniku: „Spróbuj ponownie" odtwarza ostatnie
+    // wejście, więc odrzucone nie może tam zostać (finding z review PR #80).
+    if (book === "lokal") lastKwWejscie.current = wejscie;
+    if (czytaPola) setKwState({ status: "loading" });
+    setTranscribe({ status: transcribes ? "loading" : "idle" });
+
     const minted = await mintKwUploadToken();
-    if (seq !== kwSeq.current) return; // stale — a switch/retry owns the section now
+    if (seq !== seqRef.current) return; // stale — a switch/retry owns the section now
     if ("error" in minted) {
-      setKwState({ status: "error", message: minted.error });
-      setKwTranscribe({ status: "idle" });
+      if (czytaPola) setKwState({ status: "error", message: minted.error });
+      setTranscribe(
+        transcribes ? { status: "failed", code: "kw_transkrypcja_blad" } : { status: "idle" },
+      );
       return;
     }
-    // Only a KW excerpt is transcribed. `/kw-transcribe` reads the five dzialy
-    // of an eKW printout; a deed has none, so on the developer path the call
-    // would spend a minute and a model call to be told so (b1-kw-read).
-    const transcribes = expectedType === "odpis_kw";
-    setKwTranscribe({ status: transcribes ? "loading" : "idle" });
-    // ONE token, ONE await, ONE write of `kw` below. Two independent writes
-    // would race — the reads take different times (the spike measured ~55 s for
-    // the transcription against a fraction of that for the fields), so whichever
-    // landed second would overwrite the other's fields with the stale snapshot
-    // it had closed over. Neither client throws: both turn every failure into a
-    // result, so `Promise.all` needs no `allSettled`.
+    // ONE token, ONE await, ONE write of the snapshot below. Two independent
+    // writes would race — the reads take different times — so whichever landed
+    // second would overwrite the other's fields with the stale snapshot it had
+    // closed over. Neither client throws: both turn every failure into a result.
     const [result, transcription] = await Promise.all([
-      extractKw({ file, expectedType, token: minted.token, workerUrl: WORKER_URL }),
-      transcribes ? transcribeKw({ file, token: minted.token, workerUrl: WORKER_URL }) : null,
+      czytaPola && wejscie.kanal === "pdf"
+        ? extractKw({
+            // Pola czyta PIERWSZY plik; treść przepisują wszystkie (plan §Decyzje 8).
+            file: wejscie.files[0]!,
+            expectedType,
+            token: minted.token,
+            workerUrl: WORKER_URL,
+          })
+        : null,
+      transcribes
+        ? transcribeKw({
+            ...(wejscie.kanal === "pdf" ? { files: wejscie.files } : { tekst: wejscie.tekst }),
+            token: minted.token,
+            workerUrl: WORKER_URL,
+          })
+        : null,
     ]);
-    if (seq !== kwSeq.current) return; // stale response — do not write into the form
-    if (result.kind === "invalidDoc") {
-      setKwState({ status: "invalidDoc", message: result.message });
-      setKwTranscribe({ status: "idle" });
+    if (seq !== seqRef.current) return; // stale response — do not write into the form
+
+    if (result && result.kind !== "ok") {
+      setKwState(
+        result.kind === "invalidDoc"
+          ? { status: "invalidDoc", message: result.message }
+          : { status: "error", message: result.message },
+      );
+      setTranscribe({ status: "idle" });
       return;
     }
-    if (result.kind === "error") {
-      // Nothing to attach a transcription to: the snapshot is the field read,
-      // and `tresc` is a field OF it. The mockup's error banner stands alone —
-      // a second warning about the dzialy would describe a document that never
-      // arrived.
-      setKwState({ status: "error", message: result.message });
-      setKwTranscribe({ status: "idle" });
+    const werdykt = transcription ? werdyktZ(transcription, wejscie, book) : null;
+    if (transcription) setTranscribe(stanTranskrypcji(transcription, werdykt));
+    const tresc = transcription?.kind === "ok" ? transcription.tresc : null;
+
+    if (book === "grunt") {
+      // Bez treści nie ma czego zapisać: pola gruntu zostają, jak są, a baner
+      // „failed" już stoi. Nadpisanie ich pustkami zgubiłoby to, co wpisano.
+      if (!tresc) return;
+      const dotychczas = getValues("kwGrunt") ?? {};
+      setValue(
+        "kwGrunt",
+        {
+          ...dotychczas,
+          source: wejscie.kanal === "pdf" ? ("odpis_kw" as const) : ("ekw_wklej" as const),
+          ...polaGruntuZTresci(tresc),
+          dataBadania: localToday(),
+          ...dzialyZTresci(tresc),
+          tresc,
+          transkrypcja: werdykt,
+        },
+        { shouldDirty: true },
+      );
       return;
     }
-    // The verdict gates the CONTENT only (ADR-018 "Zmiana 15.09"): the operat
-    // may not print five dzialy that the worker's deterministic checks refused
-    // to vouch for. The fields it also read stay on screen either way — "pola z
-    // odczytu zostają do sprawdzenia" — with the error classes named in a
-    // warning, never their values (F-13).
-    const verdictOk = transcription?.kind === "ok" && transcription.walidacja.ok;
-    const zTresci = transcription?.kind === "ok" ? polaZTresci(transcription.tresc) : null;
-    setKwTranscribe(
-      transcription == null
-        ? { status: "idle" }
-        : transcription.kind === "error"
-          ? { status: "failed", code: transcription.code }
-          : transcription.walidacja.ok
-            ? { status: "ok" }
-            : { status: "invalid", klasy: transcription.walidacja.bledy.map((b) => b.klasa) },
-    );
-    // A successful read of a KW excerpt IS the examination, and it happened
-    // today — the worker cannot supply the date because no book prints it.
-    // Without this the card sat at "Do zbadania" after a perfectly good PDF and
-    // step 7 blocked on B-06 with nothing left to fill in (a deed is not a
-    // book, so `akt` stays unexamined either way).
+
+    const extract = result?.kind === "ok" ? result.extract : null;
+    const zTresci = tresc ? polaZTresci(tresc) : null;
+    /**
+     * Pola LOKALOWE karty lokalu, jedną strażą dla wszystkich trzech naraz.
+     * W księdze gruntu nie mają na co wskazywać, więc nie bierze ich ani
+     * transkrypcja (`polaZTresci` zeruje je u źródła), ani odczyt pól: `??`
+     * przepuszczało wyzerowane `null` dalej do ekstraktu i na kanale PDF
+     * obszar działki wracał tą drugą drogą, w dodatku bez podpisu — ten
+     * siedzi pod numerem księgi, nie pod tymi polami (F6 recenzji PR #86).
+     */
+    const polaLokalu = (): Pick<KwSnapshot, "nrLokalu" | "udzial" | "kwGruntu"> =>
+      tresc && jestKsiegaGruntu(tresc.naglowek.rodzajKsiegi)
+        ? { nrLokalu: null, udzial: null, kwGruntu: null }
+        : {
+            nrLokalu: zTresci?.nrLokalu ?? null,
+            udzial: zTresci?.udzial ?? extract?.udzial ?? null,
+            kwGruntu: zTresci?.kwGruntu ?? extract?.kwGruntu ?? null,
+          };
     setValue(
       "kw",
       {
-        ...result.extract,
+        ...(extract ?? { ...EMPTY_KW_FIELDS, source: "ekw_wklej" as const }),
+        ...(tresc
+          ? { source: wejscie.kanal === "pdf" ? ("odpis_kw" as const) : ("ekw_wklej" as const) }
+          : {}),
+        kwLokalu: extract?.kwLokalu ?? (tresc ? numerKsiegiZTresci(tresc) : null),
+        // A successful read of a KW excerpt IS the examination, and it happened
+        // today — no book prints the day someone read it.
         dataBadania: localToday(),
         // Where the transcription states one of these, it wins: it is the
-        // full-fidelity pass (the spike put it at 57/57 cells against the field
-        // read's 94-98%), and for the unit number and dział II's deed it is the
-        // only source there is. Where it states nothing, the field read stands.
+        // full-fidelity pass. Where it states nothing, the field read stands.
         ...(zTresci
           ? {
-              nrLokalu: zTresci.nrLokalu,
               akt: zTresci.akt,
-              udzial: zTresci.udzial ?? result.extract.udzial,
-              kwGruntu: zTresci.kwGruntu ?? result.extract.kwGruntu,
+              ...polaLokalu(),
               // Header facts, the other way round: the field read has asked for
-              // these since Slice 6 and the header often omits them, so it only
-              // fills a gap here rather than overriding a value.
-              sad: result.extract.sad ?? zTresci.sad,
-              wydzial: result.extract.wydzial ?? zTresci.wydzial,
+              // these since Slice 6 and the header often omits them.
+              sad: extract?.sad ?? zTresci.sad,
+              wydzial: extract?.wydzial ?? zTresci.wydzial,
             }
           : {}),
-        tresc: verdictOk ? transcription.tresc : null,
+        // Działy WYLICZANE z treści (ADR-021 reg. 1) — nigdy wpisywane.
+        ...(tresc ? dzialyZTresci(tresc) : {}),
+        // ZAWSZE, gdy przepisano — także przy `ok:false` (ADR-021 reg. 5);
+        // werdykt jedzie obok i to on ostrzega.
+        tresc,
+        transkrypcja: werdykt,
       },
       { shouldDirty: true },
     );
-    setValue("kwMeta", result.meta, { shouldDirty: true });
+    if (result?.kind === "ok") setValue("kwMeta", result.meta, { shouldDirty: true });
     // Clear a stale kwNumber error left over from a prior empty upload-mode
-    // submit (W4) — now that an extract exists, the manual number isn't
-    // required and the contradictory error must go.
+    // submit (W4) — now that a snapshot exists, the manual number isn't required.
     void trigger("kwNumber");
+    if (tresc && !extract) setKwNumberFromKw();
+    if (!extract) return;
     // Seed the form area from the document only if the appraiser left it blank
-    // — never overwrite a value they typed (that's what the mismatch nudge is
-    // for).
+    // — never overwrite a value they typed (that's what the mismatch nudge is for).
     const area = getValues("area");
-    if (
-      result.extract.powUzytkowaKw != null &&
-      (area === undefined || area === "" || area === null)
-    ) {
-      setValue("area", result.extract.powUzytkowaKw, { shouldDirty: true });
-      areaSeededFromKw.current = result.extract.powUzytkowaKw;
+    if (extract.powUzytkowaKw != null && (area === undefined || area === "" || area === null)) {
+      setValue("area", extract.powUzytkowaKw, { shouldDirty: true });
+      areaSeededFromKw.current = extract.powUzytkowaKw;
     }
-    const kwCount = [
-      result.extract.kwLokalu,
-      result.extract.kwGruntu,
-      ...result.extract.kwInne,
-    ].filter(Boolean).length;
-    const pow = result.extract.powUzytkowaKw;
+    const kwCount = [extract.kwLokalu, extract.kwGruntu, ...extract.kwInne].filter(Boolean).length;
+    const pow = extract.powUzytkowaKw;
     setKwState({
       status: "done",
       summary: `${kwCount} KW${pow != null ? `, pow. ${pow.toString().replace(".", ",")} m²` : ""}`,
-      typeMismatch: result.typeMismatch,
+      typeMismatch: result?.kind === "ok" ? result.typeMismatch : false,
     });
   };
 
-  // Non-PDF / oversize are rejected client-side before any network call (D9).
-  const onKwFileSelected = (file: File) => {
-    const expectedType = kwSource === "odpis_kw" ? "odpis_kw" : "akt";
-    // A reject invalidates the WHOLE in-flight read, both halves of it. Clearing
-    // only `kwState` would leave the transcription's "⏳ Przepisuję…" standing —
-    // and since that line takes the card's status slot while it runs, the inline
-    // error below would have had nowhere to appear.
-    const rejectFile = (message: string) => {
-      kwSeq.current++; // so a late resolve can't overwrite this inline error
-      lastKwFile.current = null;
-      setKwTranscribe({ status: "idle" });
-      setKwState({ status: "error", message });
+  /**
+   * Non-PDF, too many, too large — odrzucane po stronie klienta, przed siecią
+   * (D9). Odrzucenie unieważnia CAŁY odczyt w locie, obie jego połowy.
+   */
+  const onKwFiles = (files: File[], book: KwBook) => {
+    const reject = (code: string, message: string) => {
+      if (book === "lokal") {
+        kwSeq.current++; // so a late resolve can't overwrite this inline error
+        lastKwWejscie.current = null;
+        setKwTranscribe({ status: "idle" });
+        setKwState({ status: "error", message });
+      } else {
+        kwGruntSeq.current++;
+        setKwGruntTranscribe({ status: "failed", code });
+      }
     };
-    if (file.type !== "application/pdf") {
-      rejectFile("Wgraj plik PDF.");
+    if (files.length === 0) return;
+    if (files.some((f) => f.type !== "application/pdf")) {
+      return reject("kw_plik_nie_pdf", "Wgraj plik PDF.");
+    }
+    if (files.length > MAX_PLIKOW) {
+      return reject("kw_za_duzo_plikow", "Najwyżej pięć plików naraz."); // NOWY TEKST (do akceptacji w PR)
+    }
+    if (files.reduce((sum, f) => sum + f.size, 0) > MAX_BAJTOW) {
+      return reject("kw_pliki_za_duze", "Pliki są za duże (łącznie maks. 32 MB)."); // NOWY TEKST
+    }
+    void runKwExtraction({ kanal: "pdf", files }, book);
+  };
+
+  const onKwTekst = (tekst: string, book: KwBook) => {
+    // Mierzone w bajtach, nie w znakach: limit workera to rozmiar ciała żądania,
+    // a polska księga ma znaki dwubajtowe.
+    if (new TextEncoder().encode(tekst).length > MAX_TEKST_BAJTOW) {
+      (book === "lokal" ? setKwTranscribe : setKwGruntTranscribe)({
+        status: "failed",
+        code: "kw_tekst_za_dlugi",
+      });
       return;
     }
-    if (file.size > 32 * 1024 * 1024) {
-      rejectFile("Plik jest za duży (maks. 32 MB).");
-      return;
-    }
-    void runKwExtraction(file, expectedType);
+    void runKwExtraction({ kanal: "tekst", tekst }, book);
   };
 
   const onSubmit = handleSubmit(async (values) => {
@@ -522,18 +674,23 @@ export function SubjectForm({
 
           <KwSection
             control={control}
-            state={kwState}
-            transcribe={kwTranscribe}
-            source={kwSource}
-            onSourceChange={resetKwSection}
-            onFileSelected={onKwFileSelected}
-            onRetry={() => {
-              if (lastKwFile.current) {
-                void runKwExtraction(
-                  lastKwFile.current,
-                  kwSource === "odpis_kw" ? "odpis_kw" : "akt",
-                );
-              }
+            lokal={{
+              source: kwSource,
+              state: kwState,
+              transcribe: kwTranscribe,
+              onSourceChange: resetKwSection,
+              onFiles: (files) => onKwFiles(files, "lokal"),
+              onTekst: (tekst) => onKwTekst(tekst, "lokal"),
+              onRetry: () => {
+                if (lastKwWejscie.current) void runKwExtraction(lastKwWejscie.current, "lokal");
+              },
+            }}
+            grunt={{
+              source: kwGruntSource,
+              transcribe: kwGruntTranscribe,
+              onSourceChange: resetKwGruntSection,
+              onFiles: (files) => onKwFiles(files, "grunt"),
+              onTekst: (tekst) => onKwTekst(tekst, "grunt"),
             }}
             onUseDocumentArea={() => {
               if (kwValues?.powUzytkowaKw != null) {

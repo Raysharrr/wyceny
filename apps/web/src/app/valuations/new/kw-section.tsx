@@ -14,14 +14,28 @@ import { AutoBanner } from "@/components/wizard/auto-banner";
 import { SectionCard } from "@/components/wizard/section-card";
 import { cn } from "@/lib/utils";
 import { parseCoopNumber } from "@/domain/coop-import";
+import { nazwyNiezgodnosci, podpisyPol, type PoleKarty } from "@/domain/kw-niezgodnosci";
 import { kwRequirements } from "@/domain/kw-requirements";
+import type { KwWerdykt } from "@/domain/kw-snapshot";
+import {
+  KODY_DZIALOW,
+  brakujaceDzialy,
+  dopiszWklejenie,
+  dzialyWTekscie,
+  htmlNaTekst,
+  liczbaDzialow,
+  listaDzialow,
+} from "@/domain/kw-wklej";
 import { PROPERTY_RIGHT_LABEL, PROPERTY_RIGHTS } from "@/domain/property-right";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 
 type FormInput = z.input<typeof valuationFormSchema>;
 type FormOutput = z.output<typeof valuationFormSchema>;
 
-export type KwSource = "akt" | "odpis_kw" | "reczny";
+/** Klucz sekcji księgi LOKALU: kanał albo akt (ADR-021 — ścieżki ręcznej nie ma). */
+export type KwSource = "akt" | "odpis_kw" | "ekw_wklej";
+/** Klucz sekcji księgi GRUNTU: tylko kanał — grunt nie ma aktu. */
+export type KwKanalUi = "odpis_kw" | "ekw_wklej";
 
 export type KwFetchState =
   | { status: "idle" | "loading" }
@@ -30,29 +44,33 @@ export type KwFetchState =
   | { status: "error"; message: string };
 
 /**
- * How the SECOND read of the same PDF went — the full transcription of the
- * five dzialy (b1-kw-read). Separate from `KwFetchState` because the two reads
- * fail independently and mean different things: the field read failing means
- * the document was not read at all, this one failing means the operat will
- * describe the dzialy instead of quoting them — the manual path's consequence.
+ * How the transcription of ONE book went (ADR-021). Separate from
+ * `KwFetchState` because the two reads fail independently and mean different
+ * things: the field read failing means the document was not read at all, this
+ * one failing means there is no content to print.
  *
- * `invalid` is the worker's deterministic verdict refusing to vouch for the
- * content. It carries the error CLASSES only; a class never contains a value
- * from the book (F-13).
+ * There is no `invalid` member any more: a verdict that refused to vouch for
+ * the content lives PRZY migawce (`kw.transkrypcja`), so its banner survives
+ * leaving and re-entering step 1 — section state would not.
  */
 export type KwTranscribeState =
-  | { status: "idle" | "loading" | "ok" }
-  | { status: "invalid"; klasy: string[] }
+  | { status: "idle" | "loading" }
+  | { status: "ok"; dzialy: string[] }
   | { status: "failed"; code: string };
 
-interface KwSectionProps {
-  control: Control<FormInput, unknown, FormOutput>;
-  state: KwFetchState;
+/** Co karta jednej księgi dostaje od rodzica — te same kanały dla obu ksiąg (R2). */
+export interface KwBookProps<S extends string> {
+  source: S;
   transcribe: KwTranscribeState;
-  source: KwSource;
-  onSourceChange: (source: KwSource) => void;
-  onFileSelected: (file: File) => void;
-  onRetry: () => void;
+  onSourceChange: (source: S) => void;
+  onFiles: (files: File[]) => void;
+  onTekst: (tekst: string) => void;
+}
+
+export interface KwSectionProps {
+  control: Control<FormInput, unknown, FormOutput>;
+  lokal: KwBookProps<KwSource> & { state: KwFetchState; onRetry: () => void };
+  grunt: KwBookProps<KwKanalUi>;
   onUseDocumentArea: () => void;
   areaMismatch: { form: number; doc: number } | null;
   /**
@@ -70,11 +88,6 @@ const nf = new Intl.NumberFormat("pl-PL", { minimumFractionDigits: 2, maximumFra
 const TILE = "h-auto flex-col items-start gap-0.5 whitespace-normal rounded-lg px-4 py-3 text-left";
 const TILE_SELECTED = "border-primary bg-[var(--accent-050)]";
 const TILE_IDLE = "border-border bg-background";
-
-// Mirrors `NEXT_PUBLIC_SUBJECT_AUTOFETCH`: the upload surface renders only when
-// enabled; the manual path is always available so the e2e smoke and any
-// air-gapped deployment keep working.
-const uploadEnabled = process.env.NEXT_PUBLIC_KW_UPLOAD !== "off";
 
 const textareaClass =
   "min-h-24 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30";
@@ -142,15 +155,20 @@ function KwBookCard({
   title,
   examined,
   head,
+  testId,
   children,
 }: {
   title: string;
   examined: boolean;
   head?: React.ReactNode;
+  testId: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-4">
+    <div
+      data-testid={testId}
+      className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-4"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{title}</span>
@@ -172,7 +190,13 @@ function KwBookCard({
   );
 }
 
-/** Label + input, in the mockup's two-column field grid. */
+/**
+ * Label + input, in the mockup's two-column field grid. `hint` is the amber
+ * caption of makieta 4: the walidator said this field disagrees with the
+ * content, so the field itself says where to look — a banner alone leaves the
+ * appraiser hunting through eight inputs. Never carries a value from the book
+ * (F-13): the caption names the dział, never what stands in it.
+ */
 function TextField({
   id,
   label,
@@ -180,6 +204,7 @@ function TextField({
   onChange,
   className,
   placeholder,
+  hint,
 }: {
   id: string;
   label: string;
@@ -187,6 +212,7 @@ function TextField({
   onChange: (value: string) => void;
   className?: string;
   placeholder?: string;
+  hint?: string;
 }) {
   return (
     <div className={cn("flex flex-col gap-1", className)}>
@@ -199,7 +225,9 @@ function TextField({
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        className={cn(hint && "border-[var(--amber)]")}
       />
+      {hint ? <span className="text-xs text-[var(--amber)]">{hint}</span> : null}
     </div>
   );
 }
@@ -251,62 +279,6 @@ function NumberTextField({
         onChange(withoutUnit.trim() === "" ? null : parseCoopNumber(withoutUnit));
       }}
     />
-  );
-}
-
-const DZIAL_OPTIONS = [
-  { value: "brak", label: "Brak wpisów" },
-  { value: "sa", label: "Są wpisy" },
-] as const;
-
-/**
- * A dział: the Brak wpisów / Są wpisy answer, plus its text when there are
- * entries. Value in, change out — deliberately NOT a `useController` on
- * `kw.dzialN`: registering a nested path mounts `kw` as `{ dzial3: undefined }`,
- * a truthy object that fails `kwSchema` with an error on a path no field
- * displays, so the form refuses to submit and says nothing (the W4 dead-end).
- * Every field of the manual snapshot writes through `patchKw` for that reason.
- *
- * Entries Unanswered stays unanswered — `null` is not "no entries", and the
- * operat renders neither sentence for it. The 14.09 failure was exactly this:
- * a dział III described as clean that nobody had read.
- */
-function DzialField({
-  dzial,
-  onChange,
-  id,
-  label,
-}: {
-  dzial: { wpisy: boolean; tresc: string[] } | null | undefined;
-  onChange: (dzial: { wpisy: boolean; tresc: string[] }) => void;
-  id: string;
-  label: string;
-}) {
-  return (
-    <div className="flex flex-col gap-2 sm:col-span-2">
-      <span id={`${id}-label`} className="text-sm">
-        {label}
-      </span>
-      <SegmentedChoice
-        labelledBy={`${id}-label`}
-        options={DZIAL_OPTIONS}
-        value={dzial == null ? null : dzial.wpisy ? "sa" : "brak"}
-        onChange={(v) =>
-          onChange(
-            v === "brak" ? { wpisy: false, tresc: [] } : { wpisy: true, tresc: dzial?.tresc ?? [] },
-          )
-        }
-      />
-      {dzial?.wpisy ? (
-        <textarea
-          id={id}
-          aria-labelledby={`${id}-label`}
-          className={textareaClass}
-          value={(Array.isArray(dzial.tresc) ? dzial.tresc : []).join("\n")}
-          onChange={(e) => onChange({ wpisy: true, tresc: e.target.value.split("\n") })}
-        />
-      ) : null}
-    </div>
   );
 }
 
@@ -377,9 +349,11 @@ function EncumbranceChoice({
   );
 }
 
-/** The shape `kwSchema` demands — a manual snapshot is built whole, never field by field. */
-const EMPTY_MANUAL_KW = {
-  source: "ekw_reczne" as const,
+/**
+ * The shape `kwSchema` demands, WITHOUT `source` — a snapshot is built whole,
+ * never field by field, and the source is whichever channel wrote it (ADR-021).
+ */
+export const EMPTY_KW_FIELDS = {
   kwLokalu: null,
   kwGruntu: null,
   kwInne: [],
@@ -432,7 +406,7 @@ function KwFetchStatusBar({ state, onRetry }: { state: KwFetchState; onRetry: ()
       return (
         <div data-testid="kw-fetch-status" className="flex flex-col gap-2">
           <AutoBanner kind="error">
-            Nie udało się odczytać pliku PDF księgi — wgraj inny plik albo wpisz dane ręcznie.
+            Nie udało się odczytać pól z pliku — wgraj inny plik albo wklej treść z przeglądarki KW.
           </AutoBanner>
           {/* The cause, under the guidance: "wgraj inny plik" is useless advice
               if the appraiser cannot tell a timeout from a 40 MB scan. */}
@@ -455,6 +429,17 @@ function KwFetchStatusBar({ state, onRetry }: { state: KwFetchState; onRetry: ()
  * transcription state at all. Proposed for the user's acceptance in the PR.
  */
 const TRANSCRIBE_FAILED_TEXT: Record<string, string> = {
+  // Odrzucenia sprzed sieci (D9). Karta gruntu nie ma własnego paska statusu,
+  // więc jej odmowy jadą tym samym banerem — i muszą mówić, co się stało z
+  // PLIKIEM, a nie opisywać nieudaną transkrypcję (finding F3).
+  kw_plik_nie_pdf: "Wgraj plik PDF.",
+  // NOWY TEKST (do akceptacji w PR) — limit ciała żądania workera, mierzony w bajtach.
+  kw_tekst_za_dlugi: "Wklejony tekst jest za długi (ponad 200 kB) — wklej zakładki po kolei.",
+  kw_za_duzo_plikow: "Najwyżej pięć plików naraz.", // NOWY TEKST (do akceptacji w PR)
+  kw_pliki_za_duze: "Pliki są za duże (łącznie maks. 32 MB).", // NOWY TEKST (do akceptacji w PR)
+  // Ścieżka aktu czyta wyłącznie plik — akt nie ma działów do przepisania (F7).
+  kw_kanal_niedozwolony:
+    "Wklejona treść nie dotyczy aktu notarialnego — na tej ścieżce wgraj plik PDF aktu.", // NOWY TEKST (do akceptacji w PR)
   kw_transkrypcja_ucieta:
     "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
   kw_transkrypcja_nieczytelna:
@@ -463,12 +448,24 @@ const TRANSCRIBE_FAILED_TEXT: Record<string, string> = {
     "Nie udało się przepisać treści działów — odczytane pola zostają, a operat opisze działy bez pełnej treści. Wgraj plik ponownie, jeśli chcesz mieć w operacie treść księgi.",
 };
 
-/** The banner for the second read. Nothing renders for `idle`/`ok`: a book read in full needs no announcement. */
+/**
+ * Jak poszło przepisanie. Od makiety 3 stan `ok` MÓWI — wymienia przepisane
+ * działy, bo to jedyne miejsce, w którym rzeczoznawca widzi, ile księgi
+ * faktycznie weszło do operatu. `idle` milczy: albo nic się jeszcze nie działo,
+ * albo przepisanie się udało, ale walidator zgłosił niezgodności — wtedy mówi
+ * baner werdyktu, który stoi PRZY migawce i przeżywa wyjście z kroku 1.
+ */
 function KwTranscribeStatus({ state }: { state: KwTranscribeState }) {
   switch (state.status) {
     case "idle":
-    case "ok":
       return null;
+    case "ok":
+      return (
+        <p data-testid="kw-transcribe-status" className="text-sm text-muted-foreground">
+          ✓ Przepisano {liczbaDzialow(state.dzialy.length)} ({state.dzialy.join(", ")}) —
+          sprawdzenie treści wypadło pomyślnie. Pola poniżej wypełniono z księgi.
+        </p>
+      );
     case "loading":
       return (
         <p data-testid="kw-transcribe-status" className="text-sm text-muted-foreground">
@@ -487,48 +484,413 @@ function KwTranscribeStatus({ state }: { state: KwTranscribeState }) {
           </span>
         </AutoBanner>
       );
-    case "invalid":
-      return (
-        <AutoBanner kind="warn">
-          <span data-testid="kw-transcribe-warn">
-            Sprawdzenie przepisanej treści księgi nie wypadło pomyślnie, więc operat nie zacytuje
-            działów — odczytane pola zostały wypełnione i wymagają sprawdzenia z księgą.
-            {/* Classes, never values: an error class names WHICH check failed
-                and in which dział, and `kw_validate.py` never puts a value in
-                one. Printing them is the only way the appraiser knows where to
-                look — "coś się nie zgadza" sends them through all five. */}{" "}
-            Niezgodności: {state.klasy.join(", ")}.
-          </span>
-        </AutoBanner>
-      );
   }
 }
 
 const BOOK_SOURCE_OPTIONS = [
+  { value: "ekw_wklej", label: "Wklej z przeglądarki KW" },
   { value: "odpis_kw", label: "Wgraj PDF" },
-  { value: "reczny", label: "Wpisz ręcznie" },
 ] as const;
 
-const MANUAL_WARNING =
-  "Dane wpisane ręcznie trafią do operatu jako opis — bez pełnej treści działów księgi. Aby operat zawierał treść księgi, wgraj PDF.";
+/** Księga w karcie: „lokal" albo „grunt" — ten sam układ, inne identyfikatory. */
+export type KwBookUi = "lokal" | "grunt";
+
+const EKW_URL = "https://przegladarka-ekw.ms.gov.pl/eukw_prz/KsiegiWieczyste/wyszukiwanieKW";
+const PDF_HINT =
+  "Wydruk z przeglądarki KW (jeden plik na zakładkę) albo e-odpis z Portalu Rejestrów Sądowych — PDF, łącznie do 32 MB.";
+
+/** „201 kB", „1,2 MB" — rozmiar, który rzeczoznawca porówna z limitem 32 MB. */
+const nfKb = (bytes: number) =>
+  bytes >= 1024 * 1024
+    ? `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} MB`
+    : `${Math.round(bytes / 1024)} kB`;
+/** Polska liczba mnoga: 1 plik, 2–4 pliki, 5+ plików. */
+const plikow = (n: number) =>
+  n === 1 ? "1 plik" : n >= 2 && n <= 4 ? `${n} pliki` : `${n} plików`;
+
+/**
+ * Kanał tekstowy (makiety 1–2). Tekst jest stanem WYŁĄCZNIE tego panelu: do
+ * migawki trafia dopiero przepisana treść z workera, nigdy surowe wklejenie.
+ *
+ * `onPaste` czyta `text/html`, bo przeglądarka KW oddaje działy jako tabele —
+ * z samego `text/plain` kolumny zlewają się w jeden ciąg i nie wiadomo, gdzie
+ * kończy się rubryka, a zaczyna wartość. Kolejne wklejenia DOPISUJĄ: każda
+ * zakładka to osobna strona, więc rzeczoznawca wkleja do pięciu razy.
+ */
+function KwWklejPanel({
+  book,
+  onTekst,
+  disabled,
+}: {
+  book: KwBookUi;
+  onTekst: (tekst: string) => void;
+  disabled: boolean;
+}) {
+  const [tekst, setTekst] = useState("");
+  const dzialy = dzialyWTekscie(tekst);
+  const brak = brakujaceDzialy(tekst);
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const html = e.clipboardData.getData("text/html");
+    const fragment = html ? htmlNaTekst(html) : e.clipboardData.getData("text/plain");
+    if (!fragment.trim()) return;
+    e.preventDefault();
+    setTekst((t) => dopiszWklejenie(t, fragment));
+  };
+  return (
+    <>
+      {book === "lokal" ? (
+        <p className="text-xs text-muted-foreground">
+          W{" "}
+          <a href={EKW_URL} target="_blank" rel="noopener noreferrer" className="underline">
+            przeglądarce ksiąg wieczystych
+          </a>{" "}
+          otwórz księgę i na każdej zakładce — Dział I-O, I-Sp, II, III, IV — zaznacz wszystko
+          (Ctrl+A), skopiuj (Ctrl+C) i wklej poniżej. Możesz wkleić zakładki po kolei albo wszystkie
+          naraz.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Tak samo jak dla księgi lokalu: pięć zakładek z przeglądarki KW, po kolei albo naraz.
+        </p>
+      )}
+      <textarea
+        data-testid={`kw-wklej-${book}`}
+        aria-label="Treść z przeglądarki KW"
+        className={cn(textareaClass, tekst && "min-h-[150px] font-mono")}
+        placeholder="Wklej treść zakładki z przeglądarki KW…"
+        value={tekst}
+        onChange={(e) => setTekst(e.target.value)}
+        onPaste={onPaste}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div
+          aria-label="Wklejone działy"
+          className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+        >
+          <span>Działy:</span>
+          {KODY_DZIALOW.map((k) => (
+            <Badge
+              key={k}
+              variant="outline"
+              className={
+                dzialy.includes(k)
+                  ? "border-[var(--accent-100)] bg-[var(--accent-050)] text-[var(--accent-700)]"
+                  : "text-muted-foreground opacity-60"
+              }
+            >
+              {k}
+              {dzialy.includes(k) ? " ✓" : ""}
+            </Badge>
+          ))}
+          <span>{dzialy.length} z 5</span>
+        </div>
+        <Button
+          type="button"
+          data-testid={`kw-przepisz-${book}`}
+          disabled={disabled || dzialy.length === 0}
+          onClick={() => onTekst(tekst)}
+        >
+          Przepisz treść księgi
+        </Button>
+      </div>
+      {dzialy.length > 0 && brak.length > 0 ? (
+        <AutoBanner kind="note">
+          {/* „Brakuje działu III” przy jednym — ta sama odmiana co w statusie (F2). */}
+          Brakuje {brak.length === 1 ? "działu" : "działów"} <b>{listaDzialow(brak)}</b> — wklej
+          pozostałe zakładki. Bez nich operat nie opisze praw, roszczeń ani hipotek.
+        </AutoBanner>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Kanał PDF (makieta 6). Lista plików jest lokalna, a wysyłka jawna: wydruk z
+ * przeglądarki KW to jeden plik NA ZAKŁADKĘ, więc odczyt po pierwszym wybranym
+ * pliku przepisałby jedną piątą księgi i zameldował sukces.
+ */
+function KwPdfPanel({
+  book,
+  onFiles,
+  disabled,
+}: {
+  book: KwBookUi;
+  onFiles: (files: File[]) => void;
+  disabled: boolean;
+}) {
+  const [files, setFiles] = useState<File[]>([]);
+  const razem = files.reduce((sum, f) => sum + f.size, 0);
+  return (
+    <>
+      <FileInput
+        multiple
+        accept="application/pdf"
+        aria-label="Pliki księgi (PDF)"
+        showSelected={false}
+        data-testid={book === "lokal" ? "kw-file-input" : "kwg-file-input"}
+        label="Wybierz pliki"
+        hint={PDF_HINT}
+        onChange={(e) => {
+          const nowe = Array.from(e.target.files ?? []);
+          // Plik w złym formacie idzie WPROST do strażnika rodzica (D9), nie na
+          // listę: to on nazywa odmowę, a lista miała zawierać wyłącznie to, co
+          // pojedzie do workera. Czekanie z odmową do kliknięcia „Odczytaj"
+          // kazałoby rzeczoznawcy patrzeć na zdjęcie w spisie plików księgi.
+          // Strażnik nie wysyła niczego, więc wolno go wołać także w trakcie
+          // odczytu — i trzeba, bo unieważnia odczyt w locie.
+          if (nowe.some((f) => f.type !== "application/pdf")) {
+            onFiles(nowe);
+            e.target.value = "";
+            return;
+          }
+          if (nowe.length) setFiles((f) => [...f, ...nowe]);
+          // Ten sam plik wybrany dwa razy z rzędu nie odpaliłby `change`,
+          // gdyby wartość inputu została — a dokładanie zakładek po jednej to
+          // tu norma, nie wyjątek.
+          e.target.value = "";
+        }}
+      />
+      {files.map((f, i) => (
+        <div key={`${f.name}-${i}`} className="flex items-center gap-3 text-sm">
+          <FileText className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 truncate">{f.name}</span>
+          <span className="text-xs text-muted-foreground">{nfKb(f.size)}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => setFiles((all) => all.filter((_, j) => j !== i))}
+          >
+            Usuń
+          </Button>
+        </div>
+      ))}
+      {files.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">
+            {plikow(files.length)} · {nfKb(razem)}
+          </span>
+          <Button type="button" disabled={disabled} onClick={() => onFiles(files)}>
+            Odczytaj i przepisz księgę
+          </Button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Werdykt sprawdzenia treści — czytany z MIGAWKI (`kw.transkrypcja`), nie ze
+ * stanu sekcji, więc wraca z każdym otwarciem szkicu, dopóki treść nie zostanie
+ * przepisana na nowo. To ostrzeżenie, nie blokada (ADR-021 reg. 5): treść jest
+ * zapisana, a operat zacytuje to, co w karcie zostanie.
+ */
+function KwWerdyktBanner({
+  book,
+  werdykt,
+  dzialow,
+}: {
+  book: KwBookUi;
+  werdykt: KwWerdykt | null | undefined;
+  dzialow: number;
+}) {
+  if (!werdykt || werdykt.ok) return null;
+  return (
+    <AutoBanner kind="warn">
+      <span data-testid={`kw-werdykt-${book}`}>
+        Przepisano {liczbaDzialow(dzialow)}, ale sprawdzenie treści nie wypadło pomyślnie —
+        niezgodności: <b>{nazwyNiezgodnosci(werdykt.bledy, book).join(", ")}</b>. Porównaj pola i
+        treść z księgą i popraw, co trzeba — operat zacytuje to, co tu zostanie.
+      </span>
+    </AutoBanner>
+  );
+}
+
+/**
+ * Panel kanału jednej księgi: pole wklejania albo lista plików, dopóki treści
+ * nie ma; potem status i przycisk powrotu do panelu.
+ *
+ * Widoczność wisi na TREŚCI (`tresc != null`), nigdy na `transcribe.status`:
+ * przy werdykcie `ok:false` stan sekcji wraca jako `idle`, więc karta po udanym
+ * przepisaniu z niezgodnościami wyglądałaby jak nietknięta i kusiła do
+ * przepisania jeszcze raz.
+ */
+function KwKanalPanel({
+  book,
+  kanal,
+  transcribe,
+  tresc,
+  werdykt,
+  onTekst,
+  onFiles,
+  fetchBar,
+}: {
+  book: KwBookUi;
+  kanal: KwKanalUi;
+  transcribe: KwTranscribeState;
+  tresc: { dzialy: ReadonlyArray<{ kod: string }> } | null | undefined;
+  werdykt: KwWerdykt | null | undefined;
+  onTekst: (tekst: string) => void;
+  onFiles: (files: File[]) => void;
+  /** Pasek odczytu PÓL — ma go wyłącznie karta lokalu (`/kw-extract`). */
+  fetchBar?: React.ReactNode;
+}) {
+  const [ponownie, setPonownie] = useState(false);
+  /**
+   * Nowa treść zamyka panel otwarty przyciskiem „Wklej ponownie" — bez tego
+   * rzeczoznawca po udanym przepisaniu dalej patrzyłby w puste pole.
+   *
+   * Porównanie idzie po WARTOŚCI, nie po tożsamości obiektu: `useWatch` oddaje
+   * migawkę sklonowaną, więc pod `!==` każda poprawka sądu czy udziału
+   * zatrzaskiwała pole w trakcie wklejania (zmierzone testem obok). Kluczem są
+   * kody działów i chwila odczytu — jedyne dwie rzeczy, które zmienia nowe
+   * przepisanie, a nie zmienia edycja pola.
+   */
+  const kluczTresci = `${(tresc?.dzialy ?? []).map((d) => d.kod).join(",")}|${werdykt?.at ?? ""}`;
+  const [widziany, setWidziany] = useState(kluczTresci);
+  if (kluczTresci !== widziany) {
+    setWidziany(kluczTresci);
+    if (ponownie) setPonownie(false);
+  }
+  const zajete = transcribe.status === "loading";
+  const panel = tresc == null || ponownie;
+  return (
+    <>
+      {panel ? (
+        kanal === "odpis_kw" ? (
+          <KwPdfPanel book={book} onFiles={onFiles} disabled={zajete} />
+        ) : (
+          <KwWklejPanel book={book} onTekst={onTekst} disabled={zajete} />
+        )
+      ) : null}
+      {fetchBar}
+      <KwTranscribeStatus state={transcribe} />
+      <KwWerdyktBanner book={book} werdykt={werdykt} dzialow={tresc?.dzialy.length ?? 0} />
+      {panel ? null : (
+        <div className="flex">
+          <Button type="button" variant="ghost" size="sm" onClick={() => setPonownie(true)}>
+            {/* NOWY TEKST (do akceptacji w PR) — makiety pokazują tylko wariant tekstowy. */}
+            {kanal === "odpis_kw" ? "Wgraj inne pliki" : "Wklej ponownie"}
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Co zniknie po zmianie sposobu — lista z makiety 5. Pyta o to, co rzeczoznawca
+ * WIDZI w karcie, a nie o nazwy pól migawki: „numer księgi, data badania, sąd i
+ * wydział" to jeden wiersz, bo znikają razem.
+ */
+function coZniknie(
+  book: KwBookUi,
+  kw: FormInput["kw"] | null | undefined,
+  kwGrunt: FormInput["kwGrunt"] | null | undefined,
+  encumbrance: unknown,
+): string[] {
+  const out: string[] = [];
+  if (book === "lokal") {
+    if (kw?.kwLokalu || kw?.dataBadania || kw?.sad || kw?.wydzial)
+      out.push("numer księgi, data badania, sąd i wydział");
+    if (kw?.nrLokalu || kw?.powUzytkowaKw != null || kw?.udzial || kw?.kwGruntu)
+      out.push("numer lokalu, powierzchnia, udział, numer księgi gruntu");
+    if (kw?.akt?.rodzaj || kw?.akt?.rep)
+      out.push(
+        `podstawa nabycia (${[kw.akt.rodzaj, kw.akt.rep ? `Rep. A ${kw.akt.rep}` : ""]
+          .filter(Boolean)
+          .join(", ")})`,
+      );
+    // „i jej potwierdzenie" z makiety 5 nie istnieje — potwierdzeniem jest samo
+    // wklejenie (decyzja usera 21.09), więc drukujemy sam opis treści.
+    if (kw?.tresc)
+      out.push(
+        kw.tresc.dzialy.length === 5
+          ? "przepisana treść pięciu działów"
+          : `przepisana treść działów: ${kw.tresc.dzialy.map((d) => d.kod).join(", ")}`,
+      );
+    if (encumbrance) out.push("decyzja o uwzględnieniu obciążenia z działu III");
+  } else {
+    if (kwGrunt?.nrKsiegi || kwGrunt?.sad || kwGrunt?.wydzial)
+      out.push("numer księgi, data badania, sąd i wydział");
+    if (kwGrunt?.tresc)
+      out.push(
+        kwGrunt.tresc.dzialy.length === 5
+          ? "przepisana treść pięciu działów"
+          : `przepisana treść działów: ${kwGrunt.tresc.dzialy.map((d) => d.kod).join(", ")}`,
+      );
+  }
+  return out;
+}
+
+/**
+ * Makieta 5. Zmiana sposobu przy wpisanych danych jest WYCOFANIEM badania, więc
+ * pyta o zgodę i wymienia, co zniknie — do 20.09 kasowała kartę bez słowa.
+ * Panel w karcie, nie modal: pola, o których mówi, mają zostać na ekranie.
+ */
+function ZmianaSposobuPanel({
+  ksiega,
+  etykieta,
+  pozycje,
+  onConfirm,
+  onCancel,
+}: {
+  ksiega: "lokalu" | "gruntu";
+  etykieta: string;
+  pozycje: string[];
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      role="alertdialog"
+      aria-label="Zmiana sposobu wprowadzenia księgi"
+      data-testid="kw-zmiana-sposobu"
+      className="flex flex-col gap-3 rounded-lg border border-[var(--amber-line)] bg-[var(--amber-bg)] p-4 text-sm"
+    >
+      <p>
+        Zmiana sposobu na „{etykieta}” usunie dane wpisane dla księgi {ksiega}:
+      </p>
+      <ul className="ml-4 list-disc">
+        {pozycje.map((pozycja) => (
+          <li key={pozycja}>{pozycja}</li>
+        ))}
+      </ul>
+      <div className="flex gap-2">
+        <Button type="button" onClick={onConfirm}>
+          Zmień sposób i usuń dane
+        </Button>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Zostaw jak jest
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const ETYKIETA_KANALU: Record<KwKanalUi, string> = {
+  ekw_wklej: "Wklej z przeglądarki KW",
+  odpis_kw: "Wgraj PDF",
+};
 
 /**
  * "Księga wieczysta" — the property right, then the examination of both books
- * (ADR-018). Presentation-only: upload/fetch/reset logic lives in the parent
- * form, mirroring the SubjectSection split so RTL tests need no network.
+ * (ADR-018, ADR-021). Presentation-only: upload/fetch/reset logic lives in the
+ * parent form, mirroring the SubjectSection split so RTL tests need no network.
  *
- * The UI `source` ("akt"|"odpis_kw"|"reczny") is the section key the parent
- * resets on; the snapshot's own `kw.source` is what gets persisted, and since
- * ADR-018 the manual path persists one too (`ekw_reczne`) rather than a bare
- * number. `akt` is the deweloperski path: a lokal with no book of its own.
+ * The UI `source` ("akt"|"odpis_kw"|"ekw_wklej") is the section key the parent
+ * resets on; the snapshot's own `kw.source` is what gets persisted. `akt` is
+ * the deweloperski path: a lokal with no book of its own.
  */
 export function KwSection(props: KwSectionProps) {
-  // `onSourceChange` deliberately NOT destructured: it is the parent's full
+  // `lokal.onSourceChange` deliberately NOT pulled into a bare name: it is the parent's full
   // section reset, and `retractExamination` below is the only thing allowed to
   // call it. Pulling it into render scope invites a future control to fire it
   // straight and skip the clears — which is precisely how three of the four
   // handlers here lost a field each.
-  const { control, state, source } = props;
+  const { control } = props;
+  const state = props.lokal.state;
+  const source = props.lokal.source;
   const today = props.today ?? localToday();
   const kw = useWatch({ control, name: "kw" });
   const kwGrunt = useWatch({ control, name: "kwGrunt" });
@@ -540,10 +902,10 @@ export function KwSection(props: KwSectionProps) {
   const coop = propertyRight === "spoldzielcze_wlasnosciowe";
   /**
    * ONE carrier, and it is the record — the thing the gate counts and the
-   * operat prints. `source` keeps its other two jobs (the Wgraj PDF / Wpisz
-   * ręcznie choice for the lokal's book, and the section key `resetKwSection`
-   * resets on); it just stops being a second place where "developer purchase"
-   * is written down. That duplication is what broke: a developer stub is saved
+   * operat prints. `source` keeps its other two jobs (the Wklej z przeglądarki
+   * KW / Wgraj PDF choice for the lokal's book — plus `akt` for the deed path —
+   * and the section key `resetKwSection` resets on); it just stops being a
+   * second place where "developer purchase" is written down. That duplication is what broke: a developer stub is saved
    * as `ekw_reczne` (nothing was read from a document), so the section key
    * reopened the draft with the box UNTICKED over a record that still said
    * `true`, and §8.2 would have printed the developer variant behind the
@@ -584,7 +946,9 @@ export function KwSection(props: KwSectionProps) {
   // earlier turned `kw` into a truthy-but-invalid object and swallowed the
   // schema's "no document, no number" issue (the W4 dead-end).
   const patchKw = (patch: Record<string, unknown>) => {
-    const base = { ...EMPTY_MANUAL_KW, ...(kw ?? {}) };
+    // Źródło to kanał, którym karta stoi otworem — nigdy `ekw_reczne`
+    // (ADR-021; bramka `fitness-kw-source.test.ts`).
+    const base = { ...EMPTY_KW_FIELDS, source, ...(kw ?? {}) };
     // Seeded AFTER the existing snapshot, like `nrKsiegi` below: a draft saved
     // before ADR-018 (or an extract) carries `dataBadania: null`, which would
     // otherwise win over the default and leave the book permanently "Do
@@ -593,8 +957,10 @@ export function KwSection(props: KwSectionProps) {
   };
   const patchKwGrunt = (patch: Record<string, unknown>) => {
     const base = {
-      source: "ekw_reczne" as const,
+      source: props.grunt.source,
       nrKsiegi: null as string | null,
+      sad: null as string | null,
+      wydzial: null as string | null,
       dataBadania: today,
       dzial3: null,
       dzial4: null,
@@ -647,12 +1013,40 @@ export function KwSection(props: KwSectionProps) {
     kw?: Record<string, unknown> | null;
     grunt?: boolean;
   }) => {
-    props.onSourceChange(next.source);
+    props.lokal.onSourceChange(next.source);
     setKw(next.kw ?? null);
     setKwMeta(null);
     setEncumbrance(null);
     if (next.grunt) setKwGrunt(null);
   };
+
+  /**
+   * Wycofanie badania księgi gruntu. Kolejność jak w `retractExamination`:
+   * najpierw reset sekcji rodzica (jego `resetField` przywraca DOMYŚLNĄ, czyli
+   * w trybie edycji ZAPISANĄ migawkę), dopiero potem jawne `null` — odwrotnie
+   * reset cofnąłby własne czyszczenie.
+   */
+  const retractGruntExamination = (next: KwKanalUi) => {
+    props.grunt.onSourceChange(next);
+    setKwGrunt(null);
+  };
+
+  /**
+   * Zmiana sposobu przy niepustej karcie pyta o zgodę (makieta 5) — bez tego
+   * jedno kliknięcie kasuje przepisaną księgę bez słowa. Pusta karta przełącza
+   * się od razu: nie ma o co pytać.
+   */
+  const [pendingLokal, setPendingLokal] = useState<KwKanalUi | null>(null);
+  const [pendingGrunt, setPendingGrunt] = useState<KwKanalUi | null>(null);
+  const zniknieLokal = coZniknie("lokal", kw, kwGrunt, encumbrance);
+  const zniknieGrunt = coZniknie("grunt", kw, kwGrunt, encumbrance);
+  // Podpisy pól z werdyktu przy MIGAWCE — znikają razem z nią (makieta 4).
+  // Każda karta czyta SWÓJ werdykt: niezgodność w księdze gruntu ma podpisać
+  // pole na karcie gruntu, a nie na karcie lokalu.
+  const podpisy: Partial<Record<PoleKarty, string>> = podpisyPol(kw?.transkrypcja?.bledy ?? []);
+  const podpisyGruntu: Partial<Record<PoleKarty, string>> = podpisyPol(
+    kwGrunt?.transkrypcja?.bledy ?? [],
+  );
 
   return (
     <SectionCard
@@ -711,7 +1105,7 @@ export function KwSection(props: KwSectionProps) {
                         // invalidates the mother book. The full section reset
                         // that rides along is wanted here too: `kwNumber` and a
                         // document-seeded area belong to the abandoned right.
-                        retractExamination({ source: "reczny", kw: null, grunt: true });
+                        retractExamination({ source: "ekw_wklej", kw: null, grunt: true });
                       }}
                       onBlur={field.onBlur}
                       className={cn(TILE, selected ? TILE_SELECTED : TILE_IDLE)}
@@ -794,7 +1188,7 @@ export function KwSection(props: KwSectionProps) {
               <b>
                 {required.zbadane} z {required.wymagane}
               </b>{" "}
-              — księga lokalu i księga gruntu. Wgraj PDF księgi albo wpisz dane ręcznie.
+              — księga lokalu i księga gruntu. Wklej treść z przeglądarki KW albo wgraj PDF.
             </AutoBanner>
 
             {/* §P1.8 pkt 4: the mockup does not show this path, so it keeps the
@@ -811,10 +1205,15 @@ export function KwSection(props: KwSectionProps) {
                   // also restores the "type a KW number" demand that a
                   // number-less snapshot would switch off.
                   retractExamination({
-                    source: checked === true ? "akt" : "reczny",
+                    source: checked === true ? "akt" : "ekw_wklej",
                     kw:
                       checked === true
-                        ? { ...EMPTY_MANUAL_KW, deweloperski: true, dataBadania: today }
+                        ? {
+                            ...EMPTY_KW_FIELDS,
+                            source: "akt" as const,
+                            deweloperski: true,
+                            dataBadania: today,
+                          }
                         : null,
                   });
                 }}
@@ -829,71 +1228,85 @@ export function KwSection(props: KwSectionProps) {
                 <p data-testid="kw-developer-banner" className="text-sm">
                   Lokal bez własnej KW (zakup deweloperski) — dane z księgi macierzystej gruntu.
                 </p>
-                {uploadEnabled ? (
-                  <FileInput
-                    accept="application/pdf"
-                    aria-label="Plik dokumentu (PDF)"
-                    data-testid="kw-file-input"
-                    label="Wgraj inny plik"
-                    hint="Akt notarialny (PDF, do 32 MB)"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) props.onFileSelected(file);
-                    }}
-                  />
-                ) : null}
-                <KwFetchStatusBar state={state} onRetry={props.onRetry} />
+                <FileInput
+                  accept="application/pdf"
+                  aria-label="Plik dokumentu (PDF)"
+                  data-testid="kw-file-input"
+                  label="Wgraj inny plik"
+                  hint="Akt notarialny (PDF, do 32 MB)"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) props.lokal.onFiles([file]);
+                  }}
+                />
+                <KwFetchStatusBar state={state} onRetry={props.lokal.onRetry} />
               </div>
             ) : (
               <KwBookCard
                 title="Księga lokalu"
+                testId="kw-book-lokal"
                 examined={required.lokalZbadana}
                 head={
-                  uploadEnabled ? (
-                    <SegmentedChoice
-                      label="Źródło danych księgi lokalu"
-                      options={BOOK_SOURCE_OPTIONS}
-                      value={source === "reczny" ? "reczny" : "odpis_kw"}
-                      onChange={(next) => retractExamination({ source: next as KwSource })}
-                    />
-                  ) : undefined
+                  <SegmentedChoice
+                    label="Źródło danych księgi lokalu"
+                    options={BOOK_SOURCE_OPTIONS}
+                    value={source === "odpis_kw" ? "odpis_kw" : "ekw_wklej"}
+                    onChange={(next) =>
+                      zniknieLokal.length
+                        ? setPendingLokal(next)
+                        : retractExamination({ source: next as KwSource })
+                    }
+                  />
                 }
               >
-                {source === "reczny" ? (
-                  <AutoBanner kind="warn">{MANUAL_WARNING}</AutoBanner>
-                ) : (
-                  <>
-                    {uploadEnabled ? (
-                      <FileInput
-                        accept="application/pdf"
-                        aria-label="Plik dokumentu (PDF)"
-                        data-testid="kw-file-input"
-                        label="Wgraj inny plik"
-                        hint="Odpis księgi wieczystej (PDF, do 32 MB)"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) props.onFileSelected(file);
-                        }}
-                      />
-                    ) : null}
-                    {/* While the transcription runs, ITS line stands alone: the
-                        field read's "może potrwać do pół minuty" is true of that
-                        read, but the card does not settle until both are back,
-                        so showing it here would promise a wait we are not
-                        keeping. Afterwards both speak — one about the fields,
-                        one about the dzialy. */}
-                    {props.transcribe.status === "loading" ? null : (
-                      <KwFetchStatusBar state={state} onRetry={props.onRetry} />
-                    )}
-                    <KwTranscribeStatus state={props.transcribe} />
-                  </>
-                )}
+                {pendingLokal ? (
+                  <ZmianaSposobuPanel
+                    ksiega="lokalu"
+                    etykieta={ETYKIETA_KANALU[pendingLokal]}
+                    pozycje={zniknieLokal}
+                    onConfirm={() => {
+                      retractExamination({ source: pendingLokal });
+                      setPendingLokal(null);
+                    }}
+                    onCancel={() => setPendingLokal(null)}
+                  />
+                ) : null}
+                {/* Panel kanału zostaje ZAMONTOWANY pod pytaniem, tylko schowany:
+                    wklejony tekst jest jego stanem lokalnym, więc odmontowanie
+                    kasowałoby zakładki, które „Zostaw jak jest" obiecuje zostawić
+                    (finding F1). */}
+                <div className={cn("flex flex-col gap-3", pendingLokal && "hidden")}>
+                  <KwKanalPanel
+                    book="lokal"
+                    kanal={source === "odpis_kw" ? "odpis_kw" : "ekw_wklej"}
+                    transcribe={props.lokal.transcribe}
+                    tresc={kw?.tresc}
+                    werdykt={kw?.transkrypcja}
+                    onTekst={props.lokal.onTekst}
+                    onFiles={props.lokal.onFiles}
+                    /* While the transcription runs, ITS line stands alone: the
+                       field read's "może potrwać do pół minuty" is true of that
+                       read, but the card does not settle until both are back,
+                       so showing it here would promise a wait we are not
+                       keeping. Afterwards both speak — one about the fields,
+                       one about the dzialy. */
+                    fetchBar={
+                      props.lokal.transcribe.status === "loading" ? null : (
+                        <KwFetchStatusBar state={state} onRetry={props.lokal.onRetry} />
+                      )
+                    }
+                  />
+                </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div
+                  className={cn("grid gap-4 sm:grid-cols-2", pendingLokal && "opacity-[.55]")}
+                  aria-disabled={pendingLokal ? true : undefined}
+                >
                   <div className="flex flex-col gap-1">
                     <TextField
                       id="kw-lokalu"
                       label="Numer księgi lokalu"
+                      hint={podpisy.kwLokalu}
                       // A draft saved before ADR-018 has the number in the flat
                       // `kw_number` column and no snapshot — it shows up here,
                       // in the field that now owns it, rather than vanishing.
@@ -944,6 +1357,7 @@ export function KwSection(props: KwSectionProps) {
                   <TextField
                     id="kw-nr-lokalu"
                     label="Numer lokalu"
+                    hint={podpisy.nrLokalu}
                     value={kw?.nrLokalu ?? ""}
                     onChange={(v) => patchKw({ nrLokalu: v })}
                   />
@@ -956,12 +1370,14 @@ export function KwSection(props: KwSectionProps) {
                   <TextField
                     id="kw-udzial"
                     label="Udział w nieruchomości wspólnej"
+                    hint={podpisy.udzial}
                     value={kw?.udzial ?? ""}
                     onChange={(v) => patchKw({ udzial: v })}
                   />
                   <TextField
                     id="kw-gruntu"
                     label="Numer księgi gruntu"
+                    hint={podpisy.kwGruntu}
                     value={kw?.kwGruntu ?? ""}
                     onChange={(v) => patchKw({ kwGruntu: v })}
                   />
@@ -984,6 +1400,7 @@ export function KwSection(props: KwSectionProps) {
                       <TextField
                         id="kw-akt-rep"
                         label="Rep. A"
+                        hint={podpisy.rep}
                         value={kw?.akt?.rep ?? ""}
                         onChange={(v) =>
                           patchKw({ akt: { rodzaj: "", data: "", ...(kw?.akt ?? {}), rep: v } })
@@ -1000,31 +1417,65 @@ export function KwSection(props: KwSectionProps) {
                     </div>
                   </div>
 
-                  <DzialField
-                    dzial={kw?.dzial3}
-                    onChange={(d) => patchKw({ dzial3: d })}
-                    id="kw-dzial3"
-                    label="Dział III — prawa, roszczenia i ograniczenia"
-                  />
-                  <DzialField
-                    dzial={kw?.dzial4}
-                    onChange={(d) => patchKw({ dzial4: d })}
-                    id="kw-dzial4"
-                    label="Dział IV — hipoteka"
-                  />
+                  {/* Działy III i IV nie mają już pól: liczy je `dzialyZTresci`
+                      z przepisanej treści (ADR-021 reg. 1). */}
                 </div>
               </KwBookCard>
             )}
 
-            {/* The grunt's book: manual only in paczka 1 (§P1.8 pkt 7) — reading
-                its PDF waits for the files from the office, so the card offers
-                no upload at all rather than a switch that leads nowhere. */}
-            <KwBookCard title="Księga gruntu" examined={required.gruntZbadana}>
-              <AutoBanner kind="warn">{MANUAL_WARNING}</AutoBanner>
-              <div className="grid gap-4 sm:grid-cols-2">
+            {/* Księga gruntu ma od ADR-021 te same kanały co księga lokalu (R2):
+                wklejenie treści z przeglądarki KW albo PDF. */}
+            <KwBookCard
+              title="Księga gruntu"
+              testId="kw-book-grunt"
+              examined={required.gruntZbadana}
+              head={
+                <SegmentedChoice
+                  label="Źródło danych księgi gruntu"
+                  options={BOOK_SOURCE_OPTIONS}
+                  value={props.grunt.source}
+                  onChange={(next) =>
+                    zniknieGrunt.length
+                      ? setPendingGrunt(next as KwKanalUi)
+                      : retractGruntExamination(next as KwKanalUi)
+                  }
+                />
+              }
+            >
+              {pendingGrunt ? (
+                <ZmianaSposobuPanel
+                  ksiega="gruntu"
+                  etykieta={ETYKIETA_KANALU[pendingGrunt]}
+                  pozycje={zniknieGrunt}
+                  onConfirm={() => {
+                    retractGruntExamination(pendingGrunt);
+                    setPendingGrunt(null);
+                  }}
+                  onCancel={() => setPendingGrunt(null)}
+                />
+              ) : null}
+              <div className={cn("flex flex-col gap-3", pendingGrunt && "hidden")}>
+                <KwKanalPanel
+                  book="grunt"
+                  kanal={props.grunt.source}
+                  transcribe={props.grunt.transcribe}
+                  tresc={kwGrunt?.tresc}
+                  werdykt={kwGrunt?.transkrypcja}
+                  onTekst={props.grunt.onTekst}
+                  onFiles={props.grunt.onFiles}
+                />
+              </div>
+              <div
+                className={cn("grid gap-4 sm:grid-cols-2", pendingGrunt && "opacity-[.55]")}
+                aria-disabled={pendingGrunt ? true : undefined}
+              >
                 <TextField
                   id="kwg-nr"
                   label="Numer księgi gruntu"
+                  // Numer WŁASNY tej księgi: walidator nazywa go raz jako
+                  // `numerKsiegi`/`kwLokalu` (nagłówek), raz jako `kwGruntu`
+                  // (rubryka) — na tej karcie to jedno i to samo pole.
+                  hint={podpisyGruntu.kwGruntu ?? podpisyGruntu.kwLokalu}
                   // Suggested from the lokal's book, which states it — retyping
                   // it is how the two come to disagree.
                   value={kwGrunt?.nrKsiegi ?? kw?.kwGruntu ?? ""}
@@ -1042,17 +1493,21 @@ export function KwSection(props: KwSectionProps) {
                   value={kwGrunt?.dataBadania ?? today}
                   onChange={(v) => patchKwGrunt({ dataBadania: v })}
                 />
-                <DzialField
-                  dzial={kwGrunt?.dzial3}
-                  onChange={(d) => patchKwGrunt({ dzial3: d })}
-                  id="kwg-dzial3"
-                  label="Dział III — prawa, roszczenia i ograniczenia"
+                {/* Sąd i wydział księgi gruntu — kanał tekstowy bierze je z
+                    nagłówka, ale rzeczoznawca musi móc je poprawić (R2). */}
+                <TextField
+                  id="kwg-sad"
+                  label="Sąd prowadzący księgę gruntu"
+                  placeholder="np. Sąd Rejonowy Poznań – Stare Miasto w Poznaniu"
+                  value={kwGrunt?.sad ?? ""}
+                  onChange={(v) => patchKwGrunt({ sad: v })}
                 />
-                <DzialField
-                  dzial={kwGrunt?.dzial4}
-                  onChange={(d) => patchKwGrunt({ dzial4: d })}
-                  id="kwg-dzial4"
-                  label="Dział IV — hipoteka"
+                <TextField
+                  id="kwg-wydzial"
+                  label="Wydział ksiąg wieczystych księgi gruntu"
+                  placeholder="np. V Wydział Ksiąg Wieczystych"
+                  value={kwGrunt?.wydzial ?? ""}
+                  onChange={(v) => patchKwGrunt({ wydzial: v })}
                 />
               </div>
             </KwBookCard>

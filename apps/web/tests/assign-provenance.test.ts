@@ -172,6 +172,15 @@ describe("kw provenance (Slice 6)", () => {
       area: 69.56,
       features: DEFAULT_FEATURES.map((f) => ({ ...f })),
       kw: { ...kwBase, source: "odpis_kw", powUzytkowaKw: 69.56 },
+      // Metryka odczytu jak w produkcji: od findingu F1 to ona świadczy, że
+      // dokument przeczytano — samo `source: "odpis_kw"` może być kartą, na
+      // której ktoś wpisał numer z klawiatury.
+      kwMeta: {
+        model: "claude-opus-5",
+        extractedAt: "2026-07-14T09:00:00.000Z",
+        docTypeDetected: "odpis_kw",
+        docTypeDeclared: "odpis_kw",
+      },
     });
     expect(provenance.kw).toEqual({ source: "odpis_kw", status: "to_verify" });
     expect(provenance.area).toEqual({ source: "odpis_kw", status: "to_verify" });

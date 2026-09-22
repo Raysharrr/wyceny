@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildDocumentModel, type BuildDocumentInput } from "@/domain/document-model";
+import {
+  buildDocumentModel,
+  previewMarkerRow,
+  type BuildDocumentInput,
+} from "@/domain/document-model";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
 import { ksiegaTrescSchema, type KsiegaTresc } from "@/domain/kw-tresc";
 import type { EncumbranceTreatment, KwGruntSnapshot, KwSnapshot } from "@/domain/kw-snapshot";
@@ -415,6 +419,12 @@ describe("ksiega_lokalu_wiersze — the five dzialy flattened for §8.2", () => 
     expect(rows[idx + 1]).toEqual({ typ: "brak", kol1: "BRAK WPISÓW", kol2: "", kol3: "" });
   });
 
+  /**
+   * Kolumna środkowa (600 dxa) jest kolumną PORZĄDKOWĄ — mieści liczbę, nie
+   * tekst. Nr podstawy wpisu jest liczbą, więc wiersz `lp` trzyma go tam, a nie
+   * w szerokiej `kol3` (ujednolicenie z wierszem `dokument`, uwaga recenzenta
+   * 22.09).
+   */
   it("puts the entry's Lp. and its nr podstawy wpisu on one row", () => {
     const tresc = transcribedBook();
     const rows = modelOf({ kw: { ...EXAMINED_LOKAL, tresc } }).ksiega_lokalu_wiersze;
@@ -422,18 +432,49 @@ describe("ksiega_lokalu_wiersze — the five dzialy flattened for §8.2", () => 
     expect(rows).toContainEqual({
       typ: "lp",
       kol1: `Lp. ${wpis.lp}.`,
-      kol2: "",
-      kol3: wpis.nrPodstawyWpisu,
+      kol2: wpis.nrPodstawyWpisu,
+      kol3: "",
     });
   });
 
-  it("carries the documents section of each dział", () => {
+  /**
+   * Zgłoszenie koordynatora po zrzucie §8.2 (22.09): opis dokumentu jechał w
+   * `kol2`, a ta kolumna ma w szablonie 600 dxa — Word łamał w niej długie
+   * nazwy po trzy, cztery znaki na wiersz („WYP / IS Z / REJ…”). Wiersz
+   * dokumentu rozkłada się więc na trzy kolumny wedle ich szerokości: nazwa
+   * dokumentu w `kol1` (3400 dxa, tam gdzie etykiety rubryk), nr podstawy
+   * wpisu w porządkowej `kol2`, wniosek DZ. KW. w najszerszej `kol3`. Dokument
+   * i wniosek zostają osobno — to dwa różne fakty księgi.
+   */
+  it("carries the documents section of each dział, split by column width", () => {
     const tresc = transcribedBook();
     const rows = modelOf({ kw: { ...EXAMINED_LOKAL, tresc } }).ksiega_lokalu_wiersze;
     const doc = tresc.dzialy[2].dokumenty[0];
-    const row = rows.find((r) => r.typ === "dokument" && r.kol1 === doc.nrPodstawyWpisu);
+    const row = rows.find((r) => r.typ === "dokument" && r.kol2 === doc.nrPodstawyWpisu);
     expect(row).toBeDefined();
-    expect(row!.kol2).toContain(doc.dokument);
+    expect(row!.kol1).toContain(doc.dokument);
+    if (doc.dokumentOpisPol) expect(row!.kol1).toContain(doc.dokumentOpisPol);
+    if (doc.wniosek) expect(row!.kol3).toContain(doc.wniosek);
+    if (doc.wniosekOpisPol) expect(row!.kol3).toContain(doc.wniosekOpisPol);
+    // Dokument NIE jest sklejony z wnioskiem.
+    expect(row!.kol3).not.toContain(doc.dokument);
+  });
+
+  it("kolumna porządkowa niesie tylko numer, nigdy tekst — w obu księgach", () => {
+    const model = modelOf({
+      kw: { ...EXAMINED_LOKAL, tresc: transcribedBook() },
+      kwGrunt: { ...EXAMINED_GRUNT, tresc: transcribedBook() },
+    });
+    const wiersze = [...model.ksiega_lokalu_wiersze, ...model.ksiega_gruntu_wiersze].filter(
+      (r) => r.typ === "dokument" || r.typ === "lp",
+    );
+    expect(wiersze.length).toBeGreaterThan(0);
+    // 600 dxa mieści liczbę porządkową i nic więcej; wszystko dłuższe łamało się
+    // w Wordzie po trzy znaki na wiersz.
+    expect(wiersze.filter((r) => !/^\d*$/.test(r.kol2))).toEqual([]);
+    // Bez znaku nowej linii nigdzie: render ma `linebreaks: true`, więc `\n`
+    // stałoby się `<w:br/>` — dokładnie defekt klasy D-30 w akapicie justowanym.
+    expect(wiersze.filter((r) => `${r.kol1}${r.kol3}`.includes("\n"))).toEqual([]);
   });
 
   /**
@@ -625,5 +666,146 @@ describe("wycena 14.09 (zanonimizowana) — warianty badania ksiąg", () => {
     // Zdania ścieżki ręcznej zostają w modelu — który wariant drukuje §8.2,
     // rozstrzyga `ma_tresc_lokalu` w szablonie (b1-template), nie model.
     expect(model.dzial3_opis).not.toBe("");
+  });
+});
+
+describe("§8.2 księgi gruntu z treścią (ADR-021 reg. 6)", () => {
+  const GRUNT_Z_TRESCIA: KwGruntSnapshot = {
+    ...EXAMINED_GRUNT,
+    source: "ekw_wklej",
+    sad: "Sąd Rejonowy w Testowie",
+    wydzial: "I Wydział Ksiąg Wieczystych",
+    tresc: transcribedBook(),
+    transkrypcja: {
+      ok: true,
+      bledy: [],
+      kanal: "tekst",
+      plikow: 0,
+      at: "2026-09-21T10:00:00.000Z",
+    },
+  };
+
+  it("ma_tresc_gruntu i wiersze z TEGO SAMEGO ksiegaRows co lokal — pięć działów w kolejności eKW", () => {
+    const model = modelOf({
+      kw: { ...EXAMINED_LOKAL, tresc: transcribedBook() },
+      kwGrunt: GRUNT_Z_TRESCIA,
+    });
+    expect(model.ma_tresc_gruntu).toBe(true);
+    expect(model.ksiega_gruntu_wiersze).toEqual(model.ksiega_lokalu_wiersze);
+    expect(model.ksiega_gruntu_wiersze.filter((r) => r.typ === "dzial").map((r) => r.kol1)).toEqual(
+      transcribedBook().dzialy.map((d) => d.tytul),
+    );
+  });
+
+  it("bez treści gruntu: flaga false, zero wierszy, zdania ścieżki bez treści zostają", () => {
+    const model = modelOf({ kw: EXAMINED_LOKAL, kwGrunt: EXAMINED_GRUNT });
+    expect(model.ma_tresc_gruntu).toBe(false);
+    expect(model.ksiega_gruntu_wiersze).toEqual([]);
+    expect(model.dzial3_opis_gruntu).toContain("Służebność przesyłu");
+  });
+
+  it("ma_tresc_lokalu = tresc != null, niezależnie od werdyktu (reg. 5)", () => {
+    const zlyWerdykt = {
+      ok: false,
+      bledy: [{ klasa: "pesel_suma", dzial: "II" }],
+      kanal: "pdf" as const,
+      plikow: 1,
+      at: "2026-09-21T10:00:00.000Z",
+    };
+    const model = modelOf({
+      kw: { ...EXAMINED_LOKAL, tresc: transcribedBook(), transkrypcja: zlyWerdykt },
+    });
+    expect(model.ma_tresc_lokalu).toBe(true);
+    expect(model.ksiega_lokalu_wiersze.length).toBeGreaterThan(5);
+  });
+
+  it("sąd księgi gruntu w §2 z jej własnej migawki, a dopiero potem z księgi lokalu", () => {
+    const model = modelOf({ kw: EXAMINED_LOKAL, kwGrunt: GRUNT_Z_TRESCIA });
+    expect(model.sad_ksiegi_gruntu).toBe("Sąd Rejonowy w Testowie");
+    expect(modelOf({ kw: EXAMINED_LOKAL, kwGrunt: EXAMINED_GRUNT }).sad_ksiegi_gruntu).toBe(
+      EXAMINED_LOKAL.sad,
+    );
+  });
+
+  it("kw_zrodlo dla ekw_wklej nazywa badanie w eKW, nie odpis", () => {
+    expect(modelOf({ kw: { ...EXAMINED_LOKAL, source: "ekw_wklej" } }).kw_zrodlo).toBe(
+      "badanie księgi wieczystej w systemie eKW",
+    );
+  });
+});
+
+describe("werdykt ok:false — marker TYLKO w podglądzie (spec §3.4)", () => {
+  const zly = {
+    ok: false,
+    bledy: [
+      { klasa: "pole_niezgodne:udzial", dzial: "I-Sp" },
+      { klasa: "kw_cyfra_kontrolna:kwGruntu" },
+    ],
+    kanal: "tekst" as const,
+    plikow: 0,
+    at: "2026-09-21T10:00:00.000Z",
+  };
+  const inputs = (): Partial<KcsInput> => ({
+    kw: { ...EXAMINED_LOKAL, tresc: transcribedBook(), transkrypcja: zly },
+    kwGrunt: {
+      ...EXAMINED_GRUNT,
+      tresc: transcribedBook(),
+      transkrypcja: {
+        ...zly,
+        // `numerKsiegi` nazywa się kartą, na której stoi (F1): w tabeli §8.2
+        // księgi gruntu to numer księgi GRUNTU. `pesel_suma` obok jako klasa,
+        // której nazwa od karty nie zależy.
+        bledy: [{ klasa: "pesel_suma", dzial: "II" }, { klasa: "kw_cyfra_kontrolna:numerKsiegi" }],
+      },
+    },
+  });
+  const build = (preview: boolean) => {
+    const base = syntheticDocumentInput();
+    const full: KcsInput = { ...goldenInputs(), ...inputs() };
+    return buildDocumentModel(
+      {
+        ...base,
+        propertyRight: "wlasnosc_lokalu",
+        inputs: full,
+        kcs: computeKcs(full),
+        author: AUTOR_TESTOWY,
+      },
+      { preview },
+    );
+  };
+
+  it("podgląd: pierwszy wiersz każdej tabeli to marker z nazwami niezgodności po polsku, bez wartości", () => {
+    const model = build(true);
+    const [lokal] = model.ksiega_lokalu_wiersze;
+    expect(lokal.typ).toBe("dzial");
+    expect(lokal.kol1).toBe(previewMarkerRow(zly.bledy, "lokal").kol1);
+    expect(lokal.kol1).toContain("[PODGLĄD: SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE]");
+    expect(lokal.kol1).toContain(
+      "udział w nieruchomości wspólnej, cyfra kontrolna numeru księgi gruntu",
+    );
+    expect(lokal.kol1).not.toContain(transcribedBook().polaDodatkowe.udzial!);
+    const grunt = model.ksiega_gruntu_wiersze[0].kol1;
+    expect(grunt).toContain("numer PESEL w dziale II");
+    expect(grunt).toContain("cyfra kontrolna numeru księgi gruntu");
+    expect(grunt).not.toContain("cyfra kontrolna numeru księgi lokalu");
+    // Reszta tabeli nietknięta: po markerze idzie pierwszy dział.
+    expect(model.ksiega_lokalu_wiersze[1].kol1).toBe(transcribedBook().dzialy[0].tytul);
+  });
+
+  it("wydany operat: żadnego markera, tabela zaczyna się od działu I-O", () => {
+    const model = build(false);
+    expect(model.ksiega_lokalu_wiersze[0].kol1).toBe(transcribedBook().dzialy[0].tytul);
+    expect(JSON.stringify(model)).not.toContain("[PODGLĄD: SPRAWDZENIE");
+  });
+
+  it("werdykt ok:true nie daje markera nawet w podglądzie", () => {
+    const model = modelOf({
+      kw: {
+        ...EXAMINED_LOKAL,
+        tresc: transcribedBook(),
+        transkrypcja: { ...zly, ok: true, bledy: [] },
+      },
+    });
+    expect(model.ksiega_lokalu_wiersze[0].kol1).toBe(transcribedBook().dzialy[0].tytul);
   });
 });

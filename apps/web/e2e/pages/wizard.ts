@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { atrapaTranskrypcji, tekstZakladek } from "../support/kw-transcribe-route";
 
 /** Step 1 of `/valuations/new` — only the fields the cooperative block touches. */
 export class SubjectStep {
@@ -71,17 +72,38 @@ export class SubjectStep {
   }
 
   /**
-   * The examination both books need before step 7 will let the operat out
-   * (B-06, ADR-018). Manual path — the office's own — with both dzialy
-   * answered "no entries", which is also what keeps B-07 out of the way.
+   * Badanie obu ksiąg, bez którego krok 7 nie wypuści operatu (B-06). Od
+   * ADR-021 badaniem jest PRZEPISANIE treści — ścieżki ręcznej nie ma — więc
+   * wklejamy „zakładki” i przepisujemy je przez atrapę `/kw-transcribe`.
+   * Numery z argumentów NADPISUJĄ te z atrapy po przepisaniu: testy odwołują
+   * się do nich w kroku 7.
    */
   async examineBooks(o: { kwLokalu: string; kwGruntu: string }) {
+    for (const book of ["lokal", "grunt"] as const) {
+      // Atrapa per karta: karta gruntu dostaje syntetyczną księgę GRUNTOWĄ,
+      // karta lokalu — lokalową. Podanie księgi lokalu na kartę gruntu daje
+      // słusznie niezgodność „rodzaj księgi", werdykt `ok:false` i zielona
+      // linia „Przepisano 5 działów" w ogóle się nie pojawia.
+      await atrapaTranskrypcji(this.page, "ok", book);
+      await this.page.getByTestId(`kw-wklej-${book}`).fill(tekstZakladek(undefined, book));
+      await this.page.getByTestId(`kw-przepisz-${book}`).click();
+      await expect(
+        this.page.getByTestId(`kw-book-${book}`).getByTestId("kw-transcribe-status"),
+      ).toContainText("Przepisano 5 działów", { timeout: 30_000 });
+    }
     await this.page.locator("#kw-lokalu").fill(o.kwLokalu);
     await this.page.locator("#kw-gruntu").fill(o.kwGruntu);
     await this.page.locator("#kwg-nr").fill(o.kwGruntu);
-    for (const group of await this.page.getByRole("radiogroup", { name: /^Dział I(II|V)/ }).all()) {
-      await group.getByRole("radio", { name: "Brak wpisów" }).click();
-    }
+    // Syntetyczna księga ma wpisy w dziale III, więc B-07 pyta, czy wartość je
+    // uwzględnia — i bez odpowiedzi blokuje krok 7 tak samo jak brak badania.
+    // Dawna ścieżka ręczna odpowiadała „brak wpisów” i pytania nie było.
+    await this.page
+      .getByTestId("kw-encumbrance")
+      .getByRole("radio", { name: "Wartość bez uwzględnienia obciążenia" })
+      .click();
+    await this.page
+      .locator("#kw-encumbrance-podstawa")
+      .fill("Zgodnie z poleceniem Zleceniodawcy obciążenie nie zostaje uwzględnione.");
     await expect(this.page.getByText(/Zbadane księgi: 2 z 2/)).toBeVisible();
   }
 

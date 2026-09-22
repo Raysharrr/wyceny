@@ -6,8 +6,12 @@ import { z } from "zod";
  * `KsiegaTresc` in apps/worker/app/kw_transcribe.py 1:1. Every value is the eKW
  * text verbatim, as a string (unit numbers like "NN BUD NN", shares with spaces
  * around "/"). Carries persons' data on purpose (ADR-018 "Zmiana 15.09"): it
- * never goes to a log. Stored as `inputs.kw.tresc` only when the worker's
- * `walidacja.ok` is true.
+ * never goes to a log.
+ *
+ * Zapisywana jako `inputs.kw.tresc` ZAWSZE, gdy transkrypcja wróciła — także
+ * przy `walidacja.ok === false` (ADR-021 reg. 5). Werdykt jedzie obok, w
+ * `transkrypcja`, i to on ostrzega: nieudane sprawdzenie jest ostrzeżeniem dla
+ * rzeczoznawcy, nie powodem, by wyrzucić to, co księga mówi.
  */
 const rubrykaSchema = z.object({
   nazwa: z.string(),
@@ -70,6 +74,19 @@ export const ksiegaTrescSchema = z.object({
 });
 
 export type KsiegaTresc = z.infer<typeof ksiegaTrescSchema>;
+
+/**
+ * Czy nagłówek nazywa księgę GRUNTOWĄ. Ta sama reguła, co `is_land_book`
+ * w `apps/worker/app/kw_validate.py` (PR #77, 1f20f8c) — i musi nią zostać:
+ * web i worker mają jednakowo rozstrzygać, których pól księga w ogóle ma.
+ * eKW pisze rodzaj na trzy sposoby („NIERUCHOMOŚĆ GRUNTOWA", „GRUNT ODDANY
+ * W UŻYTKOWANIE WIECZYSTE" i ten sam z budynkiem), więc wspólnym rdzeniem
+ * jest „GRUNT", a nie „GRUNTOW". Żaden rodzaj lokalowy nie zawiera „GRUNT",
+ * więc test nie zadziała w drugą stronę. Brak rodzaju to NIE księga gruntu.
+ */
+export function jestKsiegaGruntu(rodzaj: string | null | undefined): boolean {
+  return rodzaj != null && rodzaj.toUpperCase().includes("GRUNT");
+}
 
 /**
  * The worker's deterministic verdict (check digits, PESEL checksums, fields vs

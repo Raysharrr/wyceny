@@ -2,10 +2,11 @@ import type { KsiegaTresc, KwWalidacja } from "@/domain/kw-tresc";
 import { kwTranscribeResponseSchema } from "@/domain/kw-tresc";
 
 /**
- * Browser-side client for the worker's POST /kw-transcribe (b1-kw-read) —
- * the same road, the same token and the same worker as `kw-extract-client.ts`,
- * for the second, independent read of the very same PDF: `/kw-extract` reads a
- * handful of fields, this one transcribes the five dzialy in full.
+ * Browser-side client for the worker's POST /kw-transcribe (b1-kw-read,
+ * ADR-021) — the same road, the same token and the same worker as
+ * `kw-extract-client.ts`. Transcribes the five dzialy in full out of one or
+ * many PDFs, or out of the text pasted from the eKW browser; `/kw-extract`
+ * reads its handful of fields from the first PDF only.
  *
  * Two calls rather than one because the spike measured them as different jobs:
  * the field read runs on the cheaper model, the transcription needs
@@ -39,9 +40,10 @@ export type KwTranscribeResult =
 /**
  * Anything the worker did not label: a 401 on the token, a proxy's 504, a
  * network drop, a body that fails `kwTranscribeResponseSchema`. All of them
- * mean the same thing to the appraiser — the transcription is not there and
- * the manual path is — so they collapse into the generic class rather than
- * multiplying banners nobody can act on differently.
+ * mean the same thing to the appraiser — treści nie ma, a jedyne wyjście to
+ * podać ją jeszcze raz, tym samym sposobem albo drugim (ścieżki ręcznego
+ * wpisywania działów nie ma od ADR-021). Zwijają się więc w jedną klasę
+ * ogólną, zamiast mnożyć banery, na które i tak reaguje się tak samo.
  */
 const GENERIC: KwTranscribeErrorCode = "kw_transkrypcja_blad";
 
@@ -57,12 +59,15 @@ async function codeOf(response: Response): Promise<KwTranscribeErrorCode> {
 }
 
 export async function transcribeKw(args: {
-  file: File;
+  files?: File[];
+  tekst?: string;
   token: string;
   workerUrl: string;
 }): Promise<KwTranscribeResult> {
   const form = new FormData();
-  form.set("file", args.file);
+  // Pole POWTARZANE, nie `files[]` — FastAPI czyta `list[UploadFile]` po nazwie.
+  for (const file of args.files ?? []) form.append("files", file);
+  if (args.tekst != null && args.tekst !== "") form.set("tekst", args.tekst);
   form.set("token", args.token);
 
   let response: Response;
