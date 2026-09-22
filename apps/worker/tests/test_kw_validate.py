@@ -13,11 +13,25 @@ from app.kw_transcribe import KsiegaTresc
 from app.kw_validate import kw_check_digit_ok, pesel_ok, validate
 
 FIXTURE = Path(__file__).parent / "fixtures" / "kw_transcribe_sample.json"
+GRUNT_FIXTURE = Path(__file__).parent / "fixtures" / "kw_transcribe_grunt_sample.json"
 
 
 def sample() -> dict:
     doc = json.loads(FIXTURE.read_text())
     doc.pop("walidacja")
+    return doc
+
+
+def grunt() -> dict:
+    """The synthetic land book: a company as owner, no unit fields — the shape
+    that tripped the unit-only rules in the spike of 21.09."""
+    doc = json.loads(GRUNT_FIXTURE.read_text())
+    doc.pop("walidacja")
+    return doc
+
+
+def without(doc: dict, *kody: str) -> dict:
+    doc["dzialy"] = [d for d in doc["dzialy"] if d["kod"] not in kody]
     return doc
 
 
@@ -249,3 +263,96 @@ def test_errors_carry_no_values_and_the_content_is_untouched():
     assert len(walidacja.bledy) >= 3
     assert not re.search(r"\d", json.dumps(walidacja.model_dump()))
     assert tresc.model_dump() == before
+
+
+# --- the land book: rules follow the kind of book (ADR-021, R5) ---------------------
+
+
+def test_the_synthetic_land_book_is_valid():
+    walidacja = validate(KsiegaTresc.model_validate(grunt()))
+    assert walidacja.ok is True
+    assert walidacja.bledy == []
+
+
+def test_the_land_book_would_fail_the_unit_rules_so_only_the_branch_keeps_it_green():
+    """Control for the mutation "drop the branch on rodzajKsiegi": the same book
+    labelled as a unit's trips exactly the spike's false positives."""
+    doc = grunt()
+    doc["naglowek"]["rodzajKsiegi"] = sample()["naglowek"]["rodzajKsiegi"]
+    assert klasy(doc) == {
+        ("pole_niezgodne:kwGruntu", None),
+        ("pole_niezgodne:kwLokalu", None),
+    }
+
+
+@pytest.mark.parametrize(
+    "rodzaj", ["NIERUCHOMOŚĆ GRUNTOWA", "GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE", None]
+)
+def test_any_kind_but_a_unit_skips_the_unit_field_rules(rodzaj):
+    doc = grunt()
+    doc["naglowek"]["rodzajKsiegi"] = rodzaj
+    assert klasy(doc) == set()
+
+
+def test_the_unit_book_keeps_all_its_rules():
+    """Positive control: the unit fixture is still judged by every rule."""
+    doc = sample()
+    doc["polaDodatkowe"]["udzial"] += "0"
+    doc["polaDodatkowe"]["numerLokalu"] += "1"
+    assert klasy(doc) == {
+        ("pole_niezgodne:udzial", "I-Sp"),
+        ("pole_niezgodne:numerLokalu", "I-O"),
+    }
+
+
+def test_land_book_wrong_check_digit():
+    doc = grunt()
+    doc["naglowek"]["numerKsiegi"] = other_digit(doc["naglowek"]["numerKsiegi"])
+    assert klasy(doc) == {("kw_cyfra_kontrolna:numerKsiegi", None)}
+
+
+def test_land_book_rep_a_absent_from_section_ii():
+    doc = grunt()
+    pn = doc["polaDodatkowe"]["podstawaNabycia"]
+    pn["repA"] = pn["repA"].replace("/", "1/")
+    assert klasy(doc) == {("pole_niezgodne:repA", "II")}
+
+
+def test_land_book_brak_wpisow_inconsistent():
+    doc = grunt()
+    dzial(doc, "III")["brakWpisow"] = False
+    assert klasy(doc) == {("brak_wpisow_niespojny", "III")}
+
+
+def test_land_book_separator_row_as_a_rubric():
+    doc = grunt()
+    wpis = dzial(doc, "IV")["tabele"][0]["wpisy"][0]
+    wpis["rubryki"].insert(0, {"nazwa": "Lp. 1.", "lp": "1", "wartosci": ["---"]})
+    assert klasy(doc) == {("rubryka_separator", "IV")}
+
+
+# --- pasted tab by tab: missing sections, one class per code -------------------------
+
+
+def test_missing_sections_are_reported_one_per_code_in_book_order():
+    walidacja = validate(KsiegaTresc.model_validate(without(grunt(), "IV", "III")))
+    assert walidacja.ok is False
+    assert walidacja.bledy == [
+        {"klasa": "dzialy_niekompletne", "dzial": "III"},
+        {"klasa": "dzialy_niekompletne", "dzial": "IV"},
+    ]
+
+
+@pytest.mark.parametrize("kod", ["I-O", "I-Sp", "II"])
+def test_a_unit_book_missing_a_section_reports_only_that_section(kod):
+    """A field rule that reads a section which is not there is skipped — a paste
+    of three tabs must not cascade into "numer lokalu", "udział", "Rep. A"."""
+    assert klasy(without(sample(), kod)) == {("dzialy_niekompletne", kod)}
+
+
+def test_land_book_errors_carry_no_values():
+    doc = grunt()
+    doc["naglowek"]["numerKsiegi"] = other_digit(doc["naglowek"]["numerKsiegi"])
+    walidacja = validate(KsiegaTresc.model_validate(without(doc, "II")))
+    assert walidacja.ok is False
+    assert not re.search(r"\d", json.dumps(walidacja.model_dump()))

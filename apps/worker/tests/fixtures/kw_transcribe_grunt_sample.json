@@ -1,0 +1,148 @@
+{
+  "naglowek": {
+    "numerKsiegi": "PO2P/00031457/5",
+    "stanZDnia": "2026-09-18 09:41",
+    "sad": "SĄD REJONOWY POZNAŃ-STARE MIASTO W POZNANIU",
+    "wydzial": "VI WYDZIAŁ KSIĄG WIECZYSTYCH",
+    "rodzajKsiegi": "NIERUCHOMOŚĆ GRUNTOWA"
+  },
+  "dzialy": [
+    {
+      "kod": "I-O",
+      "tytul": "DZIAŁ I-O - OZNACZENIE NIERUCHOMOŚCI",
+      "brakWpisow": false,
+      "tabele": [
+        {
+          "naglowek": "Działki ewidencyjne",
+          "wpisy": [
+            {
+              "lp": "1",
+              "nrPodstawyWpisu": "1",
+              "rubryki": [
+                {"nazwa": "Numer działki", "lp": null, "wartosci": ["217/4"]},
+                {"nazwa": "Identyfikator działki", "lp": null, "wartosci": ["306401_1.0038.217/4"]},
+                {"nazwa": "Obręb ewidencyjny (numer, nazwa)", "lp": null, "wartosci": ["0038", "JARZĘBINOWO"]},
+                {"nazwa": "Położenie (numer porządkowy / województwo, powiat, gmina, miejscowość)", "lp": null, "wartosci": ["1", "WIELKOPOLSKIE, M. POZNAŃ, POZNAŃ M., POZNAŃ"]},
+                {"nazwa": "Ulica", "lp": null, "wartosci": ["UL. JARZĘBINOWA"]},
+                {"nazwa": "Sposób korzystania", "lp": null, "wartosci": ["BA - TERENY PRZEMYSŁOWE"]},
+                {"nazwa": "Przyłączenie (obszar)", "lp": null, "wartosci": ["0,4120 HA"]}
+              ]
+            }
+          ]
+        },
+        {
+          "naglowek": "Obszar",
+          "wpisy": [
+            {
+              "lp": null,
+              "nrPodstawyWpisu": "1",
+              "rubryki": [
+                {"nazwa": "Obszar", "lp": null, "wartosci": ["0,4120 HA"]}
+              ]
+            }
+          ]
+        }
+      ],
+      "dokumenty": [
+        {
+          "nrPodstawyWpisu": "1",
+          "dokument": "WYPIS Z REJESTRU GRUNTÓW I WYRYS Z MAPY EWIDENCYJNEJ; 2011-05-04; PREZYDENT MIASTA POZNANIA; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO2P/14402/11/1; 2011-05-16 11:02:41; 2011-06-01 08:47:10; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        }
+      ]
+    },
+    {
+      "kod": "I-Sp",
+      "tytul": "DZIAŁ I-SP - SPIS PRAW ZWIĄZANYCH Z WŁASNOŚCIĄ",
+      "brakWpisow": true,
+      "tabele": [],
+      "dokumenty": []
+    },
+    {
+      "kod": "II",
+      "tytul": "DZIAŁ II - WŁASNOŚĆ",
+      "brakWpisow": false,
+      "tabele": [
+        {
+          "naglowek": "Właściciele",
+          "wpisy": [
+            {
+              "lp": "1",
+              "nrPodstawyWpisu": "2",
+              "rubryki": [
+                {"nazwa": "Udział (numer udziału w prawie / wielkość udziału)", "lp": null, "wartosci": ["1", "1 / 1"]},
+                {"nazwa": "Osoba prawna (nazwa, siedziba, REGON, KRS)", "lp": null, "wartosci": ["JARZĘBINOWO INWESTYCJE SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ, POZNAŃ, 302917456, 0000512837"]}
+              ]
+            }
+          ]
+        }
+      ],
+      "dokumenty": [
+        {
+          "nrPodstawyWpisu": "2",
+          "dokument": "AKT NOTARIALNY, UMOWA SPRZEDAŻY; 07.11.2019; NOTARIUSZ EWA SOKOŁOWSKA-PRZYBYLAK, REP. A NR 8123/2019; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO2P/40917/19/1; 2019-11-12 13:20:05; 2019-12-03 09:15:44; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        }
+      ]
+    },
+    {
+      "kod": "III",
+      "tytul": "DZIAŁ III - PRAWA, ROSZCZENIA I OGRANICZENIA",
+      "brakWpisow": true,
+      "tabele": [],
+      "dokumenty": []
+    },
+    {
+      "kod": "IV",
+      "tytul": "DZIAŁ IV - HIPOTEKA",
+      "brakWpisow": false,
+      "tabele": [
+        {
+          "naglowek": "Hipoteka",
+          "wpisy": [
+            {
+              "lp": "1",
+              "nrPodstawyWpisu": "3",
+              "rubryki": [
+                {"nazwa": "Rodzaj hipoteki", "lp": null, "wartosci": ["HIPOTEKA UMOWNA"]},
+                {"nazwa": "Suma (liczbą), waluta", "lp": null, "wartosci": ["2 400 000,00 ZŁ"]},
+                {"nazwa": "Suma (słownie), waluta", "lp": null, "wartosci": ["(DWA MILIONY CZTERYSTA TYSIĘCY) ZŁ"]},
+                {"nazwa": "Zabezpieczona wierzytelność (rodzaj stosunku prawnego)", "lp": null, "wartosci": ["KREDYT INWESTYCYJNY UDZIELONY NA PODSTAWIE UMOWY NR KI/2019/00731/PZN Z DNIA 30.10.2019"]},
+                {"nazwa": "Wierzyciel hipoteczny", "lp": null, "wartosci": []},
+                {"nazwa": "Osoba prawna (nazwa, siedziba, REGON, KRS)", "lp": null, "wartosci": ["BANK NADWARCIAŃSKI SPÓŁKA AKCYJNA, POZNAŃ, 632918470, 0000418253"]}
+              ]
+            }
+          ]
+        }
+      ],
+      "dokumenty": [
+        {
+          "nrPodstawyWpisu": "3",
+          "dokument": "OŚWIADCZENIE O USTANOWIENIU HIPOTEKI; 30.10.2019; BANK NADWARCIAŃSKI SPÓŁKA AKCYJNA; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO2P/40918/19/1; 2019-11-12 13:21:30; 2019-12-03 09:22:07; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        }
+      ]
+    }
+  ],
+  "polaDodatkowe": {
+    "numerLokalu": null,
+    "kwLokalu": null,
+    "kwGruntu": null,
+    "udzial": null,
+    "powierzchniaUzytkowa": null,
+    "podstawaNabycia": {
+      "tytulAktu": "UMOWA SPRZEDAŻY",
+      "repA": "8123/2019",
+      "dataAktu": "2019-11-07",
+      "notariusz": "EWA SOKOŁOWSKA-PRZYBYLAK",
+      "siedzibaNotariusza": "POZNAŃ"
+    }
+  },
+  "walidacja": {"ok": true, "bledy": []}
+}
