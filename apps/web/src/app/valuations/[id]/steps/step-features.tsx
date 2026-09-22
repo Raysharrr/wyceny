@@ -15,9 +15,11 @@ import { featuresStepSchema } from "@/app/actions/wizard-schemas";
 import {
   FEATURE_PRESETS,
   LEVEL_LABEL,
+  measureKindFor,
   medianAreaM2,
   powierzchniaDefinitions,
   powierzchniaMeasure,
+  presetMeasureFor,
   type LokalFeatureKey,
 } from "@/domain/feature-presets";
 import {
@@ -42,6 +44,7 @@ import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import { cn } from "@/lib/utils";
 import { DEFAULT_FEATURES } from "@/lib/valuation-form-schema";
 import { FootNav } from "@/components/wizard/foot-nav";
+import { AutoBanner } from "@/components/wizard/auto-banner";
 import { SectionCard } from "@/components/wizard/section-card";
 import { FeatureRatingGroup, SCALE_LEVELS } from "./feature-rating-group";
 import { boundText, MEASURE_NOUN, measureValueFormatter } from "./feature-hint-text";
@@ -283,6 +286,40 @@ function ScaleEditor({
   );
 }
 
+/**
+ * Mockup `8-krok4-progi-odlaczone` (PR-4): a measurable feature whose thresholds
+ * are gone — retyped by hand here, or a draft from before FH.1 — has no hint and,
+ * with PR-3, no data-backed rating of the extreme lokale. The note says so and
+ * offers the way back; the median is quoted only where it IS the preset (area).
+ */
+function DetachedThresholdsNote({
+  medianM2,
+  onRestore,
+}: {
+  medianM2: number | null;
+  onRestore: () => void;
+}) {
+  // One string, one text node: the note is asserted verbatim in RTL, and JSX
+  // line-wrapping would otherwise decide where the spaces fall.
+  const median = medianM2 != null ? ` (mediana próby: ${medianM2} m²)` : "";
+  const text =
+    "Tekst poziomu przepisany ręcznie — progi liczbowe zostały odłączone, więc podpowiedź oceny " +
+    "i ocena lokali o cenie skrajnej z danych nie działają dla tej cechy. Wpisz progi w polach " +
+    `„od” i „do” albo przywróć je z presetu${median}.`;
+  return (
+    <AutoBanner
+      kind="note"
+      action={
+        <Button type="button" variant="outline" size="xs" onClick={onRestore}>
+          Przywróć progi z presetu
+        </Button>
+      }
+    >
+      {text}
+    </AutoBanner>
+  );
+}
+
 /** The measured value of the subject for a feature, as step 1 recorded it. */
 function subjectValueFor(
   kind: FeatureMeasure["kind"],
@@ -388,6 +425,9 @@ export function StepFeatures({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [editingScale, setEditingScale] = useState<Record<string, boolean>>({});
   const comparableAreas = comparables.map((c) => c.area);
+  // The sample median behind powierzchnia's preset bands — also what the
+  // detached-thresholds note quotes and „Przywróć progi z presetu” restores.
+  const median = medianAreaM2(comparableAreas);
 
   // Lokale skrajne liczone z FROZEN propsów (próba nie zmienia się na tym
   // kroku) — jedno wywołanie domeny na render, to samo, które czyta §12.2 i B-18.
@@ -538,6 +578,25 @@ export function StepFeatures({
                   const isRated = rating != null;
                   const ui = uis[index];
                   const measure = current?.measure ?? null;
+                  // PR-4: thresholds a preset could give this feature back. null =
+                  // nothing to restore (a feature that never had numbers, or
+                  // powierzchnia without a sample median) — no note for those. A
+                  // fresh clone every render, never the preset's own object.
+                  const presetMeasure = key ? presetMeasureFor(key, median) : null;
+                  // One path for every change of the bands (FH.1): they are the
+                  // scale, so every text is rewritten from them and a level that
+                  // lost its band loses its card too. The scale editor and the
+                  // restore button both go through here.
+                  const applyMeasure = (next: FeatureMeasure | null) => {
+                    setValue(`features.${index}.measure`, next, { shouldDirty: true });
+                    if (!next) return;
+                    const generated = definitionsFromMeasure(next);
+                    for (const level of SCALE_LEVELS) {
+                      setValue(`features.${index}.definitions.${level}`, generated[level] ?? "", {
+                        shouldDirty: true,
+                      });
+                    }
+                  };
                   // FH.2: the suggestion needs thresholds AND a subject value the
                   // scale actually covers; it stays until the rating agrees with
                   // it, so a deliberately different rating keeps the comparison
@@ -669,20 +728,13 @@ export function StepFeatures({
                           onSelectedLevelCleared={() =>
                             setValue(`features.${index}.rating`, null, { shouldDirty: true })
                           }
-                          onMeasureChange={(next) => {
-                            setValue(`features.${index}.measure`, next, { shouldDirty: true });
-                            if (!next) return;
-                            // The bands are the scale: every text is rewritten from
-                            // them, so a level that lost its band loses its card too.
-                            const generated = definitionsFromMeasure(next);
-                            for (const level of SCALE_LEVELS) {
-                              setValue(
-                                `features.${index}.definitions.${level}`,
-                                generated[level] ?? "",
-                                { shouldDirty: true },
-                              );
-                            }
-                          }}
+                          onMeasureChange={applyMeasure}
+                        />
+                      ) : null}
+                      {measure == null && presetMeasure ? (
+                        <DetachedThresholdsNote
+                          medianM2={presetMeasure.kind === "area" ? median : null}
+                          onRestore={() => applyMeasure(presetMeasure)}
                         />
                       ) : null}
                       {rowIssue ? (
