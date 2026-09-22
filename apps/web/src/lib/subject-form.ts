@@ -209,3 +209,32 @@ export function step1DefaultsFromInputs(v: {
     kwMeta: v.inputs?.kwMeta ?? undefined,
   };
 }
+
+/** Wejście jednego przepisania: pliki albo tekst z przeglądarki KW (ADR-021). */
+export type KwWejscie = { kanal: "pdf"; files: File[] } | { kanal: "tekst"; tekst: string };
+
+/**
+ * Co da się odczytać z danego wejścia dla danej księgi. Czysta reguła, bo to
+ * ona decyduje, czy `runKwExtraction` ma w ogóle co robić:
+ *
+ * - pola czyta `/kw-extract` i tylko dla księgi LOKALU z PDF-a (grunt bierze
+ *   swoje pola z nagłówka przepisanej treści),
+ * - treść przepisuje `/kw-transcribe` wszędzie poza ścieżką aktu — akt nie ma
+ *   pięciu działów, więc nie ma czego przepisywać.
+ *
+ * Gdy oba są fałszywe — jedyny taki przypadek to tekst wklejony na ścieżce
+ * aktu — odczyt jest NIEDOZWOLONY. Bez tej straży formularz doszedłby do
+ * zapisu migawki i skasował stub deweloperski razem z `deweloperski: true`
+ * (finding F7). Dziś z UI nieosiągalne; Task 4 przepisuje kartę, więc reguła
+ * mieszka tutaj, a nie w układzie panelu.
+ */
+export function planOdczytuKw(
+  wejscie: KwWejscie,
+  book: "lokal" | "grunt",
+  source: "akt" | "odpis_kw" | "ekw_wklej",
+): { czytaPola: boolean; transcribes: boolean; dozwolony: boolean } {
+  const akt = book === "lokal" && source === "akt";
+  const czytaPola = book === "lokal" && wejscie.kanal === "pdf";
+  const transcribes = !akt;
+  return { czytaPola, transcribes, dozwolony: czytaPola || transcribes };
+}

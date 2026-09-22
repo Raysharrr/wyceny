@@ -62,10 +62,13 @@ export type KwSnapshot = {
   nrLokalu?: string | null;
   akt?: KwAkt | null;
   /**
-   * The full content of the book's five dzialy, as §8.2 prints it — present
-   * ONLY when a PDF was transcribed AND the worker's deterministic validators
-   * passed (`walidacja.ok`). Never typed by hand: the manual path describes
-   * the dzialy in `dzial3`/`dzial4` instead, and the card says so.
+   * The full content of the book's five dzialy, as §8.2 prints it — written
+   * whenever a transcription came back, through either channel, and REGARDLESS
+   * of the validators' verdict (ADR-021 reg. 5): a failed check is a warning
+   * for the appraiser, not a reason to drop what the book says. The verdict
+   * itself rides in `transkrypcja` beside it. Never typed by hand — there is no
+   * hand-typed path any more, and `dzial3`/`dzial4` are computed from this
+   * content (`dzialyZTresci`).
    *
    * Carries persons' data on purpose (ADR-018 "Zmiana 15.09") — which is why
    * it lives HERE, inside the valuation's `inputs`, and nowhere else: no log,
@@ -191,29 +194,39 @@ export type KwProvenanceInput = Pick<KwSnapshot, "source"> &
   Partial<Pick<KwSnapshot, "tresc" | "transkrypcja">>;
 
 /**
- * Czy odczyt w ogóle się odbył. To on, a nie kanał karty, rozstrzyga
- * proweniencję (decyzja koordynatora 22.09): werdykt ALBO treść znaczy, że
- * pola wypełnił program, a nie człowiek.
+ * Czy odczyt w ogóle się odbył — NIEZALEŻNIE od kanału, na którym stała karta
+ * (decyzja koordynatora 22.09, finding F1). Trzy ślady, każdy wystarczy:
+ * werdykt walidatora, przepisana treść albo metryka odczytu pól z
+ * `/kw-extract`. Ich brak znaczy, że pola wpisał człowiek z klawiatury —
+ * choćby karta stała wtedy na „Wgraj PDF".
  */
-export function kwPrzepisano(kw: KwProvenanceInput): boolean {
-  return kw.transkrypcja != null || kw.tresc != null;
+export function kwPrzepisano(kw: KwProvenanceInput, kwMeta?: KwMetaSnapshot | null): boolean {
+  return kw.transkrypcja != null || kw.tresc != null || kwMeta != null;
 }
 
 /**
- * The snapshot's source as a PROVENANCE source (ADR-010). Deed and PDF excerpt
- * mean a file was held and read, so they stay document sources whatever else
- * the snapshot says. The two eKW sources hold no file at all: there the
- * question is whether anything was TRANSCRIBED — if it was, the model filled
- * the fields and they enter `to_verify` like a document's; if it was not, the
- * appraiser typed them off the screen and they are their own work
- * (`rzeczoznawca`), exactly as `ekw_reczne` always was (ADR-018 reg. 1).
+ * The snapshot's source as a PROVENANCE source (ADR-010). The question is
+ * never which channel the card stood on — it is whether anything was READ. If
+ * it was, the program filled the fields and they enter `to_verify` like a
+ * document's, under the deed's name for a deed and the excerpt's name for
+ * everything else. If it was not, the appraiser typed them off the screen and
+ * they are their own work (`rzeczoznawca`), exactly as `ekw_reczne` always was
+ * (ADR-018 reg. 1).
+ *
+ * That is why `odpis_kw` has no early return: a card switched to „Wgraj PDF"
+ * with a number typed into it and no file attached carries `source:
+ * "odpis_kw"` and nothing else, and stamping it against a document nobody held
+ * is the very claim ADR-018 exists to stop (finding F1).
  *
  * Keeps the eKW sources out of the Shared Kernel, which must not grow beyond
  * provenance.
  */
-export function kwProvenanceSource(kw: KwProvenanceInput): "akt" | "odpis_kw" | "rzeczoznawca" {
-  if (kw.source === "akt" || kw.source === "odpis_kw") return kw.source;
-  return kwPrzepisano(kw) ? "odpis_kw" : "rzeczoznawca";
+export function kwProvenanceSource(
+  kw: KwProvenanceInput,
+  kwMeta?: KwMetaSnapshot | null,
+): "akt" | "odpis_kw" | "rzeczoznawca" {
+  if (!kwPrzepisano(kw, kwMeta)) return "rzeczoznawca";
+  return kw.source === "akt" ? "akt" : "odpis_kw";
 }
 
 /** The grunt book's counterpart to `normalizeKw` — same rules, fewer fields. */

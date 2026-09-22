@@ -9,7 +9,16 @@ import { describe, expect, it } from "vitest";
  * tekście źródeł z wyciętymi komentarzami — zapis to literał w kodzie, nie w
  * komentarzu opisującym historię.
  */
+/** Krok 1: karta i formularz. Tu `ekw_reczne` nie ma prawa paść ani razu. */
 const PLIKI = ["src/app/valuations/new/subject-form.tsx", "src/app/valuations/new/kw-section.tsx"];
+
+/**
+ * Jedyny plik, w którym literał `"ekw_reczne"` jest DOZWOLONY, i tylko w tej
+ * jednej roli: `coerceLegacyKwGrunt` domyśla go migawce gruntu sprzed ADR-021,
+ * która źródła nie miała. To odczyt, nie zapis — bramka patrzy tu właśnie po
+ * to, żeby ktoś nie dopisał obok drugiego, już zapisującego (finding F5).
+ */
+const WYJATEK_LEGACY = "src/lib/subject-form.ts";
 const bezKomentarzy = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
@@ -24,13 +33,18 @@ describe("fitness: kanały KW bez ścieżki ręcznej", () => {
     }
   });
 
-  it('"ekw_reczne" nie jest wartością zapisywaną — najwyżej jeden odczyt legacy w subject-form', () => {
-    expect(
-      zrodla["src/app/valuations/new/kw-section.tsx"].match(/["']ekw_reczne["']/g) ?? [],
-    ).toEqual([]);
-    const wSubjectForm =
-      zrodla["src/app/valuations/new/subject-form.tsx"].match(/["']ekw_reczne["']/g) ?? [];
-    expect(wSubjectForm.length).toBeLessThanOrEqual(1);
+  it('"ekw_reczne" nie pada w kroku 1 ANI RAZU — nic go już nie zapisuje', () => {
+    for (const [plik, tekst] of Object.entries(zrodla)) {
+      expect(tekst.match(/["']ekw_reczne["']/g) ?? [], plik).toEqual([]);
+    }
+  });
+
+  it("jedyny dozwolony literał legacy to domyślne źródło w coerceLegacyKwGrunt", () => {
+    const tekst = bezKomentarzy(fs.readFileSync(path.join(process.cwd(), WYJATEK_LEGACY), "utf8"));
+    // Dokładnie jeden — drugi znaczyłby, że ktoś dopisał ZAPIS obok odczytu.
+    expect(tekst.match(/["']ekw_reczne["']/g) ?? []).toHaveLength(1);
+    expect(tekst).toContain('kwGrunt.source ?? "ekw_reczne"');
+    expect(tekst.match(/["']reczny["']/g) ?? []).toEqual([]);
   });
 
   // W S3a ta asercja jest CELOWO odłożona: Task 3 zostawił skipy z markerem

@@ -15,7 +15,7 @@ import {
   type KwSnapshot,
 } from "@/domain/kw-snapshot";
 import { ksiegaTrescSchema } from "@/domain/kw-tresc";
-import { step1DefaultsFromInputs } from "@/lib/subject-form";
+import { planOdczytuKw, step1DefaultsFromInputs } from "@/lib/subject-form";
 
 function ksiega() {
   const wire = JSON.parse(
@@ -119,5 +119,36 @@ describe("round-trip migawek KW: inputs → defaults → schema → normalize", 
       transkrypcja: null,
     });
     expect(step1Schema.safeParse({ ...defaults, subject: undefined }).success).toBe(true);
+  });
+});
+
+describe("F7: kanał tekstowy na ścieżce aktu nie jest odczytem", () => {
+  const tekst = { kanal: "tekst" as const, tekst: "DZIAŁ I-O - OZNACZENIE" };
+  const pdf = { kanal: "pdf" as const, files: [] as File[] };
+
+  it("akt + tekst: nie ma czego odczytać ani przepisać, więc odczyt jest niedozwolony", () => {
+    expect(planOdczytuKw(tekst, "lokal", "akt")).toEqual({
+      czytaPola: false,
+      transcribes: false,
+      dozwolony: false,
+    });
+  });
+
+  it("akt + PDF czyta pola bez transkrypcji; pozostałe kombinacje przepisują treść", () => {
+    expect(planOdczytuKw(pdf, "lokal", "akt")).toMatchObject({
+      czytaPola: true,
+      transcribes: false,
+      dozwolony: true,
+    });
+    expect(planOdczytuKw(tekst, "lokal", "ekw_wklej")).toMatchObject({
+      transcribes: true,
+      dozwolony: true,
+    });
+    // Karta gruntu nie czyta pól przez /kw-extract — bierze je z nagłówka treści.
+    expect(planOdczytuKw(pdf, "grunt", "akt")).toMatchObject({
+      czytaPola: false,
+      transcribes: true,
+      dozwolony: true,
+    });
   });
 });

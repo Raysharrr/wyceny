@@ -65,6 +65,7 @@ import { extractKw, type KwExtractResult } from "@/lib/kw-extract-client";
 import { transcribeKw } from "@/lib/kw-transcribe-client";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { step1DefaultsFromInputs } from "@/lib/subject-form";
+import { assignSubjectProvenance } from "@/lib/assign-provenance";
 import { ksiegaTrescSchema, type KsiegaTresc } from "@/domain/kw-tresc";
 import { dzialyZTresci } from "@/domain/kw-z-tresci";
 import { localToday } from "@/app/valuations/new/kw-section";
@@ -79,6 +80,7 @@ type KwSnapshotLike = {
   dataBadania?: string;
 };
 type KwGruntSnapshotLike = KwSnapshotLike;
+type KwWalidacjaLike = { ok: boolean; bledy: Array<{ klasa: string; dzial?: string }> };
 
 /**
  * The worker's own transcription fixture — the synthetic book with fictional
@@ -900,6 +902,101 @@ describe("KwSection — full-form wiring", () => {
     await user.paste(tekst);
     await user.click(within(karta).getByRole("button", { name: "Przepisz treść księgi" }));
   }
+
+  it("F3: nie-PDF upuszczony na kartę gruntu mówi o pliku, nie o nieudanej transkrypcji", async () => {
+    // applyAccept:false jak w teście D9 — input ma accept="application/pdf",
+    // więc userEvent sam odsiałby plik i strażnik nigdy by się nie odpalił.
+    const user = userEvent.setup({ applyAccept: false });
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    const grunt = kartaKsiegi("grunt");
+    await user.click(within(grunt).getByRole("radio", { name: "Wgraj PDF" }));
+    await user.upload(
+      within(grunt).getByTestId("kwg-file-input") as HTMLInputElement,
+      new File(["nie-pdf"], "zdjecie.jpg", { type: "image/jpeg" }),
+    );
+
+    const warn = await within(grunt).findByTestId("kw-transcribe-warn");
+    expect(warn.textContent).toBe("Wgraj plik PDF.");
+    expect(warn.textContent).not.toContain("przepisać treści działów");
+    expect(transcribeKw).not.toHaveBeenCalled();
+  });
+
+  it("F4: księgi mają osobne sekwencery — odczyt lokalu kończący się PO starcie gruntu nie unieważnia gruntu", async () => {
+    const trescLokalu = transcribedBook();
+    const trescGruntu = transcribedBook();
+    // Lokal rozstrzyga się dopiero, gdy go zwolnimy; grunt rusza w międzyczasie.
+    let zwolnijLokal: (w: { kind: "ok"; tresc: KsiegaTresc; walidacja: KwWalidacjaLike }) => void;
+    const lokalWLocie = new Promise<{ kind: "ok"; tresc: KsiegaTresc; walidacja: KwWalidacjaLike }>(
+      (resolve) => {
+        zwolnijLokal = resolve;
+      },
+    );
+    vi.mocked(transcribeKw)
+      .mockReturnValueOnce(lokalWLocie as never)
+      .mockResolvedValueOnce({
+        kind: "ok",
+        tresc: trescGruntu,
+        walidacja: { ok: true, bledy: [] },
+      });
+
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(trescLokalu));
+    await wklejIPrzepisz(user, "gruntu", tekstZakladek(trescGruntu));
+    await waitFor(() =>
+      expect((document.getElementById("kwg-nr") as HTMLInputElement).value).toBe(
+        trescGruntu.naglowek.numerKsiegi,
+      ),
+    );
+
+    // Dopiero teraz wraca lokal. Ze wspólnym sekwencerem start gruntu
+    // unieważniłby go i pola lokalu zostałyby puste.
+    zwolnijLokal!({ kind: "ok", tresc: trescLokalu, walidacja: { ok: true, bledy: [] } });
+    await waitFor(() =>
+      expect((document.getElementById("kw-lokalu") as HTMLInputElement).value).toBe(
+        trescLokalu.naglowek.numerKsiegi,
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const { kw, kwGrunt } = vi.mocked(createDraft).mock.calls[0][0] as {
+      kw: KwSnapshotLike;
+      kwGrunt: KwGruntSnapshotLike;
+    };
+    // Obie migawki są kompletne: żaden tor nie zjadł drugiego.
+    expect(kw.tresc).toEqual(trescLokalu);
+    expect(kwGrunt.tresc).toEqual(trescGruntu);
+  });
+
+  it("F1: numer wpisany z klawiatury na kanale „Wgraj PDF”, bez pliku, nie dostaje proweniencji dokumentu", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const wyslane = vi.mocked(createDraft).mock.calls[0][0] as {
+      kw: KwSnapshotLike & { powUzytkowaKw?: number | null };
+      kwMeta?: unknown;
+    };
+    expect(extractKw).not.toHaveBeenCalled();
+    expect(wyslane.kw.tresc ?? null).toBeNull();
+    expect(wyslane.kw.transkrypcja ?? null).toBeNull();
+    expect(wyslane.kwMeta ?? null).toBeNull();
+    // Migawka jedzie przez prawdziwy ACL kroku 1 — to on, a nie formularz,
+    // rozstrzyga proweniencję, więc test pyta jego, a nie ekranu.
+    const p = assignSubjectProvenance({
+      area: 54.3,
+      kw: wyslane.kw as never,
+      kwMeta: undefined,
+    });
+    expect(p.kw).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+  });
 
   it("kanał tekstowy księgi LOKALU: sam /kw-transcribe, pola z treści, źródło ekw_wklej, dataBadania=dziś (KR-21.1)", async () => {
     const tresc = transcribedBook();

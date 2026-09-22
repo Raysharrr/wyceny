@@ -29,7 +29,7 @@ export function assignSubjectProvenance(
   // confirmed like every other hand-entered value (ADR-018 reg. 1). Asked
   // through `kwProvenanceSource`, so the rule lives in ONE place — the channel
   // the card stood on never decides this (decyzja koordynatora 22.09).
-  const kwSource = values.kw ? kwProvenanceSource(values.kw) : null;
+  const kwSource = values.kw ? kwProvenanceSource(values.kw, values.kwMeta) : null;
   const areaFromDocument =
     values.kw != null &&
     kwSource !== "rzeczoznawca" &&

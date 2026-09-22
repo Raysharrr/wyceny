@@ -16,6 +16,14 @@ import {
   type KwSnapshot,
 } from "../src/domain/kw-snapshot";
 import type { KsiegaTresc } from "../src/domain/kw-tresc";
+
+/** Metryka odczytu `/kw-extract` — jej obecność JEST śladem, że dokument przeczytano. */
+const META = {
+  model: "claude-opus-5",
+  extractedAt: "2026-09-21T10:00:00.000Z",
+  docTypeDetected: "odpis_kw" as const,
+  docTypeDeclared: "odpis_kw" as const,
+};
 import { assignSubjectProvenance } from "../src/lib/assign-provenance";
 
 /** An upload-shaped snapshot: exactly the fields the extractor has always emitted. */
@@ -90,10 +98,15 @@ describe("normalizeKw — one implementation for all three sources", () => {
 });
 
 describe("a manual examination is the appraiser's own work (ADR-010 × ADR-018)", () => {
-  it("maps an untranscribed eKW examination to `rzeczoznawca` — the Shared Kernel never learns the new source", () => {
+  it("maps an examination with nothing read to `rzeczoznawca` — the Shared Kernel never learns the eKW sources", () => {
     expect(kwProvenanceSource({ source: "ekw_reczne" })).toBe("rzeczoznawca");
-    expect(kwProvenanceSource({ source: "odpis_kw" })).toBe("odpis_kw");
-    expect(kwProvenanceSource({ source: "akt" })).toBe("akt");
+    // Sam wybór kanału to nie odczyt: karta „Wgraj PDF" bez pliku jest pracą
+    // własną rzeczoznawcy tak samo jak karta wklejania bez wklejenia (F1).
+    expect(kwProvenanceSource({ source: "odpis_kw" })).toBe("rzeczoznawca");
+    expect(kwProvenanceSource({ source: "akt" })).toBe("rzeczoznawca");
+    // Ślad odczytu przywraca nazwę dokumentu, każdemu źródłu jego własną.
+    expect(kwProvenanceSource({ source: "odpis_kw" }, META)).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "akt" }, META)).toBe("akt");
   });
 
   it("enters `rzeczoznawca/confirmed`, not `to_verify` against a document nobody holds", () => {
@@ -106,10 +119,13 @@ describe("a manual examination is the appraiser's own work (ADR-010 × ADR-018)"
   });
 
   it("an uploaded excerpt keeps its document provenance (no regression)", () => {
+    // `kwMeta` jak w produkcji: udany odczyt pól zawsze ją zapisuje
+    // (`setValue("kwMeta", result.meta)`), a od F1 to ona — nie sam `source` —
+    // odróżnia przeczytany odpis od numeru wpisanego na karcie „Wgraj PDF".
     const p = assignSubjectProvenance({
       area: 44.23,
       kw: normalizeKw(uploaded),
-      kwMeta: undefined,
+      kwMeta: META,
     });
     expect(p.kw).toEqual({ source: "odpis_kw", status: "to_verify" });
     expect(p.area).toEqual({ source: "odpis_kw", status: "to_verify" });
@@ -160,9 +176,17 @@ describe("ADR-021: ekw_wklej i werdykt przy migawce", () => {
     expect(kwProvenanceSource({ source: "ekw_wklej", transkrypcja: werdykt })).toBe("odpis_kw");
     expect(kwProvenanceSource({ source: "ekw_wklej", tresc })).toBe("odpis_kw");
     expect(kwProvenanceSource({ source: "ekw_reczne", tresc })).toBe("odpis_kw");
-    // Plik w ręku zostaje dokumentem, choćby transkrypcja padła.
-    expect(kwProvenanceSource({ source: "odpis_kw" })).toBe("odpis_kw");
-    expect(kwProvenanceSource({ source: "akt" })).toBe("akt");
+    // Odczyt samych pól bez transkrypcji też jest odczytem: PDF był w ręku,
+    // więc odpis zostaje dokumentem, choćby transkrypcja padła.
+    expect(kwProvenanceSource({ source: "odpis_kw" }, META)).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "akt" }, META)).toBe("akt");
+  });
+
+  it("F1: numer wpisany ręcznie na karcie „Wgraj PDF”, bez pliku → rzeczoznawca/confirmed", () => {
+    const kw = normalizeKw({ ...uploaded, source: "odpis_kw", powUzytkowaKw: 44.23 });
+    const p = assignSubjectProvenance({ area: 44.23, kw, kwMeta: undefined });
+    expect(p.kw).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+    expect(p.area).toEqual({ source: "rzeczoznawca", status: "confirmed" });
   });
 
   it("numer i powierzchnia wpisane na kanale wklejania BEZ transkrypcji → rzeczoznawca/confirmed", () => {

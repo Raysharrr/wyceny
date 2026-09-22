@@ -408,6 +408,15 @@ function KwFetchStatusBar({ state, onRetry }: { state: KwFetchState; onRetry: ()
  * transcription state at all. Proposed for the user's acceptance in the PR.
  */
 const TRANSCRIBE_FAILED_TEXT: Record<string, string> = {
+  // Odrzucenia sprzed sieci (D9). Karta gruntu nie ma własnego paska statusu,
+  // więc jej odmowy jadą tym samym banerem — i muszą mówić, co się stało z
+  // PLIKIEM, a nie opisywać nieudaną transkrypcję (finding F3).
+  kw_plik_nie_pdf: "Wgraj plik PDF.",
+  kw_za_duzo_plikow: "Najwyżej pięć plików naraz.", // NOWY TEKST (do akceptacji w PR)
+  kw_pliki_za_duze: "Pliki są za duże (łącznie maks. 32 MB).", // NOWY TEKST (do akceptacji w PR)
+  // Ścieżka aktu czyta wyłącznie plik — akt nie ma działów do przepisania (F7).
+  kw_kanal_niedozwolony:
+    "Wklejona treść nie dotyczy aktu notarialnego — na tej ścieżce wgraj plik PDF aktu.", // NOWY TEKST (do akceptacji w PR)
   kw_transkrypcja_ucieta:
     "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
   kw_transkrypcja_nieczytelna:

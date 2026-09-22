@@ -30,7 +30,12 @@ import {
 } from "@/domain/kw-z-tresci";
 import { MAX_TEKST_BAJTOW } from "@/domain/kw-wklej";
 import type { KwWerdykt } from "@/domain/kw-snapshot";
-import { EMPTY_SUBJECT, proposalToSubjectValues } from "@/lib/subject-form";
+import {
+  EMPTY_SUBJECT,
+  planOdczytuKw,
+  proposalToSubjectValues,
+  type KwWejscie,
+} from "@/lib/subject-form";
 import { cn } from "@/lib/utils";
 import { valuationFormSchema } from "@/lib/valuation-form-schema";
 import {
@@ -64,8 +69,7 @@ type FormOutput = z.output<typeof valuationFormSchema>;
 
 /** Która księga jedzie danym torem — obie mają te same kanały (ADR-021 R2). */
 export type KwBook = "lokal" | "grunt";
-/** Wejście jednego przepisania: pliki albo tekst z przeglądarki KW. */
-export type KwWejscie = { kanal: "pdf"; files: File[] } | { kanal: "tekst"; tekst: string };
+export type { KwWejscie };
 
 /** Odrzucenia klientowe przed siecią (D9) — limity kontraktu workera. */
 const MAX_PLIKOW = 5;
@@ -372,10 +376,11 @@ export function SubjectForm({
     // Akt: tylko pola, żadnej transkrypcji (deed ma zero działów) — jak dziś.
     const expectedType: "akt" | "odpis_kw" =
       book === "lokal" && kwSource === "akt" ? "akt" : "odpis_kw";
-    // Pola czyta `/kw-extract` i tylko dla księgi lokalu z PDF-a: kanał tekstowy
-    // nie ma pliku, a karta gruntu bierze swoje pola z nagłówka treści.
-    const czytaPola = book === "lokal" && wejscie.kanal === "pdf";
-    const transcribes = expectedType === "odpis_kw";
+    const { czytaPola, transcribes, dozwolony } = planOdczytuKw(wejscie, book, kwSource);
+    if (!dozwolony) {
+      setTranscribe({ status: "failed", code: "kw_kanal_niedozwolony" });
+      return;
+    }
     if (czytaPola) setKwState({ status: "loading" });
     setTranscribe({ status: transcribes ? "loading" : "idle" });
 
