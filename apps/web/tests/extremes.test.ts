@@ -139,6 +139,38 @@ describe("extremeComparables — lokale o cenie min i max z joinem kandydata", (
     ]);
   });
 
+  /**
+   * Wiersz rejestru biura nie ma `lokalId` (jeden lokal na wiersz), więc join
+   * jest DOKŁADNY tylko dzięki `coopTxId`. Bez tego `candidate` byłby null i
+   * P.P nigdy nie dotarłoby do podpowiedzi kroku 4 — kolumna byłaby ozdobą.
+   */
+  it("wiersz z rejestru biura (lokalId pusty, coopTxId) dowozi kandydata z P.P", () => {
+    const candidate: Candidate = {
+      ...lokalOf({ annex: true }).candidate!,
+      transactionId: "coop-row-1",
+      lokalId: "",
+      cooperative: "SM Osiedle Młodych",
+    };
+    const { max } = extremeComparables({
+      comparables: [
+        {
+          pricePerM2: 9000,
+          source: "rejestr_sm",
+          transactionId: "coop-row-1",
+          lokalId: "",
+          coopTxId: "coop-row-1",
+        },
+      ],
+      sampleSelection: {
+        proposed: [candidate],
+        alternates: [],
+      } as unknown as NonNullable<KcsInput["sampleSelection"]>,
+    });
+    expect(max[0].key).toBe("coop-row-1|");
+    expect(max[0].candidate?.annex).toBe(true);
+    expect(suggestedRating(featureOf("pomieszczenia-przynalezne"), max[0])?.level).toBe("lepsza");
+  });
+
   it("candidateOf zachowuje kontrakt z document-model (R-7): join po transactionId + lokalId, {} → null", () => {
     const inputs = inputs1409();
     expect(candidateOf(inputs.comparables[0], inputs.sampleSelection)).toEqual({
