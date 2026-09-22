@@ -47,8 +47,12 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * rozpakowane części są identyczne co do bajtu. Ten pin pilnuje więc, że
  * binarka w repo jest tą PRZEJRZANĄ, a nie że da się ją odtworzyć bajtowo;
  * odtwarzalność sprawdza się porównaniem rozpakowanych części.
+ *
+ * Głuszyna PR-2 (ADR-021): slot tabeli działów księgi gruntu po jej protokole
+ * (`tabela_dzialow("ksiega_gruntu_wiersze")`), zdania ścieżki bez treści pod
+ * `{^ma_tresc_gruntu}`.
  */
-const TEMPLATE_SHA256 = "28b5c23028e530963f5a51096cb9053f60dbb5b55ad14f52ce249f93ea5f8b66";
+const TEMPLATE_SHA256 = "74e30cd825e7f369dfcdd3a72f8c5d4b2c4c6406ed585857584ef1d7b02b92df";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -277,6 +281,13 @@ const REQUIRED_PLACEHOLDERS = [
   "{/ma_tresc_lokalu}",
   "{#ksiega_lokalu_wiersze}",
   "{/ksiega_lokalu_wiersze}",
+  // Głuszyna PR-2 (ADR-021 reg. 6): księga gruntu ma tę samą tabelę działów co
+  // lokal — slot po protokole gruntu, z odwrotną gałęzią dla zdań ścieżki bez treści.
+  "{#ma_tresc_gruntu}",
+  "{^ma_tresc_gruntu}",
+  "{/ma_tresc_gruntu}",
+  "{#ksiega_gruntu_wiersze}",
+  "{/ksiega_gruntu_wiersze}",
   "{kol1}",
   "{kol2}",
   "{kol3}",

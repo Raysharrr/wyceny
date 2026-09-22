@@ -199,12 +199,48 @@ describe("I-13 G: §8.2 w kolejności operatu wzorcowego (TP.2, D-21/D-24/D-25)"
     expect(cells).toContain("Ulica");
     expect(cells).toContain("UL. ZIELARSKA");
     // Transkrypcja zastępuje zdania ścieżki ręcznej dla KSIĘGI LOKALU — zdania o
-    // działach księgi gruntu zostają, bo tej nigdy nie transkrybujemy.
+    // działach księgi gruntu zostają, bo w tym wariancie grunt treści nie ma.
     expectNoText(sectionText(doc, "8.2."), "Numer lokalu wg księgi wieczystej:");
     expectNoText(sectionText(doc, "8.2."), "Dział III: Służebność osobista mieszkania");
     expect(doc).toBeDefined();
-    // Księga gruntu nadal ręczna, więc jej protokół zostaje zdaniami.
+    // Księga gruntu bez treści, więc jej protokół zostaje zdaniami.
     expect(text).toContain("dokonano badania księgi wieczystej nieruchomości gruntowej");
+  });
+
+  /**
+   * Głuszyna PR-2 (ADR-021 reg. 6). Od kanału wklejenia i PDF-a księga gruntu ma
+   * te same kanały co lokal, więc §8.2 drukuje ją tą samą tabelą działów —
+   * dwukropek jej protokołu wprowadza tabelę, a nie zdania ścieżki bez treści.
+   */
+  it("obie księgi z treścią: dwie tabele działów, dziesięć nagłówków działów, zdania o działach gruntu schowane", () => {
+    const { doc, paragraphs, text } = sec82({ kw: "pdf_obu_ksiag_z_trescia" });
+    const naglowki = paragraphs
+      .filter((p) => p.container === "table" && p.text.startsWith("DZIAŁ "))
+      .map((p) => p.text);
+    expect(naglowki).toHaveLength(10);
+    expect(naglowki.slice(5)).toEqual(naglowki.slice(0, 5));
+    // Protokół gruntu wprowadza tabelę, nie zdania ścieżki bez treści.
+    expect(text).toContain(
+      `nieruchomości gruntowej nr ${KW_GRUNTU_TESTOWA} (źródło: przegladarka-ekw.ms.gov.pl):`,
+    );
+    expectNoText(sectionText(doc, "8.2."), "Dział III: brak wpisów.");
+    expectNoText(sectionText(doc, "8.2."), "Dział IV: brak wpisów.");
+    // Kolejność: protokół lokalu → tabela → protokół gruntu → tabela.
+    const idx = (s: string) => text.indexOf(s);
+    expect(idx("nieruchomości lokalowej")).toBeLessThan(idx("nieruchomości gruntowej"));
+    expect(text.indexOf("DZIAŁ I-O", idx("nieruchomości gruntowej"))).toBeGreaterThan(
+      idx("nieruchomości gruntowej"),
+    );
+    // Każdy akapit tabeli z jawnym stylem (TP.0).
+    expect(paragraphs.filter((p) => p.container === "table" && p.style == null)).toEqual([]);
+  });
+
+  it("lokal z treścią, grunt bez: druga tabela nie powstaje, zdania gruntu zostają (kontrola pozytywna)", () => {
+    const { paragraphs, text } = sec82({ kw: "pdf_lokalu_z_trescia" });
+    expect(
+      paragraphs.filter((p) => p.container === "table" && p.text.startsWith("DZIAŁ ")),
+    ).toHaveLength(5);
+    expect(text).toContain("Dział III: brak wpisów.");
   });
 
   /**
