@@ -398,6 +398,7 @@ export function StepFeatures({
 
   const {
     control,
+    getValues,
     handleSubmit,
     setValue,
     formState: { isSubmitting, errors },
@@ -433,13 +434,18 @@ export function StepFeatures({
   );
   const ratedLokale = lokale.filter((l) => isLokalRated(extremeFeatures, ratings[l.key])).length;
   const extremesMissing = lokale.length - ratedLokale;
-  // Klucz lokalu ma kropki (EGiB), więc nie może być ścieżką RHF — zapis całą mapą.
-  const rateLokal = (lokalKey: string, featureKey: string, level: FeatureRating) =>
+  // Klucz lokalu ma kropki (EGiB), więc nie może być ścieżką RHF — zapis całą
+  // mapą. Podstawą jest STAN FORMULARZA odczytany w chwili zapisu, nie migawka
+  // `ratings` domknięta w renderze (review PR #81, F2): dwa zapisy w jednym
+  // tiku czytałyby tę samą migawkę i drugi nadpisałby pierwszy.
+  const rateLokal = (lokalKey: string, featureKey: string, level: FeatureRating) => {
+    const current = getValues("comparableRatings") ?? {};
     setValue(
       "comparableRatings",
-      { ...ratings, [lokalKey]: { ...(ratings[lokalKey] ?? {}), [featureKey]: level } },
+      { ...current, [lokalKey]: { ...(current[lokalKey] ?? {}), [featureKey]: level } },
       { shouldDirty: true, shouldValidate: true },
     );
+  };
 
   const weightSum = (features ?? []).reduce((sum, f) => sum + (Number(f?.weightPct) || 0), 0);
   const weightsBalanced = Math.abs(weightSum - 100) <= 0.1;

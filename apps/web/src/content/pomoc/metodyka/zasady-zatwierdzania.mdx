@@ -44,15 +44,18 @@ Lista jest przy tym drobnoziarnista tam, gdzie ma to znaczenie: blokuje **każda
 
 ### Oceny i skala cech
 
-Blokady poniżej niosą kod z katalogu blokad i odsyłają do [kroku 4](/pomoc/krok-4-cechy). Każda sprawdzana jest przy pojedynczej cesze.
+Blokady poniżej niosą kod z katalogu blokad i odsyłają do [kroku 4](/pomoc/krok-4-cechy). Trzy pierwsze sprawdzane są przy pojedynczej cesze przedmiotu, ostatnia — przy każdej cesze z wagą każdego lokalu o cenie skrajnej.
 
-| Kod  | Kiedy blokuje                                                 | Komunikat                                                                              |
-| ---- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| B-08 | cecha nie ma oceny                                            | Wybierz ocenę cechy „nazwa”.                                                           |
-| B-09 | ocena wskazuje poziom, który w skali tej cechy nie ma opisu   | Ocena „poziom” cechy „nazwa” nie ma opisu w skali — opisz ten poziom albo zmień ocenę. |
-| B-10 | cecha z wagą większą od zera ma opisane mniej niż dwa poziomy | Cecha „nazwa” musi mieć opisane co najmniej dwa poziomy.                               |
+| Kod  | Kiedy blokuje                                                  | Komunikat                                                                              |
+| ---- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| B-08 | cecha nie ma oceny                                             | Wybierz ocenę cechy „nazwa”.                                                           |
+| B-09 | ocena wskazuje poziom, który w skali tej cechy nie ma opisu    | Ocena „poziom” cechy „nazwa” nie ma opisu w skali — opisz ten poziom albo zmień ocenę. |
+| B-10 | cecha z wagą większą od zera ma opisane mniej niż dwa poziomy  | Cecha „nazwa” musi mieć opisane co najmniej dwa poziomy.                               |
+| B-18 | lokal o cenie skrajnej nie ma oceny cechy na opisanym poziomie | Oceń cechę „nazwa” lokalu o cenie najwyższej w próbie (krok 4).                        |
 
 B-09 i B-10 zatrzymuje już zapis kroku 4, więc na liście blokad pojawiają się głównie przy wycenach sprzed tej reguły.
+
+B-18 dotyczy lokali, które operat opisuje w §12.2 — o najwyższej i o najniższej cenie za metr w próbie. Komunikat nazywa cechę i stronę ceny („najwyższej” albo „najniższej”), więc przy remisie cen i przy kilku brakujących ocenach lista mówi wprost, czego brakuje, zamiast powtarzać jedno zdanie. Blokada milczy przy próbie wpisanej ręcznie, bo taka próba nie ma rekordów transakcji do oceniania. Zapis kroku 4 też jej nie przepuści, więc na liście blokad pojawia się głównie przy wycenach rozpoczętych przed tą regułą; jak się ją zdejmuje, opisuje [krok 4](/pomoc/krok-4-cechy).
 
 Szkic rozpoczęty przed wprowadzeniem skali z opisanych poziomów nie ma osobnej blokady: przy odczycie traci kwotę, która nie wynika już z jego danych, a brak wartości rynkowej i tak zatrzymuje zatwierdzenie. Wystarczy przejść krok 4 i krok 5 raz jeszcze.
 

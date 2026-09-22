@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 afterEach(cleanup);
@@ -322,6 +322,38 @@ describe("StepFeatures — lokale o cenie skrajnej (ADR-022, makieta 7)", () => 
     await user.clear(waga);
     await user.type(waga, "0");
     expect(screen.queryByTestId("extreme-row-0-dodatkowe")).toBeNull();
+  });
+
+  /**
+   * Finding F2 z review PR #81: zapis oceny musi wychodzić od STANU FORMULARZA
+   * odczytanego w chwili zapisu, nie od migawki `ratings` domkniętej w
+   * renderze. Dwa kliknięcia zflushowane w jednym tiku czytałyby tę samą
+   * migawkę i drugie skasowałoby pierwsze. Dziś żadna ścieżka użytkownika tam
+   * nie sięga (kliknięcia są zdarzeniami dyskretnymi), ale programowa akcja
+   * zapisująca wiele ocen naraz — „przyjmij wszystkie podpowiedzi” — sięgnie.
+   * Mutacja: powrót do `{ ...ratings }` z domknięcia renderu → ten test
+   * czerwony, pozostałe zielone.
+   */
+  it("dwie oceny zapisane w jednym tiku zostają obie (F2)", () => {
+    renderStep();
+    const standard = within(group(0, "Standard wykończenia", "najwyższej")).getAllByRole("radio");
+    const lokalizacja = within(group(0, "Lokalizacja szczegółowa", "najwyższej")).getAllByRole(
+      "radio",
+    );
+    act(() => {
+      fireEvent.click(standard[0]);
+      fireEvent.click(lokalizacja[0]);
+    });
+    expect(
+      within(group(0, "Standard wykończenia", "najwyższej"))
+        .getAllByRole("radio")
+        .map((r) => r.getAttribute("aria-checked")),
+    ).toEqual(["true", "false", "false"]);
+    expect(
+      within(group(0, "Lokalizacja szczegółowa", "najwyższej"))
+        .getAllByRole("radio")
+        .map((r) => r.getAttribute("aria-checked")),
+    ).toEqual(["true", "false"]);
   });
 
   it("bez migawki próby karty nie ma, a pasek dolny nie liczy lokali skrajnych", () => {
