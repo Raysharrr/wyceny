@@ -151,7 +151,16 @@ export function SubjectForm({
     defaults?.kwGrunt?.source === "odpis_kw" ? "odpis_kw" : "ekw_wklej",
   );
   const [kwState, setKwState] = useState<KwFetchState>(() => {
-    if (!defaults?.kw) return { status: "idle" };
+    /**
+     * Pasek „Odczytano: N KW" opowiada o ODCZYCIE PÓL, nie o tym, że migawka
+     * w ogóle jest. Po przepisaniu treści samym tekstem odczytu pól nie było,
+     * więc ponownie otwarty szkic pokazywał „✓ Odczytano: 0 KW — do
+     * potwierdzenia" obok banera „Przepisano 5 działów", choć świeży formularz
+     * po tej samej operacji paska nie ma. `kwMeta` jest jedynym trwałym śladem
+     * odczytu pól: zapisuje je `/kw-extract` przy powodzeniu, a
+     * `retractExamination` zdejmuje razem z wycofanym badaniem (F7).
+     */
+    if (!defaults?.kw || defaults.kwMeta == null) return { status: "idle" };
     const kwCount = [defaults.kw.kwLokalu, defaults.kw.kwGruntu, ...defaults.kw.kwInne].filter(
       Boolean,
     ).length;
