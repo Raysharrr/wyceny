@@ -726,7 +726,7 @@ function KwKanalPanel({
   book: KwBookUi;
   kanal: KwKanalUi;
   transcribe: KwTranscribeState;
-  tresc: { dzialy: ReadonlyArray<unknown> } | null | undefined;
+  tresc: { dzialy: ReadonlyArray<{ kod: string }> } | null | undefined;
   werdykt: KwWerdykt | null | undefined;
   onTekst: (tekst: string) => void;
   onFiles: (files: File[]) => void;
@@ -734,11 +734,20 @@ function KwKanalPanel({
   fetchBar?: React.ReactNode;
 }) {
   const [ponownie, setPonownie] = useState(false);
-  // Nowa treść zamyka panel otwarty przyciskiem „Wklej ponownie" — bez tego
-  // rzeczoznawca po udanym przepisaniu dalej patrzyłby w puste pole.
-  const [widziana, setWidziana] = useState(tresc ?? null);
-  if ((tresc ?? null) !== widziana) {
-    setWidziana(tresc ?? null);
+  /**
+   * Nowa treść zamyka panel otwarty przyciskiem „Wklej ponownie" — bez tego
+   * rzeczoznawca po udanym przepisaniu dalej patrzyłby w puste pole.
+   *
+   * Porównanie idzie po WARTOŚCI, nie po tożsamości obiektu: `useWatch` oddaje
+   * migawkę sklonowaną, więc pod `!==` każda poprawka sądu czy udziału
+   * zatrzaskiwała pole w trakcie wklejania (zmierzone testem obok). Kluczem są
+   * kody działów i chwila odczytu — jedyne dwie rzeczy, które zmienia nowe
+   * przepisanie, a nie zmienia edycja pola.
+   */
+  const kluczTresci = `${(tresc?.dzialy ?? []).map((d) => d.kod).join(",")}|${werdykt?.at ?? ""}`;
+  const [widziany, setWidziany] = useState(kluczTresci);
+  if (kluczTresci !== widziany) {
+    setWidziany(kluczTresci);
     if (ponownie) setPonownie(false);
   }
   const zajete = transcribe.status === "loading";

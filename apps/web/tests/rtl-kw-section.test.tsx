@@ -2160,6 +2160,31 @@ describe("KwSection — full-form wiring", () => {
     expect(createDraft).not.toHaveBeenCalled();
   });
 
+  /**
+   * Panel otwarty przyciskiem „Wklej ponownie" zamyka dopiero NOWA treść. Reguła
+   * porównuje migawkę przez tożsamość, więc gdyby react-hook-form oddawał przy
+   * każdej edycji sklonowane `kw`, poprawka sądu albo udziału zatrzaskiwałaby
+   * pole w trakcie wklejania.
+   */
+  it("„Wklej ponownie” przeżywa edycję innego pola karty", async () => {
+    const tresc = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
+    await screen.findByTestId("kw-transcribe-status");
+
+    await user.click(screen.getByRole("button", { name: "Wklej ponownie" }));
+    expect(screen.getByTestId("kw-wklej-lokal")).toBeDefined();
+    await user.type(document.getElementById("kw-sad") as HTMLInputElement, "X");
+    expect(screen.getByTestId("kw-wklej-lokal")).toBeDefined();
+  });
+
   it("pusta karta przełącza sposób bez pytania", async () => {
     const user = userEvent.setup();
     render(<SubjectForm />);
