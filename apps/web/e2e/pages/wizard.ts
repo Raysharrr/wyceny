@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { atrapaTranskrypcji, tekstZakladek } from "../support/kw-transcribe-route";
+import { RODZAJ_GRUNTU, atrapaTranskrypcji, tekstZakladek } from "../support/kw-transcribe-route";
 
 /** Step 1 of `/valuations/new` — only the fields the cooperative block touches. */
 export class SubjectStep {
@@ -79,8 +79,12 @@ export class SubjectStep {
    * się do nich w kroku 7.
    */
   async examineBooks(o: { kwLokalu: string; kwGruntu: string }) {
-    await atrapaTranskrypcji(this.page, "ok");
     for (const book of ["lokal", "grunt"] as const) {
+      // Atrapa per karta: fikstura opisuje księgę LOKALU, więc karta gruntu
+      // dostaje nagłówek księgi gruntowej. Inaczej web słusznie zgłasza
+      // niezgodność „rodzaj księgi", werdykt wraca `ok:false` i zielona linia
+      // „Przepisano 5 działów" w ogóle się nie pojawia.
+      await atrapaTranskrypcji(this.page, "ok", book === "grunt" ? RODZAJ_GRUNTU : undefined);
       await this.page.getByTestId(`kw-wklej-${book}`).fill(tekstZakladek());
       await this.page.getByTestId(`kw-przepisz-${book}`).click();
       await expect(

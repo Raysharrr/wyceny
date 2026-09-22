@@ -9,8 +9,11 @@ import type { Page } from "@playwright/test";
  *
  * Treść to syntetyczna księga workera (fikcyjne osoby, poprawne cyfry
  * kontrolne), czytana W MIEJSCU: numery KW nie mogą stać literałem w pliku
- * śledzonym (F-9). Dla księgi gruntu ta sama treść wystarcza — gruntu nie
- * odczytujemy polami, a wiersze §8.2 są takie same.
+ * śledzonym (F-9). Wiersze §8.2 są dla obu ksiąg takie same, ale RODZAJ
+ * księgi w nagłówku już nie: fikstura opisuje księgę LOKALU, a web sprawdza
+ * rodzaj wobec karty, na którą treść wklejono. Podanie jej na kartę gruntu
+ * daje — słusznie — niezgodność „rodzaj księgi", więc karta gruntu dostaje
+ * `RODZAJ_GRUNTU` (`rodzajAtrapy`).
  */
 const FIXTURE = path.join(
   process.cwd(),
@@ -23,8 +26,16 @@ const FIXTURE = path.join(
 
 export type WariantAtrapy = "ok" | "walidacja" | "blad";
 
+/** Rodzaj z nagłówka księgi gruntowej — jedna z trzech pisowni eKW. */
+export const RODZAJ_GRUNTU = "NIERUCHOMOŚĆ GRUNTOWA";
+
 type KsiegaZAtrapy = {
-  naglowek: { numerKsiegi: string; sad: string | null; wydzial: string | null };
+  naglowek: {
+    numerKsiegi: string;
+    sad: string | null;
+    wydzial: string | null;
+    rodzajKsiegi: string | null;
+  };
   dzialy: Array<{ kod: string; tytul: string }>;
   polaDodatkowe: {
     numerLokalu: string | null;
@@ -46,7 +57,17 @@ export function tekstZakladek(kody = ["I-O", "I-Sp", "II", "III", "IV"]): string
     .join("\n\n");
 }
 
-export async function atrapaTranskrypcji(page: Page, wariant: WariantAtrapy = "ok"): Promise<void> {
+/**
+ * `rodzajAtrapy` nadpisuje rodzaj księgi w nagłówku — karta gruntu musi dostać
+ * księgę gruntową. Każde wywołanie zdejmuje poprzednią atrapę, żeby przełączenie
+ * rodzaju między kartami było przełączeniem, a nie warstwą na warstwie.
+ */
+export async function atrapaTranskrypcji(
+  page: Page,
+  wariant: WariantAtrapy = "ok",
+  rodzajAtrapy?: string,
+): Promise<void> {
+  await page.unroute("**/kw-transcribe");
   await page.route("**/kw-transcribe", async (route) => {
     if (wariant === "blad") {
       await route.fulfill({
@@ -57,6 +78,7 @@ export async function atrapaTranskrypcji(page: Page, wariant: WariantAtrapy = "o
       return;
     }
     const ksiega = ksiegaZAtrapy();
+    if (rodzajAtrapy !== undefined) ksiega.naglowek.rodzajKsiegi = rodzajAtrapy;
     const walidacja =
       wariant === "ok"
         ? { ok: true, bledy: [] }
