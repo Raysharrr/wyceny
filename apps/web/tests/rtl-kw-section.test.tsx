@@ -1073,6 +1073,10 @@ describe("KwSection — full-form wiring", () => {
   it("F4: księgi mają osobne sekwencery — odczyt lokalu kończący się PO starcie gruntu nie unieważnia gruntu", async () => {
     const trescLokalu = transcribedBook();
     const trescGruntu = transcribedBook();
+    // Fixtura workera to księga LOKALU — na karcie gruntu musi nią być księga
+    // gruntowa, inaczej werdykt niósłby niezgodność rodzaju, o którą ten test
+    // nie pyta (sekwencery, nie walidacja).
+    trescGruntu.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
     // Lokal rozstrzyga się dopiero, gdy go zwolnimy; grunt rusza w międzyczasie.
     let zwolnijLokal: (w: { kind: "ok"; tresc: KsiegaTresc; walidacja: KwWalidacjaLike }) => void;
     const lokalWLocie = new Promise<{ kind: "ok"; tresc: KsiegaTresc; walidacja: KwWalidacjaLike }>(
@@ -2266,6 +2270,18 @@ describe("KwSection — full-form wiring", () => {
     expect((document.getElementById("kw-gruntu") as HTMLInputElement).value).toBe("");
     expect((document.getElementById("kw-nr-lokalu") as HTMLInputElement).value).toBe("");
     expect((document.getElementById("kw-udzial") as HTMLInputElement).value).toBe("");
+
+    // Klasa przechodzi przez `kwWerdyktSchema` do zapisu razem z treścią
+    // (ADR-021 reg. 5) — baner musi wrócić z otwarciem szkicu, a nie zniknąć
+    // na granicy formularza.
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const zapisane = (vi.mocked(createDraft).mock.calls[0][0] as { kw: KwSnapshotLike }).kw;
+    expect(zapisane.transkrypcja).toMatchObject({
+      ok: false,
+      bledy: [{ klasa: "rodzaj_ksiegi:grunt_na_lokalu" }],
+    });
+    expect(zapisane.tresc).toEqual(tresc);
   });
 
   it("zmiana sposobu przy wpisanych danych pyta o zgodę z listą tego, co zniknie; „Zostaw jak jest” nic nie rusza (makieta 5)", async () => {
@@ -2351,6 +2367,8 @@ describe("KwSection — full-form wiring", () => {
 
   it("werdykt i treść gruntu znikają razem z kartą gruntu przy zmianie jej sposobu; lokal nietknięty", async () => {
     const tresc = transcribedBook();
+    // Baner ma tu stać od `pesel_suma`, nie od niezgodności rodzaju księgi.
+    tresc.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
     vi.mocked(transcribeKw).mockResolvedValue({
       kind: "ok",
       tresc,
