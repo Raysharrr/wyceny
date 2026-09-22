@@ -337,9 +337,11 @@ test.describe("Z-3 tabele działów w §8.2 @gluszyna", () => {
       page.getByTestId("kw-book-grunt").getByTestId("kw-transcribe-status"),
     ).toContainText("Przepisano 5 działów", { timeout: 30_000 });
 
-    await page.locator("#kw-lokalu").fill("PO1P/00111111/1");
-    await page.locator("#kw-gruntu").fill("PO1P/00222222/2");
-    await page.locator("#kwg-nr").fill("PO1P/00222222/2");
+    // Numery bez KSZTAŁTU numeru księgi — F-9 nie wpuszcza takiego literału do
+    // repozytorium, a §8.2 i tak cytuje je dosłownie (tak samo robi smoke).
+    await page.locator("#kw-lokalu").fill("KW-TEST-82-LOKAL");
+    await page.locator("#kw-gruntu").fill("KW-TEST-82-GRUNT");
+    await page.locator("#kwg-nr").fill("KW-TEST-82-GRUNT");
     await page
       .getByTestId("kw-encumbrance")
       .getByRole("radio", { name: "Wartość bez uwzględnienia obciążenia" })
