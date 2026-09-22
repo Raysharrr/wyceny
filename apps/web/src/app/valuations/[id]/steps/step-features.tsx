@@ -205,7 +205,9 @@ function BoundInput({
  * measurable feature (FH.1) the bands come first and the texts are their
  * output: editing a threshold rewrites every definition, and retyping a
  * definition by hand retracts the thresholds — one direction each way, so the
- * §12.1 scale block and the suggestion can never state different scales.
+ * §12.1 scale block and the suggestion can never state different scales. The
+ * band fields stay on screen while retracted (mockup 8), so typing a threshold
+ * starts a numeric scale from scratch — again bands first, texts rewritten.
  */
 function ScaleEditor({
   control,
@@ -213,6 +215,7 @@ function ScaleEditor({
   featureKey,
   rating,
   measure,
+  measureKind,
   onSelectedLevelCleared,
   onMeasureChange,
 }: {
@@ -221,17 +224,26 @@ function ScaleEditor({
   featureKey: string | undefined;
   rating: FeatureRating | null | undefined;
   measure: FeatureMeasure | null | undefined;
+  measureKind: FeatureMeasure["kind"] | null;
   onSelectedLevelCleared: () => void;
   onMeasureChange: (next: FeatureMeasure | null) => void;
 }) {
+  // The kind the bands are typed in: from the live thresholds or, while they
+  // are detached (mockup 8), from the preset — the fields stay so a threshold
+  // can be typed back in, which builds the numeric scale again from nothing.
+  const kind = measure?.kind ?? measureKind;
   const setBound = (level: FeatureRating, edge: "od" | "do", value: number | undefined) => {
-    if (!measure) return;
-    const bound: MeasureBound = { ...measure.bounds[level], [edge]: value };
+    if (!kind) return;
+    const base: FeatureMeasure = measure ?? { kind, bounds: {} };
+    const bound: MeasureBound = { ...base.bounds[level], [edge]: value };
     if (value === undefined) delete bound[edge];
-    const bounds = { ...measure.bounds };
+    const bounds = { ...base.bounds };
     if (bound.od === undefined && bound.do === undefined) delete bounds[level];
     else bounds[level] = bound;
-    onMeasureChange({ ...measure, bounds });
+    // Clearing an already-empty field while detached is not a change — it
+    // must not conjure an empty scale that would blank every hand-typed text.
+    if (!measure && Object.keys(bounds).length === 0) return;
+    onMeasureChange({ ...base, bounds });
   };
 
   return (
@@ -263,7 +275,7 @@ function ScaleEditor({
                   }}
                 />
               </label>
-              {measure ? (
+              {kind ? (
                 <div className="flex flex-wrap gap-2">
                   {(["od", "do"] as const).map((edge) => (
                     <BoundInput
@@ -271,8 +283,8 @@ function ScaleEditor({
                       featureKey={featureKey ?? String(index)}
                       level={level}
                       edge={edge}
-                      kind={measure.kind}
-                      value={measure.bounds[level]?.[edge]}
+                      kind={kind}
+                      value={measure?.bounds[level]?.[edge]}
                       onChange={(next) => setBound(level, edge, next)}
                     />
                   ))}
@@ -725,6 +737,7 @@ export function StepFeatures({
                           featureKey={key}
                           rating={rating}
                           measure={measure}
+                          measureKind={key ? measureKindFor(key) : null}
                           onSelectedLevelCleared={() =>
                             setValue(`features.${index}.rating`, null, { shouldDirty: true })
                           }

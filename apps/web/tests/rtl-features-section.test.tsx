@@ -665,7 +665,7 @@ describe("StepFeatures — progi liczbowe i podpowiedź (FH.1, FH.2)", () => {
     );
   });
 
-  it("ręczna edycja tekstu definicji usuwa progi — edytor progów znika (FH.1)", async () => {
+  it("ręczna edycja tekstu definicji odłącza progi — pola progów zostają, ale PUSTE, a podpowiedź znika (FH.1, makieta 8)", async () => {
     const user = userEvent.setup();
     render(
       <StepFeatures
@@ -677,12 +677,13 @@ describe("StepFeatures — progi liczbowe i podpowiedź (FH.1, FH.2)", () => {
       />,
     );
     await openScale(user, "polozenie-na-pietrze");
-    expect(screen.queryByTestId("feature-bound-polozenie-na-pietrze-lepsza-od")).toBeTruthy();
+    expect(bound("polozenie-na-pietrze", "lepsza", "od").value).toBe("4");
     expect(screen.queryByTestId("threshold-hint-polozenie-na-pietrze")).toBeTruthy();
 
     await user.type(screen.getByTestId("feature-def-polozenie-na-pietrze-gorsza"), " i suterena");
 
-    expect(screen.queryByTestId("feature-bound-polozenie-na-pietrze-lepsza-od")).toBeNull();
+    expect(bound("polozenie-na-pietrze", "lepsza", "od").value).toBe("");
+    expect(bound("polozenie-na-pietrze", "gorsza", "do").value).toBe("");
     expect(screen.queryByTestId("threshold-hint-polozenie-na-pietrze")).toBeNull();
   });
 
@@ -961,5 +962,29 @@ describe("StepFeatures — progi odłączone przez edycję tekstu (PR-4, makieta
     const preset = FEATURE_PRESETS.lokal.find((e) => e.key === "polozenie-na-pietrze")!;
     expect(pietro.measure).toEqual(preset.defaultMeasure);
     expect(pietro.definitions).toEqual(preset.defaultDefinitions);
+  });
+
+  it("wpisanie progu przy odłączonych progach buduje skalę liczbową od nowa i zdejmuje notatkę", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
+    await openScale(user, "polozenie-na-pietrze");
+    await user.type(screen.getByTestId("feature-def-polozenie-na-pietrze-gorsza"), " i suterena");
+    expect(note("polozenie-na-pietrze")).toBeTruthy();
+
+    await user.type(bound("polozenie-na-pietrze", "lepsza", "od"), "6");
+
+    // Progi znów są źródłem tekstów: jedyny przedział daje jedyną kartę, a wiersz
+    // mówi, że skala potrzebuje drugiego — to istniejąca reguła D-46, nie nowa.
+    expect(note("polozenie-na-pietrze")).toBeNull();
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "lepsza6 piętro i powyżej",
+    ]);
+    expect(
+      within(row("polozenie-na-pietrze")).getByText(
+        "Skala liczbowa musi mieć co najmniej dwa przedziały.",
+      ),
+    ).toBeTruthy();
   });
 });
