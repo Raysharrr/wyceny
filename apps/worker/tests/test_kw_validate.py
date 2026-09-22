@@ -375,10 +375,14 @@ def test_missing_sections_are_reported_one_per_code_in_book_order():
     ]
 
 
-@pytest.mark.parametrize("kod", ["I-O", "I-Sp", "II"])
+@pytest.mark.parametrize("kod", ["I-O", "I-Sp", "II", "III", "IV"])
 def test_a_unit_book_missing_a_section_reports_only_that_section(kod):
     """A field rule that reads a section which is not there is skipped — a paste
-    of three tabs must not cascade into "numer lokalu", "udział", "Rep. A"."""
+    of three tabs must not cascade into "numer lokalu", "udział", "Rep. A".
+
+    III and IV are the two codes whose verdict this class actually flips against
+    `main`: no field rule reads them, so before `dzialy_niekompletne` a unit book
+    missing one of them came back `ok: true` (review F1)."""
     assert klasy(without(sample(), kod)) == {("dzialy_niekompletne", kod)}
 
 
