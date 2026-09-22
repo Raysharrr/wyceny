@@ -258,28 +258,27 @@ export function trescSyntetycznejKsiegi(): KsiegaTresc {
 }
 
 /**
- * Księga GRUNTU z treścią: ta sama syntetyczna księga workera z nagłówkiem
- * gruntu — model dokumentu drukuje wiersze niezależnie od rodzaju księgi, a
- * osobnej fikstury gruntowej worker (jeszcze) nie ma. Pola lokalowe wyzerowane,
- * bo księga gruntowa ich nie niesie.
- *
- * follow-up: przejść na `kw_transcribe_grunt_sample.json` po merge'u workera.
+ * Pełna treść pięciu działów księgi GRUNTOWEJ — czytana W MIEJSCU z własnej
+ * fikstury workera (`kw_transcribe_grunt_sample.json`, spółka jako właściciel,
+ * bez osób), tak samo jak fikstura księgi lokalu i z tego samego powodu: jej
+ * numery mają kształt KW z poprawną cyfrą kontrolną.
  */
 export function trescSyntetycznejKsiegiGruntu(): KsiegaTresc {
-  const tresc = trescSyntetycznejKsiegi();
-  tresc.naglowek = {
-    ...tresc.naglowek,
-    numerKsiegi: KW_GRUNTU_TESTOWA,
-    rodzajKsiegi: "NIERUCHOMOŚĆ GRUNTOWA",
-  };
-  tresc.polaDodatkowe = {
-    ...tresc.polaDodatkowe,
-    numerLokalu: null,
-    kwLokalu: null,
-    kwGruntu: null,
-    udzial: null,
-  };
-  return tresc;
+  const wire = JSON.parse(
+    readFileSync(
+      path.join(
+        process.cwd(),
+        "..",
+        "worker",
+        "tests",
+        "fixtures",
+        "kw_transcribe_grunt_sample.json",
+      ),
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
+  delete wire.walidacja;
+  return ksiegaTrescSchema.parse(wire);
 }
 
 const PROSE_TEXT: Record<ProseSection, string> = {

@@ -186,18 +186,34 @@ export function normalizeKw(kw: KwSnapshot): KwSnapshot {
   };
 }
 
+/** Tyle migawki, ile potrzeba do rozstrzygnięcia proweniencji — reszta nieistotna. */
+export type KwProvenanceInput = Pick<KwSnapshot, "source"> &
+  Partial<Pick<KwSnapshot, "tresc" | "transkrypcja">>;
+
 /**
- * The snapshot's source as a PROVENANCE source (ADR-010). A manual eKW
- * examination is the appraiser's own work, so it maps to `rzeczoznawca` — the
- * kernel's source list describes who produced a value, and nothing produced
- * this but the person typing it. Keeps `ekw_reczne` out of the Shared Kernel,
- * which must not grow beyond provenance.
+ * Czy odczyt w ogóle się odbył. To on, a nie kanał karty, rozstrzyga
+ * proweniencję (decyzja koordynatora 22.09): werdykt ALBO treść znaczy, że
+ * pola wypełnił program, a nie człowiek.
  */
-export function kwProvenanceSource(source: KwSource): "akt" | "odpis_kw" | "rzeczoznawca" {
-  // Wklejenie z przeglądarki KW przepisał model, więc pola wchodzą jak z
-  // odpisu: `to_verify`, potwierdzane zapisem kroku 1 (confirmKwEntries).
-  if (source === "ekw_wklej") return "odpis_kw";
-  return source === "ekw_reczne" ? "rzeczoznawca" : source;
+export function kwPrzepisano(kw: KwProvenanceInput): boolean {
+  return kw.transkrypcja != null || kw.tresc != null;
+}
+
+/**
+ * The snapshot's source as a PROVENANCE source (ADR-010). Deed and PDF excerpt
+ * mean a file was held and read, so they stay document sources whatever else
+ * the snapshot says. The two eKW sources hold no file at all: there the
+ * question is whether anything was TRANSCRIBED — if it was, the model filled
+ * the fields and they enter `to_verify` like a document's; if it was not, the
+ * appraiser typed them off the screen and they are their own work
+ * (`rzeczoznawca`), exactly as `ekw_reczne` always was (ADR-018 reg. 1).
+ *
+ * Keeps the eKW sources out of the Shared Kernel, which must not grow beyond
+ * provenance.
+ */
+export function kwProvenanceSource(kw: KwProvenanceInput): "akt" | "odpis_kw" | "rzeczoznawca" {
+  if (kw.source === "akt" || kw.source === "odpis_kw") return kw.source;
+  return kwPrzepisano(kw) ? "odpis_kw" : "rzeczoznawca";
 }
 
 /** The grunt book's counterpart to `normalizeKw` — same rules, fewer fields. */

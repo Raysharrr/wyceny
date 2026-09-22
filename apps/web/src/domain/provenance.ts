@@ -14,7 +14,9 @@ import {
   type KwDzialSnapshot,
   type KwGruntSnapshot,
   type KwSource,
+  type KwWerdykt,
 } from "./kw-snapshot";
+import type { KsiegaTresc } from "./kw-tresc";
 import type { PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
 import { isPrzeznaczenieComplete } from "./przeznaczenie";
@@ -80,6 +82,10 @@ export type GateInput = {
     dataBadania?: string | null;
     dzial3?: KwDzialSnapshot | null;
     dzial4?: KwDzialSnapshot | null;
+    // Proweniencja pyta, czy odczyt się odbył, a nie jakim kanałem stała karta
+    // (decyzja koordynatora 22.09) — stąd te dwa pola w kształcie wejścia.
+    tresc?: KsiegaTresc | null;
+    transkrypcja?: KwWerdykt | null;
   } | null;
   /** Examination of the grunt's book (ADR-018) — its own snapshot, not part of `kw`. */
   kwGrunt?: KwGruntSnapshot | null;
@@ -295,7 +301,7 @@ export function approvalGate(input: GateInput, options?: GateOptions): GateResul
     const kwProv = input.provenance?.kw;
     const sK = sourced(
       "kw",
-      kwProv?.source ?? kwProvenanceSource(input.kw.source),
+      kwProv?.source ?? kwProvenanceSource(input.kw),
       kwProv?.status ?? "none",
     );
     if (isBlocking(sK)) {

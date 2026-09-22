@@ -24,19 +24,20 @@ export function assignSubjectProvenance(
   // The area field is doc-sourced (to_verify) only when a kw extract is
   // attached AND its powUzytkowaKw exactly matches the submitted area — i.e.
   // the appraiser accepted the document's value rather than typing their own.
-  // A manual eKW examination (`ekw_reczne`) is not a document source here:
+  // An eKW examination with nothing transcribed is not a document source here:
   // the appraiser read that number off the screen and typed it, so it enters
-  // confirmed like every other hand-entered value (ADR-018 reg. 1).
+  // confirmed like every other hand-entered value (ADR-018 reg. 1). Asked
+  // through `kwProvenanceSource`, so the rule lives in ONE place — the channel
+  // the card stood on never decides this (decyzja koordynatora 22.09).
+  const kwSource = values.kw ? kwProvenanceSource(values.kw) : null;
   const areaFromDocument =
     values.kw != null &&
-    values.kw.source !== "ekw_reczne" &&
+    kwSource !== "rzeczoznawca" &&
     values.kw.powUzytkowaKw != null &&
     Number(values.area) === values.kw.powUzytkowaKw;
   return {
     address: confirmed,
-    area: areaFromDocument
-      ? { source: kwProvenanceSource(values.kw!.source), status: "to_verify" }
-      : confirmed,
+    area: areaFromDocument ? { source: kwSource!, status: "to_verify" } : confirmed,
     ...(values.subject
       ? {
           ewidencja: values.subjectMeta
@@ -50,9 +51,9 @@ export function assignSubjectProvenance(
     ...(values.kw
       ? {
           kw:
-            values.kw.source === "ekw_reczne"
+            kwSource === "rzeczoznawca"
               ? confirmed
-              : ({ source: kwProvenanceSource(values.kw.source), status: "to_verify" } as const),
+              : ({ source: kwSource!, status: "to_verify" } as const),
         }
       : {}),
   };

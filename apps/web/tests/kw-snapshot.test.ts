@@ -90,10 +90,10 @@ describe("normalizeKw — one implementation for all three sources", () => {
 });
 
 describe("a manual examination is the appraiser's own work (ADR-010 × ADR-018)", () => {
-  it("maps `ekw_reczne` to `rzeczoznawca` — the Shared Kernel never learns the new source", () => {
-    expect(kwProvenanceSource("ekw_reczne")).toBe("rzeczoznawca");
-    expect(kwProvenanceSource("odpis_kw")).toBe("odpis_kw");
-    expect(kwProvenanceSource("akt")).toBe("akt");
+  it("maps an untranscribed eKW examination to `rzeczoznawca` — the Shared Kernel never learns the new source", () => {
+    expect(kwProvenanceSource({ source: "ekw_reczne" })).toBe("rzeczoznawca");
+    expect(kwProvenanceSource({ source: "odpis_kw" })).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "akt" })).toBe("akt");
   });
 
   it("enters `rzeczoznawca/confirmed`, not `to_verify` against a document nobody holds", () => {
@@ -144,9 +144,52 @@ describe("normalizeKwGrunt", () => {
 });
 
 describe("ADR-021: ekw_wklej i werdykt przy migawce", () => {
-  it("ekw_wklej wchodzi jak dokument (odpis_kw): model przepisał, człowiek potwierdza zapisem", () => {
-    expect(kwProvenanceSource("ekw_wklej")).toBe("odpis_kw");
-    expect(kwProvenanceSource("ekw_reczne")).toBe("rzeczoznawca");
+  it("o proweniencji decyduje odczyt, nie kanał karty (decyzja koordynatora 22.09)", () => {
+    const werdykt = {
+      ok: true,
+      bledy: [],
+      kanal: "tekst" as const,
+      plikow: 0,
+      at: "2026-09-21T10:00:00.000Z",
+    };
+    const tresc = { naglowek: {}, dzialy: [], polaDodatkowe: {} } as unknown as KsiegaTresc;
+    // Karta stała na kanale wklejania, ale nic nie przepisano: pola wpisał
+    // człowiek, więc są jego własną pracą.
+    expect(kwProvenanceSource({ source: "ekw_wklej" })).toBe("rzeczoznawca");
+    // Przepisane — czy to werdykt, czy sama treść — wchodzi jak dokument.
+    expect(kwProvenanceSource({ source: "ekw_wklej", transkrypcja: werdykt })).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "ekw_wklej", tresc })).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "ekw_reczne", tresc })).toBe("odpis_kw");
+    // Plik w ręku zostaje dokumentem, choćby transkrypcja padła.
+    expect(kwProvenanceSource({ source: "odpis_kw" })).toBe("odpis_kw");
+    expect(kwProvenanceSource({ source: "akt" })).toBe("akt");
+  });
+
+  it("numer i powierzchnia wpisane na kanale wklejania BEZ transkrypcji → rzeczoznawca/confirmed", () => {
+    const kw = normalizeKw({ ...uploaded, source: "ekw_wklej", powUzytkowaKw: 44.23 });
+    const p = assignSubjectProvenance({ area: 44.23, kw, kwMeta: undefined });
+    expect(p.kw).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+    expect(p.area).toEqual({ source: "rzeczoznawca", status: "confirmed" });
+  });
+
+  it("ta sama karta PO transkrypcji → odpis_kw/to_verify, potwierdzane zapisem kroku 1", () => {
+    const tresc = { naglowek: {}, dzialy: [], polaDodatkowe: {} } as unknown as KsiegaTresc;
+    const kw = normalizeKw({
+      ...uploaded,
+      source: "ekw_wklej",
+      powUzytkowaKw: 44.23,
+      tresc,
+      transkrypcja: {
+        ok: true,
+        bledy: [],
+        kanal: "tekst",
+        plikow: 0,
+        at: "2026-09-21T10:00:00.000Z",
+      },
+    });
+    const p = assignSubjectProvenance({ area: 44.23, kw, kwMeta: undefined });
+    expect(p.kw).toEqual({ source: "odpis_kw", status: "to_verify" });
+    expect(p.area).toEqual({ source: "odpis_kw", status: "to_verify" });
   });
 
   it("normalizeKw przenosi werdykt bez zmian — klasy i kody działów, nigdy wartości", () => {
