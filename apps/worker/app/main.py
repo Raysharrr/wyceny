@@ -20,6 +20,7 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+import structlog
 
 import app.rcn as rcn
 import app.street_index as street_index
@@ -1021,9 +1022,12 @@ class _SectionOutcome(NamedTuple):
     violations: list[str]
     input_tokens: int
     output_tokens: int
-    # The API call itself failed (as opposed to the guard rejecting the text).
-    # Kept apart so the response can tell the two cases apart downstream.
-    failed: bool = False
+    # The API call itself failed (as opposed to the guard rejecting the text),
+    # and HOW: "config" is a refusal no retry can fix — a rejected key, a missing
+    # permission, an exhausted balance — "other" is everything else (network,
+    # 429, 5xx, a truncated answer). None: the call landed. The kind rides here
+    # so the handler can word the 502 for the appraiser (PR-1 Głuszyna).
+    failed_kind: Literal["config", "other"] | None = None
 
 
 PROSE_RETRY_INSTRUCTION = (
@@ -1046,6 +1050,41 @@ PROSE_RETRY_INSTRUCTION = (
 PROSE_FAILED_DETAIL = (
     "Nie udało się wygenerować opisów — spróbuj ponownie albo napisz teksty ręcznie."
 )
+
+PROSE_CONFIG_DETAIL = (
+    "Usługa generowania opisów odrzuciła klucz dostępu albo nie ma środków — to błąd "
+    "konfiguracji po stronie administratora, ponowna próba nie pomoże. "
+    "Zgłoś, podając kod: {trace_id}."
+)
+
+
+def _prose_failure_kind(exc: Exception) -> Literal["config", "other"]:
+    """Sorts a failed API call by what a retry can do about it. Głuszyna 18.09:
+    the appraiser pressed „Wygeneruj ponownie” all day against an expired key,
+    told each time to try again — a refused key, a missing permission or an
+    exhausted balance stay refused on every retry, and the 502 has to say so.
+
+    The second `anthropic` touchpoint after `_generate_prose_section` (ADR-009):
+    the SDK is imported here only for its exception classes, never called, and
+    `_prose_section` / `prose_proposal` stay free of it."""
+    import anthropic
+
+    # A key that is MISSING never reaches the SDK's exception hierarchy: the
+    # client is built with `api_key=None` and the call itself raises a plain
+    # TypeError ("Could not resolve authentication method…"). From the
+    # appraiser's chair that is the same dead end as a refused key — and on a
+    # fresh deploy (a variable renamed or dropped on Railway) it is the likelier
+    # one. `TypeError` inherits from nothing in `anthropic`, so testing it first
+    # shadows no branch below.
+    if isinstance(exc, TypeError) and "could not resolve authentication method" in str(exc).lower():
+        return "config"
+    if isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
+        return "config"
+    # No dedicated class for a dry account: it is a 400 whose message reads
+    # "Your credit balance is too low to access the Anthropic API."
+    if isinstance(exc, anthropic.BadRequestError) and "credit" in str(exc).lower():
+        return "config"
+    return "other"
 
 
 def _prose_violations(text: str, facts: dict, property_right: str | None = None) -> list[str]:
@@ -1096,8 +1135,9 @@ def _prose_section(section: str, facts: dict, property_right: str | None = None)
     except Exception as exc:
         # Tokens already spent are still reported: the cost audit must not lose
         # them just because the section did not finish.
-        logger.error("prose_section_failed", section=section, err=str(exc))
-        return _SectionOutcome("", [], input_tokens, output_tokens, failed=True)
+        kind = _prose_failure_kind(exc)
+        logger.error("prose_section_failed", section=section, kind=kind, err=str(exc))
+        return _SectionOutcome("", [], input_tokens, output_tokens, failed_kind=kind)
     # Only section names and offending numbers are logged — never the facts
     # (they carry the address) and never the generated text.
     return _SectionOutcome(text, violations, input_tokens, output_tokens)
@@ -1150,22 +1190,36 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
         )
     facts = request.fakty
 
+    # Read once, in the handler's own thread, where the middleware bound it.
+    trace_id = structlog.contextvars.get_contextvars().get("trace_id")
+
+    def _section(section: str) -> _SectionOutcome:
+        # A pool thread starts with an EMPTY contextvars context, so without this
+        # `merge_contextvars` has nothing to add and every `prose_section_failed`
+        # line goes out with `trace_id=None` — the one line that says WHICH
+        # refusal it was would be unreachable from the code we ask the appraiser
+        # to report. One copy per section on purpose: a single shared
+        # `copy_context()` handed to `pool.map` raises "cannot enter context:
+        # … is already entered" as soon as two sections run at once.
+        structlog.contextvars.bind_contextvars(trace_id=trace_id)
+        return _prose_section(section, facts, request.rodzaj_prawa)
+
     # Parallel: six sections at ~8 s each would block the wizard for ~50 s.
     # `_prose_section` never raises — a failing section is contained there, so
     # one bad call cannot discard the sections that already succeeded.
     with ThreadPoolExecutor(max_workers=len(sections)) as pool:
-        outcomes = list(
-            pool.map(lambda section: _prose_section(section, facts, request.rodzaj_prawa), sections)
-        )
+        outcomes = list(pool.map(_section, sections))
 
     sekcje: dict[str, str] = {}
     odrzucone: dict[str, list[str]] = {}
+    failed_kinds: list[str] = []
     input_tokens = output_tokens = 0
     for section, outcome in zip(sections, outcomes):
         input_tokens += outcome.input_tokens  # retries included — the tokens were spent
         output_tokens += outcome.output_tokens
-        if outcome.failed:
+        if outcome.failed_kind:
             odrzucone[section] = []  # empty list = the call failed, no offending numbers
+            failed_kinds.append(outcome.failed_kind)
         elif outcome.violations:
             odrzucone[section] = outcome.violations
         else:
@@ -1183,6 +1237,16 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
     # again. A batch where nothing landed stays an error, so the web side's
     # automatic retry still covers an ordinary network blip.
     if not sekcje and not any(odrzucone.values()):
+        if failed_kinds and all(kind == "config" for kind in failed_kinds):
+            # Every call was refused for a reason no retry fixes (PR-1 Głuszyna):
+            # say so, and quote the trace id the web sent as X-Request-Id — the
+            # same one the middleware echoes, so the appraiser reads back a code
+            # that leads to this very run.
+            logger.error("prose_config_error", sections=list(odrzucone))
+            raise HTTPException(
+                status_code=502,
+                detail=PROSE_CONFIG_DETAIL.format(trace_id=trace_id or "brak"),
+            )
         logger.error("prose_no_call_landed", sections=list(odrzucone))
         raise HTTPException(status_code=502, detail=PROSE_FAILED_DETAIL)
     if not sekcje:

@@ -75,10 +75,19 @@ Pod pustym polem stoi wyjaśnienie. Powody są cztery:
 
 - **automat użył liczby spoza danych wyceny** — komunikat wymienia te liczby wprost. Tekst został odrzucony i sekcję trzeba napisać ręcznie. Jest to zamierzone: lepszy pusty akapit niż liczba, której w operacie nie da się obronić;
 - **brak danych wejściowych** — sekcja oparta na notatce powstaje tylko wtedy, gdy wypełnione jest **jej własne** pole: bez pola „Otoczenie” nie powstanie charakterystyka otoczenia, nawet jeśli pozostałe pola są pełne. Bez próby porównawczej nie powstanie analiza rynku. Komunikat nazywa brakujące pole;
-- **generowanie się nie udało** — awaria połączenia albo usługi; „Wygeneruj ponownie” jest wtedy sensowną próbą;
+- **generowanie się nie udało** — awaria połączenia, awaria usługi albo błąd konfiguracji po stronie administratora. Podpis pod polem mówi tylko tyle, że się nie udało; gdy padło całe generowanie, komunikat pod kartą mówi, który to z dwóch rodzajów błędu (niżej, „Dwa rodzaje błędów”);
 - **sekcja wróciła bez tekstu i bez podanego powodu** — przypadek rzadki, ale i wtedy pole mówi, że się nie udało, zamiast milczeć.
 
 Jeden układ jest wyjątkiem od tej reguły: gdy przy wycenie nie ma jeszcze **żadnych** opisów, a generowanie padło w całości, wszystkie pola zostają puste i bez podpisu, a jedyny komunikat — czerwony — stoi pod całą kartą, nie pod polami. To on mówi wtedy, co się stało.
+
+### Dwa rodzaje błędów
+
+Komunikat pod kartą rozróżnia dwie sytuacje i warto je czytać dosłownie, bo różnią się tym, co masz zrobić:
+
+- **„Nie udało się wygenerować opisów — spróbuj ponownie albo napisz teksty ręcznie.”** — na ekranie to zdanie kończy się jeszcze kodem zgłoszenia w nawiasie, np. „(kod: abc12345)”. Awaria chwilowa: zerwane połączenie, przeciążona usługa, limit zapytań. „Wygeneruj ponownie” za chwilę ma sens.
+- **„Usługa generowania opisów odrzuciła klucz dostępu albo nie ma środków — to błąd konfiguracji po stronie administratora, ponowna próba nie pomoże. Zgłoś, podając kod: …”** — klucz do usługi jest nieważny, nie ma go wcale, nie ma uprawnień albo skończyły się środki. Kolejne kliknięcia nic nie zmienią; przekaż administratorowi kod z komunikatu (ten sam, który zapisuje się w dzienniku serwera) i napisz teksty ręcznie albo wróć do kroku, gdy administrator potwierdzi naprawę.
+
+Do 21 września 2026 oba przypadki dostawały pierwszy komunikat — przy nieważnym kluczu rzeczoznawca ponawiał próbę przez cały dzień, bo nic nie mówiło mu, że to nie ma sensu. Stąd rozróżnienie.
 
 Aplikacja nigdy nie wypełnia takiego pola tekstem zastępczym ani zdaniem z szablonu. Puste pole znaczy dokładnie tyle, że nikt jeszcze tej sekcji nie napisał.
 
