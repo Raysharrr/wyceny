@@ -11,7 +11,11 @@ Narzędzie stoi obok wyceny: nie wiąże się z żadną wyceną i niczego nie in
 
 ## Co jest w arkuszu
 
-Jeden arkusz `transakcje`. W wierszu 1 tytuł z numerem zamówienia i jednostką ewidencyjną, w wierszu 2 nagłówki, od wiersza 3 jedna transakcja w jednym wierszu — w tej samej kolejności co w wydruku.
+Lokal, dom i sama działka opisują się innymi danymi, więc każdy rodzaj dostaje **własny arkusz**: `lokale`, `zabudowane`, `niezabudowane`. Powstają tylko te, których rodzaje faktycznie są w wydruku — wydruk z samymi działkami daje jeden arkusz `niezabudowane`. Na ekranie, po konwersji, widzisz w nawiasie, ile transakcji trafiło na który arkusz.
+
+Każdy arkusz jest zbudowany tak samo: w wierszu 1 tytuł z numerem zamówienia i jednostką ewidencyjną, w wierszu 2 nagłówki, od wiersza 3 jedna transakcja w jednym wierszu — w tej samej kolejności co w wydruku.
+
+### Arkusz `lokale`
 
 Dziesięć kolumn, w tej kolejności:
 
@@ -26,6 +30,35 @@ Dziesięć kolumn, w tej kolejności:
 - **I — P.P**: `tak`, gdy wydruk podaje powierzchnię pomieszczeń przynależnych; inaczej `nie`. Po imporcie do [rejestru biura](/pomoc/rejestr-spoldzielczy) zasila podpowiedź oceny pomieszczeń przynależnych w kroku 4.
 - **J — RODZAJ BUD**: pusta, do uzupełnienia ręcznie.
 
+### Arkusz `zabudowane`
+
+Dom albo inna nieruchomość gruntowa z budynkiem. Dziewięć kolumn:
+
+- **A — DATA**: data dokumentu, w formacie `DD.MM.YYYY`.
+- **B — MIEJSCOWOŚĆ**: z adresu (część po przecinku), a gdy wydruk adresu nie podaje — nazwa obrębu ewidencyjnego.
+- **C — ULICA**: ulica z adresu budynku mieszkalnego; gdy budynek adresu nie ma, z adresu pierwszej działki.
+- **D — NR BUD**: numer budynku z tego samego adresu.
+- **E — ID DZIAŁKI**: pełne identyfikatory działek, np. `302111_5.0010.56/16`. Kilka działek rozdziela średnik ze spacją.
+- **F — POW GR**: powierzchnia gruntu w m², czyli suma powierzchni wszystkich działek transakcji (wydruk podaje hektary).
+- **G — UDZIAŁ**: udział w prawie, gdy jest inny niż `1/1`. Przy pełnym prawie kolumna zostaje pusta.
+- **H — CENA**: „Cena ogółem – brutto [PLN]” — cena całej transakcji.
+- **I — CENA J**: cena za metr gruntu, jako formuła `=H{wiersz}/F{wiersz}`.
+
+Powierzchni użytkowej budynku w wydruku nie ma — wpisujesz ją sam, tak samo jak rodzaj zabudowy przy lokalach.
+
+### Arkusz `niezabudowane`
+
+Sama działka. Osiem kolumn:
+
+- **A — DATA**: data dokumentu, w formacie `DD.MM.YYYY`.
+- **B — MIEJSCOWOŚĆ**: z adresu działki, a gdy go nie ma — nazwa obrębu ewidencyjnego.
+- **C — ID DZIAŁKI**: pełne identyfikatory, kilka działek po średniku.
+- **D — POW GR**: powierzchnia gruntu w m², suma wszystkich działek transakcji.
+- **E — UDZIAŁ**: udział w prawie, gdy inny niż `1/1`.
+- **F — PRZEZNACZENIE**: tekst z pozycji „Przeznaczenie działki w MPZP”, tak jak stoi w wydruku — bez tłumaczenia na kody typu `MN` czy `KDW`. Gdy działki mają różne przeznaczenia, są wypisane po średniku.
+- **G — CENA**: cena całej transakcji.
+- **H — CENA J**: cena za metr gruntu, jako formuła `=G{wiersz}/D{wiersz}`.
+
 Nazwa pobranego pliku to numer zamówienia, np. `GKG.GZW.4061.0000.2026.xlsx` — nie nazwa pliku, który wgrałeś.
 
 ## Dlaczego RODZAJ BUD jest pusta
@@ -34,15 +67,16 @@ Wydruk podaje wyłącznie „Rodzaj budynku: Mieszkalny”. Tego, czy to bliźni
 
 ## CENA J to formuła, nie liczba
 
-W kolumnie H siedzi `=G{wiersz}/F{wiersz}`, a nie wyliczona wartość. Jeśli poprawisz powierzchnię albo cenę, cena jednostkowa przeliczy się sama. Gdy transakcja nie ma powierzchni użytkowej, komórka zostaje pusta — dzielenie przez zero nie jest ceną.
+W kolumnie CENA J siedzi formuła dzieląca cenę przez powierzchnię, a nie wyliczona wartość. Jeśli poprawisz powierzchnię albo cenę, cena jednostkowa przeliczy się sama. Gdy transakcja nie ma powierzchni — użytkowej w arkuszu `lokale`, gruntu w pozostałych — komórka zostaje pusta, bo dzielenie przez zero nie jest ceną.
 
 ## Żółte wiersze
 
 Wiersz z żółtym tłem (`FFF2CC`) to transakcja, której narzędzie nie odczytało w całości. Powód czyta się w komentarzu przypiętym do komórki w kolumnie A:
 
-- **Transakcja bez lokalu — brak powierzchni użytkowej.** W wydruku nie ma wiersza „Lokal”; adres wzięty z pierwszej działki, PU i numer lokalu puste.
 - **Transakcja obejmuje kilka lokali — wpisano pierwszy mieszkalny.** Jedno zdarzenie obejmowało więcej niż jeden lokal.
-- **Nie udało się rozbić adresu — cały adres jest w kolumnie ULICA.** Zapis adresu odbiegał od wzorca, więc kolumny MIEJSCOWOŚĆ, NR BUD i NR LOK zostały puste.
+- **Transakcja obejmuje kilka działek — POW GR to ich suma.** Cena dotyczy całości, więc cena za metr liczy się od sumy powierzchni. Sprawdź, czy tak chcesz tę transakcję porównywać.
+- **Udział w prawie inny niż 1/1 — sprawdź, czy cena dotyczy całości.** Wydruk podaje udział, ale nie rozstrzyga, czy cena jest za udział, czy za całą nieruchomość.
+- **Nie udało się rozbić adresu — cały adres jest w kolumnie ULICA.** Zapis adresu odbiegał od wzorca albo wydruk w ogóle go nie podał. W arkuszu `lokale` cały adres ląduje wtedy w kolumnie ULICA, a MIEJSCOWOŚĆ, NR BUD i NR LOK zostają puste; w `zabudowane` puste zostają ULICA i NR BUD, a miejscowość bierze się z nazwy obrębu.
 - **W wydruku brakuje daty, ceny albo powierzchni.** Pole, którego w wydruku nie było.
 
 Na ekranie widzisz tylko, ile takich wierszy jest — treść ostrzeżenia czytasz w arkuszu, przy konkretnej transakcji.

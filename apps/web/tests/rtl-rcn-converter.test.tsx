@@ -20,6 +20,7 @@ const RESULT: RcnConversion = {
   orderNumber: "GKG.GZW.4061.0000.2026",
   unit: "000000_0 - Przykładowo - obszar wiejski",
   count: 2,
+  byKind: { lokale: 2, zabudowane: 0, niezabudowane: 0 },
   flaggedRows: 1,
   fileWarnings: [],
   xlsxBase64: "UEsDBA==",
@@ -138,6 +139,33 @@ describe("RcnConverter — wynik", () => {
       "Zamówienie GKG.GZW.4061.0000.2026 · 000000_0 - Przykładowo - obszar wiejski.",
     );
     expect(screen.getByTestId("rcn-result-summary").textContent).not.toContain("sprawdzenia");
+  });
+
+  // Dopowiedzenie w nawiasie pojawia się dopiero, gdy w pliku jest coś poza
+  // lokalami — wtedy arkuszy jest więcej niż jeden (spec §4, 22.09).
+  it.each([
+    [
+      "same lokale — bez nawiasu",
+      { count: 28, byKind: { lokale: 28, zabudowane: 0, niezabudowane: 0 } },
+      "Odczytano 28 transakcji.",
+    ],
+    [
+      "same zabudowane",
+      { count: 11, byKind: { lokale: 0, zabudowane: 11, niezabudowane: 0 } },
+      "Odczytano 11 transakcji (11 zabudowanych).",
+    ],
+    [
+      "mieszane",
+      { count: 34, byKind: { lokale: 1, zabudowane: 0, niezabudowane: 33 } },
+      "Odczytano 34 transakcje (1 lokal, 33 niezabudowane).",
+    ],
+  ])("zdanie sukcesu: %s", async (_name, patch, sentence) => {
+    const user = userEvent.setup();
+    convertRcnPdf.mockResolvedValue({ result: { ...RESULT, ...patch } });
+    render(<RcnConverter />);
+    await user.upload(fileInput(), pdf());
+
+    expect(await screen.findByText(sentence)).toBeInTheDocument();
   });
 
   it("ostrzeżenie plikowe lp_gap dostaje własny bursztynowy panel", async () => {

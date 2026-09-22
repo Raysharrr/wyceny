@@ -9,10 +9,23 @@
 export const RCN_REFUSALS = ["no_text_layer", "not_rcn_printout", "no_transactions"] as const;
 export type RcnRefusal = (typeof RCN_REFUSALS)[number];
 
+/**
+ * How many transactions landed on each sheet of the workbook — zero for a kind
+ * the printout does not contain. A flat, a house and a bare plot answer
+ * different questions, so they get different columns, different sheets, and a
+ * sentence on the screen that says which.
+ */
+export type RcnByKind = {
+  lokale: number;
+  zabudowane: number;
+  niezabudowane: number;
+};
+
 export type RcnConversion = {
   orderNumber: string;
   unit: string;
   count: number;
+  byKind: RcnByKind;
   flaggedRows: number;
   fileWarnings: string[];
   /** The whole workbook, base64 — the browser turns it into a Blob, it never hits the server twice. */

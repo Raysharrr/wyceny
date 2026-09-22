@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FileInput } from "@/components/ui/file-input";
 import { plural } from "@/lib/coop-format";
 import { convertRcnPdf } from "@/app/actions/rcn-pdf";
-import type { RcnConversion } from "@/ports/rcn-pdf";
+import type { RcnByKind, RcnConversion } from "@/ports/rcn-pdf";
 
 /**
  * The whole converter screen (T-22, makiety 3–6): pick a PDF, the conversion
@@ -33,6 +33,27 @@ function isRedirect(err: unknown): boolean {
     typeof (err as { digest?: unknown }).digest === "string" &&
     (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
   );
+}
+
+const KIND_FORMS: [keyof RcnByKind, [string, string, string]][] = [
+  ["lokale", ["lokal", "lokale", "lokali"]],
+  ["zabudowane", ["zabudowana", "zabudowane", "zabudowanych"]],
+  ["niezabudowane", ["niezabudowana", "niezabudowane", "niezabudowanych"]],
+];
+
+/**
+ * The headline sentence. A printout of flats alone says nothing extra — that is
+ * what the tool has always done. Anything else gets the breakdown in brackets,
+ * because the workbook then has more than one sheet and the appraiser has to
+ * know which one holds what: "Odczytano 35 transakcji (1 lokal, 34 niezabudowane)."
+ */
+export function readCountSentence(count: number, byKind: RcnByKind): string {
+  const transactions = `Odczytano ${count} ${plural(count, "transakcję", "transakcje", "transakcji")}`;
+  if (count === byKind.lokale) return `${transactions}.`;
+  const parts = KIND_FORMS.filter(([key]) => byKind[key] > 0).map(
+    ([key, [one, few, many]]) => `${byKind[key]} ${plural(byKind[key], one, few, many)}`,
+  );
+  return parts.length > 0 ? `${transactions} (${parts.join(", ")}).` : `${transactions}.`;
 }
 
 const FILE_WARNING_TEXT: Record<string, string> = {
@@ -154,13 +175,13 @@ export function RcnConverter() {
 }
 
 function Result({ result, onReset }: { result: RcnConversion; onReset: () => void }) {
-  const { count, flaggedRows, orderNumber, unit, fileWarnings } = result;
+  const { count, byKind, flaggedRows, orderNumber, unit, fileWarnings } = result;
   return (
     <>
       <div className="flex flex-col gap-3 rounded-lg border border-[var(--accent-100)] bg-[var(--accent-050)] p-4 text-sm">
         <p className="flex items-center gap-2 font-semibold text-[var(--accent-700)]">
           <Check className="size-4" />
-          Odczytano {count} {plural(count, "transakcję", "transakcje", "transakcji")}.
+          {readCountSentence(count, byKind)}
         </p>
         <p data-testid="rcn-result-summary">
           Zamówienie <span className="font-mono text-[13px]">{orderNumber}</span> · {unit}.
