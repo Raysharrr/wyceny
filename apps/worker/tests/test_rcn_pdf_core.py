@@ -375,14 +375,18 @@ def test_a_built_plot_without_an_address_is_flagged():
 def test_a_built_address_off_the_pattern_lands_whole_in_street():
     """The other half of `address_unparsed`: there IS an address, it just does
     not split. It goes to ULICA in one piece — the same as on the flats sheet —
-    while MIEJSCOWOŚĆ still falls back to the district (what Pomoc promises)."""
+    while MIEJSCOWOŚĆ still falls back to the district (what Pomoc promises).
+
+    The address deliberately shares NO word with the district: were MIEJSCOWOŚĆ
+    taken from the address instead of the section header, the town below could
+    not come out right by accident."""
     pages = land(
         holding(290, built=True),
         plot(300, "000000_0.0001.12/3", "0.0900"),
-        house(320, address="Testowo dz. 12/3"),
+        house(320, address="dz. 12/3 przy drodze"),
     )
     row = rcn_pdf.parse(pages).rows[0]
-    assert (row.street, row.building) == ("Testowo dz. 12/3", "")
+    assert (row.street, row.building) == ("dz. 12/3 przy drodze", "")
     assert row.town == "Testowo"  # z obrębu sekcji, nie z adresu
     assert row.warnings == ["address_unparsed"]
 
@@ -395,8 +399,9 @@ def test_a_plot_without_an_area_has_no_sum_and_is_flagged():
 
 SAMPLE = os.environ.get("RCN_SAMPLE_PDF")
 
-# What the generator's footer looks like when it leaks into a cell it does not
-# belong in — a shape, so it needs no name from any printout.
+# Shapes, not names: what a plot identifier looks like, and what the generator's
+# footer looks like when it leaks into a cell it does not belong in.
+_PLOT_ID = re.compile(r"\d{6}_\d\.\d{4}\.\S+")
 _FOOTER_LEAK = re.compile(r"Generator|Wygenerowano|dnia:|spo?rządzony")
 
 
@@ -482,6 +487,9 @@ def test_the_first_built_transaction_reads_whole():
         building,
     )
     assert (len(row.plot_ids), row.plot_area_m2) == (2, 984)
+    # Two of the right thing: a count alone would survive ID DZIAŁKI being fed
+    # from the wrong band.
+    assert all(_PLOT_ID.fullmatch(identifier) for identifier in row.plot_ids)
 
 
 @pytest.mark.skipif(
