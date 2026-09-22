@@ -102,6 +102,17 @@ CONFIG_ERRORS = [
         ),
         id="400-credit",
     ),
+    # F1 (recenzja PR #78): brak ANTHROPIC_API_KEY nie dociera do hierarchii
+    # wyjątków SDK — klient powstaje z `api_key=None`, a samo wywołanie rzuca
+    # goły TypeError. Komunikat dosłownie z `anthropic` 0.117 (sprawdzony w .venv).
+    pytest.param(
+        lambda: TypeError(
+            '"Could not resolve authentication method. Expected one of api_key, '
+            "auth_token, or credentials to be set. Or for one of the `X-Api-Key` "
+            'or `Authorization` headers to be explicitly omitted"'
+        ),
+        id="brak-klucza",
+    ),
 ]
 TRANSIENT_ERRORS = [
     pytest.param(
@@ -510,7 +521,13 @@ def test_prose_config_error_detail(monkeypatch, capsys, make):
     out = capsys.readouterr().out
     assert len(log_lines(out, "prose_config_error")) == 1
     assert log_lines(out, "prose_no_call_landed") == []
-    assert {line["kind"] for line in log_lines(out, "prose_section_failed")} == {"config"}
+    failed = log_lines(out, "prose_section_failed")
+    assert {line["kind"] for line in failed} == {"config"}
+    # The sentence promises a code to report; that code has to reach the ONE
+    # line carrying `err`, the only one that tells a refused key from a missing
+    # permission. Those lines are written from pool threads (F2).
+    assert len(failed) == 2
+    assert {line["trace_id"] for line in failed} == {"g1u5zyna"}
 
 
 def test_prose_config_detail_names_the_minted_id_when_no_header_came(monkeypatch):

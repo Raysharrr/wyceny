@@ -1069,6 +1069,15 @@ def _prose_failure_kind(exc: Exception) -> Literal["config", "other"]:
     `_prose_section` / `prose_proposal` stay free of it."""
     import anthropic
 
+    # A key that is MISSING never reaches the SDK's exception hierarchy: the
+    # client is built with `api_key=None` and the call itself raises a plain
+    # TypeError ("Could not resolve authentication method…"). From the
+    # appraiser's chair that is the same dead end as a refused key — and on a
+    # fresh deploy (a variable renamed or dropped on Railway) it is the likelier
+    # one. `TypeError` inherits from nothing in `anthropic`, so testing it first
+    # shadows no branch below.
+    if isinstance(exc, TypeError) and "could not resolve authentication method" in str(exc).lower():
+        return "config"
     if isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
         return "config"
     # No dedicated class for a dry account: it is a 400 whose message reads
@@ -1181,13 +1190,25 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
         )
     facts = request.fakty
 
+    # Read once, in the handler's own thread, where the middleware bound it.
+    trace_id = structlog.contextvars.get_contextvars().get("trace_id")
+
+    def _section(section: str) -> _SectionOutcome:
+        # A pool thread starts with an EMPTY contextvars context, so without this
+        # `merge_contextvars` has nothing to add and every `prose_section_failed`
+        # line goes out with `trace_id=None` — the one line that says WHICH
+        # refusal it was would be unreachable from the code we ask the appraiser
+        # to report. One copy per section on purpose: a single shared
+        # `copy_context()` handed to `pool.map` raises "cannot enter context:
+        # … is already entered" as soon as two sections run at once.
+        structlog.contextvars.bind_contextvars(trace_id=trace_id)
+        return _prose_section(section, facts, request.rodzaj_prawa)
+
     # Parallel: six sections at ~8 s each would block the wizard for ~50 s.
     # `_prose_section` never raises — a failing section is contained there, so
     # one bad call cannot discard the sections that already succeeded.
     with ThreadPoolExecutor(max_workers=len(sections)) as pool:
-        outcomes = list(
-            pool.map(lambda section: _prose_section(section, facts, request.rodzaj_prawa), sections)
-        )
+        outcomes = list(pool.map(_section, sections))
 
     sekcje: dict[str, str] = {}
     odrzucone: dict[str, list[str]] = {}
@@ -1221,10 +1242,10 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
             # say so, and quote the trace id the web sent as X-Request-Id — the
             # same one the middleware echoes, so the appraiser reads back a code
             # that leads to this very run.
-            trace_id = structlog.contextvars.get_contextvars().get("trace_id", "brak")
             logger.error("prose_config_error", sections=list(odrzucone))
             raise HTTPException(
-                status_code=502, detail=PROSE_CONFIG_DETAIL.format(trace_id=trace_id)
+                status_code=502,
+                detail=PROSE_CONFIG_DETAIL.format(trace_id=trace_id or "brak"),
             )
         logger.error("prose_no_call_landed", sections=list(odrzucone))
         raise HTTPException(status_code=502, detail=PROSE_FAILED_DETAIL)
