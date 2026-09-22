@@ -50,12 +50,34 @@ def use_llm(monkeypatch, result: LlmResult) -> FakeLlmClient:
     return fake
 
 
-def post(token: str, content: bytes = b"%PDF-1.4 ksiega", mime: str = "application/pdf"):
-    return client.post(
-        "/kw-transcribe",
-        data={"token": token},
-        files={"file": ("kw.pdf", content, mime)},
-    )
+PDF = b"%PDF-1.4 ksiega"
+
+
+def b64(content: bytes) -> str:
+    return base64.standard_b64encode(content).decode()
+
+
+def post_form(
+    token: str,
+    *,
+    files: list[tuple[str, bytes, str]] = (),
+    tekst: str | None = None,
+    file: tuple[str, bytes, str] | None = None,
+):
+    """The endpoint's multipart form: `files` repeated per PDF, `tekst` when
+    given, `file` = the old web's single field (alias, see the endpoint)."""
+    data = {"token": token}
+    if tekst is not None:
+        data["tekst"] = tekst
+    parts = [("files", part) for part in files]
+    if file is not None:
+        parts.append(("file", file))
+    return client.post("/kw-transcribe", data=data, files=parts or None)
+
+
+def post(token: str, content: bytes = PDF, mime: str = "application/pdf"):
+    """One PDF through `files` — the shape most tests need."""
+    return post_form(token, files=[("kw.pdf", content, mime)])
 
 
 def ok_result() -> LlmResult:
@@ -85,7 +107,8 @@ def test_transcription_of_the_synthetic_book_comes_back_verbatim(monkeypatch):
 
 
 def test_a_transcription_failing_validation_is_returned_with_the_verdict(monkeypatch):
-    """Validation judges, the endpoint does not reject: web decides (stores only `ok`)."""
+    """Validation judges, the endpoint never rejects: web stores the content whatever
+    the verdict says (ADR-021) and shows it as a standing warning."""
     tresc = sample_tresc()
     tresc.polaDodatkowe.numerLokalu = (tresc.polaDodatkowe.numerLokalu or "") + "1"
     use_llm(monkeypatch, LlmResult(tresc, "end_turn", 1, 1))
@@ -258,3 +281,118 @@ def test_prompt_is_neutral_about_the_carrier_and_explains_pipe_rows():
 def test_limits_of_the_channels():
     assert kw_transcribe.MAX_FILES == 5
     assert kw_transcribe.MAX_TEXT_BYTES == 200 * 1024
+
+
+# --- endpoint: PDFs and/or a pasted book, limits, the old `file` field --------------
+
+
+def test_two_pdfs_reach_the_model_as_two_documents_in_upload_order(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    first, second = b"%PDF-1.4 dzial I-O", b"%PDF-1.4 dzial II"
+    resp = post_form(
+        mint(),
+        files=[("1.pdf", first, "application/pdf"), ("2.pdf", second, "application/pdf")],
+    )
+    assert resp.status_code == 200
+    assert resp.json() == sample()
+    (call,) = fake.calls
+    assert call["documents"] == [b64(first), b64(second)]
+    assert call["text"] is None
+
+
+def test_pasted_text_alone_reaches_the_model_as_text_with_no_documents(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    text = "TREŚĆ KSIĘGI WIECZYSTEJ NR …\nDZIAŁ I-O\nNumer działki | 217/4 | 1"
+    resp = post_form(mint(), tekst=text)
+    assert resp.status_code == 200
+    assert resp.json() == sample()
+    (call,) = fake.calls
+    assert call["documents"] == []
+    assert call["text"] == text
+
+
+def test_pdf_and_text_together_send_both(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    resp = post_form(
+        mint(), files=[("kw.pdf", PDF, "application/pdf")], tekst="DZIAŁ IV\nBRAK WPISÓW"
+    )
+    assert resp.status_code == 200
+    (call,) = fake.calls
+    assert call["documents"] == [b64(PDF)]
+    assert call["text"] == "DZIAŁ IV\nBRAK WPISÓW"
+
+
+@pytest.mark.parametrize("tekst", [None, "", "   \n\t"])
+def test_nothing_to_read_is_422_before_any_model_call(monkeypatch, tekst):
+    fake = use_llm(monkeypatch, ok_result())
+    resp = post_form(mint(), tekst=tekst)
+    assert resp.status_code == 422
+    assert "PDF" in resp.json()["detail"] and "wklej" in resp.json()["detail"]
+    assert fake.calls == []
+
+
+def test_more_than_five_files_is_422(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    six = [(f"{i}.pdf", PDF, "application/pdf") for i in range(6)]
+    resp = post_form(mint(), files=six)
+    assert resp.status_code == 422
+    assert "5" in resp.json()["detail"]
+    assert fake.calls == []
+
+
+def test_a_non_pdf_among_the_files_is_415(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    resp = post_form(
+        mint(),
+        files=[("kw.pdf", PDF, "application/pdf"), ("kot.jpg", b"\xff\xd8\xff", "image/jpeg")],
+    )
+    assert resp.status_code == 415
+    assert fake.calls == []
+
+
+def test_text_over_the_limit_is_413_counted_in_utf8_bytes_and_never_echoed(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    monkeypatch.setattr(main, "kw_max_text_bytes", lambda: 20)
+    text = "ąęśćłńóż" * 2  # 16 characters, 32 bytes — over the limit only in bytes
+    resp = post_form(mint(), tekst=text)
+    assert resp.status_code == 413
+    assert "200 kB" in resp.json()["detail"]
+    assert text not in resp.text and "ąęś" not in resp.text
+    assert fake.calls == []
+
+
+def test_total_size_of_the_files_is_capped_and_read_only_up_to_the_limit(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    monkeypatch.setattr(main, "kw_max_bytes", lambda: 10)
+    sizes = record_upload_reads(monkeypatch)
+    six = b"%PDF12"
+    resp = post_form(
+        mint(), files=[("1.pdf", six, "application/pdf"), ("2.pdf", six, "application/pdf")]
+    )
+    assert resp.status_code == 413
+    assert "łącznie" in resp.json()["detail"]
+    assert sizes == [11, 5]  # limit + 1, then what is left of the budget + 1
+    assert fake.calls == []
+
+
+def test_the_old_single_file_field_is_still_a_one_element_list(monkeypatch):
+    """The web on main sends `file`; the worker deploys first. Follow-up after the
+    web of PR-2 is merged: drop the alias and this test."""
+    fake = use_llm(monkeypatch, ok_result())
+    resp = post_form(mint(), file=("kw.pdf", PDF, "application/pdf"))
+    assert resp.status_code == 200
+    assert resp.json() == sample()
+    (call,) = fake.calls
+    assert call["documents"] == [b64(PDF)]
+    assert call["text"] is None
+
+
+def test_file_alias_and_files_together_are_one_list_alias_first(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    other = b"%PDF-1.4 inny"
+    resp = post_form(
+        mint(), files=[("2.pdf", other, "application/pdf")], file=("1.pdf", PDF, "application/pdf")
+    )
+    assert resp.status_code == 200
+    (call,) = fake.calls
+    assert call["documents"] == [b64(PDF), b64(other)]

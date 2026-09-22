@@ -589,6 +589,11 @@ def kw_max_bytes() -> int:
     return kw_core.MAX_PDF_BYTES
 
 
+def kw_max_text_bytes() -> int:
+    # Seam for tests, like kw_max_bytes.
+    return kw_transcribe.MAX_TEXT_BYTES
+
+
 def kw_llm() -> LlmClient:
     # Seam for tests, like kw_max_bytes: the KW reads go through the port only.
     return AnthropicAdapter()
@@ -682,30 +687,66 @@ def _transcribe_error(code: str) -> JSONResponse:
 
 class KwTranscribeResponse(kw_transcribe.KsiegaTresc):
     """The book's content, flat, plus the deterministic verdict. The endpoint never
-    rejects on a failed verdict — web stores the content only when `walidacja.ok`."""
+    rejects on a failed verdict and web stores the content whatever it says
+    (ADR-021): the verdict is a standing warning in step 1 and in the preview."""
 
     walidacja: kw_validate.Walidacja
 
 
 @app.post("/kw-transcribe", response_model=KwTranscribeResponse)
-def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
-    """Full content of the five sections of a unit's book (spike KW, ADR-018
-    "Zmiana 15.09"). Persons' data stays in the answer and NEVER reaches a log:
-    only counters and error classes are logged, never `str(exc)` — pydantic and
-    SDK messages can quote the model's text."""
+def kw_transcribe_book(
+    files: list[UploadFile] = File(default=[]),
+    # The web deployed before PR-2 sends one `file`; the worker ships first.
+    # Alias of a one-element `files`. FOLLOW-UP: drop after the web of PR-2 is on main.
+    file: UploadFile | None = File(default=None),
+    tekst: str | None = Form(default=None),
+    token: str = Form(...),
+):
+    """Full content of the five sections of a book (ADR-021): from one or more eKW
+    printouts (`files`, one per tab, or an e-odpis), from the text pasted out of
+    the tabs (`tekst`), or both. Persons' data stays in the answer and NEVER
+    reaches a log: only counters and error classes are logged, never `str(exc)`
+    — pydantic and SDK messages can quote the model's text. Neither the files
+    nor the paste are ever persisted."""
     _require_token(token)
-    if file.content_type != "application/pdf":
+    uploads = ([file] if file is not None else []) + files  # a new list: `files` is a default
+    # FastAPI already binds an empty `tekst` to None; whitespace is "nothing" too.
+    text = tekst if tekst is not None and tekst.strip() else None
+    if not uploads and text is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Wgraj co najmniej jeden plik PDF albo wklej treść księgi.",
+        )
+    if len(uploads) > kw_transcribe.MAX_FILES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Za dużo plików — najwyżej {kw_transcribe.MAX_FILES} naraz.",
+        )
+    if any(upload.content_type != "application/pdf" for upload in uploads):
         raise HTTPException(status_code=415, detail="Obsługiwane są wyłącznie pliki PDF.")
-    # One byte past the limit is enough to know it is too large — never the whole upload.
-    data = file.file.read(kw_max_bytes() + 1)
-    if len(data) > kw_max_bytes():
-        raise HTTPException(status_code=413, detail="Plik jest za duży (limit 32 MB).")
+    # Checked here, never as Form(max_length=…): FastAPI's 422 body echoes the
+    # rejected input, which for `tekst` is the book itself (F-13).
+    text_bytes = len(text.encode("utf-8")) if text is not None else 0
+    if text_bytes > kw_max_text_bytes():
+        raise HTTPException(status_code=413, detail="Wklejony tekst jest za długi (limit 200 kB).")
+    documents: list[str] = []
+    total = 0
+    for upload in uploads:
+        # One byte past what is left of the limit is enough to know the set is
+        # too large — never the whole upload.
+        data = upload.file.read(kw_max_bytes() - total + 1)
+        total += len(data)
+        if total > kw_max_bytes():
+            raise HTTPException(status_code=413, detail="Pliki są za duże (łącznie limit 32 MB).")
+        documents.append(base64.standard_b64encode(data).decode())
+    kanal = "+".join(
+        name for name, used in (("pdf", bool(documents)), ("tekst", text is not None)) if used
+    )
+    counters = dict(kanal=kanal, plikow=len(documents), bytes=total, tekst_bajtow=text_bytes)
 
     started = time.monotonic()
     try:
-        result = kw_transcribe.transcribe(
-            kw_llm(), [base64.standard_b64encode(data).decode()], None
-        )
+        result = kw_transcribe.transcribe(kw_llm(), documents, text)
     except kw_transcribe.TranscriptionFailed as exc:
         logger.error(
             "kw_transcribe_failed",
@@ -713,7 +754,7 @@ def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
             stop_reason=exc.result.stop_reason,
             input_tokens=exc.result.input_tokens,
             output_tokens=exc.result.output_tokens,
-            bytes=len(data),
+            **counters,
             ms=round((time.monotonic() - started) * 1000),
         )
         return _transcribe_error(exc.code)
@@ -723,17 +764,17 @@ def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
             code="kw_transkrypcja_blad",
             err_type=type(exc).__name__,
             status_code=getattr(exc, "status_code", None),
-            bytes=len(data),
+            **counters,
             ms=round((time.monotonic() - started) * 1000),
         )
         return _transcribe_error("kw_transkrypcja_blad")
-    # File bytes are never persisted or logged: `data` dies with this request.
+    # File bytes and the paste are never persisted or logged: they die with this request.
 
     tresc = result.parsed
     walidacja = kw_validate.validate(tresc)
     logger.info(
         "kw_transcribe_done",
-        bytes=len(data),
+        **counters,
         ms=round((time.monotonic() - started) * 1000),
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,

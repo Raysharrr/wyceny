@@ -151,3 +151,97 @@ def test_exception_quoting_the_content_leaks_nothing(monkeypatch, capsys):
     assert resp.status_code == 502
     assert leaked(resp.text) == []
     assert leaked(log_text(capsys.readouterr().out)) == []
+
+
+# --- the pasted book is content too: never in a log, never in an error body ----------
+
+
+def pasted_book() -> str:
+    """The synthetic book as the eKW tabs paste it: label | values | basis per row,
+    so every forbidden value is in the text."""
+    tresc = sample_tresc()
+    lines = [f"TREŚĆ KSIĘGI WIECZYSTEJ NR {tresc['naglowek']['numerKsiegi']}"]
+    for d in tresc["dzialy"]:
+        lines.append(d["tytul"])
+        for t in d["tabele"]:
+            for w in t["wpisy"]:
+                for r in w["rubryki"]:
+                    wartosci = " | ".join(r["wartosci"])
+                    lines.append(f"{r['nazwa']} | {wartosci} | {w['nrPodstawyWpisu'] or ''}")
+    return "\n".join(lines)
+
+
+def post_text(text: str):
+    return client.post("/kw-transcribe", data={"token": mint(), "tekst": text})
+
+
+def test_the_paste_carries_the_forbidden_values():
+    assert len(leaked(pasted_book())) >= 20
+
+
+def test_pasted_text_never_reaches_a_log_only_its_counters_do(monkeypatch, capsys):
+    text = pasted_book()
+    fake = FakeLlmClient(
+        LlmResult(KsiegaTresc.model_validate(sample_tresc()), "end_turn", 7807, 2911)
+    )
+    monkeypatch.setattr(main, "kw_llm", lambda: fake)
+
+    assert post_text(text).status_code == 200
+
+    log = log_text(capsys.readouterr().out)
+    assert leaked(log) == []
+    (done,) = [json.loads(line) for line in log.splitlines() if '"kw_transcribe_done"' in line]
+    assert done["kanal"] == "tekst"
+    assert done["plikow"] == 0
+    assert done["bytes"] == 0
+    assert done["tekst_bajtow"] == len(text.encode("utf-8"))
+    assert done["dzialy"] == 5
+
+
+def test_a_failing_model_call_on_a_paste_leaks_nothing(monkeypatch, capsys):
+    value = sorted(FORBIDDEN)[0]
+
+    class Quoting:
+        def parse(self, **kwargs):
+            raise ValueError(f"nie pasuje: {value}")
+
+    monkeypatch.setattr(main, "kw_llm", lambda: Quoting())
+
+    resp = post_text(pasted_book())
+
+    assert resp.status_code == 502
+    assert leaked(resp.text) == []
+    log = log_text(capsys.readouterr().out)
+    assert leaked(log) == []
+    (failed,) = [json.loads(line) for line in log.splitlines() if '"kw_transcribe_failed"' in line]
+    assert failed["kanal"] == "tekst" and failed["plikow"] == 0
+
+
+def test_a_too_long_paste_is_refused_without_quoting_it(monkeypatch, capsys):
+    monkeypatch.setattr(main, "kw_max_text_bytes", lambda: 64)
+
+    resp = post_text(pasted_book())
+
+    assert resp.status_code == 413
+    assert leaked(resp.text) == []
+    assert leaked(log_text(capsys.readouterr().out)) == []
+
+
+def test_pdf_and_paste_together_log_the_mixed_channel(monkeypatch, capsys):
+    fake = FakeLlmClient(LlmResult(KsiegaTresc.model_validate(sample_tresc()), "end_turn", 1, 1))
+    monkeypatch.setattr(main, "kw_llm", lambda: fake)
+    pdf = b"%PDF-1.4 ksiega"
+
+    resp = client.post(
+        "/kw-transcribe",
+        data={"token": mint(), "tekst": pasted_book()},
+        files=[("files", ("kw.pdf", pdf, "application/pdf"))],
+    )
+
+    assert resp.status_code == 200
+    log = log_text(capsys.readouterr().out)
+    assert leaked(log) == []
+    (done,) = [json.loads(line) for line in log.splitlines() if '"kw_transcribe_done"' in line]
+    assert done["kanal"] == "pdf+tekst"
+    assert done["plikow"] == 1
+    assert done["bytes"] == len(pdf)
