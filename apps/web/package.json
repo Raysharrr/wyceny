@@ -17,7 +17,7 @@
     "seed": "tsx scripts/seed.ts",
     "template:build": "tsx scripts/template-build.mts",
     "trace": "tsx scripts/trace.mts",
-    "e2e": "playwright test --project=smoke --project=spoldzielcze",
+    "e2e": "playwright test --project=smoke --project=spoldzielcze --project=gluszyna",
     "e2e:cleanup": "tsx scripts/e2e-cleanup.ts",
     "e2e:staging": "node -e \"if(!process.env.E2E_BASE_URL){console.error('E2E_BASE_URL wymagane — projekt staging nigdy nie startuje lokalnego serwera');process.exit(1)}\" && playwright test --project=staging"
   },

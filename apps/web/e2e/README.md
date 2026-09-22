@@ -1,12 +1,36 @@
 # E2E (Playwright)
 
-Dwa zestawy, trzy projekty w `playwright.config.ts`:
+Trzy zestawy w CI plus dwa uruchamiane ręcznie — projekty w `playwright.config.ts`:
 
 | Projekt                  | Plik                                                                                                                                                                                            | Konto                                                                            | Kiedy                   |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------- |
 | `smoke`                  | `smoke.spec.ts`                                                                                                                                                                                 | aneta (admin, loguje się sam)                                                    | CI, każdy push          |
 | `setup` → `spoldzielcze` | `auth.setup.ts` → `spoldzielcze.spec.ts`                                                                                                                                                        | zenon (rzeczoznawca, jedno logowanie per przebieg, `storageState` w `.e2e-tmp/`) | CI, każdy push          |
+| `setup` → `gluszyna`     | `auth.setup.ts` → `gluszyna.spec.ts` (blok „Głuszyna”: treść KW, lokale o cenie skrajnej, odłączone progi)                                                                                      | zenon, ta sama sesja co wyżej                                                    | CI, każdy push          |
 | `staging`                | `spoldzielcze.spec.ts`, tylko testy `@staging-safe` (import, formularz ręczny, dym własnościowy CL-16 — **bez** wyceny spółdzielczej, bo na stagingu proza jest ON i krok 6 kosztuje generację) | zenon na stagingu                                                                | **ręcznie**, nigdy w CI |
+
+## Macierz pokrycia — blok „Głuszyna” (CHECKLISTA.md z 21.09)
+
+Checklista: `docs/superpowers/review/2026-09-21-gluszyna/CHECKLISTA.md` w wiki-repo; numeracja `CL-n` to jej punkty 1–14.
+
+| CL    | Czego dotyczy                                             | Bramka w CI                                                                                                                              |
+| ----- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| CL-1  | krok 6 generuje komplet opisów                            | — proza jest OFF w CI (`NEXT_PUBLIC_PROSE=off`); pokrywa worker i testy akcji                                                            |
+| CL-2  | komunikat o błędzie **konfiguracji** prozy                | — nieosiągalne: `proposeProse` woła workera z serwera, `page.route` tego nie widzi; pokrywa `test_prose_config_error_detail`             |
+| CL-3  | karta „Lokale o cenie skrajnej”, przycisk nieaktywny      | `gluszyna.spec.ts` — „CL-3, CL-4, CL-5…”                                                                                                 |
+| CL-4  | „Przyjmij” bierze podpowiedź z rejestru                   | `gluszyna.spec.ts` — „CL-3, CL-4, CL-5…”                                                                                                 |
+| CL-5  | krok 7 bez B-18, §12.2 z ocenami, 0× „brak danych…”       | `gluszyna.spec.ts` — „CL-3, CL-4, CL-5…” (tekst PDF-a podglądu)                                                                          |
+| CL-6  | mapowanie kolumny „P.P” w imporcie rejestru               | — fikstura `coop-registry.ts` nie ma kolumny P.P; pokrywa `coop-import.test.ts`                                                          |
+| CL-7  | zmiana próby unieważnia oceny lokali skrajnych            | `gluszyna.spec.ts` — „CL-7 (negatywny)…”                                                                                                 |
+| CL-8  | dwa sposoby na obu kartach, brak „Wpisz ręcznie”          | — pokrywa `rtl-kw-section.test.tsx`; w E2E widoczne pośrednio (CL-9, CL-12)                                                              |
+| CL-9  | licznik działów, baner brakujących zakładek, przepisanie  | `gluszyna.spec.ts` — „CL-9…”                                                                                                             |
+| CL-10 | werdykt walidacji trwały po powrocie do kroku 1           | `gluszyna.spec.ts` — „CL-10…”                                                                                                            |
+| CL-11 | rodzaj księgi niezgodny z kartą                           | `gluszyna.spec.ts` — „CL-11 (negatywny)…” (grunt na karcie lokalu) · `smoke.spec.ts` — „karta gruntu ostrzega…” (lokal na karcie gruntu) |
+| CL-12 | panel zmiany sposobu: „Zostaw jak jest” / „…usuń dane”    | `gluszyna.spec.ts` — „CL-12…”                                                                                                            |
+| CL-13 | zatwierdzenie i DOCX w Wordzie (§8.2 obie tabele działów) | — brama wymaga prowenancji geokodowania z żywego autofetch (patrz `E2E_APPROVE`); kontrola układu w Wordzie zostaje przy rzeczoznawcy    |
+| CL-14 | treść Pomocy                                              | — pokrywają testy treści Pomocy (`tests/`)                                                                                               |
+
+Poza numeracją CL: punkt 3 sekcji „Co możesz STRACIĆ” (ręczna edycja tekstu poziomu odłącza progi) → `gluszyna.spec.ts`, test „Co możesz STRACIĆ” pkt 3.
 
 ## Lokalnie (jak CI)
 
@@ -20,9 +44,9 @@ cd apps/web
 export NEXT_PUBLIC_SUBJECT_AUTOFETCH=off NEXT_PUBLIC_ADDRESS_SUGGEST=off NEXT_PUBLIC_STREET_VIEW=off \
        NEXT_PUBLIC_PHOTO_UPLOAD=off NEXT_PUBLIC_PROSE=off MAPS_FETCH=off \
        WORKER_SHARED_SECRET=dev SEED_ADMIN_PASSWORD=… SEED_APPRAISER_PASSWORD=…
-pnpm build && pnpm e2e                    # smoke + spoldzielcze
-pnpm exec playwright test --project=spoldzielcze                 # tylko blok
-pnpm exec playwright test --project=spoldzielcze --repeat-each=3 # stabilność
+pnpm build && pnpm e2e                    # smoke + spoldzielcze + gluszyna
+pnpm exec playwright test --project=gluszyna                     # tylko blok Głuszyna
+pnpm exec playwright test --project=gluszyna --repeat-each=3     # stabilność
 pnpm exec playwright test --project=zrzuty                       # zrzuty karty KW do opisu PR
 ```
 
