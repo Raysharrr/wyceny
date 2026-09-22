@@ -94,6 +94,14 @@ export type Candidate = {
   rightType?: PropertyRight | null;
   /** Coop register rows only (S3): the cooperative the row came from — step 3's bar and panel name it. */
   cooperative?: string;
+  /**
+   * Coop register rows only (PR-3, ADR-022): the register's „P.P” column —
+   * `true` when the RCN printout listed an annex room (piwnica, komórka),
+   * `false` when it said „nie”, `null` when the column was not mapped or the
+   * cell was blank. Absent on RCN rows and on pools frozen before the column
+   * existed. Feeds the step-4 suggestion for „pomieszczenia przynależne”.
+   */
+  annex?: boolean | null;
 };
 
 export type ScoreWeights = {
