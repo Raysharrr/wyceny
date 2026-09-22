@@ -69,6 +69,52 @@ def unit(top: float, price: str, area: str, address: str, annex: str = "", label
     return words(*cells)
 
 
+def holding(top: float, share: str = "1/1", area: str = "0.0900", built: bool = False):
+    return words(
+        (31, top, "Obiekt"),
+        (108, top, f"nieruchomość gruntowa {'zabudowana' if built else 'niezabudowana'}"),
+        (419, top, "własność nieruchomości gruntowej"),
+        (505, top, share),
+        (541, top, area),
+    )
+
+
+def plot(
+    top: float,
+    ident: str,
+    area: str,
+    address: str = "",
+    plan: str = "",
+    desc: str = "Grunty rolne",
+):
+    return words(
+        (31, top, "Działka"),
+        (108, top, f"1. {ident}"),
+        (419, top, f"1. {desc}"),
+        (541, top, f"1. {area}".strip()),
+        (681, top, f"1. {plan}".strip()),
+        (734, top, f"1. {address}".strip()),
+    )
+
+
+def house(top: float, ident: str = "000000_0.0001.12/3.1_BUD", desc="Mieszkalny", address=""):
+    return words(
+        (31, top, "Budynek"),
+        (108, top, f"2. {ident}"),
+        (419, top, f"2. {desc}"),
+        (734, top, f"2. {address}".strip()),
+    )
+
+
+# The generator's two stamp lines at the foot of the last page.
+FOOTER = words(
+    (706, 700, "Wygenerowano"),
+    (758, 700, "dnia: 30.06.2026"),
+    (637, 712, "Dokument sprządzony przez:"),
+    (731, 712, "Automatyczny Generator"),
+)
+
+
 def simple(address: str = "ul. Lipowa 4|m.1, Testowo", **kw) -> list[list[Word]]:
     return [
         HEADER
@@ -146,16 +192,24 @@ def test_unparsed_address_lands_whole_in_street_with_a_warning():
     assert (row.street, row.town, row.warnings) == ("Testowo dz. 12/3", "", ["address_unparsed"])
 
 
-def test_transaction_without_a_unit_is_flagged():
-    plot = words(
-        (31, 300, "Działka"),
-        (108, 300, "1. 000000_0.0001.12/3"),
-        (541, 300, "1. 0.0900"),
-        (734, 300, "1. ul. Polna 3, Testowo"),
-    )
-    pages = [HEADER + section(145) + transaction(210, 1, "2026-06-17", "412 000.00") + plot]
+def test_transaction_without_a_unit_is_bare_land():
+    """The shape that used to be flagged `no_unit` is now a kind of its own: a
+    sheet with no PU column, so nothing about it is a defect."""
+    pages = [
+        HEADER
+        + section(145)
+        + transaction(210, 1, "2026-06-17", "412 000.00")
+        + holding(290)
+        + plot(300, "000000_0.0001.12/3", "0.0900", address="ul. Polna 3, Testowo")
+    ]
     row = rcn_pdf.parse(pages).rows[0]
-    assert (row.area, row.street, row.warnings) == (None, "Polna", ["no_unit"])
+    assert (row.kind, row.area, row.town, row.warnings) == (
+        rcn_pdf.KIND_PLOT,
+        None,
+        "Testowo",
+        [],
+    )
+    assert (row.plot_ids, row.plot_area_m2) == (["000000_0.0001.12/3"], 900)
 
 
 def test_two_units_take_the_first_residential_and_flag_it():
@@ -183,6 +237,111 @@ def test_refusals():
         rcn_pdf.parse([words((31, 60, "Umowa sprzedaży"))])
     with pytest.raises(rcn_pdf.NoTransactions):
         rcn_pdf.parse([HEADER + section(145)])
+
+
+# --- domy i działki (spec 22.09) ---------------------------------------------
+
+
+def land(*objects: list[Word], kind: str = "NIERUCHOMOŚĆ GRUNTOWA NIEZABUDOWANA", tail=()):
+    page = HEADER + section(145, kind) + transaction(210, 1, "2026-06-17", "412 000.00")
+    for obj in objects:
+        page = page + obj
+    return [page + list(tail)]
+
+
+def test_the_generators_footer_does_not_leak_into_the_last_transaction():
+    pages = land(
+        holding(290),
+        plot(300, "000000_0.0001.12/3", "0.0900", plan="tereny dróg publicznych"),
+        tail=FOOTER,
+    )
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.town, row.plan) == ("Testowo", "tereny dróg publicznych")
+
+
+def test_a_building_makes_it_built_even_in_a_section_titled_niezabudowana():
+    pages = land(
+        holding(290, built=True),
+        plot(300, "000000_0.0001.12/3", "0.0900"),
+        house(320, address="ul. Lipowa 6, Testowo"),
+    )
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.kind, row.town, row.street, row.building) == (
+        rcn_pdf.KIND_BUILT,
+        "Testowo",
+        "Lipowa",
+        "6",
+    )
+
+
+def test_a_flat_wins_over_a_building():
+    assert rcn_pdf.parse([simple()[0] + house(400)]).rows[0].kind == rcn_pdf.KIND_UNIT
+
+
+def test_two_plots_are_joined_and_their_areas_summed():
+    pages = land(
+        holding(290),
+        plot(300, "000000_0.0001.12/3", "0.0900"),
+        plot(320, "000000_0.0001.12/4", "0.1204"),
+    )
+    row = rcn_pdf.parse(pages).rows[0]
+    assert row.plot_ids == ["000000_0.0001.12/3", "000000_0.0001.12/4"]
+    assert (row.plot_area_m2, row.warnings) == (2104, ["many_plots"])
+
+
+def test_a_share_other_than_one_is_carried_and_flagged():
+    pages = land(holding(290, share="3/18"), plot(300, "000000_0.0001.12/3", "0.0900"))
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.share, row.warnings) == ("3/18", ["partial_share"])
+
+
+def test_a_whole_right_leaves_the_share_empty():
+    pages = land(holding(290), plot(300, "000000_0.0001.12/3", "0.0900"))
+    assert rcn_pdf.parse(pages).rows[0].share == ""
+
+
+def test_a_word_broken_across_a_narrow_column_is_glued_back():
+    pages = land(
+        holding(290),
+        plot(300, "000000_0.0001.12/3", "0.0900", plan="budownictwo mieszkaniow e wewnętrznyc h,"),
+    )
+    assert rcn_pdf.parse(pages).rows[0].plan == "budownictwo mieszkaniowe wewnętrznych,"
+
+
+def test_a_conjunction_is_a_word_not_a_broken_tail():
+    pages = land(
+        holding(290),
+        plot(300, "000000_0.0001.12/3", "0.0900", plan="tereny dróg i obiektów"),
+    )
+    assert rcn_pdf.parse(pages).rows[0].plan == "tereny dróg i obiektów"
+
+
+def test_two_plans_are_joined_without_repeats():
+    pages = land(
+        holding(290),
+        plot(300, "000000_0.0001.12/3", "0.0900", plan="tereny dróg publicznych"),
+        plot(320, "000000_0.0001.12/4", "0.0100", plan="tereny dróg publicznych"),
+        plot(340, "000000_0.0001.12/5", "0.0100", plan="grunty rolne"),
+    )
+    assert rcn_pdf.parse(pages).rows[0].plan == "tereny dróg publicznych; grunty rolne"
+
+
+def test_town_falls_back_to_the_section_district_when_there_is_no_address():
+    pages = land(holding(290), plot(300, "000000_0.0001.12/3", "0.0900"))
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.town, row.street, row.warnings) == ("Testowo", "", [])
+
+
+def test_a_built_plot_without_an_address_is_flagged():
+    pages = land(holding(290, built=True), plot(300, "000000_0.0001.12/3", "0.0900"), house(320))
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.town, row.street, row.warnings) == ("Testowo", "", ["address_unparsed"])
+
+
+def test_a_plot_without_an_area_has_no_sum_and_is_flagged():
+    pages = land(holding(290), plot(300, "000000_0.0001.12/3", ""))
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.plot_area_m2, row.warnings) == (None, ["missing_field"])
 
 
 SAMPLE = os.environ.get("RCN_SAMPLE_PDF")
