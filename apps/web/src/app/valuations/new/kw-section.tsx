@@ -406,7 +406,7 @@ function KwFetchStatusBar({ state, onRetry }: { state: KwFetchState; onRetry: ()
       return (
         <div data-testid="kw-fetch-status" className="flex flex-col gap-2">
           <AutoBanner kind="error">
-            Nie udało się przepisać treści — wgraj inny plik albo wklej treść z przeglądarki KW.
+            Nie udało się odczytać pól z pliku — wgraj inny plik albo wklej treść z przeglądarki KW.
           </AutoBanner>
           {/* The cause, under the guidance: "wgraj inny plik" is useless advice
               if the appraiser cannot tell a timeout from a 40 MB scan. */}

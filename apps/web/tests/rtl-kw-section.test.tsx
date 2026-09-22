@@ -366,7 +366,7 @@ describe("KwSection", () => {
     const alert = screen.getByRole("alert");
     expect(alert.getAttribute("data-kind")).toBe("error");
     expect(alert.textContent).toBe(
-      "Nie udało się przepisać treści — wgraj inny plik albo wklej treść z przeglądarki KW.",
+      "Nie udało się odczytać pól z pliku — wgraj inny plik albo wklej treść z przeglądarki KW.",
     );
     expect(screen.getByRole("button", { name: /spróbuj ponownie/i })).toBeDefined();
   });
@@ -1265,7 +1265,7 @@ describe("KwSection — full-form wiring", () => {
 
     const warn = await screen.findByTestId("kw-transcribe-warn");
     expect(warn.textContent).toContain("zbyt obszerna");
-    expect(screen.queryByText(/Nie udało się przepisać treści —/)).toBeNull();
+    expect(screen.queryByText(/Nie udało się odczytać pól z pliku/)).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
     await waitFor(() => expect(createDraft).toHaveBeenCalled());
@@ -1294,7 +1294,7 @@ describe("KwSection — full-form wiring", () => {
     );
     await odczytajIPrzepisz(user);
 
-    await screen.findByText(/Nie udało się przepisać treści —/);
+    await screen.findByText(/Nie udało się odczytać pól z pliku/);
     expect(screen.queryByTestId("kw-transcribe-warn")).toBeNull();
   });
 
