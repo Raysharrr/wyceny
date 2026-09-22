@@ -35,7 +35,7 @@ Dwie sytuacje szczególne:
 - **Adres i numer budynku w jednej komórce** („os. Wymyślone 12”, „Bukowa 12/5”) — wskaż tę samą kolumnę przy „Adres” i „Nr budynku”; aplikacja rozdzieli je sama.
 - **Wykaz bez numeru mieszkania** — wybierz przy „Nr mieszkania” opcję „rejestr nie ma tej kolumny”. To co innego niż brak mapowania: wiersze zaimportują się, a dwa lokale z tego samego budynku sprzedane tego samego dnia za tę samą cenę rozróżnimy po powierzchni. W podsumowaniu zobaczysz ich listę.
 
-Kolumny opcjonalne (rodzaj prawa, piętro, pokoje, rok budowy, numer repertorium) możesz pominąć. Skutek jest widoczny, nie ukryty: bez kolumny rodzaju prawa każdy wiersz dostanie w kroku 3 odznakę „prawo nieznane”, bez piętra, pokoi i roku budowy — „atrybuty nieznane”.
+Kolumny opcjonalne (rodzaj prawa, piętro, pokoje, rok budowy, numer repertorium, pomieszczenia przynależne — „P.P”) możesz pominąć. Skutek jest widoczny, nie ukryty: bez kolumny rodzaju prawa każdy wiersz dostanie w kroku 3 odznakę „prawo nieznane”, bez piętra, pokoi i roku budowy — „atrybuty nieznane”, a bez P.P krok 4 nie podpowie oceny pomieszczeń przynależnych dla lokali o cenie skrajnej. Kolumna P.P przyjmuje „tak”/„nie” (także „t”/„n”, „1”/„0”); pusta komórka znaczy „nie wiadomo”. Arkusz z [konwertera wydruku RCN](/pomoc/narzedzia-wydruk-rcn) ma tę kolumnę gotową.
 
 <img
   src="/api/pomoc/rejestr-import-mapowanie.png"

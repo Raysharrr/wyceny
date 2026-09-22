@@ -7,7 +7,8 @@ import {
   OCENA_SPOZA_REJESTRU,
 } from "../src/domain/document-model";
 import { PIETRO_PRZEDMIOTU, wycena1409Anon } from "./fixtures/wycena-1409-anon";
-import { computeKcs, type KcsInput } from "../src/domain/kcs";
+import { computeKcs, type FeatureRating, type KcsInput } from "../src/domain/kcs";
+import { extremeLokale } from "../src/domain/extremes";
 import { computeKcsOnScale } from "../src/domain/feature-rules";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 import { FEATURE_PRESETS } from "../src/domain/feature-presets";
@@ -414,6 +415,194 @@ describe("document model — Cmin/Cmax per cecha (FH.3)", () => {
     for (const lokal of [...m.lokale_cmin, ...m.lokale_cmax]) {
       expect(lokal.cechy.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * ADR-022: §12.2 drukuje OCENY rzeczoznawcy z kroku 4. Kolejność: ocena na
+ * opisanym poziomie → progi (D-52) → OCENA_SPOZA_REJESTRU. Istniejący
+ * describe wyżej jest kontrolą pozytywną: bez `comparableRatings` nic się
+ * nie zmienia.
+ */
+describe("document model — §12.2 z ocen rzeczoznawcy (ADR-022)", () => {
+  const CMAX = "TEST-TX-12|TEST-LOK-12";
+  const withRatings = (ratings: KcsInput["comparableRatings"]) => {
+    const v = wycena1409Anon();
+    v.inputs.comparableRatings = ratings;
+    return buildDocumentModel(v);
+  };
+  const opis = (m: ReturnType<typeof buildDocumentModel>, nazwa: string) =>
+    m.lokale_cmax[0].cechy.find((c) => c.nazwa === nazwa)!.opis;
+
+  it("ocena rzeczoznawcy wygrywa z progami: Cmax na 3. piętrze oceniony „lepsza” drukuje „najwyższa”", () => {
+    const m = withRatings({
+      [CMAX]: {
+        "standard-wykonczenia": "lepsza",
+        "polozenie-na-pietrze": "lepsza",
+        lokalizacja: "lepsza",
+        "powierzchnia-uzytkowa": "gorsza",
+        "pomieszczenia-przynalezne": "lepsza",
+        dodatkowe: "gorsza",
+      },
+    });
+    expect(m.lokale_cmax[0].cechy).toEqual([
+      { nazwa: "Standard wykończenia", opis: "wartość najwyższa cechy" },
+      // Progi mówią „pośrednia” (3. piętro) — ocena rzeczoznawcy jest ważniejsza.
+      { nazwa: "Położenie na piętrze", opis: "wartość najwyższa cechy" },
+      // Dwa opisane poziomy (lepsza/przeciętna): „lepsza” to max.
+      { nazwa: "Lokalizacja szczegółowa", opis: "wartość najwyższa cechy" },
+      // Progi mówią „lepsza” (35,9 m²) — ocena „gorsza” drukuje najniższą.
+      { nazwa: "Powierzchnia użytkowa", opis: "wartość najniższa cechy" },
+      { nazwa: "Pomieszczenia przynależne", opis: "wartość najwyższa cechy" },
+      { nazwa: "Dodatkowe", opis: "wartość najniższa cechy" },
+    ]);
+  });
+
+  it("ocena częściowa: oceniona cecha z oceny, mierzalna bez oceny z progów, reszta „brak danych”", () => {
+    const m = withRatings({ [CMAX]: { "standard-wykonczenia": "gorsza" } });
+    expect(opis(m, "Standard wykończenia")).toBe("wartość najniższa cechy");
+    expect(opis(m, "Położenie na piętrze")).toBe("wartość pośrednia cechy");
+    expect(opis(m, "Lokalizacja szczegółowa")).toBe(OCENA_SPOZA_REJESTRU);
+  });
+
+  it("ocena na nieopisanym poziomie liczy się jak brak oceny → „brak danych” (ADR-016 reg. 4)", () => {
+    // Pomieszczenia przynależne opisują tylko lepsza/gorsza.
+    const m = withRatings({ [CMAX]: { "pomieszczenia-przynalezne": "przecietna" } });
+    expect(opis(m, "Pomieszczenia przynależne")).toBe(OCENA_SPOZA_REJESTRU);
+  });
+
+  it("oceny pod cudzym kluczem nie dotykają tego lokalu (kontrola: identycznie jak bez ocen)", () => {
+    const bez = withRatings(null);
+    const cudze = withRatings({ "INNY|LOKAL": { "standard-wykonczenia": "lepsza" } });
+    expect(cudze.lokale_cmax).toEqual(bez.lokale_cmax);
+    expect(cudze.lokale_cmin).toEqual(bez.lokale_cmin);
+  });
+
+  it("remis Cmin: każdy lokal drukuje SWOJE oceny", () => {
+    const m = withRatings({
+      "TEST-TX-01|TEST-LOK-01": { "standard-wykonczenia": "lepsza" },
+      "TEST-TX-02|TEST-LOK-02": { "standard-wykonczenia": "gorsza" },
+    });
+    const standard = (i: number) =>
+      m.lokale_cmin[i].cechy.find((c) => c.nazwa === "Standard wykończenia")!.opis;
+    expect([standard(0), standard(1)]).toEqual([
+      "wartość najwyższa cechy",
+      "wartość najniższa cechy",
+    ]);
+  });
+
+  /**
+   * F3 z recenzji S4a: cecha bez `key` (tylko ręcznie budowane `KcsInput` —
+   * formularz zawsze zapisuje klucz) nie ma gdzie trzymać oceny. Nie wolno jej
+   * dać WSPÓLNEGO klucza pustego: dwie takie cechy czytałyby jedną ocenę, a
+   * ocena zapisana pod kluczem "" trafiłaby na obie. Brak klucza = brak oceny,
+   * czyli ścieżka progów.
+   */
+  it("cecha bez klucza nie czyta oceny spod wspólnego klucza pustego (F3)", () => {
+    const v = wycena1409Anon();
+    // Dwie cechy bez klucza: jedna mierzalna (progi mają co powiedzieć),
+    // jedna bez progów (nie mają).
+    const pietro = v.inputs.features.find((f) => f.key === "polozenie-na-pietrze")!;
+    const lokalizacja = v.inputs.features.find((f) => f.key === "lokalizacja")!;
+    delete pietro.key;
+    delete lokalizacja.key;
+    // Ocena podrzucona pod klucz pusty — gdyby model ją czytał, obie cechy
+    // dostałyby „najniższa”.
+    v.inputs.comparableRatings = { [CMAX]: { "": "gorsza" } };
+    const m = buildDocumentModel(v);
+    const opisu = (nazwa: string) => m.lokale_cmax[0].cechy.find((c) => c.nazwa === nazwa)!.opis;
+    // Cmax siedzi na kondygnacji 4, czyli 3. piętrze → progi mówią „pośrednia”.
+    expect(opisu("Położenie na piętrze")).toBe("wartość pośrednia cechy");
+    expect(opisu("Lokalizacja szczegółowa")).toBe(OCENA_SPOZA_REJESTRU);
+  });
+
+  /**
+   * F2 z recenzji całości bloku: warunek „ocena liczy się TYLKO na poziomie
+   * OPISANYM” (`describedLevels(feature).includes(rating)` w
+   * `comparableFeatureText`) nie miał żadnego testu — ani po stronie bramki,
+   * ani po stronie dokumentu. Cecha MIERZALNA jest tu jedynym nośnikiem:
+   * dla cechy BEZ progów siatką jest `ratingPosition`, które i tak zwraca
+   * `null` dla poziomu bez definicji, więc mutacja przez nią przechodzi.
+   *
+   * „Powierzchnia użytkowa” w wariancie `jak_zgloszono` ma skalę
+   * DWUPOZIOMOWĄ z mediany próby (do 43 m² / od 44 m²), więc `przecietna`
+   * jest poziomem NIEOPISANYM. Ocena na takim poziomie nie liczy się jak
+   * ocena: model spada na progi i dla Cmaxa (41,70 m² → „do 43 m²”) drukuje
+   * wartość najwyższą — zdanie, którego rzeczoznawca nie wybrał, ale wprost
+   * wyprowadzone z rejestru (spec §4.4). §12.2 renderuje się PRZED
+   * zatwierdzeniem, więc B-18 nie jest tu siatką.
+   */
+  describe("ocena liczy się tylko na poziomie opisanym — cecha mierzalna (F2)", () => {
+    const powierzchnia = (rating: FeatureRating) =>
+      opis(withRatings({ [CMAX]: { "powierzchnia-uzytkowa": rating } }), "Powierzchnia użytkowa");
+
+    it("ocena „przeciętna” na skali dwupoziomowej nie jest oceną — model wraca do progów", () => {
+      expect(powierzchnia("przecietna")).toBe("wartość najwyższa cechy");
+    });
+
+    it("ocena „gorsza” (poziom opisany) wygrywa z progami i drukuje najniższą", () => {
+      expect(powierzchnia("gorsza")).toBe("wartość najniższa cechy");
+    });
+
+    it("ocena „lepsza” (poziom opisany) drukuje najwyższą", () => {
+      expect(powierzchnia("lepsza")).toBe("wartość najwyższa cechy");
+    });
+  });
+
+  /**
+   * F1 z recenzji całości bloku. Wiersz dopisany ręcznie w kroku 3 nie ma
+   * żadnego identyfikatora, więc jego klucz ocen musi wynikać z TREŚCI
+   * wiersza — nigdy z pozycji w próbie. Scenariusz recenzenta: próba z
+   * rejestru z dwoma wierszami ręcznymi (X najdroższy, Y najtańszy), oceny
+   * wystawione w kroku 4, potem usunięcie WCZEŚNIEJSZEGO wiersza z rejestru.
+   * Pod kluczem pozycyjnym Cmin drukował wtedy ocenę wystawioną Cmaxowi —
+   * zdanie przypisane nie temu lokalowi, w dokumencie o skutkach prawnych.
+   */
+  it("usunięcie wcześniejszego wiersza próby nie przepina ocen wierszy ręcznych (F1)", () => {
+    const RECZNY = { source: "manual" as const, status: "confirmed" as const };
+    const X = { date: "2026-04", area: 40, pricePerM2: 20_000, ...RECZNY };
+    const Y = { date: "2026-05", area: 60, pricePerM2: 3_000, ...RECZNY };
+    const zRejestru = wycena1409Anon().inputs.comparables;
+    const zProba = (comparables: KcsInput["comparables"]) => {
+      const v = wycena1409Anon();
+      v.inputs.comparables = comparables;
+      v.kcs = computeKcs(v.inputs);
+      return v;
+    };
+
+    // Krok 4 zapisuje oceny pod kluczami lokali skrajnych BIEŻĄCEJ próby.
+    const przed = zProba([...zRejestru.slice(0, 4), X, Y]);
+    const klucz = (side: "min" | "max") =>
+      extremeLokale(przed.inputs).find((l) => l.side === side)!.key;
+    const ratings: KcsInput["comparableRatings"] = {
+      [klucz("max")]: { "standard-wykonczenia": "lepsza" },
+      [klucz("min")]: { "standard-wykonczenia": "gorsza" },
+    };
+
+    // Krok 3: rzeczoznawca wyrzuca wiersz WCZEŚNIEJSZY niż oba ręczne.
+    const po = zProba([...zRejestru.slice(1, 4), X, Y]);
+    po.inputs.comparableRatings = ratings;
+    const m = buildDocumentModel(po);
+    const standard = (cechy: { nazwa: string; opis: string }[]) =>
+      cechy.find((c) => c.nazwa === "Standard wykończenia")!.opis;
+
+    // Model dokumentu nie niesie cen lokali skrajnych (F-12), więc kontrolę
+    // „to wciąż te dwa wiersze ręczne” robimy na wejściu, nie na wyjściu.
+    const skrajne = extremeLokale(po.inputs);
+    expect(skrajne.map((l) => [l.side, l.pricePerM2])).toEqual([
+      ["max", X.pricePerM2],
+      ["min", Y.pricePerM2],
+    ]);
+    expect(m.lokale_cmax).toHaveLength(1);
+    expect(m.lokale_cmin).toHaveLength(1);
+    expect(standard(m.lokale_cmax[0].cechy)).toBe("wartość najwyższa cechy");
+    expect(standard(m.lokale_cmin[0].cechy)).toBe("wartość najniższa cechy");
+  });
+
+  it("klucz lokalu nigdy nie trafia do modelu dokumentu (F-12)", () => {
+    const json = JSON.stringify(withRatings({ [CMAX]: { "standard-wykonczenia": "lepsza" } }));
+    expect(json).not.toContain("TEST-TX-");
+    expect(json).not.toContain("TEST-LOK-");
   });
 });
 

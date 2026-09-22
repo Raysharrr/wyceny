@@ -26,7 +26,12 @@ const PRICE_KIND_LABEL: Record<PriceKind, string> = {
 
 const UNREADABLE = "Nie udało się odczytać liczby — wpisz np. 48,10 albo 521 885,00.";
 
-type Fields = Record<keyof Omit<SaveCoopTransactionInput, "priceKind" | "rightType">, string>;
+// `annex` nie ma tu pola: formularz ręczny nie pyta o P.P (ADR-022, poza
+// zakresem PR-3) — akcja wpisuje wtedy null („nie wiadomo”).
+type Fields = Record<
+  keyof Omit<SaveCoopTransactionInput, "priceKind" | "rightType" | "annex">,
+  string
+>;
 const EMPTY: Fields = {
   cooperative: "",
   city: "Poznań",

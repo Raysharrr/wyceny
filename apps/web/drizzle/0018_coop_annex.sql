@@ -1,0 +1,1 @@
+ALTER TABLE "coop_transaction" ADD COLUMN "annex" boolean;

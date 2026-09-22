@@ -193,6 +193,8 @@ describe("F-6: lokal feature preset", () => {
         key: "standard-wykonczenia",
         definitions: { lepsza: "dowolny tekst" },
       })),
+      // ADR-022: oceny lokali skrajnych są metadaną dokumentu, nie wejściem silnika.
+      comparableRatings: { "tx|lok": { "standard-wykonczenia": "gorsza" } },
     };
     const a = computeKcs(base);
     const b = computeKcs(enriched);

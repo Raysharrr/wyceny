@@ -51,7 +51,8 @@ describe("saveCoopTransaction", () => {
     const { saveCoopTransaction } = await import("../src/app/actions/save-coop-transaction");
     const r = await saveCoopTransaction(input);
     expect(r).toEqual({ ok: true, id: "row-1", needsFix: false });
-    expect(saveCalls.at(-1)).toMatchObject({ pos: { x: 1, y: 2 }, source: "manual" });
+    // ADR-022: formularz ręczny nie pyta o P.P — wiersz wchodzi z „nie wiadomo”.
+    expect(saveCalls.at(-1)).toMatchObject({ pos: { x: 1, y: 2 }, source: "manual", annex: null });
   });
 
   it("geocoder miss → saved with pos null and needsFix true (never silent)", async () => {

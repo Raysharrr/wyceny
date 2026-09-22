@@ -28,6 +28,7 @@ function row(over: Partial<CoopTransaction> = {}): CoopTransaction {
     floor: 6,
     rooms: 2,
     buildYear: null,
+    annex: null,
     pos: { x: SUBJECT.x + 300, y: SUBJECT.y + 400 },
     source: "xls",
     dedupeKey: "k1",
@@ -113,6 +114,14 @@ describe("coopRegistrySampleProposal", () => {
     expect(c.streetNumber).toBe("57");
     expect(c.cooperative).toBe("SM Osiedle Młodych");
     expect(pool.counts).toEqual({ fetched: 1, deduped: 1, noPos: 0 });
+  });
+
+  it("P.P z rejestru trafia do Candidate.annex (ADR-022)", async () => {
+    const pool = await coopRegistrySampleProposal(
+      registry([row({ annex: true }), row({ id: "2", dedupeKey: "k2", annex: false })]),
+      geocode,
+    ).fetchPool({ address: "x", area: 43.34, point: { ...SUBJECT, srid: 2180 } });
+    expect(pool.candidates.map((c) => c.annex)).toEqual([true, false]);
   });
 
   it("keeps a known rightType", async () => {

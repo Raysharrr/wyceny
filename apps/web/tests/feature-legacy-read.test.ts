@@ -113,6 +113,7 @@ describe("readFeatureScale — legacy draft read (ADR-016)", () => {
   it("the step-4 save drops the amount, so step 5 confirms it again", () => {
     const saved = applyFeaturesUpdate(readFeatureScale(valuation({})), {
       features: LEGACY_FEATURES.map((f) => ({ ...f, rating: "lepsza" as const })),
+      comparableRatings: null,
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },

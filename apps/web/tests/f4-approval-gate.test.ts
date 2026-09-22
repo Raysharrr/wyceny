@@ -1218,6 +1218,7 @@ describe("B-08…B-10: rating scale blockers (ADR-016)", () => {
           definitions: LEPSZA_GORSZA,
         },
       ],
+      comparableRatings: null,
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },

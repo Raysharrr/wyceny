@@ -1,7 +1,14 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers, formatDatePl } from "./document-model";
 import { computeKcsOnScale, describedLevels, featureIssues, kcsReady } from "./feature-rules";
-import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
+import { extremeLokale } from "./extremes";
+import {
+  comparableContentKey,
+  isRegistrySourced,
+  type Comparable,
+  type ComparableRatings,
+  type KcsInput,
+} from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
@@ -331,16 +338,6 @@ function comparableKey(c: Comparable): string {
 }
 
 /**
- * The same key built from the three fields the appraiser reads off the row,
- * ignoring the fetched id entirely — what {@link promoteStoredRcnRows}
- * matches on. The id cannot be part of that comparison, because dropping it
- * is the move being caught. One definition of "the same row by content".
- */
-function comparableContentKey(c: Comparable): string {
-  return `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
-}
-
-/**
  * Every field of {@link Comparable} the appraiser reads off the row, `status`
  * excluded — that is the thing being recomputed, not part of what was
  * verified. ADD ANY NEW FIELD HERE: one left out means a row that changed on
@@ -646,6 +643,8 @@ export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
 
 export type FeaturesUpdate = {
   features: KcsInput["features"];
+  /** Wymagane, nie opcjonalne: pominięcie w mapowaniu ma być błędem kompilacji, nie cichą utratą ocen. */
+  comparableRatings: ComparableRatings | null;
   provenance: Pick<InputsProvenance, "weights" | "ratings" | "featureDefs">;
 };
 
@@ -661,7 +660,12 @@ export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation 
   return {
     ...v,
     wr: null,
-    inputs: { ...v.inputs, features: u.features, provenance },
+    inputs: {
+      ...v.inputs,
+      features: u.features,
+      comparableRatings: u.comparableRatings,
+      provenance,
+    },
   };
 }
 
@@ -759,6 +763,7 @@ export function approvalBlockers(v: Valuation, ctx: GateOptions): Blocker[] {
   return [
     ...(gate && !gate.ok ? gate.blockers : []),
     ...featureScaleBlockers(v),
+    ...extremeRatingBlockers(v),
     ...documentFieldBlockers(v),
     // Last, and outside the groups above, because these are the only blockers
     // that are NOT about this valuation: they are about the person issuing it,
@@ -777,6 +782,39 @@ function featureScaleBlockers(v: Valuation): Blocker[] {
   if (!v.inputs) return [];
   return v.inputs.features.flatMap((f, i) =>
     featureIssues(f).map((issue) => ({ path: `features[${i}]`, ...issue })),
+  );
+}
+
+/**
+ * B-18 (ADR-022 reg. 5): every extreme-priced flat needs a rating on a
+ * DESCRIBED level for every active feature — §12.2 prints those ratings.
+ * Silent without a sample snapshot: a hand-typed sample has no candidates to
+ * rate and the sample gate speaks for it. A feature without a `key` (legacy
+ * fixtures only — the form always writes one) has nowhere to keep a rating
+ * and is skipped. A rating on an UNDESCRIBED level counts as missing even
+ * when the feature carries thresholds (review F2): §12.2 would quietly fall
+ * back to the bands and print a level the appraiser never chose. One blocker
+ * per flat × feature, so the step-7 list names what is missing rather than
+ * repeating one sentence twelve times.
+ */
+function extremeRatingBlockers(v: Valuation): Blocker[] {
+  const inputs = v.inputs;
+  if (!inputs?.sampleSelection) return [];
+  const active = inputs.features.filter((f) => f.weight > 0 && f.key);
+  const ratings = inputs.comparableRatings ?? {};
+  return extremeLokale(inputs).flatMap((lokal) =>
+    active.flatMap((feature) => {
+      const rating = ratings[lokal.key]?.[feature.key!];
+      if (rating != null && describedLevels(feature).includes(rating)) return [];
+      const cena = lokal.side === "max" ? "najwyższej" : "najniższej";
+      return [
+        {
+          code: "B-18",
+          path: `comparableRatings[${lokal.key}].${feature.key}`,
+          label: `Oceń cechę „${feature.name}” lokalu o cenie ${cena} w próbie (krok 4).`,
+        },
+      ];
+    }),
   );
 }
 

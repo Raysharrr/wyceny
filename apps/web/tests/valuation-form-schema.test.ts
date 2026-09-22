@@ -572,3 +572,17 @@ describe("sampleSelectionSchema — v3 additive fields (Slice 3)", () => {
     expect(withoutHint["0039.22.13/82.3"].storeysHint).toBeUndefined();
   });
 });
+
+describe("candidateSchema — annex (P.P, ADR-022)", () => {
+  it("zachowuje annex przy zapisie migawki próby (zod obcina nieznane klucze)", async () => {
+    const { sampleSelectionSchema } = await import("../src/lib/valuation-form-schema");
+    const { wycena1409Anon } = await import("./fixtures/wycena-1409-anon");
+    const snap = wycena1409Anon().inputs.sampleSelection!;
+    snap.proposed[0].annex = true;
+    snap.proposed[1].annex = null;
+    const parsed = sampleSelectionSchema.parse(snap);
+    expect(parsed.proposed[0].annex).toBe(true);
+    expect(parsed.proposed[1].annex).toBeNull();
+    expect("annex" in parsed.proposed[2]).toBe(false);
+  });
+});
