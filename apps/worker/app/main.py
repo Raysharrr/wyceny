@@ -703,7 +703,9 @@ def kw_transcribe_book(file: UploadFile = File(...), token: str = Form(...)):
 
     started = time.monotonic()
     try:
-        result = kw_transcribe.transcribe(kw_llm(), base64.standard_b64encode(data).decode())
+        result = kw_transcribe.transcribe(
+            kw_llm(), [base64.standard_b64encode(data).decode()], None
+        )
     except kw_transcribe.TranscriptionFailed as exc:
         logger.error(
             "kw_transcribe_failed",

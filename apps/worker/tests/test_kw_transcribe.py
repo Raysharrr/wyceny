@@ -206,3 +206,55 @@ def test_prompt_excludes_separator_rows_and_never_asks_to_omit_persons():
     assert '["---"]' in kw_transcribe.PROMPT
     assert "bez pomijania osób fizycznych" in kw_transcribe.PROMPT
     assert "POMIJAJ" not in kw_transcribe.PROMPT
+
+
+# --- transcribe: PDFs and/or a pasted book through one prompt (ADR-021) -----------
+
+
+def test_transcribe_forwards_documents_and_text_to_the_port_unchanged():
+    fake = FakeLlmClient(ok_result())
+    result = kw_transcribe.transcribe(
+        fake, ["JVBERg==", "JVBERi0x"], "DZIAŁ I-O\nNumer działki | 217/4 | 1"
+    )
+    assert result is fake.result
+    assert fake.calls == [
+        dict(
+            model="claude-opus-5",
+            documents=["JVBERg==", "JVBERi0x"],
+            text="DZIAŁ I-O\nNumer działki | 217/4 | 1",
+            prompt=kw_transcribe.PROMPT,
+            schema=KsiegaTresc,
+            max_tokens=16000,
+            thinking={"type": "adaptive"},
+        )
+    ]
+
+
+def test_transcribe_with_text_only_sends_no_documents():
+    fake = FakeLlmClient(ok_result())
+    kw_transcribe.transcribe(fake, [], "DZIAŁ IV\nBRAK WPISÓW")
+    (call,) = fake.calls
+    assert call["documents"] == []
+    assert call["text"] == "DZIAŁ IV\nBRAK WPISÓW"
+
+
+def test_transcribe_without_a_parsed_answer_raises_with_the_code():
+    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 16000))
+    with pytest.raises(kw_transcribe.TranscriptionFailed) as failed:
+        kw_transcribe.transcribe(fake, ["JVBERg=="], None)
+    assert failed.value.code == "kw_transkrypcja_ucieta"
+
+
+def test_prompt_is_neutral_about_the_carrier_and_explains_pipe_rows():
+    first_line = kw_transcribe.PROMPT.splitlines()[0]
+    assert first_line.startswith("Załączone dokumenty lub tekst to treść księgi wieczystej")
+    assert "PDF" not in first_line
+    assert "TREŚĆ KSIĘGI WIECZYSTEJ NR" in first_line
+    assert "etykieta | wartość | nr podstawy" in kw_transcribe.PROMPT
+    # The rules below the first paragraph are the spike's, unchanged.
+    assert "- polaDodatkowe: numerLokalu (dział I-O)" in kw_transcribe.PROMPT
+
+
+def test_limits_of_the_channels():
+    assert kw_transcribe.MAX_FILES == 5
+    assert kw_transcribe.MAX_TEXT_BYTES == 200 * 1024
