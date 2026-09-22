@@ -104,5 +104,6 @@ function toCandidate(
     city: null,
     rightType: r.rightType,
     cooperative: r.cooperative,
+    annex: r.annex,
   };
 }

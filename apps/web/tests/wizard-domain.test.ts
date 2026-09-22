@@ -150,12 +150,17 @@ describe("applyFeaturesUpdate", () => {
       ratings: { source: "rzeczoznawca", status: "confirmed" },
       featureDefs: { source: "rzeczoznawca", status: "confirmed" },
     };
-    const update: FeaturesUpdate = { features: newFeatures, provenance: newProvenance };
+    const update: FeaturesUpdate = {
+      features: newFeatures,
+      comparableRatings: { "tx-1|306401_1.0039.x": { standard: "lepsza" } },
+      provenance: newProvenance,
+    };
 
     const updated = applyFeaturesUpdate(v, update);
 
     expect(updated.wr).toBeNull();
     expect(updated.inputs!.features).toEqual(newFeatures);
+    expect(updated.inputs!.comparableRatings).toEqual(update.comparableRatings);
     expect(updated.inputs!.provenance!.weights).toEqual(newProvenance.weights);
     expect(updated.inputs!.provenance!.ratings).toEqual(newProvenance.ratings);
     expect(updated.inputs!.provenance!.featureDefs).toEqual(newProvenance.featureDefs);
@@ -420,6 +425,7 @@ describe("apply* guard rails (assertDraft + missing-inputs, shared with confirm*
   const sampleUpdate: SampleUpdate = { comparables: [], sampleMeta: null };
   const featuresUpdate: FeaturesUpdate = {
     features: [],
+    comparableRatings: null,
     provenance: {
       weights: { source: "rzeczoznawca", status: "confirmed" },
       ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -662,6 +668,11 @@ describe("stepForBlockerPath", () => {
     ["wr", 5, "Kalkulacja"],
     ["prose", 6, "Opisy"],
     ["prose.uzasadnienie", 6, "Opisy"],
+    // ADR-022: klucz lokalu ma kreskę i kropki — nawias z dowolną treścią musi zniknąć przed dopasowaniem prefiksu.
+    ["comparableRatings[TEST-TX-01|306401_1.0039.x].polozenie-na-pietrze", 4, "Cechy"],
+    // Klucz wiersza ręcznego to jego TREŚĆ (data|powierzchnia|cena) — kreska,
+    // pionowe kreski i kropka dziesiętna w nawiasie, nigdy indeks w próbie.
+    ["comparableRatings[manual:2026-03|41.7|8847.74].dodatkowe", 4, "Cechy"],
   ])("%s belongs to step %i (%s)", (path, n, label) => {
     expect(stepForBlockerPath(path)).toEqual({ n, label });
   });

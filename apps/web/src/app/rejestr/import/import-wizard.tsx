@@ -45,6 +45,7 @@ const FIELD_LABEL: Record<CoopFieldKey, string> = {
   floor: "Piętro",
   rooms: "Pokoje",
   buildYear: "Rok budowy",
+  annex: "Pomieszczenia przynależne (P.P)",
 };
 const PRICE_KIND_LABEL: Record<PriceKind, string> = {
   transakcyjna: "transakcyjna",
@@ -70,6 +71,7 @@ const toWire = (r: NewCoopTransaction) => ({
   floor: r.floor,
   rooms: r.rooms,
   buildYear: r.buildYear,
+  annex: r.annex,
 });
 
 const colName = (sheet: CoopSheet, headerRow: number | null, i: number): string =>
@@ -400,12 +402,17 @@ export function ImportWizard({ cooperatives }: { cooperatives: string[] }) {
                             text: "Brak w pliku — wiersze dostaną odznakę „atrybuty nieznane”.",
                             warn: false,
                           }
-                        : f.key === "flatNumber" && value === ABSENT
+                        : f.key === "annex" && unmapped
                           ? {
-                              text: "Wiersze bez numeru mieszkania zaimportujemy; rozpoznajemy je wtedy po powierzchni, a w podsumowaniu zobaczysz ich listę.",
-                              warn: true,
+                              text: "Bez tej kolumny krok 4 nie podpowie oceny pomieszczeń przynależnych lokali o cenie skrajnej.",
+                              warn: false,
                             }
-                          : null;
+                          : f.key === "flatNumber" && value === ABSENT
+                            ? {
+                                text: "Wiersze bez numeru mieszkania zaimportujemy; rozpoznajemy je wtedy po powierzchni, a w podsumowaniu zobaczysz ich listę.",
+                                warn: true,
+                              }
+                            : null;
                   return (
                     <tr key={f.key} className={note?.warn ? "bg-[#fbf2dd]" : ""}>
                       <td className="py-2 pr-4 font-medium">

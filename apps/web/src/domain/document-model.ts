@@ -1,6 +1,6 @@
-import type { Comparable, Feature, KcsInput, KcsResult, FeatureRating } from "./kcs";
+import type { Feature, KcsInput, KcsResult, FeatureRating } from "./kcs";
 import { LEVEL_LABEL } from "./feature-presets";
-import { levelForValue, ratingPosition, type RatingPosition } from "./feature-rules";
+import { describedLevels, ratingPosition, type RatingPosition } from "./feature-rules";
 import { kwRequirements } from "./kw-requirements";
 import { nazwyNiezgodnosci, type KartaKsiegi, type Niezgodnosc } from "./kw-niezgodnosci";
 import type { KwAkt, KwDzialSnapshot, KwWerdykt } from "./kw-snapshot";
@@ -15,7 +15,9 @@ import type { SubjectSnapshot } from "./subject-snapshot";
 import type { Blocker } from "./provenance";
 import { cityLabel } from "./obreb-name";
 import { DASH, operatStreet } from "./street-name";
-import { candidateKey, pietroOfFloor, type Candidate } from "./sample-selection";
+import { candidateOf, extremeComparables, measuredLevel, type ExtremeLokal } from "./extremes";
+
+export { candidateOf };
 
 /**
  * Operat document model + professional-secrecy masking (F-12).
@@ -933,69 +935,22 @@ export type OperatAuthor = {
 };
 
 /**
- * The sample candidate a comparable row came from, and whether the join is
- * EXACT (R-7). Extracted from Table 1's own join so §12.2 reads the Cmin/Cmax
- * flats' floor, area and street from the same place the table does — one join,
- * one set of rules, no second chance to disagree with it.
- *
- * Primary key: transactionId + lokalId (`candidateKey`) — one notarial act can
- * carry SEVERAL lokale (runtime bug, team-lead 2026-08-21, Heweliusza 3/43: a
- * transactionId-only join printed the SAME obręb/distance for every lokal of
- * one act). A comparable saved before `lokalId` existed falls back to matching
- * by transactionId alone, first candidate found — the only information those
- * legacy rows carry — but comes back `matched: false`, so the document prints
- * a dash rather than a guess about which lokal of the act it was.
- *
- * A coop-register row (S5, defekt D-3) has `lokalId: ""` (one lokal per row)
- * and `transactionId` = `coopTxId`, so the transactionId-only join IS exact for
- * it — that is what `matched` recognises.
- */
-export function candidateOf(
-  comparable: Pick<Comparable, "transactionId" | "lokalId" | "coopTxId">,
-  selection: KcsInput["sampleSelection"],
-): { candidate: Candidate; matched: boolean } | null {
-  // Manual inclusions too (final wave, I1): a row the appraiser added that
-  // later fell out of BOTH `proposed` and `alternates` after a radius change
-  // exists only in `manualInclusions[].candidate` — omitting it made the join
-  // miss it and print dashes for a row that IS in the sample.
-  const candidates = selection
-    ? [
-        ...selection.proposed,
-        ...selection.alternates,
-        ...(selection.manualInclusions ?? []).map((i) => i.candidate),
-      ]
-    : [];
-  const { transactionId, lokalId, coopTxId } = comparable;
-  if (!transactionId) return null;
-  const candidate = lokalId
-    ? candidates.find((c) => candidateKey(c) === candidateKey({ transactionId, lokalId }))
-    : candidates.find((c) => c.transactionId === transactionId);
-  if (!candidate) return null;
-  const matched = Boolean(lokalId) || (Boolean(coopTxId) && candidate.transactionId === coopTxId);
-  return { candidate, matched };
-}
-
-/**
- * §12.2 wording of ONE feature for ONE comparable flat (D-52). A measurable
- * feature is placed by the SAME thresholds the subject is placed by, reading
- * the transaction's own piętro or powierzchnia; everything else says outright
- * that the register does not carry the answer.
- *
- * The piętro comes from `pietroOfFloor`, which converts the RCN kondygnacja;
- * the area comes from the row itself, falling back to the candidate.
+ * §12.2 wording of ONE feature for ONE extreme flat (ADR-022). The
+ * appraiser's own rating from step 4 comes first; a measurable feature the
+ * appraiser has not rated falls back to the thresholds (D-52, drafts saved
+ * before the block); everything else says outright that the register does
+ * not carry the answer. A rating on an undescribed level is no rating
+ * (ADR-016 reg. 4) — B-18 refuses to issue that document anyway.
  */
 function comparableFeatureText(
   feature: Feature,
-  comparable: Pick<Comparable, "area" | "source">,
-  candidate: Candidate | null,
+  lokal: ExtremeLokal,
+  rating: FeatureRating | undefined,
 ): string {
-  const measure = feature.measure;
-  if (!measure) return OCENA_SPOZA_REJESTRU;
-  const value =
-    measure.kind === "floor"
-      ? pietroOfFloor(candidate?.floor, comparable.source)
-      : (comparable.area ?? candidate?.area ?? null);
-  const level = levelForValue(measure, value);
+  const level =
+    rating != null && describedLevels(feature).includes(rating)
+      ? rating
+      : measuredLevel(feature, lokal);
   if (!level) return OCENA_SPOZA_REJESTRU;
   // The wording follows the level's POSITION in the described scale, exactly
   // as the subject's own does (ADR-016 reg. 6).
@@ -1127,29 +1082,30 @@ export function buildDocumentModel(
 
   /**
    * §12.2 — the flats at the sample's lowest and highest unit price, each
-   * described from ITS OWN data (D-51…D-53). A tie describes every flat at
-   * that price; the 14.09 operat described one and dropped the other.
+   * described from ITS OWN ratings and data (D-51…D-53, ADR-022). One
+   * source of „which flats are extreme” for the document, step 4 and B-18
+   * (`extremeComparables`, R4). The flat's KEY stays out of the model (F-12).
    */
-  const lokaleAtPrice = (price: number) =>
-    inputs.comparables
-      .filter((c) => c.pricePerM2 === price)
-      .map((row) => {
-        const join = candidateOf(row, inputs.sampleSelection);
-        const candidate = join?.matched ? join.candidate : null;
-        return {
-          // Street only, never the house number — professional secrecy (F-12,
-          // D-51). Empty when the register has none: the template owns the
-          // sentence, and an absent street must not become a dash mid-sentence.
-          lokalizacja: candidate?.street ? operatStreet(candidate.street) : "",
-          cechy: activeFeatures.map((f) => ({
-            nazwa: f.name,
-            opis: comparableFeatureText(f, row, candidate),
-          })),
-        };
-      });
-  const prices = inputs.comparables.map((c) => c.pricePerM2);
-  const lokaleCmin = lokaleAtPrice(Math.min(...prices));
-  const lokaleCmax = lokaleAtPrice(Math.max(...prices));
+  const describeLokal = (lokal: ExtremeLokal) => ({
+    // Street only, never the house number — professional secrecy (F-12,
+    // D-51). Empty when the register has none: the template owns the
+    // sentence, and an absent street must not become a dash mid-sentence.
+    lokalizacja: lokal.candidate?.street ? operatStreet(lokal.candidate.street) : "",
+    cechy: activeFeatures.map((f) => ({
+      nazwa: f.name,
+      // Cecha bez `key` (tylko ręcznie budowane KcsInput — formularz zawsze
+      // zapisuje klucz) nie ma gdzie trzymać oceny, więc jej nie szukamy.
+      // Wspólny klucz pusty dawałby dwóm takim cechom JEDNĄ ocenę (F3).
+      opis: comparableFeatureText(
+        f,
+        lokal,
+        f.key ? inputs.comparableRatings?.[lokal.key]?.[f.key] : undefined,
+      ),
+    })),
+  });
+  const extremes = extremeComparables(inputs);
+  const lokaleCmin = extremes.min.map(describeLokal);
+  const lokaleCmax = extremes.max.map(describeLokal);
   return {
     adres: input.address,
     powierzchnia: formatNumber(input.area, 2),

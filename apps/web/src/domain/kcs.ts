@@ -47,6 +47,14 @@ export type SampleMeta = Omit<CandidatePool, "candidates">;
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
 
 /**
+ * Oceny cech LOKALI SKRAJNYCH (ADR-022): klucz zewnętrzny = klucz lokalu
+ * (`ExtremeLokal.key`, zwykle `candidateKey`), wewnętrzny = `Feature.key`.
+ * Ten sam kształt co `comparisons[id][key].rating` w porównywaniu parami
+ * (#47), żeby jedna tabela ocen obsłużyła obie metody. Silnik tego nie czyta.
+ */
+export type ComparableRatings = Record<string, Record<string, FeatureRating>>;
+
+/**
  * Where a comparable came from (B1, S1 of the "Prawo spółdzielcze" block).
  * `rcn` and `rejestr_sm` are registers — machine-fetched rows that arrive
  * `to_verify`; `manual` is typed by the appraiser. Underscore on purpose:
@@ -116,6 +124,27 @@ export type Comparable = {
   status?: ProvenanceStatus;
 };
 
+/**
+ * A comparable row's identity BY CONTENT — the three fields the appraiser
+ * reads off the row (month, area, unit price), ignoring the fetched id
+ * entirely. One definition of "the same row by content", shared by every
+ * caller that must not lean on `transactionId`:
+ * - `promoteStoredRcnRows`/`comparableKey` (`domain/valuation.ts`) — dropping
+ *   the id is the move being caught, so it cannot be part of the comparison;
+ * - the rating key of a hand-typed extreme-priced flat
+ *   (`lokalOfRow`, `domain/extremes.ts`) — such a row has no id at all, and
+ *   its POSITION in the sample is not an identity (see the docstring over
+ *   `comparableKey`).
+ *
+ * Lives here, next to {@link Comparable} itself, rather than in either
+ * caller: `valuation.ts` already imports `extremes.ts`, so exporting it from
+ * there would close an import cycle through a module that documents itself as
+ * a leaf.
+ */
+export function comparableContentKey(c: Comparable): string {
+  return `${c.date ?? ""}|${c.area ?? ""}|${c.pricePerM2}`;
+}
+
 /** One band of a measurable scale; whole numbers, an absent edge is unbounded on that side. */
 export type MeasureBound = { od?: number; do?: number };
 
@@ -173,6 +202,12 @@ export type KcsInput = {
   /** Usable area of the subject property, m². */
   area: number;
   features: Feature[];
+  /**
+   * Oceny cech lokali o cenie skrajnej dla §12.2 (ADR-022) — render/bramka
+   * only; `computeKcs` nigdy tego nie czyta. Optional: szkice sprzed zmiany
+   * go nie mają i drukują §12.2 z progów jak dotąd. `null` = jawne wycofanie.
+   */
+  comparableRatings?: ComparableRatings | null;
   /** RCN fetch provenance for the whole sample (F-5) — display/audit metadata only; computeKcs never reads this. */
   sampleMeta?: SampleMeta | null;
   /**

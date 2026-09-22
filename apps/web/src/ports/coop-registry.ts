@@ -44,6 +44,8 @@ export type CoopTransaction = {
   floor: number | null;
   rooms: number | null;
   buildYear: number | null;
+  /** „P.P” z wydruku RCN (ADR-022): true/false; null = rejestr nie mówi — nigdy domyślnie. */
+  annex: boolean | null;
   /** EPSG:2180; null = geocoder failed → "do poprawki", excluded from radius search. */
   pos: { x: number; y: number } | null;
   source: "xls" | "manual";

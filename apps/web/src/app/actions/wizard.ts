@@ -8,6 +8,7 @@ import { valuationRepository } from "@/app/valuations/_deps";
 import { step1Schema, sampleStepSchema, featuresStepSchema } from "./wizard-schemas";
 import type { Step1Input, SampleStepInput, FeaturesStepInput } from "./wizard-schemas";
 import type { KcsInput } from "@/domain/kcs";
+import { pruneComparableRatings } from "@/domain/extremes";
 import type { InputsProvenance } from "@/domain/provenance";
 import {
   assignFeaturesProvenance,
@@ -343,10 +344,19 @@ export async function saveFeaturesAction(
       // the suggestion stays gone after a reload.
       measure: f.measure ?? null,
     }));
+    // ADR-022: ocena cechy, której nie ma już w worku, nie ma czego opisywać —
+    // znika przy zapisie (usunięcie cechy w kroku 4 nie może blokować zapisu).
+    // Klucze LOKALI zostają: to karta kroku 4 przycina je do żywej próby.
+    const comparableRatings = pruneComparableRatings(
+      parsed.data.comparableRatings ?? null,
+      null,
+      features.map((f) => f.key),
+    );
 
     try {
       const updated = await valuationRepository.saveFeatures(valuationId, session.user, {
         features,
+        comparableRatings,
         provenance,
       });
       if (!updated) {

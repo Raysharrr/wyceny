@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   COOP_FIELDS,
@@ -10,8 +12,10 @@ import {
   parseCoopDate,
   parseCoopNumber,
   parseCoopSheet,
+  parseAnnex,
   parseFloor,
   parseRightType,
+  rememberedMappingFor,
   splitAddressCell,
   type ColumnMapping,
 } from "../src/domain/coop-import";
@@ -424,6 +428,116 @@ describe("address column without a number (review 2 N-3)", () => {
       address: "os. Bezliczbowe",
       buildingNumber: "",
       flatNumber: "",
+    });
+  });
+});
+
+describe("kolumna P.P (pomieszczenia przynależne, ADR-022)", () => {
+  it.each([
+    ["tak", true],
+    ["TAK", true],
+    ["t", true],
+    ["1", true],
+    ["nie", false],
+    ["N", false],
+    ["0", false],
+    ["", null],
+    ["  ", null],
+    ["piwnica 4 m²", null],
+  ])("parseAnnex(%j) → %j — nigdy nie zgaduje", (cell, expected) => {
+    expect(parseAnnex(cell)).toBe(expected);
+  });
+
+  it("COOP_FIELDS ma pole annex, opcjonalne, z etykietą jak w wydruku RCN", () => {
+    expect(COOP_FIELDS.find((f) => f.key === "annex")).toEqual({
+      key: "annex",
+      label: "Pomieszczenia przynależne (P.P)",
+      required: false,
+    });
+  });
+
+  it("niezmapowana kolumna → annex null w każdym wierszu; zmapowana → wartość z komórki", () => {
+    const bez = parseCoopSheet(SHEET_1.rows, MAPPING_1, CTX_1);
+    expect(bez.rows.every((r) => r.annex === null)).toBe(true);
+
+    // Arkusz z konwertera T-22: nagłówek w wierszu 2 (indeks 1), P.P w kolumnie I (indeks 8).
+    const rcnRows = [
+      ["WYDRUK Z RCN · GKG.GZW.4061.0001.2026"],
+      [
+        "DATA",
+        "MIEJSCOWOŚĆ",
+        "ULICA",
+        "NR BUD",
+        "NR LOK",
+        "PU",
+        "CENA",
+        "CENA J",
+        "P.P",
+        "RODZAJ BUD",
+      ],
+      ["2026-03-11", "Poznań", "Lecha", "12", "5", "41,70", "368950", "", "tak", ""],
+      ["2025-11-05", "Poznań", "Fabianowo", "3", "7", "57,90", "366971", "", "nie", ""],
+      ["2026-01-20", "Poznań", "Lecha", "14", "2", "50,00", "400000", "", "", ""],
+    ];
+    const mapping: ColumnMapping = {
+      date: 0,
+      address: 2,
+      buildingNumber: 3,
+      flatNumber: 4,
+      area: 5,
+      priceTotal: 6,
+      annex: 8,
+    };
+    const z = parseCoopSheet(rcnRows, mapping, {
+      cooperative: "RCN 0001/2026",
+      priceKind: "transakcyjna",
+      headerRow: 1,
+    });
+    expect(z.rows.map((r) => r.annex)).toEqual([true, false, null]);
+  });
+
+  /**
+   * Kreator importu przepisuje wiersz na drut JAWNĄ listą pól (`toWire`), więc
+   * nowa kolumna, której tam nie ma, ginie po cichu między arkuszem a bazą.
+   * Pilnujemy tego na źródle: żaden test jednostkowy nie widzi tej granicy.
+   */
+  it("kreator importu przepisuje annex na drut (toWire nie gubi kolumny)", () => {
+    const src = fs.readFileSync(
+      path.join(process.cwd(), "src/app/rejestr/import/import-wizard.tsx"),
+      "utf8",
+    );
+    const toWire = src.slice(src.indexOf("const toWire"), src.indexOf("const colName"));
+    expect(toWire).toContain("annex: r.annex,");
+  });
+
+  it("zapamiętane mapowanie z P.P wraca dla kolejnego arkusza konwertera o tym samym nagłówku", () => {
+    const headers = [
+      "DATA",
+      "MIEJSCOWOŚĆ",
+      "ULICA",
+      "NR BUD",
+      "NR LOK",
+      "PU",
+      "CENA",
+      "CENA J",
+      "P.P",
+      "RODZAJ BUD",
+    ];
+    const saved = {
+      mapping: {
+        date: 0,
+        address: 2,
+        buildingNumber: 3,
+        flatNumber: 4,
+        area: 5,
+        priceTotal: 6,
+        annex: 8,
+      },
+      headers,
+    };
+    expect(rememberedMappingFor(saved, [...headers])).toEqual({
+      kind: "match",
+      mapping: saved.mapping,
     });
   });
 });

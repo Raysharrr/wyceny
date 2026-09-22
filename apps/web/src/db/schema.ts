@@ -1,5 +1,6 @@
 import {
   bigserial,
+  boolean,
   customType,
   date,
   doublePrecision,
@@ -175,6 +176,9 @@ export const coopTransaction = pgTable(
     floor: integer("floor"),
     rooms: integer("rooms"),
     buildYear: integer("build_year"),
+    // P.P z wydruku RCN (ADR-022): true/false jak w arkuszu, NULL = kolumna
+    // niezmapowana albo pusta komórka — nigdy domyślna wartość (spec §5).
+    annex: boolean("annex"),
     // EPSG:2180; NULL = geocoder failed → "do poprawki", excluded from radius search.
     posX: doublePrecision("pos_x"),
     posY: doublePrecision("pos_y"),

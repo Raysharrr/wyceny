@@ -56,7 +56,15 @@ Podpowiedzi nie ma, gdy cecha nie ma progów (nigdy ich nie miała albo opis wpi
 
 Podpowiedź liczy zawsze według **Twoich** progów. Gdy zmienisz skalę — na przykład na „6 piętro i powyżej”, bo budynek ma jedenaście kondygnacji — podpowiedzi pójdą za nowymi liczbami, a nie za tymi, które aplikacja zaproponowała.
 
-Te same progi opisują w operacie lokale o cenie najniższej i najwyższej — [Metoda KCS](/pomoc/metoda-kcs) tłumaczy, skąd biorą się tam oceny cech.
+Lokale o cenie najniższej i najwyższej opisujesz w operacie **własnymi ocenami** — sekcja niżej. Progi pracują tam wyłącznie jako podpowiedź.
+
+### Oceny lokali o cenie skrajnej
+
+Pod skalą cech jest druga karta, „Lokale o cenie skrajnej”. Pokazuje lokal o najwyższej i lokal o najniższej cenie za metr z próby z kroku 3 — z ceną, ulicą lub osiedlem, metrażem, piętrem i miesiącem transakcji. Gdy tę samą skrajną cenę ma kilka transakcji, karta pokazuje każdą z nich. Dla każdej cechy z wagą większą od zera wskazujesz ocenę tego lokalu w tej samej skali, którą opisujesz przedmiot; kafelków jest tyle, ile opisanych poziomów. §12.2 operatu drukuje dokładnie te oceny — zdanie o braku danych w rejestrze zostaje tylko w wycenach zapisanych przed tą zmianą.
+
+Tam, gdzie aplikacja ma dane, podpowiada poziom: piętro i powierzchnię lokalu porównuje z progami tak samo jak przedmiot („Podpowiedź: piętro lokalu 3 (rejestr) · próg „przeciętna” od 1 do 3 → przeciętna”), a dla pomieszczeń przynależnych czyta kolumnę P.P [rejestru biura](/pomoc/rejestr-spoldzielczy) („Podpowiedź: rejestr biura podaje pomieszczenie przynależne (P.P: tak) → lepsza”). Podpowiedź przyjmujesz przyciskiem „Przyjmij” albo klikasz inny kafelek — sama nic nie zapisuje. Standard wykończenia, lokalizacja i cechy dodatkowe nie mają danych w żadnym rejestrze, więc oceniasz je bez podpowiedzi. Gdy przepiszesz tekst poziomu ręcznie, progi tej cechy znikają, a z nimi podpowiedź.
+
+Karta pojawia się tylko przy próbie pobranej z rejestru (RCN albo rejestru biura). Zmiana próby w kroku 3 może wskazać inne lokale skrajne — wtedy trzeba je ocenić od nowa, a oceny poprzednich lokali przepadają.
 
 ### Podgląd wyniku
 
@@ -67,6 +75,7 @@ Panel obok listy — „Wskaźnik korekty ΣUi” z pozycją na skali oraz „Po
 ## Co musisz uzupełnić ręcznie
 
 - **Ocena każdej cechy** — kliknięcie karty opisanego poziomu w wierszu cechy.
+- **Oceny lokali o cenie skrajnej** — kafelek opisanego poziomu w karcie „Lokale o cenie skrajnej”, dla każdego lokalu i każdej cechy z wagą.
 - **Wagi** — pole liczbowe przy każdej cesze, w procentach.
 - **Definicje skali ocen** — do poprawienia pod „Edytuj skalę”; wyczyszczenie pola usuwa ten poziom ze skali i z operatu.
 - **Cechy z puli** — lista „+ Dodaj cechę z puli…” dokłada cechę spoza zestawu podstawowego: funkcjonalność lokalu, liczba izb, rodzaj zabudowy budynku. Dodana cecha wchodzi z wagą 0, więc trzeba jej nadać wagę i odjąć ją innym.
@@ -76,7 +85,7 @@ Cecha z wagą 0 nie trafia do operatu — dokument opisuje wyłącznie cechy o w
 
 ## Co blokuje przejście dalej
 
-- Przycisk „Zatwierdź cechy i dalej” jest nieaktywny, dopóki **każda cecha nie ma oceny**.
+- Przycisk „Zatwierdź cechy i dalej” jest nieaktywny, dopóki **każda cecha nie ma oceny** i dopóki **każdy lokal o cenie skrajnej nie ma oceny każdej cechy z wagą**; pasek na dole liczy oba komplety („lokale skrajne 0 z 2”). Nieoceniony lokal skrajny blokuje też zatwierdzenie operatu w kroku 7 — blokada odsyła do tego kroku.
 - Krok nie zapisze się, dopóki **suma wag nie wyniesie 100%** (z tolerancją 0,1 pkt proc.). Dopóki się nie zgadza, pod listą widać „Suma wag wynosi X% — powinna wynosić 100%.”. Waga nie może być ujemna, a każda cecha może wystąpić na liście najwyżej raz.
 - Cecha z wagą większą od zera musi mieć **opisane co najmniej dwa poziomy** — inaczej zapis zostanie odrzucony z komunikatem przy tej cesze. Dotyczy to zwłaszcza powierzchni użytkowej, gdy próba nie ma podanych powierzchni: jej skalę trzeba wtedy opisać samemu.
 - Cecha ze **skalą liczbową** musi mieć przedziały bez luk i bez zachodzenia na siebie, opisane liczbami całkowitymi — inaczej zapis zostanie odrzucony z komunikatem, między którymi poziomami jest problem. Dotyczy to też przedziału piętra domkniętego z góry i szerszego niż dwa piętra, dla którego nie ma brzmienia w operatach.
