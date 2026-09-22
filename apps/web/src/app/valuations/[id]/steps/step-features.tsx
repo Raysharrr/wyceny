@@ -595,6 +595,12 @@ export function StepFeatures({
                   // powierzchnia without a sample median) — no note for those. A
                   // fresh clone every render, never the preset's own object.
                   const presetMeasure = key ? presetMeasureFor(key, median) : null;
+                  // A rating on a level that no longer has a description is off
+                  // the scale (ADR-016 reg. 4) — one function for both ways a
+                  // level can lose its text: cleared by hand, or rewritten out
+                  // of existence by the bands.
+                  const clearRating = () =>
+                    setValue(`features.${index}.rating`, null, { shouldDirty: true });
                   // One path for every change of the bands (FH.1): they are the
                   // scale, so every text is rewritten from them and a level that
                   // lost its band loses its card too. The scale editor and the
@@ -608,6 +614,16 @@ export function StepFeatures({
                         shouldDirty: true,
                       });
                     }
+                    // The rewrite can take the description off the very level the
+                    // appraiser rated — restoring powierzchnia's two preset bands
+                    // over a hand-described „przeciętna”, or clearing a band. The
+                    // rating would otherwise stay on a card that is no longer on
+                    // screen, and the operat would print a position nobody chose.
+                    if (
+                      rating != null &&
+                      !describedLevels({ definitions: generated }).includes(rating)
+                    )
+                      clearRating();
                   };
                   // FH.2: the suggestion needs thresholds AND a subject value the
                   // scale actually covers; it stays until the rating agrees with
@@ -738,9 +754,7 @@ export function StepFeatures({
                           rating={rating}
                           measure={measure}
                           measureKind={key ? measureKindFor(key) : null}
-                          onSelectedLevelCleared={() =>
-                            setValue(`features.${index}.rating`, null, { shouldDirty: true })
-                          }
+                          onSelectedLevelCleared={clearRating}
                           onMeasureChange={applyMeasure}
                         />
                       ) : null}

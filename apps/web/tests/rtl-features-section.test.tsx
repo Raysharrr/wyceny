@@ -987,4 +987,94 @@ describe("StepFeatures — progi odłączone przez edycję tekstu (PR-4, makieta
       ),
     ).toBeTruthy();
   });
+  /**
+   * CR-1 (finding CodeRabbit na PR #88, ADR-016 reg. 4): progi są źródłem
+   * tekstów, więc każde ich przepisanie może zabrać poziomowi opis. Ocena,
+   * która na nim stała, przestaje wtedy być oceną czegokolwiek — a operat
+   * drukowałby pozycję w skali, której rzeczoznawca nie wskazał. Dwa wejścia
+   * do tej samej ścieżki: przycisk przywracania (nowy) i skasowanie obu
+   * progów (istniało na main, tam ocena zostawała).
+   */
+  it("CR-1: „Przywróć progi z presetu” kasuje ocenę poziomu, który stracił opis, i wiersz prosi o nową", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures
+        valuationId={VID}
+        features={[]}
+        comparables={placeholderComparables([40, 49, 60])}
+        area={PLACEHOLDER_AREA}
+      />,
+    );
+    await openScale(user, "powierzchnia-uzytkowa");
+    await user.type(
+      screen.getByTestId("feature-def-powierzchnia-uzytkowa-przecietna"),
+      "średni metraż",
+    );
+    const przecietna = cards("powierzchnia-uzytkowa").find((c) =>
+      c.textContent!.startsWith("przeciętna"),
+    )!;
+    await user.click(przecietna);
+    expect(within(row("powierzchnia-uzytkowa")).queryByText("Wybierz ocenę")).toBeNull();
+
+    await restore(user, "powierzchnia-uzytkowa");
+
+    expect(cards("powierzchnia-uzytkowa").map((c) => c.textContent)).toEqual([
+      "gorszaod 49 m²",
+      "lepszado 48 m²",
+    ]);
+    expect(cards("powierzchnia-uzytkowa").map((c) => c.getAttribute("aria-checked"))).toEqual([
+      "false",
+      "false",
+    ]);
+    expect(within(row("powierzchnia-uzytkowa")).getByText("Wybierz ocenę")).toBeTruthy();
+  });
+
+  it("CR-1: skasowanie obu progów ocenionego poziomu też kasuje jego ocenę (ścieżka sprzed PR-4)", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
+    await openScale(user, "polozenie-na-pietrze");
+    const przecietna = cards("polozenie-na-pietrze").find((c) =>
+      c.textContent!.startsWith("przeciętna"),
+    )!;
+    await user.click(przecietna);
+    expect(within(row("polozenie-na-pietrze")).queryByText("Wybierz ocenę")).toBeNull();
+
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "od"));
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "do"));
+
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "gorszaparter",
+      "lepsza4 piętro i powyżej",
+    ]);
+    expect(cards("polozenie-na-pietrze").map((c) => c.getAttribute("aria-checked"))).toEqual([
+      "false",
+      "false",
+    ]);
+    expect(within(row("polozenie-na-pietrze")).getByText("Wybierz ocenę")).toBeTruthy();
+  });
+
+  it("CR-1 (kontrola pozytywna): ocena na poziomie, który zostaje w skali, przeżywa przepisanie progów", async () => {
+    const user = userEvent.setup();
+    render(
+      <StepFeatures valuationId={VID} features={[]} comparables={[]} area={PLACEHOLDER_AREA} />,
+    );
+    await openScale(user, "polozenie-na-pietrze");
+    const lepsza = cards("polozenie-na-pietrze").find((c) => c.textContent!.startsWith("lepsza"))!;
+    await user.click(lepsza);
+
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "od"));
+    await user.clear(bound("polozenie-na-pietrze", "przecietna", "do"));
+
+    expect(cards("polozenie-na-pietrze").map((c) => c.textContent)).toEqual([
+      "gorszaparter",
+      "lepsza4 piętro i powyżej",
+    ]);
+    expect(cards("polozenie-na-pietrze").map((c) => c.getAttribute("aria-checked"))).toEqual([
+      "false",
+      "true",
+    ]);
+    expect(within(row("polozenie-na-pietrze")).queryByText("Wybierz ocenę")).toBeNull();
+  });
 });
