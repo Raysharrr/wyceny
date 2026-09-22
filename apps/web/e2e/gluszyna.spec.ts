@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildRegistryRun, MAPPING_A, type RegistryRun } from "./fixtures/coop-registry";
 import { ImportWizard } from "./pages/import-wizard";
-import { InspectionStep, SampleStep, SubjectStep } from "./pages/wizard";
+import { InspectionStep, rateAllFeatures, SampleStep, SubjectStep } from "./pages/wizard";
 import { atrapaTranskrypcji, ksiegaZAtrapy, tekstZakladek } from "./support/kw-transcribe-route";
 
 /**
@@ -31,11 +31,13 @@ import { atrapaTranskrypcji, ksiegaZAtrapy, tekstZakladek } from "./support/kw-t
  *   `NEXT_PUBLIC_PROSE=off`, więc krok 6 renderuje zaślepkę z linkiem „Dalej”,
  *   bez przycisku generowania. Pokrycie: `test_prose_config_error_detail`
  *   (worker) i testy jednostkowe akcji (brak podwójnego „kod:”).
- * - Zatwierdzenie i DOCX (CL-13) — brama potrzebuje prowenancji geokodowania z
- *   kroku 1, którą pisze wyłącznie żywy autofetch (w CI wyłączony; patrz
- *   `E2E_APPROVE` w `spoldzielcze.spec.ts`). Dowód treści §12.2 bierzemy więc z
- *   PODGLĄDU kroku 7 — z tekstu PDF, nie z pikseli. Kontrola DOCX w Wordzie
- *   zostaje po stronie rzeczoznawcy (CHECKLISTA pkt 13).
+ * - §12.2 czytamy z PODGLĄDU kroku 7, nie z wydanego operatu: kartę lokali
+ *   skrajnych ma tylko szkic z próbą z rejestru, czyli spółdzielczy, a takiego
+ *   w CI nie da się zatwierdzić — brama chce prowenancji geokodowania z żywego
+ *   autofetch (patrz `E2E_APPROVE` w `spoldzielcze.spec.ts`). §8.2 nie ma tego
+ *   ograniczenia: szkic WŁASNOŚCIOWY z dwiema księgami przechodzi bramę tak
+ *   samo, jak w `smoke.spec.ts`, więc test CL-13 czyta wydany DOCX. Kontrola
+ *   UKŁADU tabel w Wordzie zostaje po stronie rzeczoznawcy.
  * - Księga LOKALU wklejona na kartę gruntu (druga strona CL-11) ma własny test
  *   w `smoke.spec.ts` — tu stoi wariant przeciwny, który nie miał nigdzie bramki.
  *
@@ -54,6 +56,16 @@ async function pdfText(page: Page, iframeSrc: string): Promise<string> {
   const file = join(mkdtempSync(join(tmpdir(), "gluszyna-")), "podglad.pdf");
   writeFileSync(file, body);
   return execFileSync("pdftotext", ["-layout", file, "-"]).toString("utf8");
+}
+
+/** Jedna linia bez powtórzonych spacji — `pdftotext` i runy Worda tną zdania w dowolnym miejscu. */
+const plasko = (t: string) => t.replace(/\s+/g, " ");
+
+/** Tekst DOCX-a — `word/document.xml` bez znaczników; runy Worda tną zdania, więc szukamy po frazach z treści księgi. */
+function docxText(plik: string): string {
+  return execFileSync("unzip", ["-p", plik, "word/document.xml"])
+    .toString("utf8")
+    .replace(/<[^>]+>/g, "");
 }
 
 /** Import arkusza A przez KREATOR, w osobnym kontekście — jak w bloku spółdzielczym. */
@@ -288,6 +300,109 @@ test.describe("Z-3 treść ksiąg wieczystych — krok 1 @gluszyna", () => {
     await expect(page.locator("#kw-nr-lokalu")).toHaveValue("");
     await expect(page.locator("#kw-udzial")).toHaveValue("");
     await expect(page.locator("#kw-gruntu")).toHaveValue("");
+  });
+});
+
+// ---------------------------------------------------------------- Z-3: §8.2 dokumentu
+
+test.describe("Z-3 tabele działów w §8.2 @gluszyna", () => {
+  // Zatwierdzenie i render DOCX→PDF po stronie workera — jeden jawny budżet.
+  test.setTimeout(180_000);
+
+  test("CL-13: §8.2 cytuje obie księgi; werdykt `ok:false` jest markerem w podglądzie i znika z wydanego operatu", async ({
+    page,
+  }) => {
+    // Ścieżka WŁASNOŚCIOWA, bo tylko ona ma dwie księgi (szkic spółdzielczy nie
+    // ma żadnej, więc §8.2 i karta lokali skrajnych nie mieszczą się w jednym
+    // szkicu). Zatwierdzenie jest tu osiągalne — to samo robi `smoke.spec.ts`;
+    // bramka wymagająca żywego autofetch dotyczy ścieżki spółdzielczej.
+    const subject = new SubjectStep(page);
+    await subject.open();
+    await subject.fill({
+      right: "wlasnosc",
+      address: "ul. Testowa 1, Poznań",
+      area: "54.3",
+      client: "QA E2E Głuszyna 8.2",
+    });
+
+    // Księga lokalu z niezgodnościami (marker w podglądzie), księga gruntu czysta.
+    await atrapaTranskrypcji(page, "walidacja", "lokal");
+    await page.getByTestId("kw-wklej-lokal").fill(tekstZakladek(undefined, "lokal"));
+    await page.getByTestId("kw-przepisz-lokal").click();
+    await expect(page.getByTestId("kw-werdykt-lokal")).toBeVisible({ timeout: 30_000 });
+    await atrapaTranskrypcji(page, "ok", "grunt");
+    await page.getByTestId("kw-wklej-grunt").fill(tekstZakladek(undefined, "grunt"));
+    await page.getByTestId("kw-przepisz-grunt").click();
+    await expect(
+      page.getByTestId("kw-book-grunt").getByTestId("kw-transcribe-status"),
+    ).toContainText("Przepisano 5 działów", { timeout: 30_000 });
+
+    await page.locator("#kw-lokalu").fill("PO1P/00111111/1");
+    await page.locator("#kw-gruntu").fill("PO1P/00222222/2");
+    await page.locator("#kwg-nr").fill("PO1P/00222222/2");
+    await page
+      .getByTestId("kw-encumbrance")
+      .getByRole("radio", { name: "Wartość bez uwzględnienia obciążenia" })
+      .click();
+    await page.locator("#kw-encumbrance-podstawa").fill("Zgodnie z poleceniem Zleceniodawcy.");
+    await expect(page.getByText(/Zbadane księgi: 2 z 2/)).toBeVisible();
+    await subject.save();
+
+    await new InspectionStep(page).fillDateAndContinue();
+    for (let i = 3; i < 12; i++)
+      await page.getByRole("button", { name: "Dodaj transakcję" }).click();
+    for (let i = 0; i < 12; i++)
+      await page.locator(`#comparable-price-${i}`).fill(String(12_000 + i * 100));
+    await page.getByRole("button", { name: "Zatwierdź próbę i dalej" }).click();
+    await page.waitForURL(/step=4/);
+    await rateAllFeatures(page);
+    await walkFromFeaturesToOperat(page);
+
+    // PODGLĄD: obie tabele działów, grunt PO protokole lokalu, marker werdyktu.
+    const iframe = page.locator('iframe[title="Podgląd operatu (PDF)"]');
+    await expect(iframe).toBeVisible({ timeout: 90_000 });
+    const podglad = await pdfText(page, (await iframe.getAttribute("src"))!);
+
+    const lokalowej = podglad.indexOf("badania księgi wieczystej nieruchomości lokalowej");
+    const gruntowej = podglad.indexOf("badania księgi wieczystej nieruchomości gruntowej");
+    expect(lokalowej, "§8.2 bez protokołu księgi lokalu").toBeGreaterThanOrEqual(0);
+    expect(gruntowej, "§8.2 bez protokołu księgi gruntu").toBeGreaterThan(lokalowej);
+    // Pięć działów RAZ DLA KAŻDEJ księgi — po jednym wystąpieniu przed i po
+    // protokole gruntu, więc dwie tabele, a nie jedna wydrukowana dwa razy.
+    for (const kod of ["I-O", "I-SP", "II", "III", "IV"]) {
+      const naglowek = new RegExp(`DZIAŁ ${kod} [-–]`, "g");
+      expect(
+        podglad.slice(lokalowej, gruntowej).match(naglowek),
+        `działy lokalu: ${kod}`,
+      ).toHaveLength(1);
+      expect(podglad.slice(gruntowej).match(naglowek), `działy gruntu: ${kod}`).toHaveLength(1);
+    }
+    // Treść, której ręczne wpisanie księgi nigdy nie dawało (defekt z 14.09):
+    // adres i właściciel cytowane z działów I-O i II księgi lokalu.
+    const ksiega = ksiegaZAtrapy("lokal");
+    expect(podglad).toContain(ksiega.polaDodatkowe.numerLokalu!);
+    // Marker stoi w wąskiej kolumnie tabeli, więc `pdftotext` łamie go w pół —
+    // porównujemy na jednej linii (ten sam zabieg, co w bloku spółdzielczym).
+    expect(plasko(podglad)).toContain(
+      "[PODGLĄD: SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE] niezgodności: " +
+        "udział w nieruchomości wspólnej, cyfra kontrolna numeru księgi gruntu",
+    );
+
+    // WYDANY OPERAT: te same tabele, bez markera — ostrzeżenie widział rzeczoznawca.
+    await page.getByTestId("approve-button").click();
+    await expect(page.getByTestId("valuation-status")).toHaveText("Zatwierdzony", {
+      timeout: 120_000,
+    });
+    const docx = page.getByRole("link", { name: "Pobierz DOCX", exact: true });
+    const res = await page.request.get((await docx.getAttribute("href"))!);
+    expect(res.status()).toBe(200);
+    const plik = join(mkdtempSync(join(tmpdir(), "gluszyna-docx-")), "operat.docx");
+    writeFileSync(plik, await res.body());
+    const xml = docxText(plik);
+
+    expect(xml.match(/DZIAŁ I-O [-–]/g), "§8.2 wydanego operatu: dwie tabele").toHaveLength(2);
+    expect(xml).toContain("badania księgi wieczystej nieruchomości gruntowej");
+    expect(plasko(xml)).not.toContain("SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE");
   });
 });
 
