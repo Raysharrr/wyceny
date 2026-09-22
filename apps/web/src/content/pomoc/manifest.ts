@@ -513,7 +513,7 @@ export const HELP_PAGES: HelpPage[] = [
       "rodzaj prawa",
       "spółdzielcze",
       "domyślna odmowa",
-      "wpis ręczny",
+      "treść księgi",
     ],
     summary:
       "Skąd wiadomo, kto odpowiada za każdą wartość w operacie, komplet warunków blokujących zatwierdzenie i dlaczego brama stoi po stronie serwera.",
