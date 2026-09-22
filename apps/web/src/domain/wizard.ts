@@ -47,7 +47,8 @@ export function calculationReady(inputs: KcsInput | null): boolean {
 /**
  * Which step owns which blocker, keyed by the `path` that `approvalGate` and
  * `documentFieldBlockers` emit. Longest prefix wins, so the group keys below
- * also answer for `comparables[3]`, `kw.kwGruntu` and `prose.uzasadnienie`.
+ * also answer for `comparables[3]`, `kw.kwGruntu`, `prose.uzasadnienie` and
+ * `comparableRatings[<klucz lokalu>].<klucz cechy>`.
  *
  * Kept next to the step list itself: this is the same ordering the wizard
  * already encodes, and a second copy — in the step-7 card, say, and again in
@@ -87,6 +88,8 @@ const BLOCKER_STEP: Record<string, number> = {
   "provenance.featureDefs": 4,
   // ADR-016: each feature's rating against its scale (B-08…B-10).
   features: 4,
+  // ADR-022: oceny lokali o cenie skrajnej (B-18) — karta w kroku 4.
+  comparableRatings: 4,
   // Step 5 (Kalkulacja).
   wr: 5,
   // Step 6 (Opisy): the prose snapshot and each of its seven sections.
@@ -122,7 +125,10 @@ const BLOCKER_PAGE: Record<string, { href: string; label: string }> = {
  * Silence is recoverable; a wrong destination is not.
  */
 export function blockerTarget(path: string): BlockerTarget | undefined {
-  const segments = path.replace(/\[\d+\]/g, "").split(".");
+  // Brackets hold an index (`features[3]`) or a flat's key
+  // (`comparableRatings[tx|306401_1.0039.x]`, ADR-022) — the key carries
+  // dots, so the whole bracket goes before the path is split on them.
+  const segments = path.replace(/\[[^\]]*\]/g, "").split(".");
   for (let i = segments.length; i > 0; i--) {
     const key = segments.slice(0, i).join(".");
     const n = BLOCKER_STEP[key];

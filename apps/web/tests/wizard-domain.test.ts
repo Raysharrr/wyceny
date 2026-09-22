@@ -668,6 +668,9 @@ describe("stepForBlockerPath", () => {
     ["wr", 5, "Kalkulacja"],
     ["prose", 6, "Opisy"],
     ["prose.uzasadnienie", 6, "Opisy"],
+    // ADR-022: klucz lokalu ma kreskę i kropki — nawias z dowolną treścią musi zniknąć przed dopasowaniem prefiksu.
+    ["comparableRatings[TEST-TX-01|306401_1.0039.x].polozenie-na-pietrze", 4, "Cechy"],
+    ["comparableRatings[manual:3].dodatkowe", 4, "Cechy"],
   ])("%s belongs to step %i (%s)", (path, n, label) => {
     expect(stepForBlockerPath(path)).toEqual({ n, label });
   });
