@@ -108,13 +108,29 @@ def house(top: float, ident: str = "000000_0.0001.12/3.1_BUD", desc="Mieszkalny"
     )
 
 
-# The generator's two stamp lines at the foot of the last page.
-FOOTER = words(
-    (706, 700, "Wygenerowano"),
-    (758, 700, "dnia: 30.06.2026"),
-    (637, 712, "Dokument sprządzony przez:"),
-    (731, 712, "Automatyczny Generator"),
-)
+# The generator's two stamp lines at the foot of the last page. Today's
+# printouts spell it "sprządzony" — the county's own typo — so both spellings
+# are worth exercising.
+SPELLINGS = ("sprządzony", "sporządzony")
+
+
+def footer(spelling: str = SPELLINGS[0], *, named: bool = True) -> list[Word]:
+    """`named=False` drops "Automatyczny Generator", leaving the stamp line to be
+    recognised by its wording alone — which is what the spelling branch is for."""
+    # x0 as measured on the real printouts: the stamp straddles the `extra`,
+    # `plan` and `address` bands, which is precisely why it used to end up in the
+    # last transaction's cells. Squashing it into one band would leave this
+    # fixture unable to show a leak at all.
+    cells = [
+        (706, 700, "Wygenerowano"),
+        (758, 700, "dnia: 30.06.2026"),
+        (637, 712, "Dokument"),
+        (671, 712, spelling),
+        (710, 712, "przez:"),
+    ]
+    if named:
+        cells += [(731, 712, "Automatyczny"), (778, 712, "Generator")]
+    return words(*cells)
 
 
 def simple(address: str = "ul. Lipowa 4|m.1, Testowo", **kw) -> list[list[Word]]:
@@ -251,11 +267,27 @@ def land(*objects: list[Word], kind: str = "NIERUCHOMOŚĆ GRUNTOWA NIEZABUDOWAN
     return [page + list(tail)]
 
 
-def test_the_generators_footer_does_not_leak_into_the_last_transaction():
+@pytest.mark.parametrize("spelling", SPELLINGS)
+def test_the_generators_footer_does_not_leak_into_the_last_transaction(spelling):
     pages = land(
         holding(290),
         plot(300, "000000_0.0001.12/3", "0.0900", plan="tereny dróg publicznych"),
-        tail=FOOTER,
+        tail=footer(spelling),
+    )
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.town, row.plan) == ("Testowo", "tereny dróg publicznych")
+
+
+@pytest.mark.parametrize("spelling", SPELLINGS)
+def test_the_stamp_line_is_recognised_by_its_wording_alone(spelling):
+    """The previous test passes on either spelling anyway, because the same row
+    also says "Automatyczny Generator". Here that name is gone, so the line is
+    filtered by "Dokument … przez:" and nothing else — the branch that has to
+    survive the county fixing its own typo."""
+    pages = land(
+        holding(290),
+        plot(300, "000000_0.0001.12/3", "0.0900", plan="tereny dróg publicznych"),
+        tail=footer(spelling, named=False),
     )
     row = rcn_pdf.parse(pages).rows[0]
     assert (row.town, row.plan) == ("Testowo", "tereny dróg publicznych")
@@ -365,7 +397,7 @@ SAMPLE = os.environ.get("RCN_SAMPLE_PDF")
 
 # What the generator's footer looks like when it leaks into a cell it does not
 # belong in — a shape, so it needs no name from any printout.
-_FOOTER_LEAK = re.compile(r"Generator|Wygenerowano|dnia:|sprządzony")
+_FOOTER_LEAK = re.compile(r"Generator|Wygenerowano|dnia:|spo?rządzony")
 
 
 def expected(variable: str) -> list[str]:
