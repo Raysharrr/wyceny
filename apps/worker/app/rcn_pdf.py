@@ -72,7 +72,10 @@ _ORDER = re.compile(r"[A-Z]{2,4}\.[A-Z]{2,4}\.\d+\.\d+\.\d{4}")
 # the object columns, so without this they land in the last transaction's cells
 # (a town of "dnia: 30.06.2026 Automatyczny Generator"). Gap-tolerant, because a
 # row is joined left-to-right and nothing guarantees the words stay adjacent.
-_FOOTER = re.compile(r"Wygenerowano\b.*\bdnia:|Dokument\b.*\bsprządzony|Automatyczny\s+Generator")
+# `spo?rządzony` matches both spellings on purpose: today's printouts carry the
+# county's own typo ("sprządzony"), and the filter has to keep working the day
+# the portal fixes it.
+_FOOTER = re.compile(r"Wygenerowano\b.*\bdnia:|Dokument\b.*\bspo?rządzony|Automatyczny\s+Generator")
 _MARKER = re.compile(r"\d\.")
 # A narrow column breaks a word across lines WITHOUT a hyphen ("mieszkaniow" +
 # "e"), so a 1–2-letter lowercase tail belongs to the token before it — unless

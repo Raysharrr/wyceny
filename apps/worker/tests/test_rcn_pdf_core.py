@@ -5,6 +5,7 @@
 points to the right of the previous one, inside the same column band."""
 
 import os
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -107,13 +108,29 @@ def house(top: float, ident: str = "000000_0.0001.12/3.1_BUD", desc="Mieszkalny"
     )
 
 
-# The generator's two stamp lines at the foot of the last page.
-FOOTER = words(
-    (706, 700, "Wygenerowano"),
-    (758, 700, "dnia: 30.06.2026"),
-    (637, 712, "Dokument sprządzony przez:"),
-    (731, 712, "Automatyczny Generator"),
-)
+# The generator's two stamp lines at the foot of the last page. Today's
+# printouts spell it "sprządzony" — the county's own typo — so both spellings
+# are worth exercising.
+SPELLINGS = ("sprządzony", "sporządzony")
+
+
+def footer(spelling: str = SPELLINGS[0], *, named: bool = True) -> list[Word]:
+    """`named=False` drops "Automatyczny Generator", leaving the stamp line to be
+    recognised by its wording alone — which is what the spelling branch is for."""
+    # x0 as measured on the real printouts: the stamp straddles the `extra`,
+    # `plan` and `address` bands, which is precisely why it used to end up in the
+    # last transaction's cells. Squashing it into one band would leave this
+    # fixture unable to show a leak at all.
+    cells = [
+        (706, 700, "Wygenerowano"),
+        (758, 700, "dnia: 30.06.2026"),
+        (637, 712, "Dokument"),
+        (671, 712, spelling),
+        (710, 712, "przez:"),
+    ]
+    if named:
+        cells += [(731, 712, "Automatyczny"), (778, 712, "Generator")]
+    return words(*cells)
 
 
 def simple(address: str = "ul. Lipowa 4|m.1, Testowo", **kw) -> list[list[Word]]:
@@ -250,11 +267,27 @@ def land(*objects: list[Word], kind: str = "NIERUCHOMOŚĆ GRUNTOWA NIEZABUDOWAN
     return [page + list(tail)]
 
 
-def test_the_generators_footer_does_not_leak_into_the_last_transaction():
+@pytest.mark.parametrize("spelling", SPELLINGS)
+def test_the_generators_footer_does_not_leak_into_the_last_transaction(spelling):
     pages = land(
         holding(290),
         plot(300, "000000_0.0001.12/3", "0.0900", plan="tereny dróg publicznych"),
-        tail=FOOTER,
+        tail=footer(spelling),
+    )
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.town, row.plan) == ("Testowo", "tereny dróg publicznych")
+
+
+@pytest.mark.parametrize("spelling", SPELLINGS)
+def test_the_stamp_line_is_recognised_by_its_wording_alone(spelling):
+    """The previous test passes on either spelling anyway, because the same row
+    also says "Automatyczny Generator". Here that name is gone, so the line is
+    filtered by "Dokument … przez:" and nothing else — the branch that has to
+    survive the county fixing its own typo."""
+    pages = land(
+        holding(290),
+        plot(300, "000000_0.0001.12/3", "0.0900", plan="tereny dróg publicznych"),
+        tail=footer(spelling, named=False),
     )
     row = rcn_pdf.parse(pages).rows[0]
     assert (row.town, row.plan) == ("Testowo", "tereny dróg publicznych")
@@ -339,6 +372,25 @@ def test_a_built_plot_without_an_address_is_flagged():
     assert (row.town, row.street, row.warnings) == ("Testowo", "", ["address_unparsed"])
 
 
+def test_a_built_address_off_the_pattern_lands_whole_in_street():
+    """The other half of `address_unparsed`: there IS an address, it just does
+    not split. It goes to ULICA in one piece — the same as on the flats sheet —
+    while MIEJSCOWOŚĆ still falls back to the district (what Pomoc promises).
+
+    The address deliberately shares NO word with the district: were MIEJSCOWOŚĆ
+    taken from the address instead of the section header, the town below could
+    not come out right by accident."""
+    pages = land(
+        holding(290, built=True),
+        plot(300, "000000_0.0001.12/3", "0.0900"),
+        house(320, address="dz. 12/3 przy drodze"),
+    )
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.street, row.building) == ("dz. 12/3 przy drodze", "")
+    assert row.town == "Testowo"  # z obrębu sekcji, nie z adresu
+    assert row.warnings == ["address_unparsed"]
+
+
 def test_a_plot_without_an_area_has_no_sum_and_is_flagged():
     pages = land(holding(290), plot(300, "000000_0.0001.12/3", ""))
     row = rcn_pdf.parse(pages).rows[0]
@@ -346,6 +398,21 @@ def test_a_plot_without_an_area_has_no_sum_and_is_flagged():
 
 
 SAMPLE = os.environ.get("RCN_SAMPLE_PDF")
+
+# Shapes, not names: what a plot identifier looks like, and what the generator's
+# footer looks like when it leaks into a cell it does not belong in.
+_PLOT_ID = re.compile(r"\d{6}_\d\.\d{4}\.\S+")
+_FOOTER_LEAK = re.compile(r"Generator|Wygenerowano|dnia:|spo?rządzony")
+
+
+def expected(variable: str) -> list[str]:
+    """Values read off a real printout live in the environment, next to the path
+    of the file they came from — never in the repo. Pipe-separated, and no
+    variable means no test, exactly as a missing PDF means no test."""
+    value = os.environ.get(variable)
+    if not value:
+        pytest.skip(f"{variable} not set — the printout's own names stay outside the repo")
+    return value.split("|")
 
 
 @pytest.mark.skipif(not SAMPLE, reason="real county printout stays outside the repo (PII)")
@@ -361,14 +428,20 @@ def test_sample_printout_counters():
 
 
 # Counters from the three land printouts of 22.09, recomputed from scratch here.
-# The spec's figures for Dopiewo (94 plots / 175 196 m² / 22 partial shares) were
-# taken before the kind split and include the ONE flat transaction's own 17
-# plots (11 247 m², one partial share) — those now belong to the `lokale` sheet,
-# which has no plot columns at all, so the land totals are 17 / 11 247 / 1 lower.
+# Counters ONLY: the printouts stay outside the repo, and so does every name
+# written in them — a place, a street or a house number does not belong in a test
+# file just because it is a convenient thing to assert. Where a test does need
+# one, it reads it from the environment (`expected`), next to the path of the
+# file it came from.
+# The spec's figures for the file behind `RCN_SAMPLE_PDF_MIESZANY` (94 plots /
+# 175 196 m² / 22 partial shares) were taken before the kind split and include
+# the ONE flat transaction's own 17 plots (11 247 m², one partial share) — those
+# now belong to the `lokale` sheet, which has no plot columns at all, so the land
+# totals are 17 / 11 247 / 1 lower.
 LAND_SAMPLES = {
     "RCN_SAMPLE_PDF_ZAB": (11, {rcn_pdf.KIND_BUILT: 11}, 5_140_000.0, 21_979, 13, 1),
     "RCN_SAMPLE_PDF_NIEZAB": (8, {rcn_pdf.KIND_PLOT: 8}, 11_073_149.67, 82_223, 15, 1),
-    "RCN_SAMPLE_PDF_DOPIEWO": (
+    "RCN_SAMPLE_PDF_MIESZANY": (
         34,
         {rcn_pdf.KIND_UNIT: 1, rcn_pdf.KIND_PLOT: 33},
         21_991_096.84,
@@ -394,22 +467,29 @@ def test_land_sample_counters(variable):
     assert sum(len(r.plot_ids) for r in land) == plots
     assert sum(1 for r in land if "partial_share" in r.warnings) == partial
     # The generator's footer used to end up in the last transaction's cells.
-    assert not any("Generator" in r.town or "Generator" in r.plan for r in rows)
+    assert not any(_FOOTER_LEAK.search(r.town) or _FOOTER_LEAK.search(r.plan) for r in rows)
 
 
 @pytest.mark.skipif(
     not os.environ.get("RCN_SAMPLE_PDF_ZAB"), reason="real county printout stays outside the repo"
 )
 def test_the_first_built_transaction_reads_whole():
+    """The address of this row sits on its residential BUILDING, not on either of
+    its two plots, and it splits into three parts — so the expected town, street
+    and house number come from `RCN_SAMPLE_ZAB_ROW1` ("town|street|number")."""
+    town, street, building = expected("RCN_SAMPLE_ZAB_ROW1")
     path = os.environ["RCN_SAMPLE_PDF_ZAB"]
     row = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(path).read_bytes())).rows[0]
     assert (row.kind, row.town, row.street, row.building) == (
         rcn_pdf.KIND_BUILT,
-        "Mściszewo",
-        "Radzimska",
-        "5",
+        town,
+        street,
+        building,
     )
     assert (len(row.plot_ids), row.plot_area_m2) == (2, 984)
+    # Two of the right thing: a count alone would survive ID DZIAŁKI being fed
+    # from the wrong band.
+    assert all(_PLOT_ID.fullmatch(identifier) for identifier in row.plot_ids)
 
 
 @pytest.mark.skipif(
@@ -417,8 +497,17 @@ def test_the_first_built_transaction_reads_whole():
     reason="real county printout stays outside the repo",
 )
 def test_bare_land_sample_takes_its_town_from_the_district_and_not_the_footer():
+    """Neither of these two rows carries an address, so each town comes from its
+    own section's district — and the sections differ. Expected names come from
+    `RCN_SAMPLE_NIEZAB_TOWNS` ("first|last"); the last row is also the one the
+    generator's footer used to overwrite. The MPZP text is asserted here rather
+    than read from the environment: it is planning terminology, not a name, and
+    it is the only proof that the un-hyphenated line break is glued back on a
+    REAL printout."""
+    first_town, last_town = expected("RCN_SAMPLE_NIEZAB_TOWNS")
     path = os.environ["RCN_SAMPLE_PDF_NIEZAB"]
     rows = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(path).read_bytes())).rows
-    assert (rows[0].town, rows[0].plot_area_m2) == ("Buk", 26_485)
+    assert (rows[0].town, rows[0].plot_area_m2) == (first_town, 26_485)
     assert rows[0].plan.startswith("budownictwo mieszkaniowe wielorodzinne")
-    assert rows[-1].town == "Niepruszewo"
+    assert rows[-1].town == last_town
+    assert not _FOOTER_LEAK.search(rows[-1].town + " " + rows[-1].plan)

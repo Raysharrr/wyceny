@@ -44,7 +44,7 @@ Dom albo inna nieruchomość gruntowa z budynkiem. Dziewięć kolumn:
 - **H — CENA**: „Cena ogółem – brutto [PLN]” — cena całej transakcji.
 - **I — CENA J**: cena za metr gruntu, jako formuła `=H{wiersz}/F{wiersz}`.
 
-Powierzchni użytkowej budynku w wydruku nie ma — wpisujesz ją sam, tak samo jak rodzaj zabudowy przy lokalach.
+Powierzchni użytkowej budynku wydruk nie podaje w ogóle — arkusz nie ma na nią kolumny, dopisujesz ją sam.
 
 ### Arkusz `niezabudowane`
 
@@ -76,7 +76,7 @@ Wiersz z żółtym tłem (`FFF2CC`) to transakcja, której narzędzie nie odczyt
 - **Transakcja obejmuje kilka lokali — wpisano pierwszy mieszkalny.** Jedno zdarzenie obejmowało więcej niż jeden lokal.
 - **Transakcja obejmuje kilka działek — POW GR to ich suma.** Cena dotyczy całości, więc cena za metr liczy się od sumy powierzchni. Sprawdź, czy tak chcesz tę transakcję porównywać.
 - **Udział w prawie inny niż 1/1 — sprawdź, czy cena dotyczy całości.** Wydruk podaje udział, ale nie rozstrzyga, czy cena jest za udział, czy za całą nieruchomość.
-- **Nie udało się rozbić adresu — cały adres jest w kolumnie ULICA.** Zapis adresu odbiegał od wzorca albo wydruk w ogóle go nie podał. W arkuszu `lokale` cały adres ląduje wtedy w kolumnie ULICA, a MIEJSCOWOŚĆ, NR BUD i NR LOK zostają puste; w `zabudowane` puste zostają ULICA i NR BUD, a miejscowość bierze się z nazwy obrębu.
+- **Nie udało się rozbić adresu — cały adres jest w kolumnie ULICA.** Zapis adresu odbiegał od wzorca albo wydruk w ogóle go nie podał. W arkuszu `lokale` cały adres ląduje wtedy w kolumnie ULICA, a MIEJSCOWOŚĆ, NR BUD i NR LOK zostają puste; w `zabudowane` tak samo — cały adres w ULICY, NR BUD pusty — a MIEJSCOWOŚĆ bierze się wtedy z nazwy obrębu. Gdy wydruk adresu w ogóle nie podał, ULICA też zostaje pusta.
 - **W wydruku brakuje daty, ceny albo powierzchni.** Pole, którego w wydruku nie było.
 
 Na ekranie widzisz tylko, ile takich wierszy jest — treść ostrzeżenia czytasz w arkuszu, przy konkretnej transakcji.
