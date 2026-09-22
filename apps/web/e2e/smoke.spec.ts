@@ -134,10 +134,6 @@ test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", asy
   await expect(page.getByRole("link", { name: "Pobierz DOCX", exact: true })).toBeVisible();
 });
 
-// T-22: the tools screens rendered by a REAL server. Both the crossroads and
-// `ToolsNav` build their links from one `TOOLS` list, and while that list lived
-// in the `"use client"` module next to `ToolsNav` the crossroads crashed with
-// "TOOLS.map is not a function" — a plain value exported from a client island
 /**
  * Wariant NEGATYWNY reguły rodzaju księgi (S3d): księga LOKALU wklejona na
  * kartę gruntu. Poza testami RTL ta ścieżka nie miała pokrycia — a to właśnie
@@ -164,6 +160,10 @@ test("karta gruntu ostrzega, gdy wklejono na nią księgę lokalu", async ({ pag
   await expect(page.locator("#kwg-nr")).not.toHaveValue("");
 });
 
+// T-22: the tools screens rendered by a REAL server. Both the crossroads and
+// `ToolsNav` build their links from one `TOOLS` list, and while that list lived
+// in the `"use client"` module next to `ToolsNav` the crossroads crashed with
+// "TOOLS.map is not a function" — a plain value exported from a client island
 // reaches a Server Component as a client reference, not as the array. jsdom has
 // no RSC boundary and `next build` does not execute the page, so only a request
 // to a running server sees it (same class of bug as the step-1 regression net
