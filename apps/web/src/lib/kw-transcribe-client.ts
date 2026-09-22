@@ -40,9 +40,10 @@ export type KwTranscribeResult =
 /**
  * Anything the worker did not label: a 401 on the token, a proxy's 504, a
  * network drop, a body that fails `kwTranscribeResponseSchema`. All of them
- * mean the same thing to the appraiser — the transcription is not there and
- * the manual path is — so they collapse into the generic class rather than
- * multiplying banners nobody can act on differently.
+ * mean the same thing to the appraiser — treści nie ma, a jedyne wyjście to
+ * podać ją jeszcze raz, tym samym sposobem albo drugim (ścieżki ręcznego
+ * wpisywania działów nie ma od ADR-021). Zwijają się więc w jedną klasę
+ * ogólną, zamiast mnożyć banery, na które i tak reaguje się tak samo.
  */
 const GENERIC: KwTranscribeErrorCode = "kw_transkrypcja_blad";
 

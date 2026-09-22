@@ -6,8 +6,12 @@ import { z } from "zod";
  * `KsiegaTresc` in apps/worker/app/kw_transcribe.py 1:1. Every value is the eKW
  * text verbatim, as a string (unit numbers like "NN BUD NN", shares with spaces
  * around "/"). Carries persons' data on purpose (ADR-018 "Zmiana 15.09"): it
- * never goes to a log. Stored as `inputs.kw.tresc` only when the worker's
- * `walidacja.ok` is true.
+ * never goes to a log.
+ *
+ * Zapisywana jako `inputs.kw.tresc` ZAWSZE, gdy transkrypcja wróciła — także
+ * przy `walidacja.ok === false` (ADR-021 reg. 5). Werdykt jedzie obok, w
+ * `transkrypcja`, i to on ostrzega: nieudane sprawdzenie jest ostrzeżeniem dla
+ * rzeczoznawcy, nie powodem, by wyrzucić to, co księga mówi.
  */
 const rubrykaSchema = z.object({
   nazwa: z.string(),
