@@ -490,6 +490,31 @@ describe("document model — §12.2 z ocen rzeczoznawcy (ADR-022)", () => {
     ]);
   });
 
+  /**
+   * F3 z recenzji S4a: cecha bez `key` (tylko ręcznie budowane `KcsInput` —
+   * formularz zawsze zapisuje klucz) nie ma gdzie trzymać oceny. Nie wolno jej
+   * dać WSPÓLNEGO klucza pustego: dwie takie cechy czytałyby jedną ocenę, a
+   * ocena zapisana pod kluczem "" trafiłaby na obie. Brak klucza = brak oceny,
+   * czyli ścieżka progów.
+   */
+  it("cecha bez klucza nie czyta oceny spod wspólnego klucza pustego (F3)", () => {
+    const v = wycena1409Anon();
+    // Dwie cechy bez klucza: jedna mierzalna (progi mają co powiedzieć),
+    // jedna bez progów (nie mają).
+    const pietro = v.inputs.features.find((f) => f.key === "polozenie-na-pietrze")!;
+    const lokalizacja = v.inputs.features.find((f) => f.key === "lokalizacja")!;
+    delete pietro.key;
+    delete lokalizacja.key;
+    // Ocena podrzucona pod klucz pusty — gdyby model ją czytał, obie cechy
+    // dostałyby „najniższa”.
+    v.inputs.comparableRatings = { [CMAX]: { "": "gorsza" } };
+    const m = buildDocumentModel(v);
+    const opisu = (nazwa: string) => m.lokale_cmax[0].cechy.find((c) => c.nazwa === nazwa)!.opis;
+    // Cmax siedzi na kondygnacji 4, czyli 3. piętrze → progi mówią „pośrednia”.
+    expect(opisu("Położenie na piętrze")).toBe("wartość pośrednia cechy");
+    expect(opisu("Lokalizacja szczegółowa")).toBe(OCENA_SPOZA_REJESTRU);
+  });
+
   it("klucz lokalu nigdy nie trafia do modelu dokumentu (F-12)", () => {
     const json = JSON.stringify(withRatings({ [CMAX]: { "standard-wykonczenia": "lepsza" } }));
     expect(json).not.toContain("TEST-TX-");

@@ -1041,7 +1041,14 @@ export function buildDocumentModel(
     lokalizacja: lokal.candidate?.street ? operatStreet(lokal.candidate.street) : "",
     cechy: activeFeatures.map((f) => ({
       nazwa: f.name,
-      opis: comparableFeatureText(f, lokal, inputs.comparableRatings?.[lokal.key]?.[f.key ?? ""]),
+      // Cecha bez `key` (tylko ręcznie budowane KcsInput — formularz zawsze
+      // zapisuje klucz) nie ma gdzie trzymać oceny, więc jej nie szukamy.
+      // Wspólny klucz pusty dawałby dwóm takim cechom JEDNĄ ocenę (F3).
+      opis: comparableFeatureText(
+        f,
+        lokal,
+        f.key ? inputs.comparableRatings?.[lokal.key]?.[f.key] : undefined,
+      ),
     })),
   });
   const extremes = extremeComparables(inputs);
