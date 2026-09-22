@@ -5,6 +5,7 @@
 points to the right of the previous one, inside the same column band."""
 
 import os
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -339,6 +340,20 @@ def test_a_built_plot_without_an_address_is_flagged():
     assert (row.town, row.street, row.warnings) == ("Testowo", "", ["address_unparsed"])
 
 
+def test_a_built_address_off_the_pattern_lands_whole_in_street():
+    """The other half of `address_unparsed`: there IS an address, it just does
+    not split. It goes to ULICA in one piece — the same as on the flats sheet —
+    while MIEJSCOWOŚĆ still falls back to the district (what Pomoc promises)."""
+    pages = land(
+        holding(290, built=True),
+        plot(300, "000000_0.0001.12/3", "0.0900"),
+        house(320, address="dz. 12/3 przy drodze"),
+    )
+    row = rcn_pdf.parse(pages).rows[0]
+    assert (row.town, row.street, row.building) == ("Testowo", "dz. 12/3 przy drodze", "")
+    assert row.warnings == ["address_unparsed"]
+
+
 def test_a_plot_without_an_area_has_no_sum_and_is_flagged():
     pages = land(holding(290), plot(300, "000000_0.0001.12/3", ""))
     row = rcn_pdf.parse(pages).rows[0]
@@ -346,6 +361,11 @@ def test_a_plot_without_an_area_has_no_sum_and_is_flagged():
 
 
 SAMPLE = os.environ.get("RCN_SAMPLE_PDF")
+
+# Shapes, not names: what a plot identifier looks like, and what the generator's
+# footer looks like when it leaks into a cell it does not belong in.
+_PLOT_ID = re.compile(r"\d{6}_\d\.\d{4}\.\S+")
+_FOOTER_LEAK = re.compile(r"Generator|Wygenerowano|dnia:|sprządzony")
 
 
 @pytest.mark.skipif(not SAMPLE, reason="real county printout stays outside the repo (PII)")
@@ -361,14 +381,19 @@ def test_sample_printout_counters():
 
 
 # Counters from the three land printouts of 22.09, recomputed from scratch here.
-# The spec's figures for Dopiewo (94 plots / 175 196 m² / 22 partial shares) were
-# taken before the kind split and include the ONE flat transaction's own 17
-# plots (11 247 m², one partial share) — those now belong to the `lokale` sheet,
-# which has no plot columns at all, so the land totals are 17 / 11 247 / 1 lower.
+# Counters ONLY: the printouts stay outside the repo, and so does everything
+# written in them. A place, a street or a house number read off one of them does
+# not belong in a test file just because it happens to be a convenient thing to
+# assert — the assertions below are about shape and arithmetic instead.
+# The spec's figures for the file behind `RCN_SAMPLE_PDF_MIESZANY` (94 plots /
+# 175 196 m² / 22 partial shares) were taken before the kind split and include
+# the ONE flat transaction's own 17 plots (11 247 m², one partial share) — those
+# now belong to the `lokale` sheet, which has no plot columns at all, so the land
+# totals are 17 / 11 247 / 1 lower.
 LAND_SAMPLES = {
     "RCN_SAMPLE_PDF_ZAB": (11, {rcn_pdf.KIND_BUILT: 11}, 5_140_000.0, 21_979, 13, 1),
     "RCN_SAMPLE_PDF_NIEZAB": (8, {rcn_pdf.KIND_PLOT: 8}, 11_073_149.67, 82_223, 15, 1),
-    "RCN_SAMPLE_PDF_DOPIEWO": (
+    "RCN_SAMPLE_PDF_MIESZANY": (
         34,
         {rcn_pdf.KIND_UNIT: 1, rcn_pdf.KIND_PLOT: 33},
         21_991_096.84,
@@ -394,22 +419,24 @@ def test_land_sample_counters(variable):
     assert sum(len(r.plot_ids) for r in land) == plots
     assert sum(1 for r in land if "partial_share" in r.warnings) == partial
     # The generator's footer used to end up in the last transaction's cells.
-    assert not any("Generator" in r.town or "Generator" in r.plan for r in rows)
+    assert not any(_FOOTER_LEAK.search(r.town) or _FOOTER_LEAK.search(r.plan) for r in rows)
 
 
 @pytest.mark.skipif(
     not os.environ.get("RCN_SAMPLE_PDF_ZAB"), reason="real county printout stays outside the repo"
 )
 def test_the_first_built_transaction_reads_whole():
+    """A fully read built row, asserted by SHAPE — the printout's own names stay
+    in the local dossier, not here. "Read whole" means: the kind came from the
+    objects, the address was split into three non-empty parts instead of landing
+    raw in ULICA, both plots were picked up and their areas summed."""
     path = os.environ["RCN_SAMPLE_PDF_ZAB"]
     row = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(path).read_bytes())).rows[0]
-    assert (row.kind, row.town, row.street, row.building) == (
-        rcn_pdf.KIND_BUILT,
-        "Mściszewo",
-        "Radzimska",
-        "5",
-    )
+    assert row.kind == rcn_pdf.KIND_BUILT
+    assert row.town and row.street and row.building
+    assert "address_unparsed" not in row.warnings
     assert (len(row.plot_ids), row.plot_area_m2) == (2, 984)
+    assert all(_PLOT_ID.fullmatch(identifier) for identifier in row.plot_ids)
 
 
 @pytest.mark.skipif(
@@ -417,8 +444,17 @@ def test_the_first_built_transaction_reads_whole():
     reason="real county printout stays outside the repo",
 )
 def test_bare_land_sample_takes_its_town_from_the_district_and_not_the_footer():
+    """Neither row of this printout carries an address, so both towns come from
+    their section's district — and the two sections differ. Asserting that they
+    differ (rather than what they are) is what actually proves the district is
+    read per section; the last row is also the one the generator's footer used
+    to overwrite."""
     path = os.environ["RCN_SAMPLE_PDF_NIEZAB"]
     rows = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(path).read_bytes())).rows
-    assert (rows[0].town, rows[0].plot_area_m2) == ("Buk", 26_485)
+    assert rows[0].plot_area_m2 == 26_485
     assert rows[0].plan.startswith("budownictwo mieszkaniowe wielorodzinne")
-    assert rows[-1].town == "Niepruszewo"
+    assert rows[0].town and rows[-1].town
+    assert rows[0].town != rows[-1].town
+    # The last row is the one the footer lands on — in its town when the stamp
+    # parses as an address, in its MPZP text otherwise.
+    assert not _FOOTER_LEAK.search(rows[-1].town + " " + rows[-1].plan)
