@@ -419,6 +419,12 @@ describe("ksiega_lokalu_wiersze — the five dzialy flattened for §8.2", () => 
     expect(rows[idx + 1]).toEqual({ typ: "brak", kol1: "BRAK WPISÓW", kol2: "", kol3: "" });
   });
 
+  /**
+   * Kolumna środkowa (600 dxa) jest kolumną PORZĄDKOWĄ — mieści liczbę, nie
+   * tekst. Nr podstawy wpisu jest liczbą, więc wiersz `lp` trzyma go tam, a nie
+   * w szerokiej `kol3` (ujednolicenie z wierszem `dokument`, uwaga recenzenta
+   * 22.09).
+   */
   it("puts the entry's Lp. and its nr podstawy wpisu on one row", () => {
     const tresc = transcribedBook();
     const rows = modelOf({ kw: { ...EXAMINED_LOKAL, tresc } }).ksiega_lokalu_wiersze;
@@ -426,18 +432,49 @@ describe("ksiega_lokalu_wiersze — the five dzialy flattened for §8.2", () => 
     expect(rows).toContainEqual({
       typ: "lp",
       kol1: `Lp. ${wpis.lp}.`,
-      kol2: "",
-      kol3: wpis.nrPodstawyWpisu,
+      kol2: wpis.nrPodstawyWpisu,
+      kol3: "",
     });
   });
 
-  it("carries the documents section of each dział", () => {
+  /**
+   * Zgłoszenie koordynatora po zrzucie §8.2 (22.09): opis dokumentu jechał w
+   * `kol2`, a ta kolumna ma w szablonie 600 dxa — Word łamał w niej długie
+   * nazwy po trzy, cztery znaki na wiersz („WYP / IS Z / REJ…”). Wiersz
+   * dokumentu rozkłada się więc na trzy kolumny wedle ich szerokości: nazwa
+   * dokumentu w `kol1` (3400 dxa, tam gdzie etykiety rubryk), nr podstawy
+   * wpisu w porządkowej `kol2`, wniosek DZ. KW. w najszerszej `kol3`. Dokument
+   * i wniosek zostają osobno — to dwa różne fakty księgi.
+   */
+  it("carries the documents section of each dział, split by column width", () => {
     const tresc = transcribedBook();
     const rows = modelOf({ kw: { ...EXAMINED_LOKAL, tresc } }).ksiega_lokalu_wiersze;
     const doc = tresc.dzialy[2].dokumenty[0];
-    const row = rows.find((r) => r.typ === "dokument" && r.kol1 === doc.nrPodstawyWpisu);
+    const row = rows.find((r) => r.typ === "dokument" && r.kol2 === doc.nrPodstawyWpisu);
     expect(row).toBeDefined();
-    expect(row!.kol2).toContain(doc.dokument);
+    expect(row!.kol1).toContain(doc.dokument);
+    if (doc.dokumentOpisPol) expect(row!.kol1).toContain(doc.dokumentOpisPol);
+    if (doc.wniosek) expect(row!.kol3).toContain(doc.wniosek);
+    if (doc.wniosekOpisPol) expect(row!.kol3).toContain(doc.wniosekOpisPol);
+    // Dokument NIE jest sklejony z wnioskiem.
+    expect(row!.kol3).not.toContain(doc.dokument);
+  });
+
+  it("kolumna porządkowa niesie tylko numer, nigdy tekst — w obu księgach", () => {
+    const model = modelOf({
+      kw: { ...EXAMINED_LOKAL, tresc: transcribedBook() },
+      kwGrunt: { ...EXAMINED_GRUNT, tresc: transcribedBook() },
+    });
+    const wiersze = [...model.ksiega_lokalu_wiersze, ...model.ksiega_gruntu_wiersze].filter(
+      (r) => r.typ === "dokument" || r.typ === "lp",
+    );
+    expect(wiersze.length).toBeGreaterThan(0);
+    // 600 dxa mieści liczbę porządkową i nic więcej; wszystko dłuższe łamało się
+    // w Wordzie po trzy znaki na wiersz.
+    expect(wiersze.filter((r) => !/^\d*$/.test(r.kol2))).toEqual([]);
+    // Bez znaku nowej linii nigdzie: render ma `linebreaks: true`, więc `\n`
+    // stałoby się `<w:br/>` — dokładnie defekt klasy D-30 w akapicie justowanym.
+    expect(wiersze.filter((r) => `${r.kol1}${r.kol3}`.includes("\n"))).toEqual([]);
   });
 
   /**
