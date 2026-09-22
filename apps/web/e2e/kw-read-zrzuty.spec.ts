@@ -30,6 +30,13 @@ async function zrzutKarty(page: Page, plik: string) {
     .screenshot({ path: `e2e-zrzuty/${plik}` });
 }
 
+test("0. stan pusty — obie karty przed czymkolwiek (makieta 1)", async ({ page }) => {
+  await page.goto("/valuations/new");
+  await expect(page.getByTestId("kw-book-lokal")).toContainText("0 z 5");
+  await expect(page.getByText(/Zbadane księgi: 0 z 2/)).toBeVisible();
+  await zrzutKarty(page, "00-pusta-karta.png");
+});
+
 test("1. wklejenie 3 z 5 — licznik i baner o brakujących działach (makieta 2)", async ({
   page,
 }) => {
