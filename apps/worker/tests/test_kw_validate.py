@@ -15,6 +15,10 @@ from app.kw_validate import kw_check_digit_ok, pesel_ok, validate
 FIXTURE = Path(__file__).parent / "fixtures" / "kw_transcribe_sample.json"
 GRUNT_FIXTURE = Path(__file__).parent / "fixtures" / "kw_transcribe_grunt_sample.json"
 
+# What the model put into `kwGruntu` of a land book on 22.09: the plot area from
+# I-O. Not a KW number, so not a check digit either.
+OBSZAR_DZIALKI = "0,0163 HA"
+
 
 def sample() -> dict:
     doc = json.loads(FIXTURE.read_text())
@@ -342,6 +346,30 @@ def test_the_unit_book_keeps_all_its_rules():
     assert klasy(doc) == {
         ("pole_niezgodne:udzial", "I-Sp"),
         ("pole_niezgodne:numerLokalu", "I-O"),
+    }
+
+
+def test_a_land_book_ignores_the_check_digit_of_the_unit_fields():
+    """Measured E2E on 22.09, 4/4: a land book pasted onto the land card comes back
+    with the plot area from I-O in `kwGruntu`, because in a land book that field
+    points at nothing. Its check digit then failed and the verdict on the main
+    path of Głuszyna was a false `ok: false`. The book's own number keeps its
+    check digit — see `test_land_book_wrong_check_digit` below."""
+    doc = grunt()
+    doc["polaDodatkowe"]["kwGruntu"] = OBSZAR_DZIALKI
+    assert klasy(doc) == set()
+
+
+@pytest.mark.parametrize("rodzaj", [None, "LOKAL STANOWIĄCY ODRĘBNĄ NIERUCHOMOŚĆ"])
+def test_a_unit_book_keeps_the_check_digit_of_the_unit_fields(rodzaj):
+    """Control: the same junk in `kwGruntu` of a unit book — kind spelled out or
+    missing — is still a check-digit error, on top of the mismatch."""
+    doc = sample()
+    doc["naglowek"]["rodzajKsiegi"] = rodzaj
+    doc["polaDodatkowe"]["kwGruntu"] = OBSZAR_DZIALKI
+    assert klasy(doc) == {
+        ("kw_cyfra_kontrolna:kwGruntu", None),
+        ("pole_niezgodne:kwGruntu", None),
     }
 
 

@@ -4,15 +4,19 @@ the operat preview, never a gate (ADR-021: the paste or upload is the
 appraiser's confirmation; web stores the content whatever the verdict).
 
 Rules follow the kind of book (`naglowek.rodzajKsiegi`), and the reduced set is
-opt-in: ONLY a book whose kind names the land gets it — check digits, PESEL,
-`brakWpisow`, separator rows, Rep. A. Every other kind, INCLUDING a missing one,
-is judged in full. The unit-field rules (`kwLokalu`, `kwGruntu`, `numerLokalu`,
-`udzial`) gave three false positives on a land book in the spike of 21.09, but
-dropping them on a book of unknown kind would silently retire the only automatic
-guard of fidelity on today's production path — a visible false `ok: false` beats
-a silent gap. A book pasted tab by tab may lack sections: each missing one is
-`dzialy_niekompletne`, and a rule reading a section that is not there is skipped
-rather than cascading.
+opt-in: ONLY a book whose kind names the land gets it — the check digit of the
+book's OWN number, PESEL, `brakWpisow`, separator rows, Rep. A. Out of it fall
+every rule reading a unit field, the check digits of `kwLokalu` and `kwGruntu`
+among them: in a land book those two point at nothing (they exist in a unit book
+as its pointer at itself and at its land). Every other kind, INCLUDING a missing
+one, is judged in full. The unit-field rules (`kwLokalu`, `kwGruntu`,
+`numerLokalu`, `udzial`) gave three false positives on a land book in the spike
+of 21.09 and a fourth measured E2E on 22.09 — the model wrote the plot area from
+I-O into `kwGruntu`, whose check digit then failed — but dropping them on a book
+of unknown kind would silently retire the only automatic guard of fidelity on
+today's production path — a visible false `ok: false` beats a silent gap. A book
+pasted tab by tab may lack sections: each missing one is `dzialy_niekompletne`,
+and a rule reading a section that is not there is skipped rather than cascading.
 
 The verdict judges and never corrects. Error classes carry NO values (F-13) —
 they end up in logs and in the answer — only a class and, where the rule points
@@ -118,16 +122,16 @@ def validate(tresc: KsiegaTresc) -> Walidacja:
 
     pola = tresc.polaDodatkowe
     present = {d.kod for d in tresc.dzialy}
+    ksiega_gruntu = is_land_book(tresc.naglowek.rodzajKsiegi)
 
     for kod in DZIALY:
         if kod not in present:
             fail("dzialy_niekompletne", kod)
 
-    for field, number in (
-        ("numerKsiegi", tresc.naglowek.numerKsiegi),
-        ("kwLokalu", pola.kwLokalu),
-        ("kwGruntu", pola.kwGruntu),
-    ):
+    numery = [("numerKsiegi", tresc.naglowek.numerKsiegi)]
+    if not ksiega_gruntu:
+        numery += [("kwLokalu", pola.kwLokalu), ("kwGruntu", pola.kwGruntu)]
+    for field, number in numery:
         if number is not None and not kw_check_digit_ok(number):
             fail(f"kw_cyfra_kontrolna:{field}")
 
@@ -140,7 +144,7 @@ def validate(tresc: KsiegaTresc) -> Walidacja:
                         if any(not pesel_ok(p) for p in _PESEL_RE.findall(value)):
                             fail("pesel_suma", kod)
 
-    if not is_land_book(tresc.naglowek.rodzajKsiegi):
+    if not ksiega_gruntu:
         if {"I-O", "I-Sp"} <= present:
             kw_gruntu_i_o = _loose(_rubric_value(tresc, "I-O", "przyłączenie"))
             kw_gruntu_i_sp = _loose(_rubric_value(tresc, "I-Sp", "numer księgi wieczystej"))
