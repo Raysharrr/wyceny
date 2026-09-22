@@ -670,7 +670,9 @@ describe("stepForBlockerPath", () => {
     ["prose.uzasadnienie", 6, "Opisy"],
     // ADR-022: klucz lokalu ma kreskę i kropki — nawias z dowolną treścią musi zniknąć przed dopasowaniem prefiksu.
     ["comparableRatings[TEST-TX-01|306401_1.0039.x].polozenie-na-pietrze", 4, "Cechy"],
-    ["comparableRatings[manual:3].dodatkowe", 4, "Cechy"],
+    // Klucz wiersza ręcznego to jego TREŚĆ (data|powierzchnia|cena) — kreska,
+    // pionowe kreski i kropka dziesiętna w nawiasie, nigdy indeks w próbie.
+    ["comparableRatings[manual:2026-03|41.7|8847.74].dodatkowe", 4, "Cechy"],
   ])("%s belongs to step %i (%s)", (path, n, label) => {
     expect(stepForBlockerPath(path)).toEqual({ n, label });
   });

@@ -111,18 +111,44 @@ describe("extremeComparables — lokale o cenie min i max z joinem kandydata", (
     expect(max[0].candidate).toBeNull();
   });
 
-  it("wiersz ręczny bez transactionId dostaje klucz pozycyjny manual:<indeks>", () => {
+  it("wiersz ręczny bez transactionId dostaje klucz z TREŚCI wiersza (data|powierzchnia|cena)", () => {
     const inputs: Pick<KcsInput, "comparables" | "sampleSelection"> = {
       comparables: [
-        { pricePerM2: 9000 },
-        { pricePerM2: 7000, source: "manual" },
-        { pricePerM2: 8000 },
+        { date: "2026-03", area: 41.7, pricePerM2: 9000 },
+        { date: "2025-11", area: 57.9, pricePerM2: 7000, source: "manual" },
+        { date: "2026-01", area: 50, pricePerM2: 8000 },
       ],
       sampleSelection: null,
     };
     const { min, max } = extremeComparables(inputs);
-    expect(min.map((l) => l.key)).toEqual(["manual:1"]);
-    expect(max.map((l) => l.key)).toEqual(["manual:0"]);
+    expect(min.map((l) => l.key)).toEqual(["manual:2025-11|57.9|7000"]);
+    expect(max.map((l) => l.key)).toEqual(["manual:2026-03|41.7|9000"]);
+  });
+
+  /**
+   * Pozycja nie jest tożsamością (recenzja całości bloku, F1). Usunięcie
+   * WCZEŚNIEJSZEGO wiersza próby nie może przepiąć klucza wiersza ręcznego na
+   * inny lokal — inaczej mapa ocen z kroku 4 zostaje nietknięta, a §12.2 czyta
+   * pod tym kluczem ocenę wystawioną komuś innemu.
+   */
+  it("usunięcie wcześniejszego wiersza próby nie zmienia klucza wiersza ręcznego", () => {
+    const reczny = { date: "2026-03", area: 41.7, pricePerM2: 9000, source: "manual" as const };
+    const przed = extremeComparables({
+      comparables: [{ pricePerM2: 6000, transactionId: "TX-1", lokalId: "L1" }, reczny],
+      sampleSelection: null,
+    });
+    const po = extremeComparables({ comparables: [reczny], sampleSelection: null });
+    expect(przed.max.map((l) => l.key)).toEqual(po.max.map((l) => l.key));
+  });
+
+  /** Zmiana ceny wiersza ręcznego to inny wiersz — ocena nie może się na niego przenieść. */
+  it("zmiana ceny wiersza ręcznego zmienia jego klucz", () => {
+    const klucz = (pricePerM2: number) =>
+      extremeComparables({
+        comparables: [{ date: "2026-03", area: 41.7, pricePerM2, source: "manual" }],
+        sampleSelection: null,
+      }).max[0].key;
+    expect(klucz(9000)).not.toBe(klucz(9500));
   });
 
   it("pusta próba → pusto, bez wyjątku", () => {
