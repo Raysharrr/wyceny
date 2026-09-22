@@ -6,7 +6,12 @@ import { join } from "node:path";
 import { buildRegistryRun, MAPPING_A, type RegistryRun } from "./fixtures/coop-registry";
 import { ImportWizard } from "./pages/import-wizard";
 import { InspectionStep, rateAllFeatures, SampleStep, SubjectStep } from "./pages/wizard";
-import { atrapaTranskrypcji, ksiegaZAtrapy, tekstZakladek } from "./support/kw-transcribe-route";
+import {
+  atrapaTranskrypcji,
+  ksiegaZAtrapy,
+  rubrykaZAtrapy,
+  tekstZakladek,
+} from "./support/kw-transcribe-route";
 
 /**
  * Blok „Głuszyna” (zgłoszenie Anety 21.09) — trwały spec E2E, projekt `gluszyna`.
@@ -40,6 +45,8 @@ import { atrapaTranskrypcji, ksiegaZAtrapy, tekstZakladek } from "./support/kw-t
  *   UKŁADU tabel w Wordzie zostaje po stronie rzeczoznawcy.
  * - Księga LOKALU wklejona na kartę gruntu (druga strona CL-11) ma własny test
  *   w `smoke.spec.ts` — tu stoi wariant przeciwny, który nie miał nigdzie bramki.
+ * - CL-15 ma tu obie połowy oprócz jednej: „pierwszy znak w pustym progu kasuje
+ *   teksty i ocenę” pokrywa `rtl-features-section.test.tsx` (CR-1).
  *
  * Uruchomienie: `pnpm e2e` (razem ze smoke i blokiem spółdzielczym).
  * Wymaga `pdftotext` (poppler) — podgląd operatu jest asercjonowany z tekstu PDF.
@@ -149,6 +156,31 @@ function opis122(text: string, naglowek: string): string[] {
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.includes(" – "));
+}
+
+/**
+ * Szkic własnościowy z próbą wpisaną ręcznie, zatrzymany na kroku 4. Wiersze
+ * niosą POWIERZCHNIE, bo bez mediany próby preset powierzchni nie ma pasm —
+ * a więc ani banera o odłączonych progach, ani przycisku przywrócenia.
+ */
+async function draftToFeaturesWithAreas(page: Page, client: string) {
+  const subject = new SubjectStep(page);
+  await subject.open();
+  await subject.fill({
+    right: "wlasnosc",
+    address: "ul. Testowa 1, Poznań",
+    area: "54.3",
+    client,
+    kw: "KW-TEST-PROGI",
+  });
+  await subject.save();
+  await new InspectionStep(page).fillDateAndContinue();
+  for (const [i, area] of [42, 48, 55].entries()) {
+    await page.locator(`#comparable-area-${i}`).fill(String(area));
+    await page.locator(`#comparable-price-${i}`).fill(String(12_000 + i * 100));
+  }
+  await page.getByRole("button", { name: "Zatwierdź próbę i dalej" }).click();
+  await page.waitForURL(/step=4/);
 }
 
 /** Kroki 4→7 z prozą OFF; cechy są już ocenione przez wywołującego. */
@@ -380,9 +412,21 @@ test.describe("Z-3 tabele działów w §8.2 @gluszyna", () => {
       expect(podglad.slice(gruntowej).match(naglowek), `działy gruntu: ${kod}`).toHaveLength(1);
     }
     // Treść, której ręczne wpisanie księgi nigdy nie dawało (defekt z 14.09):
-    // adres i właściciel cytowane z działów I-O i II księgi lokalu.
-    const ksiega = ksiegaZAtrapy("lokal");
-    expect(podglad).toContain(ksiega.polaDodatkowe.numerLokalu!);
+    // adres i właściciel cytowane z działów I-O i II księgi LOKALU. Wyróżniki
+    // dobrane tak, by znikały razem z treścią tej księgi — „numer lokalu” (24)
+    // stoi także w spisie treści i w „Ustawa z dnia 24 czerwca 1994r.”, a
+    // „HIPOTEKA UMOWNA” niesie i streszczenie działu IV, i księga gruntu
+    // (F2 recenzji: obie te asercje przechodziły przy pustej treści).
+    const ulicaZKsiegi = rubrykaZAtrapy("I-O", "Ulica")[0]!;
+    const wlascicielZKsiegi = rubrykaZAtrapy(
+      "II",
+      "Osoba fizyczna (imię pierwsze, imię drugie, nazwisko, imię ojca, imię matki, PESEL)",
+    )[0]!;
+    // Samo nazwisko: wiersz tabeli łamie się w dowolnym miejscu, a pełna wartość
+    // niesie PESEL, którego asercja nie potrzebuje.
+    const nazwisko = wlascicielZKsiegi.split(",")[2]!.trim();
+    expect(plasko(podglad)).toContain(ulicaZKsiegi);
+    expect(plasko(podglad)).toContain(nazwisko);
     // Marker stoi w wąskiej kolumnie tabeli, więc `pdftotext` łamie go w pół —
     // porównujemy na jednej linii (ten sam zabieg, co w bloku spółdzielczym).
     expect(plasko(podglad)).toContain(
@@ -587,5 +631,40 @@ test.describe("S5 odłączone progi — krok 4 @gluszyna", () => {
     await wiersz.getByRole("button", { name: "Przywróć progi z presetu" }).click();
     await expect(baner).toHaveCount(0);
     await expect(odProgu).not.toHaveValue("");
+  });
+
+  test("CL-15 (negatywny): ocena na poziomie, którego preset nie opisuje, znika przy „Przywróć progi z presetu”", async ({
+    page,
+  }) => {
+    // Druga połowa punktu 15 checklisty — ta destrukcyjna. Preset powierzchni
+    // opisuje DWA poziomy (pasma wokół mediany próby), więc „przeciętna” istnieje
+    // tylko dopóki rzeczoznawca sam ją opisze; przywrócenie progów przepisuje
+    // teksty z pasm i zabiera kafelek, na którym stoi ocena.
+    await draftToFeaturesWithAreas(page, "QA E2E Głuszyna preset");
+
+    const wiersz = page.getByTestId("feature-row-powierzchnia-uzytkowa");
+    const kafelki = wiersz.getByRole("radiogroup").first().getByRole("radio");
+    await expect(kafelki).toHaveCount(2);
+
+    // Własny opis „przeciętnej” odłącza progi i dokłada trzeci kafelek…
+    await wiersz.getByRole("button", { name: "Edytuj skalę" }).click();
+    await page
+      .getByTestId("feature-def-powierzchnia-uzytkowa-przecietna")
+      .fill("powierzchnia zbliżona do przeciętnej w próbie");
+    await expect(kafelki).toHaveCount(3);
+    await expect(wiersz.getByText(/^Tekst poziomu przepisany ręcznie —/)).toBeVisible();
+
+    // …na którym staje ocena.
+    await kafelki.nth(1).click();
+    await expect(wiersz).toHaveAttribute("data-rated", "true");
+
+    // Przywrócenie presetu zabiera ten poziom RAZEM z oceną — inaczej operat
+    // wydrukowałby pozycję, której rzeczoznawca po tej zmianie nie wybrał.
+    await wiersz.getByRole("button", { name: "Przywróć progi z presetu" }).click();
+    await expect(kafelki).toHaveCount(2);
+    await expect(wiersz).toHaveAttribute("data-rated", "false");
+    await expect(wiersz.getByRole("radio", { checked: true })).toHaveCount(0);
+    await expect(wiersz.getByText("Wybierz ocenę")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Zatwierdź cechy i dalej" })).toBeDisabled();
   });
 });

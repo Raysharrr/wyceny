@@ -34,7 +34,13 @@ type KsiegaZAtrapy = {
     wydzial: string | null;
     rodzajKsiegi: string | null;
   };
-  dzialy: Array<{ kod: string; tytul: string }>;
+  dzialy: Array<{
+    kod: string;
+    tytul: string;
+    tabele?: Array<{
+      wpisy?: Array<{ rubryki?: Array<{ nazwa: string; wartosci: string[] }> }>;
+    }>;
+  }>;
   polaDodatkowe: {
     numerLokalu: string | null;
     kwGruntu: string | null;
@@ -45,6 +51,24 @@ type KsiegaZAtrapy = {
 
 export function ksiegaZAtrapy(karta: KartaAtrapy = "lokal"): KsiegaZAtrapy {
   return JSON.parse(readFileSync(sciezka(karta), "utf8")) as KsiegaZAtrapy;
+}
+
+/**
+ * Wartości JEDNEJ rubryki z treści atrapy — do asercji o tym, że §8.2 cytuje
+ * właśnie tę księgę. Brak rubryki jest błędem, nie pustą listą: asercja na
+ * wartości, której w fiksturze nie ma, przechodziłaby po cichu (F2 recenzji —
+ * „Numer lokalu” = „24” trafiał w spis treści i w „Ustawa z dnia 24 czerwca”).
+ */
+export function rubrykaZAtrapy(kod: string, nazwa: string, karta: KartaAtrapy = "lokal"): string[] {
+  const dzial = ksiegaZAtrapy(karta).dzialy.find((d) => d.kod === kod);
+  const rubryka = dzial?.tabele
+    ?.flatMap((t) => t.wpisy ?? [])
+    .flatMap((w) => w.rubryki ?? [])
+    .find((r) => r.nazwa === nazwa);
+  if (!rubryka || rubryka.wartosci.length === 0) {
+    throw new Error(`Atrapa (${karta}) nie ma rubryki „${nazwa}” w dziale ${kod}`);
+  }
+  return rubryka.wartosci;
 }
 
 /** Same nagłówki działów wystarczą licznikowi „n z 5”; treść i tak przychodzi z atrapy. */
