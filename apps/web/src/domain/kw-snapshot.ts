@@ -1,11 +1,12 @@
 /**
  * KW snapshot — what the lokal's land register says, whichever way it was
- * read. Since ADR-018 that is three ways: an uploaded deed (`akt`), an
- * uploaded KW excerpt (`odpis_kw`, both mirrored from the worker's
- * KwExtractPayload) and the appraiser reading eKW in a browser
- * (`ekw_reczne`) — the office's actual practice. One type, because the operat
- * describes an examination, not a file format, and the F-4 gate must not pass
- * on one path while failing on the other (reg. 3, I-13).
+ * read. Since ADR-021 that is three live ways: an uploaded deed (`akt`), one
+ * or more uploaded KW PDFs (`odpis_kw`, mirrored from the worker's
+ * KwExtractPayload) and the content pasted out of the eKW browser
+ * (`ekw_wklej`) — plus `ekw_reczne`, kept for reading snapshots saved before
+ * ADR-021, when the appraiser typed the dzialy by hand. One type, because the
+ * operat describes an examination, not a file format, and the F-4 gate must
+ * not pass on one path while failing on the other (reg. 3, I-13).
  *
  * The last three fields are optional: drafts saved before ADR-018 carry a
  * snapshot without them and are read back unmigrated.
@@ -17,8 +18,29 @@ export type KwDzialSnapshot = { wpisy: boolean; tresc: string[] };
 /** Dział II — the deed the ownership came from, in the three parts the form asks for (ADR-018 reg. 1, decyzja usera 15.09). */
 export type KwAkt = { rodzaj: string; rep: string; data: string };
 
+/**
+ * Skąd weszła treść. `ekw_reczne` — WYŁĄCZNIE odczyt migawek sprzed ADR-021;
+ * nowy zapis nigdy (fitness `tests/fitness-kw-source.test.ts`).
+ */
+export type KwSource = "akt" | "odpis_kw" | "ekw_wklej" | "ekw_reczne";
+export type KwKanal = "pdf" | "tekst";
+
+/**
+ * Werdykt deterministycznej walidacji workera, zapisany PRZY migawce, którą
+ * ocenia (ADR-021 reg. 4) — trwałe ostrzeżenie w kroku 1 i w podglądzie, nie
+ * blokada. Klasy i kody działów tylko; `kw_validate.py` nie wkłada do klasy
+ * żadnej wartości z księgi (F-13).
+ */
+export type KwWerdykt = {
+  ok: boolean;
+  bledy: Array<{ klasa: string; dzial?: string }>;
+  kanal: KwKanal;
+  plikow: number;
+  at: string;
+};
+
 export type KwSnapshot = {
-  source: "akt" | "odpis_kw" | "ekw_reczne";
+  source: KwSource;
   kwLokalu: string | null;
   kwGruntu: string | null;
   kwInne: string[];
@@ -50,21 +72,27 @@ export type KwSnapshot = {
    * no event, no fixture that is not fictional (F-13).
    */
   tresc?: KsiegaTresc | null;
+  /** Werdykt walidacji tej transkrypcji; `null`/brak = transkrypcji nie było albo padła. */
+  transkrypcja?: KwWerdykt | null;
 };
 
 /**
- * The grunt's book (księga macierzysta). Deliberately smaller than the
- * lokal's (plan §P1.9): the card asks for a number, an examination date and
- * the two dzialy, so there is nothing here to hold a sąd, a wydział or a
- * transcription. Manual-only in paczka 1 — reading the grunt's PDF is
- * deferred, and `source` is the field that will carry it when it arrives.
+ * Księga gruntu w kształcie księgi lokalu (ADR-021, refaktor R2): te same
+ * kanały, ta sama treść, ten sam werdykt. Cztery ostatnie pola są OPCJONALNE,
+ * bo model dokumentu czyta `inputs.kwGrunt` prosto z bazy — migawki sprzed
+ * ADR-021 ich nie mają; `coerceLegacyKwGrunt` (`Required<>`) wymusza ich
+ * wyliczenie na granicy formularza.
  */
 export type KwGruntSnapshot = {
-  source: "ekw_reczne";
+  source: Exclude<KwSource, "akt">;
   nrKsiegi: string | null;
   dataBadania: string | null;
   dzial3: KwDzialSnapshot | null;
   dzial4: KwDzialSnapshot | null;
+  sad?: string | null;
+  wydzial?: string | null;
+  tresc?: KsiegaTresc | null;
+  transkrypcja?: KwWerdykt | null;
 };
 
 /**
@@ -165,19 +193,26 @@ export function normalizeKw(kw: KwSnapshot): KwSnapshot {
  * this but the person typing it. Keeps `ekw_reczne` out of the Shared Kernel,
  * which must not grow beyond provenance.
  */
-export function kwProvenanceSource(
-  source: KwSnapshot["source"],
-): "akt" | "odpis_kw" | "rzeczoznawca" {
+export function kwProvenanceSource(source: KwSource): "akt" | "odpis_kw" | "rzeczoznawca" {
+  // Wklejenie z przeglądarki KW przepisał model, więc pola wchodzą jak z
+  // odpisu: `to_verify`, potwierdzane zapisem kroku 1 (confirmKwEntries).
+  if (source === "ekw_wklej") return "odpis_kw";
   return source === "ekw_reczne" ? "rzeczoznawca" : source;
 }
 
 /** The grunt book's counterpart to `normalizeKw` — same rules, fewer fields. */
 export function normalizeKwGrunt(kw: KwGruntSnapshot): KwGruntSnapshot {
   return {
-    source: kw.source,
+    // Spread, nie wyliczanie pól po kolei: `tresc` i `transkrypcja` jadą
+    // nietknięte (jak w `normalizeKw`), a pole dodane jutro nie zginie tu po
+    // cichu. Pola opcjonalne przepisujemy tylko wtedy, gdy migawka je ma —
+    // stara migawka pięciopolowa wraca pięciopolowa, bez dorobionych null-i.
+    ...kw,
     nrKsiegi: trimToNull(kw.nrKsiegi),
     dataBadania: trimToNull(kw.dataBadania),
     dzial3: normalizeDzial(kw.dzial3),
     dzial4: normalizeDzial(kw.dzial4),
+    ...(kw.sad !== undefined ? { sad: trimToNull(kw.sad) } : {}),
+    ...(kw.wydzial !== undefined ? { wydzial: trimToNull(kw.wydzial) } : {}),
   };
 }

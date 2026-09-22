@@ -13,6 +13,7 @@ import {
   type EncumbranceTreatment,
   type KwDzialSnapshot,
   type KwGruntSnapshot,
+  type KwSource,
 } from "./kw-snapshot";
 import type { PropertyRight } from "./property-right";
 import { PROSE_SECTION_LABEL, PROSE_SECTIONS, type ProseSection } from "./prose-snapshot";
@@ -70,7 +71,7 @@ export type GateInput = {
   // them is the operat's cover.
   inspection?: InspectionSnapshot | null;
   kw?: {
-    source: "akt" | "odpis_kw" | "ekw_reczne";
+    source: KwSource;
     kwLokalu: string | null;
     kwGruntu: string | null;
     deweloperski: boolean;

@@ -305,6 +305,9 @@ describe("step1DefaultsFromInputs", () => {
       nrLokalu: null,
       akt: null,
       tresc: null,
+      // Tak samo werdykt walidacji (ADR-021): migawka sprzed niego nie ma go
+      // wcale, a formularz ma widzieć jawne „nie było transkrypcji”.
+      transkrypcja: null,
     });
     expect(defaults.kwMeta).toEqual(inputs.kwMeta);
   });

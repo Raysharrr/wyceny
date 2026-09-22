@@ -15,6 +15,7 @@ import {
   type KwGruntSnapshot,
   type KwSnapshot,
 } from "../src/domain/kw-snapshot";
+import type { KsiegaTresc } from "../src/domain/kw-tresc";
 import { assignSubjectProvenance } from "../src/lib/assign-provenance";
 
 /** An upload-shaped snapshot: exactly the fields the extractor has always emitted. */
@@ -115,15 +116,16 @@ describe("a manual examination is the appraiser's own work (ADR-010 × ADR-018)"
   });
 });
 
-describe("normalizeKwGrunt", () => {
-  const grunt: KwGruntSnapshot = {
-    source: "ekw_reczne",
-    nrKsiegi: "  PO1P/2/4 ",
-    dataBadania: " 2026-09-15 ",
-    dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu", ""] },
-    dzial4: null,
-  };
+/** Migawka gruntu sprzed ADR-021 — pięć pól, używana w dwóch `describe`. */
+const grunt: KwGruntSnapshot = {
+  source: "ekw_reczne",
+  nrKsiegi: "  PO1P/2/4 ",
+  dataBadania: " 2026-09-15 ",
+  dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu", ""] },
+  dzial4: null,
+};
 
+describe("normalizeKwGrunt", () => {
   it("trims the number and the date, filters the dzial lines, keeps `null` as `null`", () => {
     expect(normalizeKwGrunt(grunt)).toEqual({
       source: "ekw_reczne",
@@ -138,5 +140,58 @@ describe("normalizeKwGrunt", () => {
     const out = normalizeKwGrunt({ ...grunt, dzial3: null });
     expect(out.dzial3).toBeNull();
     expect(out.dzial3).not.toEqual({ wpisy: false, tresc: [] });
+  });
+});
+
+describe("ADR-021: ekw_wklej i werdykt przy migawce", () => {
+  it("ekw_wklej wchodzi jak dokument (odpis_kw): model przepisał, człowiek potwierdza zapisem", () => {
+    expect(kwProvenanceSource("ekw_wklej")).toBe("odpis_kw");
+    expect(kwProvenanceSource("ekw_reczne")).toBe("rzeczoznawca");
+  });
+
+  it("normalizeKw przenosi werdykt bez zmian — klasy i kody działów, nigdy wartości", () => {
+    const werdykt = {
+      ok: false,
+      bledy: [{ klasa: "pole_niezgodne:udzial", dzial: "I-Sp" }],
+      kanal: "tekst" as const,
+      plikow: 0,
+      at: "2026-09-21T10:00:00.000Z",
+    };
+    expect(
+      normalizeKw({ ...uploaded, source: "ekw_wklej", transkrypcja: werdykt }).transkrypcja,
+    ).toEqual(werdykt);
+  });
+
+  it("normalizeKwGrunt przycina sąd i wydział i NIE gubi treści ani werdyktu (R2)", () => {
+    const tresc = { naglowek: {}, dzialy: [], polaDodatkowe: {} } as unknown as KsiegaTresc;
+    const out = normalizeKwGrunt({
+      ...grunt,
+      source: "ekw_wklej",
+      sad: "  Sąd Rejonowy w Testowie ",
+      wydzial: " ",
+      tresc,
+      transkrypcja: {
+        ok: true,
+        bledy: [],
+        kanal: "tekst",
+        plikow: 0,
+        at: "2026-09-21T10:00:00.000Z",
+      },
+    });
+    expect(out.source).toBe("ekw_wklej");
+    expect(out.sad).toBe("Sąd Rejonowy w Testowie");
+    expect(out.wydzial).toBeNull();
+    expect(out.tresc).toBe(tresc);
+    expect(out.transkrypcja?.ok).toBe(true);
+  });
+
+  it("stara migawka gruntu bez nowych pól normalizuje się bez zmian (odczyt legacy)", () => {
+    expect(normalizeKwGrunt(grunt)).toEqual({
+      source: "ekw_reczne",
+      nrKsiegi: "PO1P/2/4",
+      dataBadania: "2026-09-15",
+      dzial3: { wpisy: true, tresc: ["Odpłatna służebność przesyłu"] },
+      dzial4: null,
+    });
   });
 });

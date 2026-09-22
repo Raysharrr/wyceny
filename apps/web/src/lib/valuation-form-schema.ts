@@ -441,8 +441,17 @@ export const kwAktSchema = z.object({
   data: z.string(),
 });
 
+/** Mirrors `KwWerdykt` — klasy i kody działów, nigdy wartości (F-13). */
+export const kwWerdyktSchema = z.object({
+  ok: z.boolean(),
+  bledy: z.array(z.object({ klasa: z.string(), dzial: z.string().optional() })),
+  kanal: z.enum(["pdf", "tekst"]),
+  plikow: z.number().int().min(0),
+  at: z.string(),
+});
+
 export const kwSchema = z.object({
-  source: z.enum(["akt", "odpis_kw", "ekw_reczne"]),
+  source: z.enum(["akt", "odpis_kw", "ekw_wklej", "ekw_reczne"]),
   kwLokalu: z.string().nullable(),
   kwGruntu: z.string().nullable(),
   kwInne: z.array(z.string()),
@@ -463,15 +472,22 @@ export const kwSchema = z.object({
   // `KwSnapshot["tresc"]`; the schema is the domain's own (`domain/kw-tresc`),
   // not a copy, so a drift in the worker's wire shape fails in ONE place.
   tresc: ksiegaTrescSchema.nullish(),
+  // Werdykt walidacji tej transkrypcji — żyje PRZY migawce, którą ocenia
+  // (ADR-021 reg. 4), więc znika razem z nią i wraca przy ponownym wejściu.
+  transkrypcja: kwWerdyktSchema.nullish(),
 });
 
-/** Mirrors `KwGruntSnapshot` — the grunt's book, manual-only in paczka 1. */
+/** Mirrors `KwGruntSnapshot` — od ADR-021 w kształcie księgi lokalu. */
 export const kwGruntSchema = z.object({
-  source: z.literal("ekw_reczne"),
+  source: z.enum(["odpis_kw", "ekw_wklej", "ekw_reczne"]),
   nrKsiegi: z.string().nullable(),
   dataBadania: z.string().nullable(),
   dzial3: kwDzialSchema.nullable(),
   dzial4: kwDzialSchema.nullable(),
+  sad: z.string().nullish(),
+  wydzial: z.string().nullish(),
+  tresc: ksiegaTrescSchema.nullish(),
+  transkrypcja: kwWerdyktSchema.nullish(),
 });
 
 /** Mirrors `EncumbranceTreatment` — the appraiser's call on a dział III entry (ADR-018 reg. 6). */
