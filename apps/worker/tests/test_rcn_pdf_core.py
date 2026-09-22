@@ -347,10 +347,11 @@ def test_a_built_address_off_the_pattern_lands_whole_in_street():
     pages = land(
         holding(290, built=True),
         plot(300, "000000_0.0001.12/3", "0.0900"),
-        house(320, address="dz. 12/3 przy drodze"),
+        house(320, address="Testowo dz. 12/3"),
     )
     row = rcn_pdf.parse(pages).rows[0]
-    assert (row.town, row.street, row.building) == ("Testowo", "dz. 12/3 przy drodze", "")
+    assert (row.street, row.building) == ("Testowo dz. 12/3", "")
+    assert row.town == "Testowo"  # z obrębu sekcji, nie z adresu
     assert row.warnings == ["address_unparsed"]
 
 
@@ -362,10 +363,19 @@ def test_a_plot_without_an_area_has_no_sum_and_is_flagged():
 
 SAMPLE = os.environ.get("RCN_SAMPLE_PDF")
 
-# Shapes, not names: what a plot identifier looks like, and what the generator's
-# footer looks like when it leaks into a cell it does not belong in.
-_PLOT_ID = re.compile(r"\d{6}_\d\.\d{4}\.\S+")
+# What the generator's footer looks like when it leaks into a cell it does not
+# belong in — a shape, so it needs no name from any printout.
 _FOOTER_LEAK = re.compile(r"Generator|Wygenerowano|dnia:|sprządzony")
+
+
+def expected(variable: str) -> list[str]:
+    """Values read off a real printout live in the environment, next to the path
+    of the file they came from — never in the repo. Pipe-separated, and no
+    variable means no test, exactly as a missing PDF means no test."""
+    value = os.environ.get(variable)
+    if not value:
+        pytest.skip(f"{variable} not set — the printout's own names stay outside the repo")
+    return value.split("|")
 
 
 @pytest.mark.skipif(not SAMPLE, reason="real county printout stays outside the repo (PII)")
@@ -381,10 +391,11 @@ def test_sample_printout_counters():
 
 
 # Counters from the three land printouts of 22.09, recomputed from scratch here.
-# Counters ONLY: the printouts stay outside the repo, and so does everything
-# written in them. A place, a street or a house number read off one of them does
-# not belong in a test file just because it happens to be a convenient thing to
-# assert — the assertions below are about shape and arithmetic instead.
+# Counters ONLY: the printouts stay outside the repo, and so does every name
+# written in them — a place, a street or a house number does not belong in a test
+# file just because it is a convenient thing to assert. Where a test does need
+# one, it reads it from the environment (`expected`), next to the path of the
+# file it came from.
 # The spec's figures for the file behind `RCN_SAMPLE_PDF_MIESZANY` (94 plots /
 # 175 196 m² / 22 partial shares) were taken before the kind split and include
 # the ONE flat transaction's own 17 plots (11 247 m², one partial share) — those
@@ -426,17 +437,19 @@ def test_land_sample_counters(variable):
     not os.environ.get("RCN_SAMPLE_PDF_ZAB"), reason="real county printout stays outside the repo"
 )
 def test_the_first_built_transaction_reads_whole():
-    """A fully read built row, asserted by SHAPE — the printout's own names stay
-    in the local dossier, not here. "Read whole" means: the kind came from the
-    objects, the address was split into three non-empty parts instead of landing
-    raw in ULICA, both plots were picked up and their areas summed."""
+    """The address of this row sits on its residential BUILDING, not on either of
+    its two plots, and it splits into three parts — so the expected town, street
+    and house number come from `RCN_SAMPLE_ZAB_ROW1` ("town|street|number")."""
+    town, street, building = expected("RCN_SAMPLE_ZAB_ROW1")
     path = os.environ["RCN_SAMPLE_PDF_ZAB"]
     row = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(path).read_bytes())).rows[0]
-    assert row.kind == rcn_pdf.KIND_BUILT
-    assert row.town and row.street and row.building
-    assert "address_unparsed" not in row.warnings
+    assert (row.kind, row.town, row.street, row.building) == (
+        rcn_pdf.KIND_BUILT,
+        town,
+        street,
+        building,
+    )
     assert (len(row.plot_ids), row.plot_area_m2) == (2, 984)
-    assert all(_PLOT_ID.fullmatch(identifier) for identifier in row.plot_ids)
 
 
 @pytest.mark.skipif(
@@ -444,17 +457,17 @@ def test_the_first_built_transaction_reads_whole():
     reason="real county printout stays outside the repo",
 )
 def test_bare_land_sample_takes_its_town_from_the_district_and_not_the_footer():
-    """Neither row of this printout carries an address, so both towns come from
-    their section's district — and the two sections differ. Asserting that they
-    differ (rather than what they are) is what actually proves the district is
-    read per section; the last row is also the one the generator's footer used
-    to overwrite."""
+    """Neither of these two rows carries an address, so each town comes from its
+    own section's district — and the sections differ. Expected names come from
+    `RCN_SAMPLE_NIEZAB_TOWNS` ("first|last"); the last row is also the one the
+    generator's footer used to overwrite. The MPZP text is asserted here rather
+    than read from the environment: it is planning terminology, not a name, and
+    it is the only proof that the un-hyphenated line break is glued back on a
+    REAL printout."""
+    first_town, last_town = expected("RCN_SAMPLE_NIEZAB_TOWNS")
     path = os.environ["RCN_SAMPLE_PDF_NIEZAB"]
     rows = rcn_pdf.parse(rcn_pdf.words_from_pdf(Path(path).read_bytes())).rows
-    assert rows[0].plot_area_m2 == 26_485
+    assert (rows[0].town, rows[0].plot_area_m2) == (first_town, 26_485)
     assert rows[0].plan.startswith("budownictwo mieszkaniowe wielorodzinne")
-    assert rows[0].town and rows[-1].town
-    assert rows[0].town != rows[-1].town
-    # The last row is the one the footer lands on — in its town when the stamp
-    # parses as an address, in its MPZP text otherwise.
+    assert rows[-1].town == last_town
     assert not _FOOTER_LEAK.search(rows[-1].town + " " + rows[-1].plan)
