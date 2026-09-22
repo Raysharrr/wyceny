@@ -14,6 +14,7 @@ import { FEATURE_PRESETS, powierzchniaMeasure } from "../src/domain/feature-pres
 import type { Feature, KcsInput } from "../src/domain/kcs";
 import type { Candidate } from "../src/domain/sample-selection";
 import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
+import { leakingPaths } from "./support/fixture-isolation";
 
 /**
  * Lokale o cenie skrajnej (ADR-022, R4): jedno źródło dla §12.2, kroku 4 i
@@ -23,15 +24,27 @@ import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
 const inputs1409 = () => wycena1409Anon().inputs;
 
 const preset = (key: string) => FEATURE_PRESETS.lokal.find((e) => e.key === key)!;
-const featureOf = (key: string, over: Partial<Feature> = {}): Feature => ({
-  name: preset(key).name,
-  weight: 0.1,
-  rating: null,
-  key,
-  definitions: { ...preset(key).defaultDefinitions },
-  measure: preset(key).defaultMeasure ? structuredClone(preset(key).defaultMeasure!) : null,
-  ...over,
-});
+/**
+ * Fabryka cechy z presetu. `structuredClone` na CAŁYM presecie, nie spread na
+ * definicjach: spread kopiuje wyłącznie pierwszy poziom, więc pierwsza
+ * definicja o strukturze zamiast stringa byłaby współdzieloną referencją do
+ * `FEATURE_PRESETS` i zapis w jednym teście zatruwałby stałą produkcyjną na
+ * resztę procesu (F4 z recenzji S4a, ta sama klasa błędu co 15.09).
+ * `fixtures-isolation` tego nie złapie — ta fabryka żyje w pliku testowym,
+ * nie w `tests/fixtures/`.
+ */
+const featureOf = (key: string, over: Partial<Feature> = {}): Feature => {
+  const wzor = structuredClone(preset(key));
+  return {
+    name: wzor.name,
+    weight: 0.1,
+    rating: null,
+    key,
+    definitions: wzor.defaultDefinitions,
+    measure: wzor.defaultMeasure ?? null,
+    ...over,
+  };
+};
 
 function lokalOf(
   candidate: Partial<Candidate> | null,
@@ -251,6 +264,55 @@ describe("suggestedRating — podpowiedź z danych rejestru", () => {
     expect(
       measuredLevel(featureOf("pomieszczenia-przynalezne"), lokalOf({ annex: true })),
     ).toBeNull();
+  });
+});
+
+/**
+ * F4 z recenzji S4a. `featureOf` żyje w pliku testowym, więc bramka
+ * `fixtures-isolation` jej nie przemiata — ta sama kontrola stoi tutaj, tym
+ * samym automatem (`leakingPaths`), żeby nie było dwóch definicji „czystej
+ * fabryki”.
+ */
+describe("featureOf — fabryka nie wydaje kawałków FEATURE_PRESETS", () => {
+  const KLUCZE = [
+    "standard-wykonczenia",
+    "polozenie-na-pietrze",
+    "lokalizacja",
+    "pomieszczenia-przynalezne",
+    "dodatkowe",
+  ];
+
+  it.each(KLUCZE)("featureOf(%s) daje dwa niezależne obiekty", (key) => {
+    expect(leakingPaths(() => featureOf(key))).toEqual([]);
+  });
+
+  /**
+   * Kontrola pozytywna: bez niej „zero przecieków” mogłoby znaczyć „automat
+   * nic nie sprawdza”. Fabryka, która JAWNIE oddaje obiekt presetu, musi mieć
+   * wskazaną ścieżkę.
+   */
+  it("automat wskazuje przeciek, gdy fabryka odda obiekt presetu wprost", () => {
+    expect(
+      leakingPaths(() => ({ measure: preset("polozenie-na-pietrze").defaultMeasure })),
+    ).toEqual(["measure"]);
+  });
+
+  /**
+   * Tożsamość na DWÓCH poziomach wobec stałej produkcyjnej: ani sam obiekt
+   * definicji/progów, ani obiekt w nim zagnieżdżony nie może być tym, który
+   * trzyma `FEATURE_PRESETS`. Płytka kopia przechodzi pierwszy poziom i pada
+   * na drugim — i to jest dokładnie ta różnica, którą F4 nazywa.
+   */
+  it("definicje i progi nie są obiektami presetu ani na pierwszym, ani na drugim poziomie", () => {
+    const wzor = preset("polozenie-na-pietrze");
+    const f = featureOf("polozenie-na-pietrze");
+    expect(f.definitions).not.toBe(wzor.defaultDefinitions);
+    expect(f.measure).not.toBe(wzor.defaultMeasure);
+    expect(f.measure!.bounds).not.toBe(wzor.defaultMeasure!.bounds);
+    expect(f.measure!.bounds.przecietna).not.toBe(wzor.defaultMeasure!.bounds.przecietna);
+    // Wartości muszą przy tym zostać te same — kopia, nie przepisanie.
+    expect(f.definitions).toEqual(wzor.defaultDefinitions);
+    expect(f.measure).toEqual(wzor.defaultMeasure);
   });
 });
 
