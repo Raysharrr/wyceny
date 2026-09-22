@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildDocumentModel } from "../src/domain/document-model";
 import { computeKcs } from "../src/domain/kcs";
 import { renderOperatDocx } from "../src/adapters/docx-render";
-import { KW_GRUNTU_TESTOWA, KW_TESTOWA, wycena1409Anon } from "./fixtures/wycena-1409-anon";
+import {
+  KW_GRUNTU_TESTOWA,
+  KW_TESTOWA,
+  trescSyntetycznejKsiegiGruntu,
+  wycena1409Anon,
+} from "./fixtures/wycena-1409-anon";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
 import { JPG_1PX } from "./fixtures/jpeg-fixtures";
 import {
@@ -231,6 +236,18 @@ describe("I-13 G: §8.2 w kolejności operatu wzorcowego (TP.2, D-21/D-24/D-25)"
     expect(text.indexOf("DZIAŁ I-O", idx("nieruchomości gruntowej"))).toBeGreaterThan(
       idx("nieruchomości gruntowej"),
     );
+    // F6: druga tabela niesie treść KSIĘGI GRUNTU, nie powtórkę lokalu. Liczba
+    // nagłówków tego nie pokaże — podmiana pętli gruntu na
+    // `ksiega_lokalu_wiersze` zostawia wszystkie tagi szablonu na miejscu i
+    // nadal daje dziesięć nagłówków. Łapie ją dopiero fakt z danych: w księdze
+    // gruntu właścicielem jest spółka, której w księdze lokalu nie ma wcale.
+    const spolkaZDzialuII = trescSyntetycznejKsiegiGruntu()
+      .dzialy.find((d) => d.kod === "II")!
+      .tabele.flatMap((t) => t.wpisy)
+      .flatMap((w) => w.rubryki)
+      .find((r) => r.nazwa.startsWith("Osoba prawna"))!.wartosci[0];
+    expect(text.split(spolkaZDzialuII), "spółka z działu II gruntu dokładnie raz").toHaveLength(2);
+    expect(idx(spolkaZDzialuII)).toBeGreaterThan(idx("nieruchomości gruntowej"));
     // Każdy akapit tabeli z jawnym stylem (TP.0).
     expect(paragraphs.filter((p) => p.container === "table" && p.style == null)).toEqual([]);
   });

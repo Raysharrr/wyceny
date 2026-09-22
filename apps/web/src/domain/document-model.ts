@@ -280,11 +280,16 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
         // Only an entry that eKW itself opened with "Lp. N." gets the row; a
         // single-entry table has `lp: null` and needs no opener.
         if (wpis.lp != null) {
+          // The nr podstawy wpisu is a NUMBER, so it rides the ordinal column
+          // (600 dxa) like the document row's does. It sat in the widest kol3
+          // before, which put a bare number where every other row carries the
+          // book's text, and left the ordinal column empty on the one row that
+          // had an ordinal to show.
           rows.push({
             typ: "lp",
             kol1: `Lp. ${wpis.lp}.`,
-            kol2: "",
-            kol3: wpis.nrPodstawyWpisu ?? "",
+            kol2: wpis.nrPodstawyWpisu ?? "",
+            kol3: "",
           });
         }
         for (const rubryka of wpis.rubryki) {
@@ -303,25 +308,23 @@ function ksiegaRows(tresc: KsiegaTresc): KsiegaRow[] {
       // dropped as chrome.
       const join = (line: string | null, opis: string | null) =>
         [line, opis].filter((p) => p != null && p !== "").join(" ");
-      // Middle column EMPTY, whole text in kol3 — same shape as the `lp` row.
-      // kol2 is the template's Lp. column at 600 dxa; a document name is long
-      // ("WYPIS Z REJESTRU GRUNTÓW I WYRYS Z MAPY EWIDENCYJNEJ; …"), so Word
-      // broke it three or four characters to a line and the cell was
-      // unreadable (coordinator's review of the §8.2 render, 22.09).
+      // Split by COLUMN WIDTH, and the document is kept apart from the wniosek
+      // — they are two different facts the book states, not one sentence.
+      // The document name is long ("WYPIS Z REJESTRU GRUNTÓW I WYRYS Z MAPY
+      // EWIDENCYJNEJ; …"), so it takes kol1 (3400 dxa, where the rubryka
+      // labels already live); the nr podstawy wpisu is a number and takes the
+      // ordinal kol2 (600 dxa); the DZ. KW. wniosek takes the widest kol3.
+      // Putting the document text in kol2 was the review finding of 22.09:
+      // Word broke it three or four characters to a line.
       //
-      // The two lines are joined with KSIEGA_CELL_SEP, NOT "\n": the render
-      // runs docxtemplater with `linebreaks: true`, so a newline would become
-      // a `<w:br/>` inside a justified paragraph — the D-30 defect class.
+      // Every part joins with a space or KSIEGA_CELL_SEP, NEVER "\n": the
+      // render runs docxtemplater with `linebreaks: true`, so a newline would
+      // become a `<w:br/>` inside a justified paragraph — the D-30 defect class.
       rows.push({
         typ: "dokument",
-        kol1: dokument.nrPodstawyWpisu,
-        kol2: "",
-        kol3: [
-          join(dokument.dokument, dokument.dokumentOpisPol),
-          join(dokument.wniosek, dokument.wniosekOpisPol),
-        ]
-          .filter((p) => p !== "")
-          .join(KSIEGA_CELL_SEP),
+        kol1: join(dokument.dokument, dokument.dokumentOpisPol),
+        kol2: dokument.nrPodstawyWpisu,
+        kol3: join(dokument.wniosek, dokument.wniosekOpisPol),
       });
     }
   }
