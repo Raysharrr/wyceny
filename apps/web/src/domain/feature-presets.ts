@@ -198,6 +198,31 @@ export function powierzchniaMeasure(medianM2: number | null): FeatureMeasure | n
   return { kind: "area", bounds: { lepsza: { do: medianM2 - 1 }, gorsza: { od: medianM2 } } };
 }
 
+/**
+ * The kind of numeric scale a feature is measured on — `floor` for the storey,
+ * `area` for the usable area — or null for every feature that has no numbers
+ * behind its texts. What the step reads to keep the „od”/„do” fields on screen
+ * while the thresholds are detached (PR-4, mockup 8).
+ */
+export function measureKindFor(key: string): FeatureMeasure["kind"] | null {
+  if (key === "powierzchnia-uzytkowa") return "area";
+  return FEATURE_PRESETS.lokal.find((e) => e.key === key)?.defaultMeasure?.kind ?? null;
+}
+
+/**
+ * The preset thresholds a measurable feature can be RESTORED to („Przywróć
+ * progi z presetu”, PR-4): the storey's static bands, the area's median bands
+ * (null without a sample median — nothing to restore to), null for a feature
+ * that never had thresholds. Always a fresh object: `bounds` is nested, and a
+ * restored measure the appraiser then edits must never write into
+ * FEATURE_PRESETS (see `defaultFeatureFormValues`).
+ */
+export function presetMeasureFor(key: string, medianM2: number | null): FeatureMeasure | null {
+  if (key === "powierzchnia-uzytkowa") return powierzchniaMeasure(medianM2);
+  const entry = FEATURE_PRESETS.lokal.find((e) => e.key === key);
+  return entry?.defaultMeasure ? structuredClone(entry.defaultMeasure) : null;
+}
+
 /** Sample-derived powierzchnia definitions; {} when the sample carries no areas. */
 export function powierzchniaDefinitions(medianM2: number | null): FeatureDefinitions {
   const measure = powierzchniaMeasure(medianM2);

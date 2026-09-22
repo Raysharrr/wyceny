@@ -17,6 +17,7 @@ import {
   syntheticDocumentInput,
 } from "./fixtures/document-model-fixture";
 import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
+import { presetMeasureFor } from "../src/domain/feature-presets";
 
 /**
  * Fabryka fikstur ma wydawać każdemu wywołaniu WŁASNE dane. Gdy oddaje stałą
@@ -69,6 +70,10 @@ describe("izolacja fikstur — żadna fabryka nie wydaje cudzych obiektów", () 
       "syntheticDocumentInput(subject, kw)",
       () => syntheticDocumentInput(SUBJECT_WITH_MPZP, KW_STANDARD),
     ],
+    // PR-4: fabryka progów do przywrócenia z presetu — dwa zestawy argumentów,
+    // bo piętro klonuje stałą modułową, a powierzchnia buduje obiekt z mediany.
+    ["presetMeasureFor(pietro)", () => presetMeasureFor("polozenie-na-pietrze", null)],
+    ["presetMeasureFor(powierzchnia, 49)", () => presetMeasureFor("powierzchnia-uzytkowa", 49)],
   ];
 
   it.each(FABRYKI)("%s daje dwa niezależne obiekty", (_nazwa, fabryka) => {

@@ -5,8 +5,10 @@ import {
   defaultFeatureFormValues,
   matchesPresetDefinitions,
   matchesPresetWeights,
+  measureKindFor,
   medianAreaM2,
   powierzchniaDefinitions,
+  presetMeasureFor,
 } from "../src/domain/feature-presets";
 import { computeKcs, type KcsInput } from "../src/domain/kcs";
 import { DEFAULT_FEATURES } from "../src/lib/valuation-form-schema";
@@ -142,6 +144,48 @@ describe("F-6: lokal feature preset", () => {
     const druga = defaultFeatureFormValues().find((f) => f.key === "polozenie-na-pietrze")!;
     expect(druga.measure!.bounds.lepsza).toEqual({ od: 4 });
     expect(druga.measure!.kind).toBe("floor");
+  });
+
+  /**
+   * PR-4 (Głuszyna): „Przywróć progi z presetu” bierze progi stąd. Ta sama
+   * pułapka co wyżej — gdyby funkcja oddała `defaultMeasure` przez referencję,
+   * pierwsza wycena, która po przywróceniu poprawi próg, przepisałaby preset
+   * dla każdej następnej. Asercja przez konsekwencję na DWÓCH poziomach
+   * (zagnieżdżony `bounds.lepsza` i płytki `kind`), bo `not.toBe` nie odróżnia
+   * płytkiej kopii od głębokiej.
+   */
+  it("presetMeasureFor oddaje klon progów presetu: zapis w wyniku nie sięga presetu ani następnego wyniku", () => {
+    const pietro = lokal.find((e) => e.key === "polozenie-na-pietrze")!;
+    const pierwszy = presetMeasureFor("polozenie-na-pietrze", null)!;
+    expect(pierwszy).toEqual(pietro.defaultMeasure);
+
+    pierwszy.bounds.lepsza = { od: 99 };
+    pierwszy.kind = "area";
+
+    expect(pietro.defaultMeasure).toEqual({
+      kind: "floor",
+      bounds: { gorsza: { od: 0, do: 0 }, przecietna: { od: 1, do: 3 }, lepsza: { od: 4 } },
+    });
+    const drugi = presetMeasureFor("polozenie-na-pietrze", null)!;
+    expect(drugi.bounds.lepsza).toEqual({ od: 4 });
+    expect(drugi.kind).toBe("floor");
+  });
+
+  it("presetMeasureFor: powierzchnia z mediany próby, null bez mediany i dla cechy bez progów", () => {
+    expect(presetMeasureFor("powierzchnia-uzytkowa", 49)).toEqual({
+      kind: "area",
+      bounds: { lepsza: { do: 48 }, gorsza: { od: 49 } },
+    });
+    expect(presetMeasureFor("powierzchnia-uzytkowa", null)).toBeNull();
+    expect(presetMeasureFor("standard-wykonczenia", 49)).toBeNull();
+    expect(presetMeasureFor("pomieszczenia-przynalezne", 49)).toBeNull();
+  });
+
+  it("measureKindFor: floor dla piętra, area dla powierzchni (także bez mediany), null dla reszty", () => {
+    expect(measureKindFor("polozenie-na-pietrze")).toBe("floor");
+    expect(measureKindFor("powierzchnia-uzytkowa")).toBe("area");
+    expect(measureKindFor("standard-wykonczenia")).toBeNull();
+    expect(measureKindFor("lokalizacja")).toBeNull();
   });
 
   it("matchesPresetWeights: true for untouched defaults, false for any edit", () => {
