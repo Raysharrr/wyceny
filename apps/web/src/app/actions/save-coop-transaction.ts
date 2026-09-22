@@ -44,6 +44,8 @@ const inputSchema = z.object({
   rooms: optInt,
   buildYear: optInt,
   rep: z.string().trim().max(100).nullable(),
+  // Formularz ręczny nie pyta o P.P (poza zakresem PR-3) — wiersz wchodzi z „nie wiadomo”.
+  annex: z.boolean().nullable().default(null),
 });
 export type SaveCoopTransactionInput = z.input<typeof inputSchema>;
 

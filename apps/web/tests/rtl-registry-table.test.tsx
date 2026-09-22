@@ -18,6 +18,7 @@ const row = (over: Partial<CoopTransaction>): CoopTransaction => ({
   area: 37.91,
   priceTotal: 299999.82,
   pricePerM2: 7913.48,
+  annex: null,
   date: "2026-05-14",
   priceKind: "nieustalona",
   rightType: null,

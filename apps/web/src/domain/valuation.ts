@@ -1,7 +1,7 @@
 import { approvalGate, type Blocker, type GateOptions } from "./provenance";
 import { documentFieldBlockers, formatDatePl } from "./document-model";
 import { computeKcsOnScale, describedLevels, featureIssues, kcsReady } from "./feature-rules";
-import { isRegistrySourced, type Comparable, type KcsInput } from "./kcs";
+import { isRegistrySourced, type Comparable, type ComparableRatings, type KcsInput } from "./kcs";
 import type { PropertyRight } from "./property-right";
 import type { InputsProvenance } from "./provenance";
 import type { NewValuationInput, Valuation } from "../ports/valuation";
@@ -646,6 +646,8 @@ export function applySampleUpdate(v: Valuation, u: SampleUpdate): Valuation {
 
 export type FeaturesUpdate = {
   features: KcsInput["features"];
+  /** Wymagane, nie opcjonalne: pominięcie w mapowaniu ma być błędem kompilacji, nie cichą utratą ocen. */
+  comparableRatings: ComparableRatings | null;
   provenance: Pick<InputsProvenance, "weights" | "ratings" | "featureDefs">;
 };
 
@@ -661,7 +663,12 @@ export function applyFeaturesUpdate(v: Valuation, u: FeaturesUpdate): Valuation 
   return {
     ...v,
     wr: null,
-    inputs: { ...v.inputs, features: u.features, provenance },
+    inputs: {
+      ...v.inputs,
+      features: u.features,
+      comparableRatings: u.comparableRatings,
+      provenance,
+    },
   };
 }
 

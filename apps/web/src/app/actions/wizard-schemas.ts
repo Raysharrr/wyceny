@@ -55,7 +55,10 @@ export const sampleStepSchema = valuationFormObject.pick({
   sampleSelection: true,
   streetView: true,
 });
-export const featuresStepSchema = valuationFormObject.pick({ features: true });
+export const featuresStepSchema = valuationFormObject.pick({
+  features: true,
+  comparableRatings: true,
+});
 
 export type Step1Input = z.input<typeof step1Schema>;
 export type SampleStepInput = z.input<typeof sampleStepSchema>;

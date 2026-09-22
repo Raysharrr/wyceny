@@ -320,6 +320,7 @@ describe("audit_log per mutation", () => {
     });
     const update: FeaturesUpdate = {
       features: [{ name: "standard", weight: 1, rating: "przecietna" }],
+      comparableRatings: null,
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },

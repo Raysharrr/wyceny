@@ -684,6 +684,7 @@ describe("applyFeaturesUpdate — the feature group survives an unrelated save (
     const v = confirmedFeatures();
     const updated = applyFeaturesUpdate(v, {
       features: presetFeatures(),
+      comparableRatings: null,
       provenance: reassigned,
     });
     expect(updated.inputs!.provenance!.weights.status).toBe("confirmed");
@@ -697,6 +698,7 @@ describe("applyFeaturesUpdate — the feature group survives an unrelated save (
         { ...presetFeatures()[0], weight: 0.7 },
         { ...presetFeatures()[1], weight: 0.3 },
       ],
+      comparableRatings: null,
       provenance: reassigned,
     });
     expect(updated.inputs!.provenance!.weights.status).toBe("to_verify");

@@ -118,6 +118,10 @@ const rowSchema = z.object({
   floor: z.number().int().nullable(),
   rooms: z.number().int().nullable(),
   buildYear: z.number().int().nullable(),
+  // ADR-022: P.P z arkusza jedzie tym samym drutem co reszta wiersza. Bez
+  // tego wpisu zod obciąłby kolumnę w połowie drogi i rejestr milczałby o niej.
+  // `.default(null)` — „nie wiadomo” jest wartością, nie brakiem klucza.
+  annex: z.boolean().nullable().default(null),
 });
 
 const chunkSchema = z.object({

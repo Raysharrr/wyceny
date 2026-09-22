@@ -77,6 +77,7 @@ const emptySampleUpdate: SampleUpdate = { comparables: [], sampleMeta: null };
 
 const emptyFeaturesUpdate: FeaturesUpdate = {
   features: [],
+  comparableRatings: null,
   provenance: {
     weights: { source: "rzeczoznawca", status: "confirmed" },
     ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -109,6 +110,7 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
       features: [
         { name: "standard", weight: 1, rating: "przecietna", definitions: THREE_LEVEL_SCALE },
       ],
+      comparableRatings: null,
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -127,6 +129,7 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
     const created = await repo.create(partialDraft("Wizard Features 1"));
     const update: FeaturesUpdate = {
       features: [{ name: "standard", weight: 1, rating: "przecietna", key: "preset-1" }],
+      comparableRatings: null,
       provenance: {
         weights: { source: "preset", status: "to_verify" },
         ratings: { source: "preset", status: "to_verify" },
@@ -140,6 +143,33 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
     // the status moves, because the save is the appraiser's confirmation (T7).
     expect(updated!.inputs!.provenance!.weights).toEqual({ source: "preset", status: "confirmed" });
     expect(updated!.wr).toBeNull();
+  });
+
+  it("saveFeatures utrwala comparableRatings w jsonb i oddaje je przy odczycie (ADR-022)", async () => {
+    const created = await repo.create(partialDraft("Wizard Extremes 1"));
+    const update: FeaturesUpdate = {
+      features: [
+        {
+          name: "standard",
+          weight: 1,
+          rating: "przecietna",
+          key: "standard-wykonczenia",
+          definitions: THREE_LEVEL_SCALE,
+        },
+      ],
+      comparableRatings: { "tx-1|306401_1.0039.x": { "standard-wykonczenia": "lepsza" } },
+      provenance: {
+        weights: { source: "rzeczoznawca", status: "confirmed" },
+        ratings: { source: "rzeczoznawca", status: "confirmed" },
+      },
+    };
+    await repo.saveFeatures(created.id, appraiserA, update);
+    const after = await repo.get(created.id, appraiserA);
+    expect(after!.inputs!.comparableRatings).toEqual(update.comparableRatings);
+
+    // Wycofanie ocen jest WARTOŚCIĄ (null), nie brakiem klucza.
+    await repo.saveFeatures(created.id, appraiserA, { ...update, comparableRatings: null });
+    expect((await repo.get(created.id, appraiserA))!.inputs!.comparableRatings).toBeNull();
   });
 
   /**
@@ -355,6 +385,7 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
     const created = await repo.create(partialDraft("Wizard Confirm Features"));
     const update: FeaturesUpdate = {
       features: [{ name: "standard", weight: 1, rating: "przecietna", key: "preset-1" }],
+      comparableRatings: null,
       provenance: {
         weights: { source: "preset", status: "to_verify" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -398,6 +429,7 @@ describe("wizard draft mutations (Slice 11a, Task 4)", () => {
       features: [
         { name: "standard", weight: 1, rating: "przecietna", definitions: THREE_LEVEL_SCALE },
       ],
+      comparableRatings: null,
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
@@ -738,6 +770,7 @@ describe("every to_verify a legacy draft can hold has a step that clears it (T8)
     // anything but `confirmed`.
     await repo.saveFeatures(created.id, appraiserA, {
       features: [{ name: "standard", weight: 1, rating: "przecietna", key: "standard" }],
+      comparableRatings: null,
       provenance: {
         weights: { source: "preset", status: "to_verify" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
