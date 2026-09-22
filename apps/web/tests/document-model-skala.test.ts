@@ -7,7 +7,7 @@ import {
   OCENA_SPOZA_REJESTRU,
 } from "../src/domain/document-model";
 import { PIETRO_PRZEDMIOTU, wycena1409Anon } from "./fixtures/wycena-1409-anon";
-import { computeKcs, type KcsInput } from "../src/domain/kcs";
+import { computeKcs, type FeatureRating, type KcsInput } from "../src/domain/kcs";
 import { extremeLokale } from "../src/domain/extremes";
 import { computeKcsOnScale } from "../src/domain/feature-rules";
 import { AUTOR_TESTOWY } from "./fixtures/document-model-fixture";
@@ -514,6 +514,39 @@ describe("document model — §12.2 z ocen rzeczoznawcy (ADR-022)", () => {
     // Cmax siedzi na kondygnacji 4, czyli 3. piętrze → progi mówią „pośrednia”.
     expect(opisu("Położenie na piętrze")).toBe("wartość pośrednia cechy");
     expect(opisu("Lokalizacja szczegółowa")).toBe(OCENA_SPOZA_REJESTRU);
+  });
+
+  /**
+   * F2 z recenzji całości bloku: warunek „ocena liczy się TYLKO na poziomie
+   * OPISANYM” (`describedLevels(feature).includes(rating)` w
+   * `comparableFeatureText`) nie miał żadnego testu — ani po stronie bramki,
+   * ani po stronie dokumentu. Cecha MIERZALNA jest tu jedynym nośnikiem:
+   * dla cechy BEZ progów siatką jest `ratingPosition`, które i tak zwraca
+   * `null` dla poziomu bez definicji, więc mutacja przez nią przechodzi.
+   *
+   * „Powierzchnia użytkowa” w wariancie `jak_zgloszono` ma skalę
+   * DWUPOZIOMOWĄ z mediany próby (do 43 m² / od 44 m²), więc `przecietna`
+   * jest poziomem NIEOPISANYM. Ocena na takim poziomie nie liczy się jak
+   * ocena: model spada na progi i dla Cmaxa (41,70 m² → „do 43 m²”) drukuje
+   * wartość najwyższą — zdanie, którego rzeczoznawca nie wybrał, ale wprost
+   * wyprowadzone z rejestru (spec §4.4). §12.2 renderuje się PRZED
+   * zatwierdzeniem, więc B-18 nie jest tu siatką.
+   */
+  describe("ocena liczy się tylko na poziomie opisanym — cecha mierzalna (F2)", () => {
+    const powierzchnia = (rating: FeatureRating) =>
+      opis(withRatings({ [CMAX]: { "powierzchnia-uzytkowa": rating } }), "Powierzchnia użytkowa");
+
+    it("ocena „przeciętna” na skali dwupoziomowej nie jest oceną — model wraca do progów", () => {
+      expect(powierzchnia("przecietna")).toBe("wartość najwyższa cechy");
+    });
+
+    it("ocena „gorsza” (poziom opisany) wygrywa z progami i drukuje najniższą", () => {
+      expect(powierzchnia("gorsza")).toBe("wartość najniższa cechy");
+    });
+
+    it("ocena „lepsza” (poziom opisany) drukuje najwyższą", () => {
+      expect(powierzchnia("lepsza")).toBe("wartość najwyższa cechy");
+    });
   });
 
   /**
