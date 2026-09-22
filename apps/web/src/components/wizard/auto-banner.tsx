@@ -24,9 +24,12 @@ const VARIANT = {
 export function AutoBanner({
   children,
   kind = "info",
+  action,
 }: {
   children: React.ReactNode;
   kind?: keyof typeof VARIANT;
+  /** A control that belongs to the message, set flush right (mockup 8: „Przywróć progi z presetu”). */
+  action?: React.ReactNode;
 }) {
   const { icon: Icon, className } = VARIANT[kind];
   return (
@@ -39,6 +42,7 @@ export function AutoBanner({
     >
       <Icon className="size-5 shrink-0" />
       <span>{children}</span>
+      {action ? <span className="ml-auto shrink-0">{action}</span> : null}
     </div>
   );
 }

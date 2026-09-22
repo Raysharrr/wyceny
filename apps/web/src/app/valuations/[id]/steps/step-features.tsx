@@ -15,9 +15,11 @@ import { featuresStepSchema } from "@/app/actions/wizard-schemas";
 import {
   FEATURE_PRESETS,
   LEVEL_LABEL,
+  measureKindFor,
   medianAreaM2,
   powierzchniaDefinitions,
   powierzchniaMeasure,
+  presetMeasureFor,
   type LokalFeatureKey,
 } from "@/domain/feature-presets";
 import {
@@ -42,6 +44,7 @@ import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import { cn } from "@/lib/utils";
 import { DEFAULT_FEATURES } from "@/lib/valuation-form-schema";
 import { FootNav } from "@/components/wizard/foot-nav";
+import { AutoBanner } from "@/components/wizard/auto-banner";
 import { SectionCard } from "@/components/wizard/section-card";
 import { FeatureRatingGroup, SCALE_LEVELS } from "./feature-rating-group";
 import { boundText, MEASURE_NOUN, measureValueFormatter } from "./feature-hint-text";
@@ -202,7 +205,9 @@ function BoundInput({
  * measurable feature (FH.1) the bands come first and the texts are their
  * output: editing a threshold rewrites every definition, and retyping a
  * definition by hand retracts the thresholds — one direction each way, so the
- * §12.1 scale block and the suggestion can never state different scales.
+ * §12.1 scale block and the suggestion can never state different scales. The
+ * band fields stay on screen while retracted (mockup 8), so typing a threshold
+ * starts a numeric scale from scratch — again bands first, texts rewritten.
  */
 function ScaleEditor({
   control,
@@ -210,6 +215,7 @@ function ScaleEditor({
   featureKey,
   rating,
   measure,
+  measureKind,
   onSelectedLevelCleared,
   onMeasureChange,
 }: {
@@ -218,17 +224,26 @@ function ScaleEditor({
   featureKey: string | undefined;
   rating: FeatureRating | null | undefined;
   measure: FeatureMeasure | null | undefined;
+  measureKind: FeatureMeasure["kind"] | null;
   onSelectedLevelCleared: () => void;
   onMeasureChange: (next: FeatureMeasure | null) => void;
 }) {
+  // The kind the bands are typed in: from the live thresholds or, while they
+  // are detached (mockup 8), from the preset — the fields stay so a threshold
+  // can be typed back in, which builds the numeric scale again from nothing.
+  const kind = measure?.kind ?? measureKind;
   const setBound = (level: FeatureRating, edge: "od" | "do", value: number | undefined) => {
-    if (!measure) return;
-    const bound: MeasureBound = { ...measure.bounds[level], [edge]: value };
+    if (!kind) return;
+    const base: FeatureMeasure = measure ?? { kind, bounds: {} };
+    const bound: MeasureBound = { ...base.bounds[level], [edge]: value };
     if (value === undefined) delete bound[edge];
-    const bounds = { ...measure.bounds };
+    const bounds = { ...base.bounds };
     if (bound.od === undefined && bound.do === undefined) delete bounds[level];
     else bounds[level] = bound;
-    onMeasureChange({ ...measure, bounds });
+    // Clearing an already-empty field while detached is not a change — it
+    // must not conjure an empty scale that would blank every hand-typed text.
+    if (!measure && Object.keys(bounds).length === 0) return;
+    onMeasureChange({ ...base, bounds });
   };
 
   return (
@@ -260,7 +275,7 @@ function ScaleEditor({
                   }}
                 />
               </label>
-              {measure ? (
+              {kind ? (
                 <div className="flex flex-wrap gap-2">
                   {(["od", "do"] as const).map((edge) => (
                     <BoundInput
@@ -268,8 +283,8 @@ function ScaleEditor({
                       featureKey={featureKey ?? String(index)}
                       level={level}
                       edge={edge}
-                      kind={measure.kind}
-                      value={measure.bounds[level]?.[edge]}
+                      kind={kind}
+                      value={measure?.bounds[level]?.[edge]}
                       onChange={(next) => setBound(level, edge, next)}
                     />
                   ))}
@@ -280,6 +295,40 @@ function ScaleEditor({
         />
       ))}
     </div>
+  );
+}
+
+/**
+ * Mockup `8-krok4-progi-odlaczone` (PR-4): a measurable feature whose thresholds
+ * are gone — retyped by hand here, or a draft from before FH.1 — has no hint and,
+ * with PR-3, no data-backed rating of the extreme lokale. The note says so and
+ * offers the way back; the median is quoted only where it IS the preset (area).
+ */
+function DetachedThresholdsNote({
+  medianM2,
+  onRestore,
+}: {
+  medianM2: number | null;
+  onRestore: () => void;
+}) {
+  // One string, one text node: the note is asserted verbatim in RTL, and JSX
+  // line-wrapping would otherwise decide where the spaces fall.
+  const median = medianM2 != null ? ` (mediana próby: ${medianM2} m²)` : "";
+  const text =
+    "Tekst poziomu przepisany ręcznie — progi liczbowe zostały odłączone, więc podpowiedź oceny " +
+    "i ocena lokali o cenie skrajnej z danych nie działają dla tej cechy. Wpisz progi w polach " +
+    `„od” i „do” albo przywróć je z presetu${median}.`;
+  return (
+    <AutoBanner
+      kind="note"
+      action={
+        <Button type="button" variant="outline" size="xs" onClick={onRestore}>
+          Przywróć progi z presetu
+        </Button>
+      }
+    >
+      {text}
+    </AutoBanner>
   );
 }
 
@@ -388,6 +437,9 @@ export function StepFeatures({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [editingScale, setEditingScale] = useState<Record<string, boolean>>({});
   const comparableAreas = comparables.map((c) => c.area);
+  // The sample median behind powierzchnia's preset bands — also what the
+  // detached-thresholds note quotes and „Przywróć progi z presetu” restores.
+  const median = medianAreaM2(comparableAreas);
 
   // Lokale skrajne liczone z FROZEN propsów (próba nie zmienia się na tym
   // kroku) — jedno wywołanie domeny na render, to samo, które czyta §12.2 i B-18.
@@ -538,6 +590,41 @@ export function StepFeatures({
                   const isRated = rating != null;
                   const ui = uis[index];
                   const measure = current?.measure ?? null;
+                  // PR-4: thresholds a preset could give this feature back. null =
+                  // nothing to restore (a feature that never had numbers, or
+                  // powierzchnia without a sample median) — no note for those. A
+                  // fresh clone every render, never the preset's own object.
+                  const presetMeasure = key ? presetMeasureFor(key, median) : null;
+                  // A rating on a level that no longer has a description is off
+                  // the scale (ADR-016 reg. 4) — one function for both ways a
+                  // level can lose its text: cleared by hand, or rewritten out
+                  // of existence by the bands.
+                  const clearRating = () =>
+                    setValue(`features.${index}.rating`, null, { shouldDirty: true });
+                  // One path for every change of the bands (FH.1): they are the
+                  // scale, so every text is rewritten from them and a level that
+                  // lost its band loses its card too. The scale editor and the
+                  // restore button both go through here.
+                  const applyMeasure = (next: FeatureMeasure | null) => {
+                    setValue(`features.${index}.measure`, next, { shouldDirty: true });
+                    if (!next) return;
+                    const generated = definitionsFromMeasure(next);
+                    for (const level of SCALE_LEVELS) {
+                      setValue(`features.${index}.definitions.${level}`, generated[level] ?? "", {
+                        shouldDirty: true,
+                      });
+                    }
+                    // The rewrite can take the description off the very level the
+                    // appraiser rated — restoring powierzchnia's two preset bands
+                    // over a hand-described „przeciętna”, or clearing a band. The
+                    // rating would otherwise stay on a card that is no longer on
+                    // screen, and the operat would print a position nobody chose.
+                    if (
+                      rating != null &&
+                      !describedLevels({ definitions: generated }).includes(rating)
+                    )
+                      clearRating();
+                  };
                   // FH.2: the suggestion needs thresholds AND a subject value the
                   // scale actually covers; it stays until the rating agrees with
                   // it, so a deliberately different rating keeps the comparison
@@ -666,23 +753,15 @@ export function StepFeatures({
                           featureKey={key}
                           rating={rating}
                           measure={measure}
-                          onSelectedLevelCleared={() =>
-                            setValue(`features.${index}.rating`, null, { shouldDirty: true })
-                          }
-                          onMeasureChange={(next) => {
-                            setValue(`features.${index}.measure`, next, { shouldDirty: true });
-                            if (!next) return;
-                            // The bands are the scale: every text is rewritten from
-                            // them, so a level that lost its band loses its card too.
-                            const generated = definitionsFromMeasure(next);
-                            for (const level of SCALE_LEVELS) {
-                              setValue(
-                                `features.${index}.definitions.${level}`,
-                                generated[level] ?? "",
-                                { shouldDirty: true },
-                              );
-                            }
-                          }}
+                          measureKind={key ? measureKindFor(key) : null}
+                          onSelectedLevelCleared={clearRating}
+                          onMeasureChange={applyMeasure}
+                        />
+                      ) : null}
+                      {measure == null && presetMeasure ? (
+                        <DetachedThresholdsNote
+                          medianM2={presetMeasure.kind === "area" ? median : null}
+                          onRestore={() => applyMeasure(presetMeasure)}
                         />
                       ) : null}
                       {rowIssue ? (
