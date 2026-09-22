@@ -2221,6 +2221,43 @@ describe("KwSection — full-form wiring", () => {
     expect(screen.getByTestId("kw-wklej-lokal")).toBeDefined();
   });
 
+  /**
+   * Księga GRUNTU wklejona na kartę LOKALU — główna ścieżka Głuszyny z E2E
+   * koordynatora 22.09. Worker po 1f20f8c oddaje dla niej `ok:true`, bo reguł
+   * lokalowych dla księgi gruntu nie liczy; o karcie, na którą ją wklejono,
+   * nie wie nic. Bez reguły web rzeczoznawca dostaje zielone „wypadło
+   * pomyślnie" i obszar działki w polu numeru księgi gruntu.
+   */
+  it("księga gruntu na karcie lokalu: baner rodzaju księgi, żadnej zielonej linii, pola lokalowe puste", async () => {
+    const tresc = transcribedBook();
+    tresc.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
+    tresc.polaDodatkowe.kwGruntu = "0,0163 HA";
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
+
+    const baner = await screen.findByTestId("kw-werdykt-lokal");
+    expect(baner.textContent).toContain(
+      "rodzaj księgi (treść opisuje nieruchomość gruntową, a to karta księgi lokalu)",
+    );
+    // Werdykt workera bez zastrzeżeń nie może zostawić na karcie zielonej
+    // linii obok bursztynowego banera — dwa sprzeczne zdania o tym samym.
+    expect(screen.queryByTestId("kw-transcribe-status")).toBeNull();
+    expect(
+      within(kartaKsiegi("lokal")).getByText("Sprawdź, czy wklejono właściwą księgę."),
+    ).toBeDefined();
+    // Obszar działki z I-O nie wchodzi w pole numeru księgi gruntu (finding 2).
+    expect((document.getElementById("kw-gruntu") as HTMLInputElement).value).toBe("");
+    expect((document.getElementById("kw-nr-lokalu") as HTMLInputElement).value).toBe("");
+    expect((document.getElementById("kw-udzial") as HTMLInputElement).value).toBe("");
+  });
+
   it("zmiana sposobu przy wpisanych danych pyta o zgodę z listą tego, co zniknie; „Zostaw jak jest” nic nie rusza (makieta 5)", async () => {
     const tresc = transcribedBook();
     vi.mocked(transcribeKw).mockResolvedValue({

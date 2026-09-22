@@ -28,6 +28,7 @@ import {
   polaGruntuZTresci,
   polaZTresci,
 } from "@/domain/kw-z-tresci";
+import { rodzajNiezgodny, type KartaKsiegi } from "@/domain/kw-niezgodnosci";
 import { MAX_TEKST_BAJTOW } from "@/domain/kw-wklej";
 import type { KwWerdykt } from "@/domain/kw-snapshot";
 import {
@@ -68,7 +69,8 @@ type FormInput = z.input<typeof valuationFormSchema>;
 type FormOutput = z.output<typeof valuationFormSchema>;
 
 /** Która księga jedzie danym torem — obie mają te same kanały (ADR-021 R2). */
-export type KwBook = "lokal" | "grunt";
+/** Która karta — ta sama para co `KartaKsiegi`, jeden słownik na obie. */
+export type KwBook = KartaKsiegi;
 export type { KwWejscie };
 
 /** Odrzucenia klientowe przed siecią (D9) — limity kontraktu workera. */
@@ -343,22 +345,35 @@ export function SubjectForm({
    * Werdykt walidatora zapisywany PRZY migawce (ADR-021 reg. 4): klasy i kody
    * działów, kanał, liczba plików i chwila odczytu — nigdy wartość z księgi.
    */
-  const werdyktZ = (t: KwTranscribeResult, wejscie: KwWejscie): KwWerdykt | null =>
-    t.kind === "ok"
-      ? {
-          ok: t.walidacja.ok,
-          bledy: t.walidacja.bledy,
-          kanal: wejscie.kanal,
-          plikow: wejscie.kanal === "pdf" ? wejscie.files.length : 0,
-          at: new Date().toISOString(),
-        }
-      : null;
+  const werdyktZ = (
+    t: KwTranscribeResult,
+    wejscie: KwWejscie,
+    karta: KartaKsiegi,
+  ): KwWerdykt | null => {
+    if (t.kind !== "ok") return null;
+    // Reguła, której worker postawić nie może: on widzi rodzaj księgi, ale nie
+    // kartę, na którą ją wklejono. Dokłada się do werdyktu workera, nie
+    // zastępuje go — obie listy niezgodności trafiają do jednego banera.
+    const rodzaj = rodzajNiezgodny(t.tresc, karta);
+    return {
+      ok: t.walidacja.ok && rodzaj == null,
+      bledy: rodzaj ? [...t.walidacja.bledy, rodzaj] : t.walidacja.bledy,
+      kanal: wejscie.kanal,
+      plikow: wejscie.kanal === "pdf" ? wejscie.files.length : 0,
+      at: new Date().toISOString(),
+    };
+  };
 
-  /** Stan sekcji: baner `ok:false` czyta werdykt z migawki (trwały), nie stąd. */
-  const stanTranskrypcji = (t: KwTranscribeResult): KwTranscribeState =>
+  /**
+   * Stan sekcji: baner `ok:false` czyta werdykt z migawki (trwały), nie stąd.
+   * Czyta jednak WERDYKT, nie `walidacja.ok` workera — inaczej karta z księgą
+   * gruntu wklejoną na lokal pokazałaby naraz zieloną linię „wypadło
+   * pomyślnie" i bursztynowy baner, że nie wypadło.
+   */
+  const stanTranskrypcji = (t: KwTranscribeResult, werdykt: KwWerdykt | null): KwTranscribeState =>
     t.kind === "error"
       ? { status: "failed", code: t.code }
-      : t.walidacja.ok
+      : werdykt?.ok
         ? { status: "ok", dzialy: t.tresc.dzialy.map((d) => d.kod) }
         : { status: "idle" };
 
@@ -428,9 +443,9 @@ export function SubjectForm({
       setTranscribe({ status: "idle" });
       return;
     }
-    if (transcription) setTranscribe(stanTranskrypcji(transcription));
+    const werdykt = transcription ? werdyktZ(transcription, wejscie, book) : null;
+    if (transcription) setTranscribe(stanTranskrypcji(transcription, werdykt));
     const tresc = transcription?.kind === "ok" ? transcription.tresc : null;
-    const werdykt = transcription ? werdyktZ(transcription, wejscie) : null;
 
     if (book === "grunt") {
       // Bez treści nie ma czego zapisać: pola gruntu zostają, jak są, a baner
