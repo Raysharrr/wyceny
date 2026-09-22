@@ -189,9 +189,12 @@ export async function proposeProse(
       // connection ("fetch failed"), a proxy's HTML quoted by the JSON parser
       // (internal hostname and all), a bug in our own code. Those get the
       // generic sentence; the details go to the server log above.
-      return {
-        error: errorWithCode(error instanceof ProseWorkerDetailError ? error.message : GENERIC),
-      };
+      const message = error instanceof ProseWorkerDetailError ? error.message : GENERIC;
+      // The worker's config sentence (PR-1) already ends with THIS run's trace
+      // id — it read it from our X-Request-Id — so suffixing it again would
+      // print „…kod: abc. (kod: abc)”. Every other message keeps the suffix.
+      const traceId = currentTraceId();
+      return { error: traceId && message.includes(traceId) ? message : errorWithCode(message) };
     }
 
     // One fingerprint per REQUESTED section — never the whole six, since only
