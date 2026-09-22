@@ -40,6 +40,20 @@ export const featureDefinitionsSchema = z.object({
   gorsza: z.string().optional(),
 });
 
+/** Jeden poziom skali — dla oceny przedmiotu i dla ocen lokali skrajnych. */
+export const featureRatingSchema = z.enum(["gorsza", "przecietna", "lepsza"]);
+
+/**
+ * Mirrors `ComparableRatings` z `@/domain/kcs` (ADR-022): klucz lokalu →
+ * klucz cechy → poziom. Klucze lokali bywają z kropkami (`tx|306401_1.0039.x`),
+ * więc to `z.record`, nie ścieżka formularza. Przycinanie do żywych cech robi
+ * akcja (`pruneComparableRatings`), nie schemat.
+ */
+export const comparableRatingsSchema = z.record(
+  z.string(),
+  z.record(z.string(), featureRatingSchema),
+);
+
 /**
  * Mirrors `MeasureBound` from `@/domain/kcs` — an absent edge is unbounded, and
  * an edge that IS there is a whole number: the operats write these bands in
@@ -77,7 +91,7 @@ export const featureSchema = z
     name: z.string().trim().min(1, "Podaj nazwę cechy."),
     weightPct: z.coerce.number().min(0, "Waga nie może być ujemna."),
     // ADR-016 reg. 3: no default rating — null until the appraiser picks a level.
-    rating: z.enum(["gorsza", "przecietna", "lepsza"]).nullable(),
+    rating: featureRatingSchema.nullable(),
     definitions: featureDefinitionsSchema.optional(),
     measure: featureMeasureSchema.nullish(),
   })
@@ -523,6 +537,9 @@ export const valuationFormObject = z.object({
         }
       });
     }),
+  // `.nullish()` z tego samego powodu co `kw` niżej: wycofanie ocen musi być
+  // WARTOŚCIĄ, którą schemat przyjmuje na ścieżce, której żadne pole nie renderuje.
+  comparableRatings: comparableRatingsSchema.nullish(),
   sampleMeta: sampleMetaSchema.optional(),
   sampleSelection: sampleSelectionSchema.optional(),
   streetView: streetViewSchema.optional(),

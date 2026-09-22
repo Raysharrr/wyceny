@@ -406,12 +406,44 @@ describe("saveFeaturesAction", () => {
           measure: null,
         },
       ],
+      comparableRatings: null,
       provenance: {
         weights: { source: "rzeczoznawca", status: "confirmed" },
         ratings: { source: "rzeczoznawca", status: "confirmed" },
         featureDefs: { source: "rzeczoznawca", status: "confirmed" },
       },
     });
+  });
+
+  it("zapisuje comparableRatings, odcinając klucze cech spoza features[] (ADR-022)", async () => {
+    getMock.mockResolvedValueOnce({
+      ...draftValuation,
+      inputs: { area: 50, comparables: [], features: [], sampleMeta: null, provenance: null },
+    });
+    saveFeaturesMock.mockResolvedValueOnce(draftValuation);
+
+    const result = await saveFeaturesAction(VALUATION_ID, {
+      ...featuresInput,
+      comparableRatings: {
+        "TX-1|L-1": { "standard-wykonczenia": "lepsza", dodatkowe: "gorsza" },
+        "TX-2|L-2": { dodatkowe: "gorsza" },
+      },
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(saveFeaturesMock.mock.calls[0][2].comparableRatings).toEqual({
+      "TX-1|L-1": { "standard-wykonczenia": "lepsza" },
+    });
+  });
+
+  it("bez ocen zapisuje jawne null, nie undefined (jsonb gubi undefined po cichu)", async () => {
+    getMock.mockResolvedValueOnce({
+      ...draftValuation,
+      inputs: { area: 50, comparables: [], features: [], sampleMeta: null, provenance: null },
+    });
+    saveFeaturesMock.mockResolvedValueOnce(draftValuation);
+    await saveFeaturesAction(VALUATION_ID, featuresInput);
+    expect(saveFeaturesMock.mock.calls[0][2]).toHaveProperty("comparableRatings", null);
   });
 
   // FH.1: the thresholds have to survive the save, or the suggestion is gone

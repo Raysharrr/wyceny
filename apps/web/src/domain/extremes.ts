@@ -1,5 +1,6 @@
 import type {
   Comparable,
+  ComparableRatings,
   Feature,
   FeatureMeasure,
   FeatureRating,
@@ -15,9 +16,6 @@ import { candidateKey, pietroOfFloor, type Candidate } from "./sample-selection"
  * kandydat za nimi stoi” — czytają je §12.2 (`document-model.ts`), krok 4
  * (karta ocen) i bramka B-18 (`valuation.ts`). Czysty moduł (F-10).
  */
-
-/** Zastąpione przez `ComparableRatings` z `./kcs` w Zadaniu 2 — tu tylko po to, by moduł stał sam. */
-export type ComparableRatings = Record<string, Record<string, FeatureRating>>;
 
 export type ExtremeSide = "min" | "max";
 

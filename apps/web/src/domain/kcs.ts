@@ -47,6 +47,14 @@ export type SampleMeta = Omit<CandidatePool, "candidates">;
 export type FeatureRating = "gorsza" | "przecietna" | "lepsza";
 
 /**
+ * Oceny cech LOKALI SKRAJNYCH (ADR-022): klucz zewnętrzny = klucz lokalu
+ * (`ExtremeLokal.key`, zwykle `candidateKey`), wewnętrzny = `Feature.key`.
+ * Ten sam kształt co `comparisons[id][key].rating` w porównywaniu parami
+ * (#47), żeby jedna tabela ocen obsłużyła obie metody. Silnik tego nie czyta.
+ */
+export type ComparableRatings = Record<string, Record<string, FeatureRating>>;
+
+/**
  * Where a comparable came from (B1, S1 of the "Prawo spółdzielcze" block).
  * `rcn` and `rejestr_sm` are registers — machine-fetched rows that arrive
  * `to_verify`; `manual` is typed by the appraiser. Underscore on purpose:
@@ -173,6 +181,12 @@ export type KcsInput = {
   /** Usable area of the subject property, m². */
   area: number;
   features: Feature[];
+  /**
+   * Oceny cech lokali o cenie skrajnej dla §12.2 (ADR-022) — render/bramka
+   * only; `computeKcs` nigdy tego nie czyta. Optional: szkice sprzed zmiany
+   * go nie mają i drukują §12.2 z progów jak dotąd. `null` = jawne wycofanie.
+   */
+  comparableRatings?: ComparableRatings | null;
   /** RCN fetch provenance for the whole sample (F-5) — display/audit metadata only; computeKcs never reads this. */
   sampleMeta?: SampleMeta | null;
   /**
