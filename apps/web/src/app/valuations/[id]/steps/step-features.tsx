@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Calculator, Check, Scale, SlidersHorizontal } from "lucide-react";
+import { Calculator, Scale, SlidersHorizontal } from "lucide-react";
 import { Controller, useFieldArray, useForm, useWatch, type Control } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import type { z } from "zod";
@@ -29,28 +29,26 @@ import {
   levelForValue,
   measureIssues,
 } from "@/domain/feature-rules";
+import { extremeLokale, pruneComparableRatings } from "@/domain/extremes";
 import type {
   Comparable,
+  ComparableRatings,
   FeatureMeasure,
   FeatureRating,
   KcsInput,
   MeasureBound,
 } from "@/domain/kcs";
+import type { SampleSelectionSnapshot } from "@/domain/sample-snapshot";
 import { cn } from "@/lib/utils";
 import { DEFAULT_FEATURES } from "@/lib/valuation-form-schema";
 import { FootNav } from "@/components/wizard/foot-nav";
 import { SectionCard } from "@/components/wizard/section-card";
+import { FeatureRatingGroup, SCALE_LEVELS } from "./feature-rating-group";
+import { boundText, MEASURE_NOUN, measureValueFormatter } from "./feature-hint-text";
+import { ExtremesCard, isLokalRated, type ExtremeFeature } from "./step-features-extremes";
 
 type FormInput = z.input<typeof featuresStepSchema>;
 type FormOutput = z.output<typeof featuresStepSchema>;
-
-/** Scale order on screen, lowest first — the cards read left to right like the scale. */
-const SCALE_LEVELS: FeatureRating[] = ["gorsza", "przecietna", "lepsza"];
-
-// Level cards mirror the option tiles of `new/kw-section.tsx` (TILE, TILE_SELECTED).
-const TILE = "h-auto flex-col items-start gap-0.5 whitespace-normal rounded-lg px-4 py-3 text-left";
-const TILE_SELECTED = "border-primary bg-[var(--accent-050)]";
-const TILE_IDLE = "border-border";
 
 const numberFormatter = new Intl.NumberFormat("pl-PL", {
   minimumFractionDigits: 2,
@@ -153,86 +151,6 @@ function FeatureRatingRow({
         </span>
       </div>
       {children}
-    </div>
-  );
-}
-
-/**
- * Mockup `FeatureRatingGroup` — the described levels as one radio group.
- * Follows the ARIA radio-group pattern: one tab stop (the selected tile, or the
- * first one while nothing is selected) and arrows/Home/End move the selection.
- */
-function FeatureRatingGroup({
-  label,
-  levels,
-  definitions,
-  rating,
-  onSelect,
-}: {
-  label: string;
-  levels: FeatureRating[];
-  definitions: Partial<Record<FeatureRating, string>> | undefined;
-  rating: FeatureRating | null;
-  onSelect: (level: FeatureRating) => void;
-}) {
-  const selectedIndex = rating ? levels.indexOf(rating) : -1;
-  const focusedIndex = selectedIndex < 0 ? 0 : selectedIndex;
-
-  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    const last = levels.length - 1;
-    if (last < 0) return;
-    const tiles = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
-    const from = Math.max(tiles.indexOf(document.activeElement as HTMLElement), focusedIndex);
-    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
-    // Arrows wrap around the group, Home/End jump to its ends (ARIA pattern).
-    const next =
-      step !== undefined
-        ? (from + step + levels.length) % levels.length
-        : event.key === "Home"
-          ? 0
-          : event.key === "End"
-            ? last
-            : null;
-    if (next === null) return;
-    event.preventDefault();
-    onSelect(levels[next]);
-    tiles[next]?.focus();
-  }
-
-  return (
-    <div
-      role="radiogroup"
-      aria-label={label}
-      className="flex flex-wrap gap-2"
-      onKeyDown={onKeyDown}
-    >
-      {levels.map((level, index) => (
-        <Button
-          key={level}
-          type="button"
-          role="radio"
-          aria-checked={level === rating}
-          tabIndex={index === focusedIndex ? 0 : -1}
-          variant="outline"
-          onClick={() => onSelect(level)}
-          className={cn(
-            TILE,
-            "flex-[1_1_13rem]",
-            level === rating ? TILE_SELECTED : TILE_IDLE,
-            rating == null && "bg-card",
-          )}
-        >
-          <span className="text-sm font-medium text-foreground">
-            {LEVEL_LABEL[level]}
-            {level === rating ? (
-              <Check className="ml-1 inline-block size-3.5 align-[-2px] text-primary" />
-            ) : null}
-          </span>
-          <span className="text-xs font-normal text-muted-foreground">
-            {definitions?.[level] ?? ""}
-          </span>
-        </Button>
-      ))}
     </div>
   );
 }
@@ -373,8 +291,6 @@ function subjectValueFor(
   return kind === "floor" ? subject.pietro : subject.area;
 }
 
-const measureValueFormatter = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
-
 /** The subject's value as the hint prints it — "6" for a storey, "44,23 m²" for an area. */
 function measureValueText(kind: FeatureMeasure["kind"], value: number): string {
   return kind === "floor"
@@ -394,34 +310,6 @@ function roundedValueText(kind: FeatureMeasure["kind"], value: number): string |
   const rounded = Math.round(value);
   return rounded === value ? null : measureValueText(kind, rounded);
 }
-
-/**
- * The suggested level's own band, split the way the mockup sets it: the
- * preposition stays in the running text, the numbers are the bold part. Both
- * edges are inclusive, so "do" means "up to and including" — the same word the
- * generated definition uses.
- */
-function boundText(
-  kind: FeatureMeasure["kind"],
-  bound: MeasureBound,
-): { slowo: string; liczba: string } {
-  const unit = (n: number) =>
-    kind === "floor" ? String(n) : `${measureValueFormatter.format(n)} m²`;
-  if (kind === "floor" && bound.od === 0 && bound.do === 0) return { slowo: "", liczba: "parter" };
-  if (bound.od != null && bound.do != null) {
-    return bound.od === 0
-      ? { slowo: "do", liczba: unit(bound.do) }
-      : { slowo: "od", liczba: `${unit(bound.od)} do ${unit(bound.do)}` };
-  }
-  if (bound.od != null) return { slowo: "od", liczba: unit(bound.od) };
-  if (bound.do != null) return { slowo: "do", liczba: unit(bound.do) };
-  return { slowo: "", liczba: "" };
-}
-
-const MEASURE_NOUN: Record<FeatureMeasure["kind"], string> = {
-  floor: "piętro",
-  area: "powierzchnia",
-};
 
 /**
  * Mockup `ThresholdHint` — for a measurable feature it reads the subject's own
@@ -482,6 +370,8 @@ export function StepFeatures({
   comparables,
   area,
   pietro = null,
+  sampleSelection = null,
+  comparableRatings: savedRatings = null,
 }: {
   valuationId: string;
   features: KcsInput["features"];
@@ -489,11 +379,22 @@ export function StepFeatures({
   area: number;
   /** Storey of the subject from step 1 (parter = 0); null when not filled in. */
   pietro?: number | null;
+  /** Migawka próby z kroku 3 — źródło lokali skrajnych (ADR-022); null = próba ręczna, karta nie renderuje się. */
+  sampleSelection?: SampleSelectionSnapshot | null;
+  /** Zapisane oceny lokali skrajnych; klucze spoza żywej próby giną przy wejściu. */
+  comparableRatings?: ComparableRatings | null;
 }) {
   const router = useRouter();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [editingScale, setEditingScale] = useState<Record<string, boolean>>({});
   const comparableAreas = comparables.map((c) => c.area);
+
+  // Lokale skrajne liczone z FROZEN propsów (próba nie zmienia się na tym
+  // kroku) — jedno wywołanie domeny na render, to samo, które czyta §12.2 i B-18.
+  const lokale = useMemo(
+    () => (sampleSelection ? extremeLokale({ comparables, sampleSelection }) : []),
+    [comparables, sampleSelection],
+  );
 
   const {
     control,
@@ -504,6 +405,16 @@ export function StepFeatures({
     resolver: zodResolver(featuresStepSchema),
     defaultValues: {
       features: buildDefaultFeatures(initialFeatures, comparableAreas),
+      // Pole MUSI tu być (review PR #79, F1): bez niego zapis kroku 4 wysyła
+      // `undefined`, akcja utrwala `null` i każdy zapis kasuje oceny, których
+      // rzeczoznawca nawet nie dotknął. Zmiana próby → nowe klucze bez ocen:
+      // stare wpisy znikają tu, nie w bazie.
+      comparableRatings:
+        pruneComparableRatings(
+          savedRatings,
+          lokale.map((l) => l.key),
+          null,
+        ) ?? {},
     },
   });
 
@@ -514,6 +425,21 @@ export function StepFeatures({
   } = useFieldArray({ control, name: "features" });
 
   const features = useWatch({ control, name: "features" });
+  const ratings = useWatch({ control, name: "comparableRatings" }) ?? {};
+  const extremeFeatures: ExtremeFeature[] = (features ?? []).flatMap((f) =>
+    f?.key && (Number(f.weightPct) || 0) > 0
+      ? [{ key: f.key, name: f.name ?? "", definitions: f.definitions, measure: f.measure ?? null }]
+      : [],
+  );
+  const ratedLokale = lokale.filter((l) => isLokalRated(extremeFeatures, ratings[l.key])).length;
+  const extremesMissing = lokale.length - ratedLokale;
+  // Klucz lokalu ma kropki (EGiB), więc nie może być ścieżką RHF — zapis całą mapą.
+  const rateLokal = (lokalKey: string, featureKey: string, level: FeatureRating) =>
+    setValue(
+      "comparableRatings",
+      { ...ratings, [lokalKey]: { ...(ratings[lokalKey] ?? {}), [featureKey]: level } },
+      { shouldDirty: true, shouldValidate: true },
+    );
 
   const weightSum = (features ?? []).reduce((sum, f) => sum + (Number(f?.weightPct) || 0), 0);
   const weightsBalanced = Math.abs(weightSum - 100) <= 0.1;
@@ -566,6 +492,17 @@ export function StepFeatures({
       ? Math.min(1, Math.max(0, (live.sumUi - live.vmin) / (live.vmax - live.vmin)))
       : null;
 
+  // Pasek dolny liczy oba komplety (makieta 7): cechy przedmiotu i lokale skrajne.
+  const extremesCount =
+    lokale.length > 0 ? (
+      <>
+        {" · "}lokale skrajne{" "}
+        <b>
+          {ratedLokale} z {lokale.length}
+        </b>
+      </>
+    ) : null;
+
   const onSubmit = handleSubmit(async (values) => {
     setSubmitError(null);
     const result = await saveFeaturesAction(valuationId, values);
@@ -579,216 +516,226 @@ export function StepFeatures({
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       <div className="grid items-start gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <SectionCard
-          icon={SlidersHorizontal}
-          title="Cechy, oceny i wagi"
-          sub={`oceniono ${rated} z ${total}`}
-        >
-          <div className="flex flex-col gap-3">
-            <FeatureRatingList>
-              {featureFields.map((field, index) => {
-                const current = features?.[index];
-                const key = current?.key ?? field.key;
-                const rating = current?.rating ?? null;
-                const definitions = current?.definitions ?? field.definitions;
-                const isRated = rating != null;
-                const ui = uis[index];
-                const measure = current?.measure ?? null;
-                // FH.2: the suggestion needs thresholds AND a subject value the
-                // scale actually covers; it stays until the rating agrees with
-                // it, so a deliberately different rating keeps the comparison
-                // on screen rather than silently hiding it.
-                const measuredValue = measure
-                  ? subjectValueFor(measure.kind, { area, pietro })
-                  : null;
-                const suggested = measure ? levelForValue(measure, measuredValue) : null;
-                const showHint = suggested != null && suggested !== rating;
-                // I-10 live, not on submit: a scale the save would refuse (B-09,
-                // B-10) says so in the row while the appraiser is editing it.
-                // B-08 is skipped — the „Wybierz ocenę” badge already says it.
-                //
-                // On a measurable feature the BANDS come first: they are the
-                // source of the texts, so a band problem is the cause and
-                // B-09/B-10 only its symptom (a band with no wording leaves its
-                // level undescribed, and „opisz dwa poziomy” would send the
-                // appraiser to fix the wrong thing).
-                const rowIssue =
-                  (measure ? measureIssues(measure)[0] : undefined) ??
-                  featureIssues({
-                    name: field.name,
-                    weight: (Number(current?.weightPct) || 0) / 100,
-                    rating,
-                    definitions,
-                  }).find((issue) => issue.code !== "B-08")?.label;
-                return (
-                  <FeatureRatingRow
-                    key={field.id}
-                    featureKey={key}
-                    name={field.name}
-                    rated={isRated}
-                    meta={
-                      <>
-                        {!isRated ? (
-                          <Badge
-                            variant="outline"
-                            className="border-[var(--amber-line)] text-[var(--amber)]"
+        <div className="flex flex-col gap-4">
+          <SectionCard
+            icon={SlidersHorizontal}
+            title="Cechy, oceny i wagi"
+            sub={`oceniono ${rated} z ${total}`}
+          >
+            <div className="flex flex-col gap-3">
+              <FeatureRatingList>
+                {featureFields.map((field, index) => {
+                  const current = features?.[index];
+                  const key = current?.key ?? field.key;
+                  const rating = current?.rating ?? null;
+                  const definitions = current?.definitions ?? field.definitions;
+                  const isRated = rating != null;
+                  const ui = uis[index];
+                  const measure = current?.measure ?? null;
+                  // FH.2: the suggestion needs thresholds AND a subject value the
+                  // scale actually covers; it stays until the rating agrees with
+                  // it, so a deliberately different rating keeps the comparison
+                  // on screen rather than silently hiding it.
+                  const measuredValue = measure
+                    ? subjectValueFor(measure.kind, { area, pietro })
+                    : null;
+                  const suggested = measure ? levelForValue(measure, measuredValue) : null;
+                  const showHint = suggested != null && suggested !== rating;
+                  // I-10 live, not on submit: a scale the save would refuse (B-09,
+                  // B-10) says so in the row while the appraiser is editing it.
+                  // B-08 is skipped — the „Wybierz ocenę” badge already says it.
+                  //
+                  // On a measurable feature the BANDS come first: they are the
+                  // source of the texts, so a band problem is the cause and
+                  // B-09/B-10 only its symptom (a band with no wording leaves its
+                  // level undescribed, and „opisz dwa poziomy” would send the
+                  // appraiser to fix the wrong thing).
+                  const rowIssue =
+                    (measure ? measureIssues(measure)[0] : undefined) ??
+                    featureIssues({
+                      name: field.name,
+                      weight: (Number(current?.weightPct) || 0) / 100,
+                      rating,
+                      definitions,
+                    }).find((issue) => issue.code !== "B-08")?.label;
+                  return (
+                    <FeatureRatingRow
+                      key={field.id}
+                      featureKey={key}
+                      name={field.name}
+                      rated={isRated}
+                      meta={
+                        <>
+                          {!isRated ? (
+                            <Badge
+                              variant="outline"
+                              className="border-[var(--amber-line)] text-[var(--amber)]"
+                            >
+                              Wybierz ocenę
+                            </Badge>
+                          ) : null}
+                          <Controller
+                            control={control}
+                            name={`features.${index}.weightPct`}
+                            render={({ field: weightField, fieldState }) => (
+                              <label className="flex items-center gap-1.5">
+                                Waga
+                                <Input
+                                  id={`feature-weight-${index}`}
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  inputMode="decimal"
+                                  className="w-16 text-foreground"
+                                  aria-invalid={!!fieldState.error}
+                                  name={weightField.name}
+                                  onBlur={weightField.onBlur}
+                                  ref={weightField.ref}
+                                  value={toInputValue(weightField.value)}
+                                  onChange={(e) => weightField.onChange(e.target.value)}
+                                />
+                                %
+                              </label>
+                            )}
+                          />
+                          {isRated && ui != null ? (
+                            <span className="num">Ui {sumUiFormatter.format(ui)}</span>
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant="link"
+                            size="sm"
+                            aria-expanded={!!editingScale[field.id]}
+                            onClick={() =>
+                              setEditingScale((open) => ({ ...open, [field.id]: !open[field.id] }))
+                            }
                           >
-                            Wybierz ocenę
-                          </Badge>
-                        ) : null}
-                        <Controller
-                          control={control}
-                          name={`features.${index}.weightPct`}
-                          render={({ field: weightField, fieldState }) => (
-                            <label className="flex items-center gap-1.5">
-                              Waga
-                              <Input
-                                id={`feature-weight-${index}`}
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                inputMode="decimal"
-                                className="w-16 text-foreground"
-                                aria-invalid={!!fieldState.error}
-                                name={weightField.name}
-                                onBlur={weightField.onBlur}
-                                ref={weightField.ref}
-                                value={toInputValue(weightField.value)}
-                                onChange={(e) => weightField.onChange(e.target.value)}
-                              />
-                              %
-                            </label>
-                          )}
-                        />
-                        {isRated && ui != null ? (
-                          <span className="num">Ui {sumUiFormatter.format(ui)}</span>
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="link"
-                          size="sm"
-                          aria-expanded={!!editingScale[field.id]}
-                          onClick={() =>
-                            setEditingScale((open) => ({ ...open, [field.id]: !open[field.id] }))
-                          }
-                        >
-                          Edytuj skalę
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          data-testid={`remove-feature-${key ?? index}`}
-                          aria-label={`Usuń cechę ${field.name}`}
-                          disabled={featureFields.length === 1}
-                          onClick={() => removeFeature(index)}
-                        >
-                          Usuń
-                        </Button>
-                      </>
-                    }
-                  >
-                    <FieldError errors={[errors.features?.[index]?.weightPct]} />
-                    <FeatureRatingGroup
-                      label={field.name}
-                      levels={describedLevels({ definitions })}
-                      definitions={definitions}
-                      rating={rating}
-                      onSelect={(level) =>
-                        setValue(`features.${index}.rating`, level, {
-                          shouldDirty: true,
-                          shouldValidate: true,
-                        })
+                            Edytuj skalę
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            data-testid={`remove-feature-${key ?? index}`}
+                            aria-label={`Usuń cechę ${field.name}`}
+                            disabled={featureFields.length === 1}
+                            onClick={() => removeFeature(index)}
+                          >
+                            Usuń
+                          </Button>
+                        </>
                       }
-                    />
-                    {showHint ? (
-                      <ThresholdHint
-                        featureKey={key ?? String(index)}
-                        measure={measure!}
-                        value={measuredValue!}
-                        level={suggested}
-                        onAccept={() =>
-                          setValue(`features.${index}.rating`, suggested, {
+                    >
+                      <FieldError errors={[errors.features?.[index]?.weightPct]} />
+                      <FeatureRatingGroup
+                        label={field.name}
+                        levels={describedLevels({ definitions })}
+                        definitions={definitions}
+                        rating={rating}
+                        onSelect={(level) =>
+                          setValue(`features.${index}.rating`, level, {
                             shouldDirty: true,
                             shouldValidate: true,
                           })
                         }
                       />
-                    ) : null}
-                    {editingScale[field.id] ? (
-                      <ScaleEditor
-                        control={control}
-                        index={index}
-                        featureKey={key}
-                        rating={rating}
-                        measure={measure}
-                        onSelectedLevelCleared={() =>
-                          setValue(`features.${index}.rating`, null, { shouldDirty: true })
-                        }
-                        onMeasureChange={(next) => {
-                          setValue(`features.${index}.measure`, next, { shouldDirty: true });
-                          if (!next) return;
-                          // The bands are the scale: every text is rewritten from
-                          // them, so a level that lost its band loses its card too.
-                          const generated = definitionsFromMeasure(next);
-                          for (const level of SCALE_LEVELS) {
-                            setValue(
-                              `features.${index}.definitions.${level}`,
-                              generated[level] ?? "",
-                              { shouldDirty: true },
-                            );
+                      {showHint ? (
+                        <ThresholdHint
+                          featureKey={key ?? String(index)}
+                          measure={measure!}
+                          value={measuredValue!}
+                          level={suggested}
+                          onAccept={() =>
+                            setValue(`features.${index}.rating`, suggested, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            })
                           }
-                        }}
-                      />
-                    ) : null}
-                    {rowIssue ? (
-                      <p role="alert" className="text-sm text-destructive">
-                        {rowIssue}
-                      </p>
-                    ) : null}
-                  </FeatureRatingRow>
-                );
-              })}
-            </FeatureRatingList>
+                        />
+                      ) : null}
+                      {editingScale[field.id] ? (
+                        <ScaleEditor
+                          control={control}
+                          index={index}
+                          featureKey={key}
+                          rating={rating}
+                          measure={measure}
+                          onSelectedLevelCleared={() =>
+                            setValue(`features.${index}.rating`, null, { shouldDirty: true })
+                          }
+                          onMeasureChange={(next) => {
+                            setValue(`features.${index}.measure`, next, { shouldDirty: true });
+                            if (!next) return;
+                            // The bands are the scale: every text is rewritten from
+                            // them, so a level that lost its band loses its card too.
+                            const generated = definitionsFromMeasure(next);
+                            for (const level of SCALE_LEVELS) {
+                              setValue(
+                                `features.${index}.definitions.${level}`,
+                                generated[level] ?? "",
+                                { shouldDirty: true },
+                              );
+                            }
+                          }}
+                        />
+                      ) : null}
+                      {rowIssue ? (
+                        <p role="alert" className="text-sm text-destructive">
+                          {rowIssue}
+                        </p>
+                      ) : null}
+                    </FeatureRatingRow>
+                  );
+                })}
+              </FeatureRatingList>
 
-            {availableFeatures.length > 0 ? (
-              <select
-                data-testid="add-feature-select"
-                aria-label="Dodaj cechę z puli"
-                className="w-fit rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
-                value=""
-                onChange={(e) => {
-                  const entry = FEATURE_PRESETS.lokal.find((x) => x.key === e.target.value);
-                  if (!entry) return;
-                  appendFeature({
-                    key: entry.key as LokalFeatureKey,
-                    name: entry.name,
-                    weightPct: 0,
-                    rating: null,
-                    definitions: { ...entry.defaultDefinitions },
-                  });
-                }}
-              >
-                <option value="">+ Dodaj cechę z puli…</option>
-                {availableFeatures.map((e) => (
-                  <option key={e.key} value={e.key}>
-                    {e.name}
-                  </option>
-                ))}
-              </select>
-            ) : null}
+              {availableFeatures.length > 0 ? (
+                <select
+                  data-testid="add-feature-select"
+                  aria-label="Dodaj cechę z puli"
+                  className="w-fit rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
+                  value=""
+                  onChange={(e) => {
+                    const entry = FEATURE_PRESETS.lokal.find((x) => x.key === e.target.value);
+                    if (!entry) return;
+                    appendFeature({
+                      key: entry.key as LokalFeatureKey,
+                      name: entry.name,
+                      weightPct: 0,
+                      rating: null,
+                      definitions: { ...entry.defaultDefinitions },
+                    });
+                  }}
+                >
+                  <option value="">+ Dodaj cechę z puli…</option>
+                  {availableFeatures.map((e) => (
+                    <option key={e.key} value={e.key}>
+                      {e.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
 
-            {featuresError ? (
-              <p role="alert" className="text-sm text-destructive">
-                {featuresError}
-              </p>
-            ) : !weightsBalanced ? (
-              <p className="text-sm text-amber-600 dark:text-amber-500">
-                Suma wag wynosi {numberFormatter.format(weightSum)}% — powinna wynosić 100%.
-              </p>
-            ) : null}
-          </div>
-        </SectionCard>
+              {featuresError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {featuresError}
+                </p>
+              ) : !weightsBalanced ? (
+                <p className="text-sm text-amber-600 dark:text-amber-500">
+                  Suma wag wynosi {numberFormatter.format(weightSum)}% — powinna wynosić 100%.
+                </p>
+              ) : null}
+            </div>
+          </SectionCard>
+          {lokale.length > 0 ? (
+            <ExtremesCard
+              lokale={lokale}
+              features={extremeFeatures}
+              ratings={ratings}
+              onRate={rateLokal}
+            />
+          ) : null}
+        </div>
 
         <aside className="flex flex-col gap-4 lg:sticky lg:top-[128px]">
           <SectionCard icon={Scale} title="Wskaźnik korekty ΣUi">
@@ -871,11 +818,13 @@ export function StepFeatures({
                   {rated} z {total}
                 </b>{" "}
                 cech
+                {extremesCount}
               </>
             ) : live ? (
               <>
                 ΣUi <b className="num">{sumUiFormatter.format(live.sumUi)}</b> · podgląd WR{" "}
                 <b className="num">{wrFormatter.format(live.wr)} zł</b>
+                {extremesCount}
               </>
             ) : (
               "—"
@@ -883,7 +832,11 @@ export function StepFeatures({
           </span>
         }
       >
-        <Button type="submit" disabled={isSubmitting || missing > 0} className="w-fit">
+        <Button
+          type="submit"
+          disabled={isSubmitting || missing > 0 || extremesMissing > 0}
+          className="w-fit"
+        >
           Zatwierdź cechy i dalej
         </Button>
       </FootNav>

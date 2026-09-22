@@ -13,6 +13,7 @@ export function SectionCard({
   right,
   children,
   className,
+  "data-testid": testId,
 }: {
   icon?: LucideIcon;
   title: string;
@@ -20,9 +21,12 @@ export function SectionCard({
   right?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  /** Uchwyt testowy sekcji — karta bywa celem asercji jako całość (ADR-022, karta lokali skrajnych). */
+  "data-testid"?: string;
 }) {
   return (
     <section
+      data-testid={testId}
       className={"rounded-[14px] border border-border bg-card shadow-sm " + (className ?? "")}
     >
       <header className="flex items-center gap-3 border-b border-border px-5 py-3.5">

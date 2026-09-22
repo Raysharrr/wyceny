@@ -250,6 +250,17 @@ export async function rateAllFeatures(page: Page) {
     }
     await row.getByRole("radio").first().click();
   }
+
+  // ADR-022: karta lokali o cenie skrajnej — tylko przy próbie z rejestru
+  // (smoke wpisuje ceny ręcznie i karty nie ma; spoldzielcze ją ma). Wiersze
+  // cech przedmiotu są ocenione wyżej, więc skala każdego lokalu ma już
+  // komplet kafelków.
+  const extremes = page.getByTestId("extremes-card");
+  if ((await extremes.count()) > 0) {
+    const groups = extremes.getByRole("radiogroup");
+    const n = await groups.count();
+    for (let i = 0; i < n; i++) await groups.nth(i).getByRole("radio").first().click();
+  }
 }
 
 /** Steps 4–7 with prose OFF: preset features rated, calculation, placeholder, preview. */
