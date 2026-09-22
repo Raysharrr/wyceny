@@ -22,10 +22,22 @@ Numer repertorium i tytuł aktu bywają zwracane raz z prefiksem („REP. A NR �
 
 Przepisana treść przechodzi zestaw **deterministycznych** sprawdzeń (nie ocenia ich model, tylko kod):
 
-- **cyfra kontrolna** numeru księgi lokalu i numeru księgi gruntu,
+Część z nich zależy od **rodzaju księgi**, który walidator czyta z nagłówka. Pola lokalowe — numer lokalu, udział, numer księgi gruntu i cyfra kontrolna tego numeru — istnieją wyłącznie w księdze lokalu: księga gruntu nie ma czego nimi opisywać ani na co wskazywać. Dla księgi gruntu te sprawdzenia są więc pomijane, a pola nie są z niej wypełniane.
+
+Zawsze, w obu księgach:
+
+- **cyfra kontrolna numeru własnego księgi** — tego z nagłówka przepisanej księgi,
 - **suma kontrolna PESEL** każdego jedenastocyfrowego ciągu w treści,
-- **zgodność pól z treścią**: numer księgi gruntu z działu I-O i I-Sp, numer księgi lokalu z nagłówkiem, numer lokalu i wielkość udziału z odpowiednimi rubrykami, numer Rep. A z dokumentem podstawy wpisu w dziale II,
-- **spójność struktury**: dział oznaczony „BRAK WPISÓW” nie może zawierać tabel, a wiersz otwierający wpis nie może zostać zapisany jako rubryka.
+- **spójność oznaczeń „brak wpisów”**: dział oznaczony „BRAK WPISÓW” nie może zawierać tabel,
+- **spójność rubryk**: wiersz otwierający wpis nie może zostać zapisany jako rubryka,
+- **komplet działów** — pięć, nie mniej,
+- **numer Rep. A** z dokumentem podstawy wpisu w dziale II,
+- **rodzaj księgi wobec karty**, na którą treść wklejono: księga gruntowa na karcie księgi lokalu (i odwrotnie) to niezgodność. Tego jednego nie sprawdza walidator, tylko sama aplikacja — worker widzi rodzaj księgi, ale nie wie, do której karty treść trafiła. Nagłówek bez rodzaju nie daje niezgodności: rodzaju nie zgadujemy.
+
+Tylko w księdze lokalu:
+
+- **cyfra kontrolna** numeru księgi lokalu z pól dodatkowych i numeru księgi gruntu,
+- **zgodność pól z treścią**: numer księgi gruntu z działu I-O i I-Sp, numer księgi lokalu z nagłówkiem, numer lokalu i wielkość udziału z odpowiednimi rubrykami.
 
 **Gdy któreś sprawdzenie nie przejdzie, treść i tak zostaje zapisana** — werdykt jest ostrzeżeniem, nie blokadą (ADR-021). Karta w kroku 1 pokazuje niezgodności po polsku (np. „udział w nieruchomości wspólnej”, „numer PESEL w dziale II”) i podpisuje pola, których dotyczą; baner jest trwały. Same nazwy klas, nigdy wartości: nazwa mówi, gdzie patrzeć, i nic z księgi nie wycieka do komunikatu. Operat cytuje treść tak, jak została przepisana — dlatego trzeba ją porównać z księgą przed zatwierdzeniem; podgląd w kroku 7 otwiera tabelę działów wierszem ostrzeżenia, którego w wydanym operacie nie ma.
 
@@ -35,7 +47,7 @@ Nieudane przepisanie treści przy udanym odczycie pól też kończy się ostrze�
 
 Przepisana treść trafia do operatu bez Twojej dodatkowej akceptacji w kroku 1 — **miejscem jej przeglądu jest podgląd operatu w kroku 7**. Tam widać ją dokładnie tak, jak trafi do wydanego dokumentu, i tam należy ją porównać z księgą przed zatwierdzeniem. Nie ma osobnego ekranu do przeglądania samych działów.
 
-**Księga gruntu przechodzi tę samą drogę.** Walidator rozpoznaje rodzaj księgi po nagłówku: dla księgi gruntowej pomija reguły lokalowe (numer lokalu, udział, potrójna zgodność numerów), zostają cyfry kontrolne, PESEL, spójność „brak wpisów”, rubryki i Rep. A.
+**Księga gruntu przechodzi tę samą drogę.** Walidator rozpoznaje rodzaj księgi po nagłówku — wystarczy, że nazwa rodzaju zawiera słowo „grunt”, bo eKW zapisuje go na kilka sposobów. Dla księgi gruntowej pomijane są reguły lokalowe (numer lokalu, udział, numer księgi gruntu wraz z jego cyfrą kontrolną, potrójna zgodność numerów); zostają cyfra kontrolna numeru własnego, PESEL, spójność „brak wpisów”, rubryki i Rep. A. Z księgi gruntu nie wypełniamy też trzech pól lokalowych karty: model wpisuje w nie, co w takiej księdze znajdzie — w jednej ze zmierzonych ksiąg obszar działki z działu I-O jako numer księgi gruntu — a operat wydrukowałby to jako numer księgi macierzystej.
 
 ## Jakie dokumenty przyjmujemy
 
