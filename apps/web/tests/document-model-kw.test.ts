@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildDocumentModel, type BuildDocumentInput } from "@/domain/document-model";
+import {
+  buildDocumentModel,
+  previewMarkerRow,
+  type BuildDocumentInput,
+} from "@/domain/document-model";
 import { computeKcs, type KcsInput } from "@/domain/kcs";
 import { ksiegaTrescSchema, type KsiegaTresc } from "@/domain/kw-tresc";
 import type { EncumbranceTreatment, KwGruntSnapshot, KwSnapshot } from "@/domain/kw-snapshot";
@@ -625,5 +629,137 @@ describe("wycena 14.09 (zanonimizowana) — warianty badania ksiąg", () => {
     // Zdania ścieżki ręcznej zostają w modelu — który wariant drukuje §8.2,
     // rozstrzyga `ma_tresc_lokalu` w szablonie (b1-template), nie model.
     expect(model.dzial3_opis).not.toBe("");
+  });
+});
+
+describe("§8.2 księgi gruntu z treścią (ADR-021 reg. 6)", () => {
+  const GRUNT_Z_TRESCIA: KwGruntSnapshot = {
+    ...EXAMINED_GRUNT,
+    source: "ekw_wklej",
+    sad: "Sąd Rejonowy w Testowie",
+    wydzial: "I Wydział Ksiąg Wieczystych",
+    tresc: transcribedBook(),
+    transkrypcja: {
+      ok: true,
+      bledy: [],
+      kanal: "tekst",
+      plikow: 0,
+      at: "2026-09-21T10:00:00.000Z",
+    },
+  };
+
+  it("ma_tresc_gruntu i wiersze z TEGO SAMEGO ksiegaRows co lokal — pięć działów w kolejności eKW", () => {
+    const model = modelOf({
+      kw: { ...EXAMINED_LOKAL, tresc: transcribedBook() },
+      kwGrunt: GRUNT_Z_TRESCIA,
+    });
+    expect(model.ma_tresc_gruntu).toBe(true);
+    expect(model.ksiega_gruntu_wiersze).toEqual(model.ksiega_lokalu_wiersze);
+    expect(model.ksiega_gruntu_wiersze.filter((r) => r.typ === "dzial").map((r) => r.kol1)).toEqual(
+      transcribedBook().dzialy.map((d) => d.tytul),
+    );
+  });
+
+  it("bez treści gruntu: flaga false, zero wierszy, zdania ścieżki bez treści zostają", () => {
+    const model = modelOf({ kw: EXAMINED_LOKAL, kwGrunt: EXAMINED_GRUNT });
+    expect(model.ma_tresc_gruntu).toBe(false);
+    expect(model.ksiega_gruntu_wiersze).toEqual([]);
+    expect(model.dzial3_opis_gruntu).toContain("Służebność przesyłu");
+  });
+
+  it("ma_tresc_lokalu = tresc != null, niezależnie od werdyktu (reg. 5)", () => {
+    const zlyWerdykt = {
+      ok: false,
+      bledy: [{ klasa: "pesel_suma", dzial: "II" }],
+      kanal: "pdf" as const,
+      plikow: 1,
+      at: "2026-09-21T10:00:00.000Z",
+    };
+    const model = modelOf({
+      kw: { ...EXAMINED_LOKAL, tresc: transcribedBook(), transkrypcja: zlyWerdykt },
+    });
+    expect(model.ma_tresc_lokalu).toBe(true);
+    expect(model.ksiega_lokalu_wiersze.length).toBeGreaterThan(5);
+  });
+
+  it("sąd księgi gruntu w §2 z jej własnej migawki, a dopiero potem z księgi lokalu", () => {
+    const model = modelOf({ kw: EXAMINED_LOKAL, kwGrunt: GRUNT_Z_TRESCIA });
+    expect(model.sad_ksiegi_gruntu).toBe("Sąd Rejonowy w Testowie");
+    expect(modelOf({ kw: EXAMINED_LOKAL, kwGrunt: EXAMINED_GRUNT }).sad_ksiegi_gruntu).toBe(
+      EXAMINED_LOKAL.sad,
+    );
+  });
+
+  it("kw_zrodlo dla ekw_wklej nazywa badanie w eKW, nie odpis", () => {
+    expect(modelOf({ kw: { ...EXAMINED_LOKAL, source: "ekw_wklej" } }).kw_zrodlo).toBe(
+      "badanie księgi wieczystej w systemie eKW",
+    );
+  });
+});
+
+describe("werdykt ok:false — marker TYLKO w podglądzie (spec §3.4)", () => {
+  const zly = {
+    ok: false,
+    bledy: [
+      { klasa: "pole_niezgodne:udzial", dzial: "I-Sp" },
+      { klasa: "kw_cyfra_kontrolna:kwGruntu" },
+    ],
+    kanal: "tekst" as const,
+    plikow: 0,
+    at: "2026-09-21T10:00:00.000Z",
+  };
+  const inputs = (): Partial<KcsInput> => ({
+    kw: { ...EXAMINED_LOKAL, tresc: transcribedBook(), transkrypcja: zly },
+    kwGrunt: {
+      ...EXAMINED_GRUNT,
+      tresc: transcribedBook(),
+      transkrypcja: { ...zly, bledy: [{ klasa: "pesel_suma", dzial: "II" }] },
+    },
+  });
+  const build = (preview: boolean) => {
+    const base = syntheticDocumentInput();
+    const full: KcsInput = { ...goldenInputs(), ...inputs() };
+    return buildDocumentModel(
+      {
+        ...base,
+        propertyRight: "wlasnosc_lokalu",
+        inputs: full,
+        kcs: computeKcs(full),
+        author: AUTOR_TESTOWY,
+      },
+      { preview },
+    );
+  };
+
+  it("podgląd: pierwszy wiersz każdej tabeli to marker z nazwami niezgodności po polsku, bez wartości", () => {
+    const model = build(true);
+    const [lokal] = model.ksiega_lokalu_wiersze;
+    expect(lokal.typ).toBe("dzial");
+    expect(lokal.kol1).toBe(previewMarkerRow(zly.bledy).kol1);
+    expect(lokal.kol1).toContain("[PODGLĄD: SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE]");
+    expect(lokal.kol1).toContain(
+      "udział w nieruchomości wspólnej, cyfra kontrolna numeru księgi gruntu",
+    );
+    expect(lokal.kol1).not.toContain(transcribedBook().polaDodatkowe.udzial!);
+    expect(model.ksiega_gruntu_wiersze[0].kol1).toContain("numer PESEL w dziale II");
+    // Reszta tabeli nietknięta: po markerze idzie pierwszy dział.
+    expect(model.ksiega_lokalu_wiersze[1].kol1).toBe(transcribedBook().dzialy[0].tytul);
+  });
+
+  it("wydany operat: żadnego markera, tabela zaczyna się od działu I-O", () => {
+    const model = build(false);
+    expect(model.ksiega_lokalu_wiersze[0].kol1).toBe(transcribedBook().dzialy[0].tytul);
+    expect(JSON.stringify(model)).not.toContain("[PODGLĄD: SPRAWDZENIE");
+  });
+
+  it("werdykt ok:true nie daje markera nawet w podglądzie", () => {
+    const model = modelOf({
+      kw: {
+        ...EXAMINED_LOKAL,
+        tresc: transcribedBook(),
+        transkrypcja: { ...zly, ok: true, bledy: [] },
+      },
+    });
+    expect(model.ksiega_lokalu_wiersze[0].kol1).toBe(transcribedBook().dzialy[0].tytul);
   });
 });

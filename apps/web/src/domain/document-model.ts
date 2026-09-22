@@ -2,7 +2,8 @@ import type { Comparable, Feature, KcsInput, KcsResult, FeatureRating } from "./
 import { LEVEL_LABEL } from "./feature-presets";
 import { levelForValue, ratingPosition, type RatingPosition } from "./feature-rules";
 import { kwRequirements } from "./kw-requirements";
-import type { KwAkt, KwDzialSnapshot } from "./kw-snapshot";
+import { nazwyNiezgodnosci, type Niezgodnosc } from "./kw-niezgodnosci";
+import type { KwAkt, KwDzialSnapshot, KwWerdykt } from "./kw-snapshot";
 import type { KsiegaTresc } from "./kw-tresc";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
 import { isPrzeznaczenieComplete } from "./przeznaczenie";
@@ -102,6 +103,8 @@ const ROK_BUDOWY_BD = "b.d. (brak w publicznej ewidencji)";
 const KW_ZRODLO_TEXT = {
   akt: "akt notarialny",
   odpis_kw: "odpis księgi wieczystej",
+  // Wklejenie z przeglądarki KW to lektura w eKW, tylko przepisana przez program.
+  ekw_wklej: "badanie księgi wieczystej w systemie eKW",
   ekw_reczne: "badanie księgi wieczystej w systemie eKW",
 } as const;
 
@@ -458,6 +461,34 @@ export type TransactionRow = {
 };
 
 /**
+ * PREVIEW ONLY — wiersz otwierający tabelę działów, gdy walidator odmówił
+ * poręczenia za treść (ADR-021 reg. 5: ostrzeżenie, nie blokada). Wiersz, nie
+ * osobny tag: nie wymaga slotu w szablonie, a `typ: "dzial"` drukuje go
+ * pogrubieniem na całą szerokość. W wydanym operacie nie istnieje — rzeczoznawca
+ * widział ostrzeżenie w kroku 1 i tutaj. Nazwy klas po polsku, nigdy wartości.
+ */
+export function previewMarkerRow(bledy: Niezgodnosc[]): KsiegaRow {
+  return soleRow(
+    "dzial",
+    "[PODGLĄD: SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE] niezgodności: " +
+      `${nazwyNiezgodnosci(bledy).join(", ")} ${DASH} porównaj pola i treść z księgą w kroku 1; ` +
+      "w wydanym operacie tego wiersza nie będzie.",
+  );
+}
+
+/** Wiersze §8.2 jednej księgi — obie księgi tą samą funkcją (R2); marker tylko pod `preview`. */
+function wierszeKsiegi(
+  book: { tresc?: KsiegaTresc | null; transkrypcja?: KwWerdykt | null } | null | undefined,
+  preview: boolean,
+): KsiegaRow[] {
+  if (!book?.tresc) return [];
+  const rows = ksiegaRows(book.tresc);
+  return preview && book.transkrypcja?.ok === false
+    ? [previewMarkerRow(book.transkrypcja.bledy), ...rows]
+    : rows;
+}
+
+/**
  * One row of §8.2's transcribed book. Three columns, because that is what the
  * eKW printout is — a label, its Lp., and its cells — and `typ` says which
  * shape the row has so the template can style it without parsing `kol1`.
@@ -622,6 +653,9 @@ export type DocumentModel = {
    */
   ksiega_lokalu_wiersze: KsiegaRow[];
   ma_tresc_lokalu: boolean;
+  /** Księga gruntu ma te same kanały i tę samą tabelę (ADR-021 reg. 6) — pusta lista i `false`, gdy nie było transkrypcji. */
+  ksiega_gruntu_wiersze: KsiegaRow[];
+  ma_tresc_gruntu: boolean;
   /** §8.2's sentences for the manual path — used when there is no transcription to quote. */
   dzial3_opis: string;
   dzial4_opis: string;
@@ -1165,10 +1199,12 @@ export function buildDocumentModel(
     // the sentence that needs none. A dash here would print "Dla nieruchomości
     // gruntowej — prowadzi księgę wieczystą nr …" — a broken sentence, not a
     // missing value.
-    sad_ksiegi_gruntu: kwReq.gruntZbadana ? (kw?.sad ?? "") : "",
+    sad_ksiegi_gruntu: kwReq.gruntZbadana ? (kwGrunt?.sad ?? kw?.sad ?? "") : "",
     ma_ksiege_gruntu: kwReq.gruntZbadana,
-    ksiega_lokalu_wiersze: kw?.tresc ? ksiegaRows(kw.tresc) : [],
+    ksiega_lokalu_wiersze: wierszeKsiegi(kw, opts?.preview === true),
     ma_tresc_lokalu: kw?.tresc != null,
+    ksiega_gruntu_wiersze: wierszeKsiegi(kwGrunt, opts?.preview === true),
+    ma_tresc_gruntu: kwGrunt?.tresc != null,
     dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),
     dzial4_opis: dzialOpis(kw?.dzial4, "Dział IV"),
     dzial3_opis_gruntu: dzialOpis(kwGrunt?.dzial3, "Dział III"),
