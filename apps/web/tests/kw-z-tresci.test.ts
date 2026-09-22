@@ -199,3 +199,49 @@ describe("numer i nagłówek z treści — kanał tekstowy nie ma /kw-extract", 
     });
   });
 });
+
+/**
+ * Księga GRUNTU wklejona na kartę lokalu: trzy pola lokalowe nie mają w niej
+ * na co wskazywać, a model wpisuje w nie, co znajdzie — w Głuszynie obszar
+ * działki z I-O jako `kwGruntu` (E2E 22.09). Bez tej granicy `kw_gruntu`
+ * w operacie wydrukowałby „0,0163 HA" jako numer księgi macierzystej.
+ */
+describe("polaZTresci — pola lokalowe tylko z księgi lokalu (finding 2 recenzji PR #77)", () => {
+  const gruntowa = (rodzaj: string): KsiegaTresc => {
+    const tresc = sample();
+    tresc.naglowek.rodzajKsiegi = rodzaj;
+    tresc.polaDodatkowe.kwGruntu = "0,0163 HA";
+    return tresc;
+  };
+
+  it.each(["NIERUCHOMOŚĆ GRUNTOWA", "GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE"])(
+    "rodzaj %s → numer lokalu, udział i numer księgi gruntu na null; nagłówek i akt bez zmian",
+    (rodzaj) => {
+      const tresc = gruntowa(rodzaj);
+      const pola = polaZTresci(tresc);
+      expect(pola.kwGruntu).toBeNull();
+      expect(pola.nrLokalu).toBeNull();
+      expect(pola.udzial).toBeNull();
+      expect(pola.sad).toBe(tresc.naglowek.sad);
+      expect(pola.wydzial).toBe(tresc.naglowek.wydzial);
+      expect(pola.akt).toEqual(aktZTresci(tresc));
+    },
+  );
+
+  it("kontrola pozytywna: w księdze lokalu te same trzy pola przechodzą", () => {
+    const tresc = sample();
+    tresc.naglowek.rodzajKsiegi = "LOKALOWA";
+    tresc.polaDodatkowe.kwGruntu = "0,0163 HA";
+    const pola = polaZTresci(tresc);
+    expect(pola.kwGruntu).toBe("0,0163 HA");
+    expect(pola.nrLokalu).toBe(tresc.polaDodatkowe.numerLokalu);
+    expect(pola.udzial).toBe(tresc.polaDodatkowe.udzial);
+  });
+
+  it("nagłówek bez rodzaju zostaje księgą lokalu — nie zgadujemy, tak jak worker", () => {
+    const tresc = sample();
+    tresc.naglowek.rodzajKsiegi = null;
+    tresc.polaDodatkowe.kwGruntu = "0,0163 HA";
+    expect(polaZTresci(tresc).kwGruntu).toBe("0,0163 HA");
+  });
+});

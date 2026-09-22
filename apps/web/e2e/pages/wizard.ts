@@ -79,9 +79,13 @@ export class SubjectStep {
    * się do nich w kroku 7.
    */
   async examineBooks(o: { kwLokalu: string; kwGruntu: string }) {
-    await atrapaTranskrypcji(this.page, "ok");
     for (const book of ["lokal", "grunt"] as const) {
-      await this.page.getByTestId(`kw-wklej-${book}`).fill(tekstZakladek());
+      // Atrapa per karta: karta gruntu dostaje syntetyczną księgę GRUNTOWĄ,
+      // karta lokalu — lokalową. Podanie księgi lokalu na kartę gruntu daje
+      // słusznie niezgodność „rodzaj księgi", werdykt `ok:false` i zielona
+      // linia „Przepisano 5 działów" w ogóle się nie pojawia.
+      await atrapaTranskrypcji(this.page, "ok", book);
+      await this.page.getByTestId(`kw-wklej-${book}`).fill(tekstZakladek(undefined, book));
       await this.page.getByTestId(`kw-przepisz-${book}`).click();
       await expect(
         this.page.getByTestId(`kw-book-${book}`).getByTestId("kw-transcribe-status"),

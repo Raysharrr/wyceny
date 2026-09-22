@@ -181,7 +181,6 @@ jobs:
       # from BIP. Off keeps this job network-free — the smoke enters step 3 with manual
       # transactions and never fetches a pool, so it needs no addresses.
       STREET_INDEX: "off"
-      # Same rationale, for the KW upload/extract flow: keeps the upload
       # Slice 9: approve fetches WMS maps via the worker; off keeps the e2e
       # smoke network-free (approve renders the honest §8.1 stub instead).
       MAPS_FETCH: "off"

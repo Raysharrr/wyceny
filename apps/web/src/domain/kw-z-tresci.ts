@@ -1,4 +1,4 @@
-import type { KsiegaTresc } from "./kw-tresc";
+import { jestKsiegaGruntu, type KsiegaTresc } from "./kw-tresc";
 import type { KwAkt, KwGruntSnapshot, KwSnapshot } from "./kw-snapshot";
 
 /**
@@ -83,15 +83,25 @@ export function aktZTresci(tresc: KsiegaTresc): KwAkt | null {
  * Every snapshot field the transcription can fill. `sad`/`wydzial` come from
  * the printout's header rather than `polaDodatkowe`, which is where eKW puts
  * them.
+ *
+ * Trzy pola LOKALOWE — numer lokalu, udział i numer księgi gruntu — istnieją
+ * wyłącznie w księdze lokalu: w księdze gruntu nie ma czego opisywać ani na
+ * co wskazywać. Model wpisuje tam mimo to, co znajdzie (w Głuszynie obszar
+ * działki z I-O jako `kwGruntu`), a `kw_gruntu` w `document-model.ts` wydrukuje
+ * to jako numer księgi macierzystej. Dlatego dla księgi gruntu zostają `null`
+ * — ta sama granica, którą stawia walidator workera (`is_land_book`,
+ * `jestKsiegaGruntu`). Nagłówek — sąd, wydział — i akt z działu II ma każda
+ * księga, więc idą jak dotąd.
  */
 export function polaZTresci(
   tresc: KsiegaTresc,
 ): Pick<KwSnapshot, "nrLokalu" | "udzial" | "kwGruntu" | "sad" | "wydzial" | "akt"> {
+  const ksiegaGruntu = jestKsiegaGruntu(tresc.naglowek.rodzajKsiegi);
   return {
-    nrLokalu: trimToNull(tresc.polaDodatkowe.numerLokalu),
+    nrLokalu: ksiegaGruntu ? null : trimToNull(tresc.polaDodatkowe.numerLokalu),
     // Verbatim, spaces around "/" and all: the share is the register's text.
-    udzial: trimToNull(tresc.polaDodatkowe.udzial),
-    kwGruntu: trimToNull(tresc.polaDodatkowe.kwGruntu),
+    udzial: ksiegaGruntu ? null : trimToNull(tresc.polaDodatkowe.udzial),
+    kwGruntu: ksiegaGruntu ? null : trimToNull(tresc.polaDodatkowe.kwGruntu),
     sad: trimToNull(tresc.naglowek.sad),
     wydzial: trimToNull(tresc.naglowek.wydzial),
     akt: aktZTresci(tresc),
@@ -129,7 +139,16 @@ export function numerKsiegiZTresci(tresc: KsiegaTresc): string | null {
   return trimToNull(tresc.naglowek.numerKsiegi) ?? trimToNull(tresc.polaDodatkowe.kwLokalu);
 }
 
-/** Karta gruntu z kanału tekstowego lub PDF: wszystko, co ma, bierze z nagłówka. */
+/**
+ * Karta gruntu z kanału tekstowego lub PDF: wszystko, co ma, bierze z nagłówka.
+ *
+ * Symetrycznego problemu tu NIE MA i nie ma czego odcinać: te trzy pola czyta
+ * z `naglowek`, nigdy z `polaDodatkowe`, a numer, sąd i wydział z nagłówka to
+ * tożsamość przepisanej księgi — ma ją każda księga, obojętne którego rodzaju.
+ * Księgę lokalu wklejoną na tę kartę zgłasza `rodzajNiezgodny` jako
+ * niezgodność „rodzaj księgi"; wyzerowanie numeru zostawiłoby kartę pustą,
+ * a rzeczoznawcę bez śladu, co właściwie wkleił.
+ */
 export function polaGruntuZTresci(
   tresc: KsiegaTresc,
 ): Pick<KwGruntSnapshot, "nrKsiegi" | "sad" | "wydzial"> {

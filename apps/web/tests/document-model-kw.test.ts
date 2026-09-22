@@ -750,7 +750,13 @@ describe("werdykt ok:false — marker TYLKO w podglądzie (spec §3.4)", () => {
     kwGrunt: {
       ...EXAMINED_GRUNT,
       tresc: transcribedBook(),
-      transkrypcja: { ...zly, bledy: [{ klasa: "pesel_suma", dzial: "II" }] },
+      transkrypcja: {
+        ...zly,
+        // `numerKsiegi` nazywa się kartą, na której stoi (F1): w tabeli §8.2
+        // księgi gruntu to numer księgi GRUNTU. `pesel_suma` obok jako klasa,
+        // której nazwa od karty nie zależy.
+        bledy: [{ klasa: "pesel_suma", dzial: "II" }, { klasa: "kw_cyfra_kontrolna:numerKsiegi" }],
+      },
     },
   });
   const build = (preview: boolean) => {
@@ -772,13 +778,16 @@ describe("werdykt ok:false — marker TYLKO w podglądzie (spec §3.4)", () => {
     const model = build(true);
     const [lokal] = model.ksiega_lokalu_wiersze;
     expect(lokal.typ).toBe("dzial");
-    expect(lokal.kol1).toBe(previewMarkerRow(zly.bledy).kol1);
+    expect(lokal.kol1).toBe(previewMarkerRow(zly.bledy, "lokal").kol1);
     expect(lokal.kol1).toContain("[PODGLĄD: SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE]");
     expect(lokal.kol1).toContain(
       "udział w nieruchomości wspólnej, cyfra kontrolna numeru księgi gruntu",
     );
     expect(lokal.kol1).not.toContain(transcribedBook().polaDodatkowe.udzial!);
-    expect(model.ksiega_gruntu_wiersze[0].kol1).toContain("numer PESEL w dziale II");
+    const grunt = model.ksiega_gruntu_wiersze[0].kol1;
+    expect(grunt).toContain("numer PESEL w dziale II");
+    expect(grunt).toContain("cyfra kontrolna numeru księgi gruntu");
+    expect(grunt).not.toContain("cyfra kontrolna numeru księgi lokalu");
     // Reszta tabeli nietknięta: po markerze idzie pierwszy dział.
     expect(model.ksiega_lokalu_wiersze[1].kol1).toBe(transcribedBook().dzialy[0].tytul);
   });

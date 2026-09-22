@@ -2,7 +2,7 @@ import type { Comparable, Feature, KcsInput, KcsResult, FeatureRating } from "./
 import { LEVEL_LABEL } from "./feature-presets";
 import { levelForValue, ratingPosition, type RatingPosition } from "./feature-rules";
 import { kwRequirements } from "./kw-requirements";
-import { nazwyNiezgodnosci, type Niezgodnosc } from "./kw-niezgodnosci";
+import { nazwyNiezgodnosci, type KartaKsiegi, type Niezgodnosc } from "./kw-niezgodnosci";
 import type { KwAkt, KwDzialSnapshot, KwWerdykt } from "./kw-snapshot";
 import type { KsiegaTresc } from "./kw-tresc";
 import { PROPERTY_RIGHT_DOC, type PropertyRight } from "./property-right";
@@ -484,11 +484,11 @@ export type TransactionRow = {
  * pogrubieniem na całą szerokość. W wydanym operacie nie istnieje — rzeczoznawca
  * widział ostrzeżenie w kroku 1 i tutaj. Nazwy klas po polsku, nigdy wartości.
  */
-export function previewMarkerRow(bledy: Niezgodnosc[]): KsiegaRow {
+export function previewMarkerRow(bledy: Niezgodnosc[], ksiega: KartaKsiegi): KsiegaRow {
   return soleRow(
     "dzial",
     "[PODGLĄD: SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE] niezgodności: " +
-      `${nazwyNiezgodnosci(bledy).join(", ")} ${DASH} porównaj pola i treść z księgą w kroku 1; ` +
+      `${nazwyNiezgodnosci(bledy, ksiega).join(", ")} ${DASH} porównaj pola i treść z księgą w kroku 1; ` +
       "w wydanym operacie tego wiersza nie będzie.",
   );
 }
@@ -497,11 +497,12 @@ export function previewMarkerRow(bledy: Niezgodnosc[]): KsiegaRow {
 function wierszeKsiegi(
   book: { tresc?: KsiegaTresc | null; transkrypcja?: KwWerdykt | null } | null | undefined,
   preview: boolean,
+  ksiega: KartaKsiegi,
 ): KsiegaRow[] {
   if (!book?.tresc) return [];
   const rows = ksiegaRows(book.tresc);
   return preview && book.transkrypcja?.ok === false
-    ? [previewMarkerRow(book.transkrypcja.bledy), ...rows]
+    ? [previewMarkerRow(book.transkrypcja.bledy, ksiega), ...rows]
     : rows;
 }
 
@@ -1218,9 +1219,9 @@ export function buildDocumentModel(
     // missing value.
     sad_ksiegi_gruntu: kwReq.gruntZbadana ? (kwGrunt?.sad ?? kw?.sad ?? "") : "",
     ma_ksiege_gruntu: kwReq.gruntZbadana,
-    ksiega_lokalu_wiersze: wierszeKsiegi(kw, opts?.preview === true),
+    ksiega_lokalu_wiersze: wierszeKsiegi(kw, opts?.preview === true, "lokal"),
     ma_tresc_lokalu: kw?.tresc != null,
-    ksiega_gruntu_wiersze: wierszeKsiegi(kwGrunt, opts?.preview === true),
+    ksiega_gruntu_wiersze: wierszeKsiegi(kwGrunt, opts?.preview === true, "grunt"),
     ma_tresc_gruntu: kwGrunt?.tresc != null,
     dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),
     dzial4_opis: dzialOpis(kw?.dzial4, "Dział IV"),

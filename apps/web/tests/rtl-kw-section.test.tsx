@@ -827,6 +827,43 @@ describe("KwSection — kanały (makiety 1, 2, 6)", () => {
     );
   });
 
+  /**
+   * F1 recenzji całości KW: `kw_cyfra_kontrolna:numerKsiegi` to numer WŁASNY
+   * przepisanej księgi, więc na karcie gruntu baner musi mówić o numerze
+   * księgi GRUNTU. Do 22.09 mówił o lokalu — na karcie, na której księgi
+   * lokalu w ogóle nie ma.
+   */
+  it("baner karty gruntu nazywa cyfrę kontrolną numerem księgi GRUNTU, baner lokalu dalej lokalu (F1)", () => {
+    const werdykt = {
+      ok: false,
+      bledy: [{ klasa: "kw_cyfra_kontrolna:numerKsiegi" }],
+      kanal: "tekst",
+      plikow: 0,
+      at: "2026-09-22T08:00:00.000Z",
+    };
+    render(
+      <Harness
+        kw={
+          { tresc: transcribedBook(), transkrypcja: werdykt } as unknown as Partial<FormInput["kw"]>
+        }
+        kwGrunt={
+          {
+            source: "ekw_wklej",
+            nrKsiegi: "AB1C/2/7",
+            tresc: transcribedBook(),
+            transkrypcja: werdykt,
+          } as unknown as Partial<FormInput["kwGrunt"]>
+        }
+      />,
+    );
+    expect(screen.getByTestId("kw-werdykt-grunt").textContent).toContain(
+      "cyfra kontrolna numeru księgi gruntu",
+    );
+    expect(screen.getByTestId("kw-werdykt-lokal").textContent).toContain(
+      "cyfra kontrolna numeru księgi lokalu",
+    );
+  });
+
   it("karta gruntu podpisuje swoje pole numeru z WŁASNEGO werdyktu (makieta 4 dla obu ksiąg)", () => {
     render(
       <Harness
@@ -1073,6 +1110,10 @@ describe("KwSection — full-form wiring", () => {
   it("F4: księgi mają osobne sekwencery — odczyt lokalu kończący się PO starcie gruntu nie unieważnia gruntu", async () => {
     const trescLokalu = transcribedBook();
     const trescGruntu = transcribedBook();
+    // Fixtura workera to księga LOKALU — na karcie gruntu musi nią być księga
+    // gruntowa, inaczej werdykt niósłby niezgodność rodzaju, o którą ten test
+    // nie pyta (sekwencery, nie walidacja).
+    trescGruntu.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
     // Lokal rozstrzyga się dopiero, gdy go zwolnimy; grunt rusza w międzyczasie.
     let zwolnijLokal: (w: { kind: "ok"; tresc: KsiegaTresc; walidacja: KwWalidacjaLike }) => void;
     const lokalWLocie = new Promise<{ kind: "ok"; tresc: KsiegaTresc; walidacja: KwWalidacjaLike }>(
@@ -1217,6 +1258,10 @@ describe("KwSection — full-form wiring", () => {
 
   it("kanał tekstowy księgi GRUNTU: numer, sąd i wydział z nagłówka, działy z treści, karta „Zbadana” (R2)", async () => {
     const tresc = transcribedBook();
+    // Fixtura workera to księga LOKALU; na karcie gruntu musi nią być księga
+    // gruntowa, inaczej test modeluje pomyłkę zamiast toru zwykłego — i od
+    // reguły rodzaju księgi dostawałby werdykt `ok:false`.
+    tresc.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
     vi.mocked(transcribeKw).mockResolvedValue({
       kind: "ok",
       tresc,
@@ -1237,6 +1282,12 @@ describe("KwSection — full-form wiring", () => {
     );
     expect((document.getElementById("kwg-sad") as HTMLInputElement).value).toBe(tresc.naglowek.sad);
     expect(extractKw).not.toHaveBeenCalled();
+    // Kontrola pozytywna reguły rodzaju: właściwa księga na właściwej karcie
+    // nie daje niezgodności, więc zostaje zielona linia i żadnego banera.
+    expect(screen.queryByTestId("kw-werdykt-grunt")).toBeNull();
+    expect(screen.getByTestId("kw-transcribe-status").textContent).toContain(
+      "sprawdzenie treści wypadło pomyślnie",
+    );
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
     await waitFor(() => expect(createDraft).toHaveBeenCalled());
     const { kwGrunt } = vi.mocked(createDraft).mock.calls[0][0] as {
@@ -2221,6 +2272,119 @@ describe("KwSection — full-form wiring", () => {
     expect(screen.getByTestId("kw-wklej-lokal")).toBeDefined();
   });
 
+  /**
+   * Księga GRUNTU wklejona na kartę LOKALU — główna ścieżka Głuszyny z E2E
+   * koordynatora 22.09. Worker po 1f20f8c oddaje dla niej `ok:true`, bo reguł
+   * lokalowych dla księgi gruntu nie liczy; o karcie, na którą ją wklejono,
+   * nie wie nic. Bez reguły web rzeczoznawca dostaje zielone „wypadło
+   * pomyślnie" i obszar działki w polu numeru księgi gruntu.
+   */
+  it("księga gruntu na karcie lokalu: baner rodzaju księgi, żadnej zielonej linii, pola lokalowe puste", async () => {
+    const tresc = transcribedBook();
+    tresc.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
+    tresc.polaDodatkowe.kwGruntu = "0,0163 HA";
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
+
+    const baner = await screen.findByTestId("kw-werdykt-lokal");
+    expect(baner.textContent).toContain(
+      "rodzaj księgi (treść opisuje nieruchomość gruntową, a to karta księgi lokalu)",
+    );
+    // Werdykt workera bez zastrzeżeń nie może zostawić na karcie zielonej
+    // linii obok bursztynowego banera — dwa sprzeczne zdania o tym samym.
+    expect(screen.queryByTestId("kw-transcribe-status")).toBeNull();
+    expect(
+      within(kartaKsiegi("lokal")).getByText("Sprawdź, czy wklejono właściwą księgę."),
+    ).toBeDefined();
+    // Obszar działki z I-O nie wchodzi w pole numeru księgi gruntu (finding 2).
+    expect((document.getElementById("kw-gruntu") as HTMLInputElement).value).toBe("");
+    expect((document.getElementById("kw-nr-lokalu") as HTMLInputElement).value).toBe("");
+    expect((document.getElementById("kw-udzial") as HTMLInputElement).value).toBe("");
+
+    // Klasa przechodzi przez `kwWerdyktSchema` do zapisu razem z treścią
+    // (ADR-021 reg. 5) — baner musi wrócić z otwarciem szkicu, a nie zniknąć
+    // na granicy formularza.
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const zapisane = (vi.mocked(createDraft).mock.calls[0][0] as { kw: KwSnapshotLike }).kw;
+    expect(zapisane.transkrypcja).toMatchObject({
+      ok: false,
+      bledy: [{ klasa: "rodzaj_ksiegi:grunt_na_lokalu" }],
+    });
+    expect(zapisane.tresc).toEqual(tresc);
+  });
+
+  /**
+   * F6 recenzji PR #86 — druga droga tego samego przecieku. Na karcie lokalu
+   * z kanałem PDF obok transkrypcji biegnie `/kw-extract`, a `??` przepuszczało
+   * wyzerowane `null` z transkrypcji dalej do ekstraktu: pola księgi gruntowej
+   * wracały drugimi drzwiami do `kw_gruntu` i `udzial_kw` w operacie, w dodatku
+   * bez podpisu, bo ten siedzi pod numerem księgi.
+   */
+  it("księga gruntu wgrana jako PDF na kartę lokalu: pola lokalowe nie wracają z odczytu pól (F6)", async () => {
+    const tresc = transcribedBook();
+    tresc.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
+    tresc.polaDodatkowe.kwGruntu = "0,0163 HA";
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await uploadOdpis(user);
+
+    await screen.findByTestId("kw-werdykt-lokal");
+    const wartosc = (id: string) => (document.getElementById(id) as HTMLInputElement).value;
+    // Trzy pola w jednej asercji: przeciek wraca dwoma z nich naraz
+    // (`kwGruntu` i `udzial` z ekstraktu), a rozbite `expect` pokazałyby tylko
+    // pierwsze i ukryły rozmiar defektu.
+    expect({
+      kwGruntu: wartosc("kw-gruntu"),
+      udzial: wartosc("kw-udzial"),
+      nrLokalu: wartosc("kw-nr-lokalu"),
+    }).toEqual({ kwGruntu: "", udzial: "", nrLokalu: "" });
+    // Nagłówek i powierzchnia z odczytu pól zostają — straż dotyczy wyłącznie
+    // trzech pól, których w księdze gruntu nie ma.
+    expect(wartosc("kw-sad")).toBe(OK_ODPIS.kind === "ok" ? OK_ODPIS.extract.sad : "");
+  });
+
+  it("kontrola pozytywna do F6: przy księdze LOKALU pola z odczytu pól przechodzą", async () => {
+    const tresc = transcribedBook();
+    // Transkrypcja milczy o tych trzech polach, więc rozstrzyga odczyt pól —
+    // dokładnie ten fallback, który dla księgi gruntu jest odcięty.
+    tresc.polaDodatkowe.numerLokalu = null;
+    tresc.polaDodatkowe.udzial = null;
+    tresc.polaDodatkowe.kwGruntu = null;
+    vi.mocked(extractKw).mockResolvedValue(OK_ODPIS);
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await uploadOdpis(user);
+
+    const extract = OK_ODPIS.kind === "ok" ? OK_ODPIS.extract : null;
+    await waitFor(() =>
+      expect((document.getElementById("kw-gruntu") as HTMLInputElement).value).toBe(
+        extract!.kwGruntu,
+      ),
+    );
+    expect((document.getElementById("kw-udzial") as HTMLInputElement).value).toBe(extract!.udzial);
+  });
+
   it("zmiana sposobu przy wpisanych danych pyta o zgodę z listą tego, co zniknie; „Zostaw jak jest” nic nie rusza (makieta 5)", async () => {
     const tresc = transcribedBook();
     vi.mocked(transcribeKw).mockResolvedValue({
@@ -2304,6 +2468,8 @@ describe("KwSection — full-form wiring", () => {
 
   it("werdykt i treść gruntu znikają razem z kartą gruntu przy zmianie jej sposobu; lokal nietknięty", async () => {
     const tresc = transcribedBook();
+    // Baner ma tu stać od `pesel_suma`, nie od niezgodności rodzaju księgi.
+    tresc.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
     vi.mocked(transcribeKw).mockResolvedValue({
       kind: "ok",
       tresc,

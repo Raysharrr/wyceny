@@ -28,8 +28,10 @@ import {
   polaGruntuZTresci,
   polaZTresci,
 } from "@/domain/kw-z-tresci";
+import { rodzajNiezgodny, type KartaKsiegi } from "@/domain/kw-niezgodnosci";
+import { jestKsiegaGruntu } from "@/domain/kw-tresc";
 import { MAX_TEKST_BAJTOW } from "@/domain/kw-wklej";
-import type { KwWerdykt } from "@/domain/kw-snapshot";
+import type { KwSnapshot, KwWerdykt } from "@/domain/kw-snapshot";
 import {
   EMPTY_SUBJECT,
   planOdczytuKw,
@@ -68,7 +70,8 @@ type FormInput = z.input<typeof valuationFormSchema>;
 type FormOutput = z.output<typeof valuationFormSchema>;
 
 /** Która księga jedzie danym torem — obie mają te same kanały (ADR-021 R2). */
-export type KwBook = "lokal" | "grunt";
+/** Która karta — ta sama para co `KartaKsiegi`, jeden słownik na obie. */
+export type KwBook = KartaKsiegi;
 export type { KwWejscie };
 
 /** Odrzucenia klientowe przed siecią (D9) — limity kontraktu workera. */
@@ -148,7 +151,16 @@ export function SubjectForm({
     defaults?.kwGrunt?.source === "odpis_kw" ? "odpis_kw" : "ekw_wklej",
   );
   const [kwState, setKwState] = useState<KwFetchState>(() => {
-    if (!defaults?.kw) return { status: "idle" };
+    /**
+     * Pasek „Odczytano: N KW" opowiada o ODCZYCIE PÓL, nie o tym, że migawka
+     * w ogóle jest. Po przepisaniu treści samym tekstem odczytu pól nie było,
+     * więc ponownie otwarty szkic pokazywał „✓ Odczytano: 0 KW — do
+     * potwierdzenia" obok banera „Przepisano 5 działów", choć świeży formularz
+     * po tej samej operacji paska nie ma. `kwMeta` jest jedynym trwałym śladem
+     * odczytu pól: zapisuje je `/kw-extract` przy powodzeniu, a
+     * `retractExamination` zdejmuje razem z wycofanym badaniem (F7).
+     */
+    if (!defaults?.kw || defaults.kwMeta == null) return { status: "idle" };
     const kwCount = [defaults.kw.kwLokalu, defaults.kw.kwGruntu, ...defaults.kw.kwInne].filter(
       Boolean,
     ).length;
@@ -343,22 +355,35 @@ export function SubjectForm({
    * Werdykt walidatora zapisywany PRZY migawce (ADR-021 reg. 4): klasy i kody
    * działów, kanał, liczba plików i chwila odczytu — nigdy wartość z księgi.
    */
-  const werdyktZ = (t: KwTranscribeResult, wejscie: KwWejscie): KwWerdykt | null =>
-    t.kind === "ok"
-      ? {
-          ok: t.walidacja.ok,
-          bledy: t.walidacja.bledy,
-          kanal: wejscie.kanal,
-          plikow: wejscie.kanal === "pdf" ? wejscie.files.length : 0,
-          at: new Date().toISOString(),
-        }
-      : null;
+  const werdyktZ = (
+    t: KwTranscribeResult,
+    wejscie: KwWejscie,
+    karta: KartaKsiegi,
+  ): KwWerdykt | null => {
+    if (t.kind !== "ok") return null;
+    // Reguła, której worker postawić nie może: on widzi rodzaj księgi, ale nie
+    // kartę, na którą ją wklejono. Dokłada się do werdyktu workera, nie
+    // zastępuje go — obie listy niezgodności trafiają do jednego banera.
+    const rodzaj = rodzajNiezgodny(t.tresc, karta);
+    return {
+      ok: t.walidacja.ok && rodzaj == null,
+      bledy: rodzaj ? [...t.walidacja.bledy, rodzaj] : t.walidacja.bledy,
+      kanal: wejscie.kanal,
+      plikow: wejscie.kanal === "pdf" ? wejscie.files.length : 0,
+      at: new Date().toISOString(),
+    };
+  };
 
-  /** Stan sekcji: baner `ok:false` czyta werdykt z migawki (trwały), nie stąd. */
-  const stanTranskrypcji = (t: KwTranscribeResult): KwTranscribeState =>
+  /**
+   * Stan sekcji: baner `ok:false` czyta werdykt z migawki (trwały), nie stąd.
+   * Czyta jednak WERDYKT, nie `walidacja.ok` workera — inaczej karta z księgą
+   * gruntu wklejoną na lokal pokazałaby naraz zieloną linię „wypadło
+   * pomyślnie" i bursztynowy baner, że nie wypadło.
+   */
+  const stanTranskrypcji = (t: KwTranscribeResult, werdykt: KwWerdykt | null): KwTranscribeState =>
     t.kind === "error"
       ? { status: "failed", code: t.code }
-      : t.walidacja.ok
+      : werdykt?.ok
         ? { status: "ok", dzialy: t.tresc.dzialy.map((d) => d.kod) }
         : { status: "idle" };
 
@@ -428,9 +453,9 @@ export function SubjectForm({
       setTranscribe({ status: "idle" });
       return;
     }
-    if (transcription) setTranscribe(stanTranskrypcji(transcription));
+    const werdykt = transcription ? werdyktZ(transcription, wejscie, book) : null;
+    if (transcription) setTranscribe(stanTranskrypcji(transcription, werdykt));
     const tresc = transcription?.kind === "ok" ? transcription.tresc : null;
-    const werdykt = transcription ? werdyktZ(transcription, wejscie) : null;
 
     if (book === "grunt") {
       // Bez treści nie ma czego zapisać: pola gruntu zostają, jak są, a baner
@@ -455,6 +480,22 @@ export function SubjectForm({
 
     const extract = result?.kind === "ok" ? result.extract : null;
     const zTresci = tresc ? polaZTresci(tresc) : null;
+    /**
+     * Pola LOKALOWE karty lokalu, jedną strażą dla wszystkich trzech naraz.
+     * W księdze gruntu nie mają na co wskazywać, więc nie bierze ich ani
+     * transkrypcja (`polaZTresci` zeruje je u źródła), ani odczyt pól: `??`
+     * przepuszczało wyzerowane `null` dalej do ekstraktu i na kanale PDF
+     * obszar działki wracał tą drugą drogą, w dodatku bez podpisu — ten
+     * siedzi pod numerem księgi, nie pod tymi polami (F6 recenzji PR #86).
+     */
+    const polaLokalu = (): Pick<KwSnapshot, "nrLokalu" | "udzial" | "kwGruntu"> =>
+      tresc && jestKsiegaGruntu(tresc.naglowek.rodzajKsiegi)
+        ? { nrLokalu: null, udzial: null, kwGruntu: null }
+        : {
+            nrLokalu: zTresci?.nrLokalu ?? null,
+            udzial: zTresci?.udzial ?? extract?.udzial ?? null,
+            kwGruntu: zTresci?.kwGruntu ?? extract?.kwGruntu ?? null,
+          };
     setValue(
       "kw",
       {
@@ -470,10 +511,8 @@ export function SubjectForm({
         // full-fidelity pass. Where it states nothing, the field read stands.
         ...(zTresci
           ? {
-              nrLokalu: zTresci.nrLokalu,
               akt: zTresci.akt,
-              udzial: zTresci.udzial ?? extract?.udzial ?? null,
-              kwGruntu: zTresci.kwGruntu ?? extract?.kwGruntu ?? null,
+              ...polaLokalu(),
               // Header facts, the other way round: the field read has asked for
               // these since Slice 6 and the header often omits them.
               sad: extract?.sad ?? zTresci.sad,

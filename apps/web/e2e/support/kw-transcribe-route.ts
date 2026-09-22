@@ -7,24 +7,33 @@ import type { Page } from "@playwright/test";
  * uruchamia prawdziwy worker bez klucza Anthropic, a od ADR-021 księgę bada
  * się WYŁĄCZNIE przepisując jej treść — bez tej atrapy krok 7 blokuje na B-06.
  *
- * Treść to syntetyczna księga workera (fikcyjne osoby, poprawne cyfry
- * kontrolne), czytana W MIEJSCU: numery KW nie mogą stać literałem w pliku
- * śledzonym (F-9). Dla księgi gruntu ta sama treść wystarcza — gruntu nie
- * odczytujemy polami, a wiersze §8.2 są takie same.
+ * Treść to syntetyczne księgi workera (fikcyjne osoby, poprawne cyfry
+ * kontrolne), czytane W MIEJSCU: numery KW nie mogą stać literałem w pliku
+ * śledzonym (F-9). KSIĘGI SĄ DWIE i karta wybiera swoją. Do S3d obu kartom
+ * wystarczała księga lokalu, bo nikt nie patrzył na rodzaj księgi; odkąd web
+ * sprawdza rodzaj wobec karty, podanie księgi lokalu na kartę gruntu daje —
+ * słusznie — niezgodność „rodzaj księgi", werdykt `ok:false` i zniknięcie
+ * linii „Przepisano 5 działów".
  */
-const FIXTURE = path.join(
-  process.cwd(),
-  "..",
-  "worker",
-  "tests",
-  "fixtures",
-  "kw_transcribe_sample.json",
-);
+const FIXTURES = {
+  lokal: "kw_transcribe_sample.json",
+  grunt: "kw_transcribe_grunt_sample.json",
+} as const;
+
+export type KartaAtrapy = keyof typeof FIXTURES;
+
+const sciezka = (karta: KartaAtrapy) =>
+  path.join(process.cwd(), "..", "worker", "tests", "fixtures", FIXTURES[karta]);
 
 export type WariantAtrapy = "ok" | "walidacja" | "blad";
 
 type KsiegaZAtrapy = {
-  naglowek: { numerKsiegi: string; sad: string | null; wydzial: string | null };
+  naglowek: {
+    numerKsiegi: string;
+    sad: string | null;
+    wydzial: string | null;
+    rodzajKsiegi: string | null;
+  };
   dzialy: Array<{ kod: string; tytul: string }>;
   polaDodatkowe: {
     numerLokalu: string | null;
@@ -34,19 +43,33 @@ type KsiegaZAtrapy = {
   };
 } & Record<string, unknown>;
 
-export function ksiegaZAtrapy(): KsiegaZAtrapy {
-  return JSON.parse(readFileSync(FIXTURE, "utf8")) as KsiegaZAtrapy;
+export function ksiegaZAtrapy(karta: KartaAtrapy = "lokal"): KsiegaZAtrapy {
+  return JSON.parse(readFileSync(sciezka(karta), "utf8")) as KsiegaZAtrapy;
 }
 
 /** Same nagłówki działów wystarczą licznikowi „n z 5”; treść i tak przychodzi z atrapy. */
-export function tekstZakladek(kody = ["I-O", "I-Sp", "II", "III", "IV"]): string {
-  return ksiegaZAtrapy()
+export function tekstZakladek(
+  kody = ["I-O", "I-Sp", "II", "III", "IV"],
+  karta: KartaAtrapy = "lokal",
+): string {
+  return ksiegaZAtrapy(karta)
     .dzialy.filter((d) => kody.includes(d.kod))
     .map((d) => `${d.tytul}\nRubryka | wartość | 1`)
     .join("\n\n");
 }
 
-export async function atrapaTranskrypcji(page: Page, wariant: WariantAtrapy = "ok"): Promise<void> {
+/**
+ * `karta` wybiera księgę, którą atrapa odda — nie to, czego strona zażąda:
+ * żądania obu kart wyglądają tak samo, więc rozstrzyga kolejność wywołań.
+ * Każde zdejmuje poprzednią trasę, żeby przełączenie księgi między kartami
+ * było przełączeniem, a nie warstwą na warstwie.
+ */
+export async function atrapaTranskrypcji(
+  page: Page,
+  wariant: WariantAtrapy = "ok",
+  karta: KartaAtrapy = "lokal",
+): Promise<void> {
+  await page.unroute("**/kw-transcribe");
   await page.route("**/kw-transcribe", async (route) => {
     if (wariant === "blad") {
       await route.fulfill({
@@ -56,7 +79,7 @@ export async function atrapaTranskrypcji(page: Page, wariant: WariantAtrapy = "o
       });
       return;
     }
-    const ksiega = ksiegaZAtrapy();
+    const ksiega = ksiegaZAtrapy(karta);
     const walidacja =
       wariant === "ok"
         ? { ok: true, bledy: [] }
