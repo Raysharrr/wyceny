@@ -23,6 +23,7 @@ import {
   dopiszWklejenie,
   dzialyWTekscie,
   htmlNaTekst,
+  liczbaDzialow,
   listaDzialow,
 } from "@/domain/kw-wklej";
 import { PROPERTY_RIGHT_LABEL, PROPERTY_RIGHTS } from "@/domain/property-right";
@@ -461,8 +462,8 @@ function KwTranscribeStatus({ state }: { state: KwTranscribeState }) {
     case "ok":
       return (
         <p data-testid="kw-transcribe-status" className="text-sm text-muted-foreground">
-          ✓ Przepisano {state.dzialy.length} działów ({state.dzialy.join(", ")}) — sprawdzenie
-          treści wypadło pomyślnie. Pola poniżej wypełniono z księgi.
+          ✓ Przepisano {liczbaDzialow(state.dzialy.length)} ({state.dzialy.join(", ")}) —
+          sprawdzenie treści wypadło pomyślnie. Pola poniżej wypełniono z księgi.
         </p>
       );
     case "loading":
@@ -594,8 +595,9 @@ function KwWklejPanel({
       </div>
       {dzialy.length > 0 && brak.length > 0 ? (
         <AutoBanner kind="note">
-          Brakuje działów <b>{listaDzialow(brak)}</b> — wklej pozostałe zakładki. Bez nich operat
-          nie opisze praw, roszczeń ani hipotek.
+          {/* „Brakuje działu III” przy jednym — ta sama odmiana co w statusie (F2). */}
+          Brakuje {brak.length === 1 ? "działu" : "działów"} <b>{listaDzialow(brak)}</b> — wklej
+          pozostałe zakładki. Bez nich operat nie opisze praw, roszczeń ani hipotek.
         </AutoBanner>
       ) : null}
     </>
@@ -696,9 +698,9 @@ function KwWerdyktBanner({
   return (
     <AutoBanner kind="warn">
       <span data-testid={`kw-werdykt-${book}`}>
-        Przepisano {dzialow} działów, ale sprawdzenie treści nie wypadło pomyślnie — niezgodności:{" "}
-        <b>{nazwyNiezgodnosci(werdykt.bledy).join(", ")}</b>. Porównaj pola i treść z księgą i
-        popraw, co trzeba — operat zacytuje to, co tu zostanie.
+        Przepisano {liczbaDzialow(dzialow)}, ale sprawdzenie treści nie wypadło pomyślnie —
+        niezgodności: <b>{nazwyNiezgodnosci(werdykt.bledy).join(", ")}</b>. Porównaj pola i treść z
+        księgą i popraw, co trzeba — operat zacytuje to, co tu zostanie.
       </span>
     </AutoBanner>
   );
@@ -1039,7 +1041,12 @@ export function KwSection(props: KwSectionProps) {
   const zniknieLokal = coZniknie("lokal", kw, kwGrunt, encumbrance);
   const zniknieGrunt = coZniknie("grunt", kw, kwGrunt, encumbrance);
   // Podpisy pól z werdyktu przy MIGAWCE — znikają razem z nią (makieta 4).
+  // Każda karta czyta SWÓJ werdykt: niezgodność w księdze gruntu ma podpisać
+  // pole na karcie gruntu, a nie na karcie lokalu.
   const podpisy: Partial<Record<PoleKarty, string>> = podpisyPol(kw?.transkrypcja?.bledy ?? []);
+  const podpisyGruntu: Partial<Record<PoleKarty, string>> = podpisyPol(
+    kwGrunt?.transkrypcja?.bledy ?? [],
+  );
 
   return (
     <SectionCard
@@ -1263,7 +1270,12 @@ export function KwSection(props: KwSectionProps) {
                     }}
                     onCancel={() => setPendingLokal(null)}
                   />
-                ) : (
+                ) : null}
+                {/* Panel kanału zostaje ZAMONTOWANY pod pytaniem, tylko schowany:
+                    wklejony tekst jest jego stanem lokalnym, więc odmontowanie
+                    kasowałoby zakładki, które „Zostaw jak jest" obiecuje zostawić
+                    (finding F1). */}
+                <div className={cn("flex flex-col gap-3", pendingLokal && "hidden")}>
                   <KwKanalPanel
                     book="lokal"
                     kanal={source === "odpis_kw" ? "odpis_kw" : "ekw_wklej"}
@@ -1284,7 +1296,7 @@ export function KwSection(props: KwSectionProps) {
                       )
                     }
                   />
-                )}
+                </div>
 
                 <div
                   className={cn("grid gap-4 sm:grid-cols-2", pendingLokal && "opacity-[.55]")}
@@ -1441,7 +1453,8 @@ export function KwSection(props: KwSectionProps) {
                   }}
                   onCancel={() => setPendingGrunt(null)}
                 />
-              ) : (
+              ) : null}
+              <div className={cn("flex flex-col gap-3", pendingGrunt && "hidden")}>
                 <KwKanalPanel
                   book="grunt"
                   kanal={props.grunt.source}
@@ -1451,7 +1464,7 @@ export function KwSection(props: KwSectionProps) {
                   onTekst={props.grunt.onTekst}
                   onFiles={props.grunt.onFiles}
                 />
-              )}
+              </div>
               <div
                 className={cn("grid gap-4 sm:grid-cols-2", pendingGrunt && "opacity-[.55]")}
                 aria-disabled={pendingGrunt ? true : undefined}
@@ -1459,6 +1472,10 @@ export function KwSection(props: KwSectionProps) {
                 <TextField
                   id="kwg-nr"
                   label="Numer księgi gruntu"
+                  // Numer WŁASNY tej księgi: walidator nazywa go raz jako
+                  // `numerKsiegi`/`kwLokalu` (nagłówek), raz jako `kwGruntu`
+                  // (rubryka) — na tej karcie to jedno i to samo pole.
+                  hint={podpisyGruntu.kwGruntu ?? podpisyGruntu.kwLokalu}
                   // Suggested from the lokal's book, which states it — retyping
                   // it is how the two come to disagree.
                   value={kwGrunt?.nrKsiegi ?? kw?.kwGruntu ?? ""}

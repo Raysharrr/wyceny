@@ -160,6 +160,7 @@ function Harness(props: {
   deweloperski?: boolean;
   extract?: boolean;
   kw?: Partial<FormInput["kw"]>;
+  kwGrunt?: Partial<FormInput["kwGrunt"]>;
   propertyRight?: "wlasnosc_lokalu" | "spoldzielcze_wlasnosciowe";
   onSourceChange?: (s: KwSource) => void;
   onUseDocumentArea?: () => void;
@@ -184,6 +185,7 @@ function Harness(props: {
       ...(withExtract
         ? ({ kw: { source: "akt", deweloperski: !!props.deweloperski, ...props.kw } } as FormInput)
         : {}),
+      ...(props.kwGrunt ? ({ kwGrunt: props.kwGrunt } as FormInput) : {}),
       ...(props.propertyRight ? { propertyRight: props.propertyRight } : {}),
     },
   });
@@ -749,6 +751,113 @@ describe("KwSection — kanały (makiety 1, 2, 6)", () => {
     expect(screen.queryByTestId("kw-wklej-lokal")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Wklej ponownie" }));
     expect(screen.getByTestId("kw-wklej-lokal")).toBeDefined();
+  });
+
+  it("„Zostaw jak jest” nie kasuje wklejonego tekstu ani licznika działów (F1)", async () => {
+    const user = userEvent.setup();
+    // Karta niepusta (numer księgi), więc zmiana sposobu przechodzi przez pytanie.
+    render(<Harness kw={{ kwLokalu: "AB1C/1/9" } as Partial<FormInput["kw"]>} />);
+    const pole = screen.getByTestId("kw-wklej-lokal") as HTMLTextAreaElement;
+    fireEvent.paste(pole, {
+      clipboardData: {
+        getData: (t: string) =>
+          t === "text/plain" ? "DZIAŁ I-O - OZNACZENIE\nDZIAŁ I-SP - SPIS PRAW" : "",
+      },
+    });
+    const tekst = pole.value;
+    expect(screen.getByTestId("kw-book-lokal").textContent).toContain("2 z 5");
+
+    await user.click(within(kartaKsiegi("lokal")).getByRole("radio", { name: "Wgraj PDF" }));
+    await user.click(screen.getByRole("button", { name: "Zostaw jak jest" }));
+
+    // Panel wraca z TYM SAMYM tekstem: odmowa ma być bezskutkowa.
+    expect((screen.getByTestId("kw-wklej-lokal") as HTMLTextAreaElement).value).toBe(tekst);
+    expect(screen.getByTestId("kw-book-lokal").textContent).toContain("2 z 5");
+  });
+
+  it.each([
+    [["I-O"], "Przepisano 1 dział"],
+    [["I-O", "I-Sp", "II"], "Przepisano 3 działy"],
+    [["I-O", "I-Sp", "II", "III", "IV"], "Przepisano 5 działów"],
+  ])("status odmienia liczebnik: %s → %s (F2)", (dzialy, oczekiwane) => {
+    render(
+      <Harness
+        lokalTranscribe={{ status: "ok", dzialy: dzialy as string[] }}
+        kw={{ tresc: transcribedBook() } as Partial<FormInput["kw"]>}
+      />,
+    );
+    expect(screen.getByTestId("kw-transcribe-status").textContent).toContain(oczekiwane);
+  });
+
+  it("baner werdyktu odmienia liczebnik tak samo jak status (F2)", () => {
+    const tresc = transcribedBook();
+    const trzyDzialy = { ...tresc, dzialy: tresc.dzialy.slice(0, 3) };
+    render(
+      <Harness
+        kw={
+          {
+            tresc: trzyDzialy,
+            transkrypcja: {
+              ok: false,
+              bledy: [{ klasa: "dzialy_niekompletne", dzial: "III" }],
+              kanal: "tekst",
+              plikow: 0,
+              at: "2026-09-22T08:00:00.000Z",
+            },
+          } as unknown as Partial<FormInput["kw"]>
+        }
+      />,
+    );
+    expect(screen.getByTestId("kw-werdykt-lokal").textContent).toContain(
+      "Przepisano 3 działy, ale",
+    );
+  });
+
+  it("przy jednym brakującym dziale baner mówi „Brakuje działu III” (F2)", () => {
+    render(<Harness />);
+    const pole = screen.getByTestId("kw-wklej-lokal") as HTMLTextAreaElement;
+    fireEvent.paste(pole, {
+      clipboardData: {
+        getData: (t: string) =>
+          t === "text/plain" ? "DZIAŁ I-O\nDZIAŁ I-SP\nDZIAŁ II\nDZIAŁ IV" : "",
+      },
+    });
+    expect(screen.getByText(/Brakuje/).textContent).toBe(
+      "Brakuje działu III — wklej pozostałe zakładki. Bez nich operat nie opisze praw, roszczeń ani hipotek.",
+    );
+  });
+
+  it("karta gruntu podpisuje swoje pole numeru z WŁASNEGO werdyktu (makieta 4 dla obu ksiąg)", () => {
+    render(
+      <Harness
+        kwGrunt={
+          {
+            source: "ekw_wklej",
+            nrKsiegi: "AB1C/2/7",
+            transkrypcja: {
+              ok: false,
+              bledy: [{ klasa: "kw_cyfra_kontrolna:numerKsiegi" }],
+              kanal: "tekst",
+              plikow: 0,
+              at: "2026-09-22T08:00:00.000Z",
+            },
+          } as unknown as Partial<FormInput["kwGrunt"]>
+        }
+      />,
+    );
+    const pole = document.getElementById("kwg-nr") as HTMLInputElement;
+    expect(pole.className).toContain("border-[var(--amber)]");
+    expect(
+      within(screen.getByTestId("kw-book-grunt")).getByText(
+        "Cyfra kontrolna nie zgadza się z numerem.",
+      ),
+    ).toBeDefined();
+    // Karta lokalu ma swój własny werdykt — tu żadnego, więc żadnych podpisów.
+    expect(
+      within(screen.getByTestId("kw-book-lokal")).queryByText(
+        "Cyfra kontrolna nie zgadza się z numerem.",
+      ),
+    ).toBeNull();
   });
 });
 

@@ -93,6 +93,19 @@ export function brakujaceDzialy(tekst: string): KodDzialu[] {
   return KODY_DZIALOW.filter((k) => !sa.has(k));
 }
 
+/**
+ * „1 dział”, „3 działy”, „5 działów” — polska mnogość, bez której niekompletne
+ * wklejenie melduje „Przepisano 3 działów”. Ścieżka jest codzienna: przepisać
+ * można już jeden dział (makieta 2).
+ */
+export function liczbaDzialow(n: number): string {
+  if (n === 1) return "1 dział";
+  const dziesiatki = n % 100;
+  const jednosci = n % 10;
+  const mnoga = jednosci >= 2 && jednosci <= 4 && !(dziesiatki >= 12 && dziesiatki <= 14);
+  return `${n} ${mnoga ? "działy" : "działów"}`;
+}
+
 /** „III i IV”, „I-O, III i IV”. */
 export function listaDzialow(kody: readonly KodDzialu[]): string {
   if (kody.length <= 1) return kody[0] ?? "";
