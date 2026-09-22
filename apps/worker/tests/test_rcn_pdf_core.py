@@ -119,8 +119,10 @@ def footer(spelling: str = SPELLINGS[0], *, named: bool = True) -> list[Word]:
     recognised by its wording alone — which is what the spelling branch is for."""
     # x0 as measured on the real printouts: the stamp straddles the `extra`,
     # `plan` and `address` bands, which is precisely why it used to end up in the
-    # last transaction's cells. Squashing it into one band would leave this
-    # fixture unable to show a leak at all.
+    # last transaction's cells. Splitting "Dokument / {spelling} / przez:" into
+    # separate words is what makes `named=False` possible: written as a single
+    # cell the whole stamp line lands in `extra`, which has no reader, so the
+    # spelling test would have nothing to check.
     cells = [
         (706, 700, "Wygenerowano"),
         (758, 700, "dnia: 30.06.2026"),
