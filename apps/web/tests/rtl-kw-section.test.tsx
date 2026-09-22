@@ -1217,6 +1217,10 @@ describe("KwSection — full-form wiring", () => {
 
   it("kanał tekstowy księgi GRUNTU: numer, sąd i wydział z nagłówka, działy z treści, karta „Zbadana” (R2)", async () => {
     const tresc = transcribedBook();
+    // Fixtura workera to księga LOKALU; na karcie gruntu musi nią być księga
+    // gruntowa, inaczej test modeluje pomyłkę zamiast toru zwykłego — i od
+    // reguły rodzaju księgi dostawałby werdykt `ok:false`.
+    tresc.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
     vi.mocked(transcribeKw).mockResolvedValue({
       kind: "ok",
       tresc,
@@ -1237,6 +1241,12 @@ describe("KwSection — full-form wiring", () => {
     );
     expect((document.getElementById("kwg-sad") as HTMLInputElement).value).toBe(tresc.naglowek.sad);
     expect(extractKw).not.toHaveBeenCalled();
+    // Kontrola pozytywna reguły rodzaju: właściwa księga na właściwej karcie
+    // nie daje niezgodności, więc zostaje zielona linia i żadnego banera.
+    expect(screen.queryByTestId("kw-werdykt-grunt")).toBeNull();
+    expect(screen.getByTestId("kw-transcribe-status").textContent).toContain(
+      "sprawdzenie treści wypadło pomyślnie",
+    );
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
     await waitFor(() => expect(createDraft).toHaveBeenCalled());
     const { kwGrunt } = vi.mocked(createDraft).mock.calls[0][0] as {
