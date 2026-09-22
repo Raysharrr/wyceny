@@ -8,8 +8,11 @@ import inspect
 import sys
 import threading
 import time
+from collections.abc import Callable
 from types import ModuleType, SimpleNamespace
 
+import anthropic  # real SDK: the classifier sorts by ITS classes, so the tests throw them
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -52,7 +55,7 @@ def secret_env(monkeypatch):
     monkeypatch.setenv("WORKER_SHARED_SECRET", SECRET)
 
 
-def post(token: str, sekcje=("opis_lokalu",), fakty=None, transakcje=None):
+def post(token: str, sekcje=("opis_lokalu",), fakty=None, transakcje=None, headers=None):
     return client.post(
         "/prose-proposal",
         json={
@@ -61,7 +64,59 @@ def post(token: str, sekcje=("opis_lokalu",), fakty=None, transakcje=None):
             "fakty": FAKTY if fakty is None else fakty,
             "transakcje": list(transakcje or []),
         },
+        headers=headers or {},
     )
+
+
+def api_error(cls: type, status: int, message: str) -> Exception:
+    """A real `anthropic` status error, built the way the SDK builds them
+    (`APIStatusError(message, *, response, body)`)."""
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    return cls(message, response=httpx.Response(status, request=request), body=None)
+
+
+def raising(make: Callable[[], Exception]):
+    """`_generate_prose_section` stand-in that raises a FRESH exception per call
+    (sections run in parallel threads — one shared instance would be raised twice)."""
+
+    def boom(section, prompt, correction=None):
+        raise make()
+
+    return boom
+
+
+CONFIG_ERRORS = [
+    pytest.param(
+        lambda: api_error(anthropic.AuthenticationError, 401, "invalid x-api-key"), id="401"
+    ),
+    pytest.param(
+        lambda: api_error(anthropic.PermissionDeniedError, 403, "Your API key lacks permission"),
+        id="403",
+    ),
+    pytest.param(
+        lambda: api_error(
+            anthropic.BadRequestError,
+            400,
+            "Your credit balance is too low to access the Anthropic API.",
+        ),
+        id="400-credit",
+    ),
+]
+TRANSIENT_ERRORS = [
+    pytest.param(
+        lambda: anthropic.APIConnectionError(
+            request=httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+        ),
+        id="connection",
+    ),
+    pytest.param(lambda: api_error(anthropic.RateLimitError, 429, "rate limited"), id="429"),
+    pytest.param(lambda: api_error(anthropic.InternalServerError, 500, "overloaded"), id="500"),
+    pytest.param(
+        lambda: api_error(anthropic.BadRequestError, 400, "max_tokens: must be a positive integer"),
+        id="400-not-credit",
+    ),
+    pytest.param(lambda: RuntimeError("sekcja opis_lokalu: pusta odpowiedź"), id="runtime"),
+]
 
 
 # Guard-clean: "71,63" is a fact and the digit in "m2" is not a number (style rule).
@@ -397,6 +452,38 @@ def test_one_failing_section_does_not_discard_the_others(monkeypatch):
     body = resp.json()
     assert sorted(body["sekcje"]) == ["analiza_rynku", "opis_lokalu"]
     assert body["odrzucone"] == {"otoczenie": []}
+
+
+# --- Głuszyna 18.09 (ADR-021 blok, PR-1): the appraiser pressed „Wygeneruj ponownie” all
+# day against an expired key and was told each time to try again. A refused key,
+# a missing permission or an exhausted balance stay refused on every retry — the
+# worker has to say so, and say it ONLY for those.
+
+
+@pytest.mark.parametrize("make", CONFIG_ERRORS)
+def test_failure_kind_config(make):
+    assert main._prose_failure_kind(make()) == "config"
+
+
+@pytest.mark.parametrize("make", TRANSIENT_ERRORS)
+def test_failure_kind_other(make):
+    assert main._prose_failure_kind(make()) == "other"
+
+
+def test_section_outcome_carries_the_failure_kind(monkeypatch):
+    """`_prose_section` never raises; the KIND of failure rides on the outcome so
+    the handler can tell a dead key from a dropped connection."""
+    monkeypatch.setattr(main, "_generate_prose_section", raising(CONFIG_ERRORS[0].values[0]))
+    config = main._prose_section("opis_lokalu", FAKTY)
+    assert config.failed_kind == "config"
+    assert config.text == "" and config.violations == []
+
+    monkeypatch.setattr(main, "_generate_prose_section", raising(TRANSIENT_ERRORS[0].values[0]))
+    assert main._prose_section("opis_lokalu", FAKTY).failed_kind == "other"
+
+    monkeypatch.setattr(main, "_generate_prose_section", FakeLlm({}))
+    landed = main._prose_section("opis_lokalu", FAKTY)
+    assert landed.failed_kind is None and landed.text == CLEAN
 
 
 # --- The interior of `_generate_prose_section`: the ONE place where a wrong SDK

@@ -1021,9 +1021,12 @@ class _SectionOutcome(NamedTuple):
     violations: list[str]
     input_tokens: int
     output_tokens: int
-    # The API call itself failed (as opposed to the guard rejecting the text).
-    # Kept apart so the response can tell the two cases apart downstream.
-    failed: bool = False
+    # The API call itself failed (as opposed to the guard rejecting the text),
+    # and HOW: "config" is a refusal no retry can fix — a rejected key, a missing
+    # permission, an exhausted balance — "other" is everything else (network,
+    # 429, 5xx, a truncated answer). None: the call landed. The kind rides here
+    # so the handler can word the 502 for the appraiser (PR-1 Głuszyna).
+    failed_kind: Literal["config", "other"] | None = None
 
 
 PROSE_RETRY_INSTRUCTION = (
@@ -1046,6 +1049,32 @@ PROSE_RETRY_INSTRUCTION = (
 PROSE_FAILED_DETAIL = (
     "Nie udało się wygenerować opisów — spróbuj ponownie albo napisz teksty ręcznie."
 )
+
+PROSE_CONFIG_DETAIL = (
+    "Usługa generowania opisów odrzuciła klucz dostępu albo nie ma środków — to błąd "
+    "konfiguracji po stronie administratora, ponowna próba nie pomoże. "
+    "Zgłoś, podając kod: {trace_id}."
+)
+
+
+def _prose_failure_kind(exc: Exception) -> Literal["config", "other"]:
+    """Sorts a failed API call by what a retry can do about it. Głuszyna 18.09:
+    the appraiser pressed „Wygeneruj ponownie” all day against an expired key,
+    told each time to try again — a refused key, a missing permission or an
+    exhausted balance stay refused on every retry, and the 502 has to say so.
+
+    The second `anthropic` touchpoint after `_generate_prose_section` (ADR-009):
+    the SDK is imported here only for its exception classes, never called, and
+    `_prose_section` / `prose_proposal` stay free of it."""
+    import anthropic
+
+    if isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
+        return "config"
+    # No dedicated class for a dry account: it is a 400 whose message reads
+    # "Your credit balance is too low to access the Anthropic API."
+    if isinstance(exc, anthropic.BadRequestError) and "credit" in str(exc).lower():
+        return "config"
+    return "other"
 
 
 def _prose_violations(text: str, facts: dict, property_right: str | None = None) -> list[str]:
@@ -1096,8 +1125,9 @@ def _prose_section(section: str, facts: dict, property_right: str | None = None)
     except Exception as exc:
         # Tokens already spent are still reported: the cost audit must not lose
         # them just because the section did not finish.
-        logger.error("prose_section_failed", section=section, err=str(exc))
-        return _SectionOutcome("", [], input_tokens, output_tokens, failed=True)
+        kind = _prose_failure_kind(exc)
+        logger.error("prose_section_failed", section=section, kind=kind, err=str(exc))
+        return _SectionOutcome("", [], input_tokens, output_tokens, failed_kind=kind)
     # Only section names and offending numbers are logged — never the facts
     # (they carry the address) and never the generated text.
     return _SectionOutcome(text, violations, input_tokens, output_tokens)
@@ -1164,7 +1194,7 @@ def prose_proposal(request: ProseProposalRequest) -> ProseProposalResponse:
     for section, outcome in zip(sections, outcomes):
         input_tokens += outcome.input_tokens  # retries included — the tokens were spent
         output_tokens += outcome.output_tokens
-        if outcome.failed:
+        if outcome.failed_kind:
             odrzucone[section] = []  # empty list = the call failed, no offending numbers
         elif outcome.violations:
             odrzucone[section] = outcome.violations
