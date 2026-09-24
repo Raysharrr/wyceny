@@ -77,7 +77,8 @@ def parse_candidates(gml: str, subject_xy: tuple[float, float]) -> list[dict]:
     for member in _MEMBER_RX.findall(gml):
 
         def get(field: str) -> str:
-            m = re.search(rf"<ms:{field}>([^<]*)</ms:{field}>", member)
+            # GUGiK flipped field names to UPPERCASE on 2026-09-24 — accept either case.
+            m = re.search(rf"<ms:{field}>([^<]*)</ms:{field}>", member, re.IGNORECASE)
             return m.group(1).strip() if m else ""
 
         price, area = _float(get("lok_cena_brutto")), _float(get("lok_pow_uzyt"))

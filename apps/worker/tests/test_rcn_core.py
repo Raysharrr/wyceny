@@ -1,5 +1,7 @@
 """Offline tests for the RCN pure core. NO network — GML is built in-test."""
 
+import re
+
 from app.rcn import (
     PAGE_SIZE,
     bbox_for,
@@ -93,6 +95,19 @@ def test_parse_candidates_reads_every_field_and_normalises_pos_and_distance():
     assert t["floor"] == 2 and t["rooms"] == 3
     assert t["market"] is None and t["share"] == "1/1" and t["transType"] == "wolnyRynek"
     assert t["seller"] == "osobaFizyczna" and t["function"] == "mieszkalna"
+
+
+def test_parse_candidates_reads_uppercase_field_names():
+    """GUGiK switched the WFS to UPPERCASE field names on 2026-09-24
+    (<ms:TRAN_LOKALNY_ID_IIP>); lowercase-only parsing left every field empty
+    and dedupe_pair collapsed the whole pool into one record."""
+    upper = re.sub(
+        r"(</?ms:)(?!lokale)(\w+)", lambda m: m.group(1) + m.group(2).upper(), make_member()
+    )
+    assert "<ms:TRAN_LOKALNY_ID_IIP>" in upper
+    t = parse_candidates(wrap([upper]), SUBJECT)[0]
+    assert t["transactionId"] == "T1" and t["lokalId"].endswith("_LOK")
+    assert t["date"] == "2026-04-15" and t["priceTotal"] == 700000.0
 
 
 def test_parse_candidates_keeps_records_without_price_and_maps_market_values():
