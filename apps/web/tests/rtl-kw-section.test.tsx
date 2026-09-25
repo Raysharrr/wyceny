@@ -549,8 +549,11 @@ describe("KwSection", () => {
     const choice = screen.getByTestId("kw-encumbrance");
     const podstawa = within(choice).getByLabelText("Podstawa (wymagana)");
     expect(podstawa.getAttribute("aria-required")).toBe("true");
-    // Brak wariantu — bez podpowiedzi.
+    // Brak wariantu — bez podpowiedzi, także gdy podstawa już jest wpisana.
     expect(within(choice).queryByText(hint)).toBeNull();
+    await userEvent.type(podstawa, "Zgodnie z poleceniem Zleceniodawcy.");
+    expect(within(choice).queryByText(hint)).toBeNull();
+    await userEvent.clear(podstawa);
 
     // Wariant + pusta podstawa — jest, w kolorze nagłówka boksu.
     await userEvent.click(

@@ -162,7 +162,14 @@ def test_no_parsed_output_is_an_error_with_a_code_never_partial_content(
     body = resp.json()
     assert set(body) == {"detail", "code"}
     assert body["code"] == code
-    assert "ręcznie" in body["detail"]
+    if code == "kw_transkrypcja_ucieta":
+        # Ścieżki ręcznej nie ma od ADR-021: za obszerna księga = wklej mniej.
+        assert body["detail"] == (
+            "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości — wklej z "
+            "przeglądarki KW tylko wpisy dotyczące przedmiotowego lokalu."
+        )
+    else:
+        assert "ręcznie" in body["detail"]
 
 
 def test_only_a_real_truncation_is_called_too_large(monkeypatch):

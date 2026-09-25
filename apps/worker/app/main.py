@@ -669,7 +669,8 @@ def kw_extract(
 TRANSCRIBE_ERRORS = {
     "kw_transkrypcja_ucieta": (
         422,
-        "Treść księgi jest zbyt obszerna, żeby odczytać ją w całości — wpisz dane ręcznie.",
+        "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości — wklej z przeglądarki KW "
+        "tylko wpisy dotyczące przedmiotowego lokalu.",
     ),
     "kw_transkrypcja_nieczytelna": (
         422,
