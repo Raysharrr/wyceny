@@ -9,6 +9,7 @@ import json
 import time
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -161,12 +162,19 @@ def test_no_parsed_output_is_an_error_with_a_code_never_partial_content(
     body = resp.json()
     assert set(body) == {"detail", "code"}
     assert body["code"] == code
-    assert "ręcznie" in body["detail"]
+    if code == "kw_transkrypcja_ucieta":
+        # Ścieżki ręcznej nie ma od ADR-021: za obszerna księga = wklej mniej.
+        assert body["detail"] == (
+            "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości — wklej z "
+            "przeglądarki KW tylko wpisy dotyczące przedmiotowego lokalu."
+        )
+    else:
+        assert "ręcznie" in body["detail"]
 
 
 def test_only_a_real_truncation_is_called_too_large(monkeypatch):
-    """A refusal written as plain text fails the SDK's schema validation and comes
-    back as INVALID_OUTPUT — it must not tell the appraiser the book is too large."""
+    """A refusal written as plain text fails the adapter's schema validation and
+    comes back as INVALID_OUTPUT — it must not tell the appraiser the book is too large."""
     refusal = message([{"type": "text", "text": "Nie mogę pomóc."}], stop_reason="refusal")
     monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(refusal)))
     resp = post(mint())
@@ -176,6 +184,74 @@ def test_only_a_real_truncation_is_called_too_large(monkeypatch):
 
     use_llm(monkeypatch, LlmResult(None, "max_tokens", 14440, 16000))
     resp = post(mint())
+    assert resp.json()["code"] == "kw_transkrypcja_ucieta"
+    assert "obszerna" in resp.json()["detail"]
+
+
+def test_kw_transcribe_sends_the_pre_port_request_byte_for_byte(monkeypatch):
+    """The adapter calls `messages.create`, not `messages.parse` (Z3 kw-banner-fix),
+    so the request is pinned on the wire, for the transcription's own shape: two
+    PDFs, a paste and adaptive thinking. The HTTP body /kw-transcribe sends is
+    byte for byte the body of `messages.parse(output_format=KsiegaTresc)`."""
+    pdfs = [b"%PDF-1.4 dzial I-O", b"%PDF-1.4 dzial II"]
+    tekst = "DZIAŁ IV\nBRAK WPISÓW"
+    answer = message([{"type": "text", "text": sample_tresc().model_dump_json()}])
+
+    # Reference request: the call as `messages.parse` made it before the fix.
+    pre_port: list[httpx.Request] = []
+    sdk_answering(answer, pre_port).messages.parse(
+        model=kw_transcribe.TRANSCRIBE_MODEL,
+        max_tokens=kw_transcribe.MAX_TOKENS,
+        thinking={"type": "adaptive"},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    *(
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": b64(pdf),
+                            },
+                        }
+                        for pdf in pdfs
+                    ),
+                    {"type": "text", "text": f"<tresc_ksiegi>\n{tekst}\n</tresc_ksiegi>"},
+                    {"type": "text", "text": kw_transcribe.PROMPT},
+                ],
+            }
+        ],
+        output_format=KsiegaTresc,
+    )
+
+    sent: list[httpx.Request] = []
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(answer, sent)))
+    resp = post_form(
+        mint(),
+        files=[(f"kw{i}.pdf", pdf, "application/pdf") for i, pdf in enumerate(pdfs)],
+        tekst=tekst,
+    )
+
+    assert resp.status_code == 200
+    (reference,) = pre_port
+    (request,) = sent
+    assert (request.method, request.url) == (reference.method, reference.url)
+    assert request.content == reference.content
+
+
+def test_json_cut_at_max_tokens_by_the_real_sdk_is_called_too_large(monkeypatch):
+    """Z3 proof 3: the adapter's own result for JSON cut at max_tokens — not a
+    hand-made `LlmResult` — is a truncation, end to end."""
+    cut = message([{"type": "text", "text": '{"naglowek": {"numerKs'}], stop_reason="max_tokens")
+    with pytest.raises(kw_transcribe.TranscriptionFailed) as failed:
+        kw_transcribe.transcribe(AnthropicAdapter(sdk_answering(cut)), ["JVBERg=="], None)
+    assert failed.value.code == "kw_transkrypcja_ucieta"
+
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(cut)))
+    resp = post(mint())
+    assert resp.status_code == 422
     assert resp.json()["code"] == "kw_transkrypcja_ucieta"
     assert "obszerna" in resp.json()["detail"]
 

@@ -29,8 +29,15 @@ class Schema(BaseModel):
     a: str
 
 
-def sdk_answering(body: dict) -> anthropic.Anthropic:
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+def sdk_answering(body: dict, sent: list[httpx.Request] | None = None) -> anthropic.Anthropic:
+    """The real SDK, answering `body` to every request; `sent` collects the requests."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if sent is not None:
+            sent.append(request)
+        return httpx.Response(200, json=body)
+
+    transport = httpx.MockTransport(answer)
     return anthropic.Anthropic(
         api_key="test-key", http_client=httpx.Client(transport=transport), max_retries=0
     )
@@ -121,41 +128,53 @@ def test_refusal_is_explicit_in_the_result():
 
 
 def test_refusal_written_as_text_is_invalid_output_not_an_exception():
-    """With a text block the SDK validates the refusal against the schema, raises,
-    and the real stop_reason is lost — the adapter can only report INVALID_OUTPUT."""
+    """A refusal with a text block fails the schema like any finished answer that
+    does not fit it: INVALID_OUTPUT, never "too large" (only max_tokens is)."""
     refusal = message([{"type": "text", "text": "Nie mogę pomóc."}], stop_reason="refusal")
     result = parse_with(sdk_answering(refusal))
     assert result.parsed is None
     assert result.stop_reason == INVALID_OUTPUT
 
 
-def test_text_cut_mid_json_comes_back_as_no_parsed_output_not_an_exception():
-    """`messages.parse` validates the text INSIDE the SDK, so JSON cut at max_tokens
-    raises pydantic's ValidationError there — and its message quotes the input.
-    The adapter must turn that into an explicit result, never let it propagate."""
+def test_text_cut_mid_json_reports_the_truncation_with_its_usage():
+    """Z3 proof 1 (HANDOFF kw-banner-fix). `messages.parse` validated the text
+    INSIDE the SDK, so JSON cut at max_tokens raised pydantic's ValidationError
+    there and the adapter could only say INVALID_OUTPUT — the book was too large,
+    the appraiser was told it was unreadable. The API's own stop_reason and usage
+    must reach the caller; no exception, no partial content."""
     cut = message([{"type": "text", "text": '{"a": "tresc ksieg'}], stop_reason="max_tokens")
     result = parse_with(sdk_answering(cut))
     assert result == LlmResult(
-        parsed=None, stop_reason=INVALID_OUTPUT, input_tokens=0, output_tokens=0
+        parsed=None, stop_reason="max_tokens", input_tokens=11, output_tokens=7
     )
+
+
+def test_a_finished_answer_against_the_schema_is_invalid_output():
+    """Z3 proof 2, negative control: green before and after the fix. Tokens are
+    not asserted — before the fix the SDK's exception left none to report."""
+    wrong = message([{"type": "text", "text": '{"b": "x"}'}])
+    result = parse_with(sdk_answering(wrong))
+    assert result.parsed is None
+    assert result.stop_reason == INVALID_OUTPUT
 
 
 # --- regression: /kw-extract through the port is the pre-port call, 1:1 ------------
 
 
 class RecordingSdk:
-    """Stands in for `anthropic.Anthropic()`: records the kwargs of `messages.parse`."""
+    """Stands in for `anthropic.Anthropic()`: records the kwargs of `messages.create`
+    and answers `payload` as the model's JSON text."""
 
-    def __init__(self, payload: KwExtractPayload):
+    def __init__(self, payload: BaseModel):
         self.messages = self
         self.kwargs: dict | None = None
         self._response = SimpleNamespace(
-            parsed_output=payload,
+            content=[SimpleNamespace(type="text", text=payload.model_dump_json())],
             stop_reason="end_turn",
             usage=SimpleNamespace(input_tokens=1, output_tokens=1),
         )
 
-    def parse(self, **kwargs):
+    def create(self, **kwargs):
         self.kwargs = kwargs
         return self._response
 
@@ -190,22 +209,23 @@ def post_kw_extract(pdf: bytes):
     )
 
 
-def test_kw_extract_sends_the_pre_port_sdk_call_and_answers_unchanged(monkeypatch):
+def test_kw_extract_sends_the_pre_port_request_and_answers_unchanged(monkeypatch):
+    """The adapter calls `messages.create`, not `messages.parse` (Z3 kw-banner-fix:
+    parse lost the stop_reason of cut JSON), so the pre-port call is compared where
+    it matters — on the wire: the HTTP body /kw-extract sends is byte for byte the
+    body of the `messages.parse` call main.py made before the port."""
     monkeypatch.setenv("WORKER_SHARED_SECRET", SECRET)
     pdf = b"%PDF-1.4 regresja"
+    answer = message([{"type": "text", "text": payload().model_dump_json()}])
 
     # Reference answer: the endpoint with the model call stubbed at the old seam.
     monkeypatch.setattr(main, "_extract_kw_payload", lambda pdf_b64: payload())
     before = post_kw_extract(pdf)
     monkeypatch.undo()
 
-    monkeypatch.setenv("WORKER_SHARED_SECRET", SECRET)
-    sdk = RecordingSdk(payload())
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk))
-    after = post_kw_extract(pdf)
-
-    # Verbatim the kwargs of the `messages.parse` call main.py made before the port.
-    assert sdk.kwargs == dict(
+    # Reference request: verbatim the pre-port `messages.parse` call.
+    pre_port: list[httpx.Request] = []
+    sdk_answering(answer, pre_port).messages.parse(
         model="claude-sonnet-5",
         max_tokens=4096,
         thinking={"type": "disabled"},
@@ -227,6 +247,16 @@ def test_kw_extract_sends_the_pre_port_sdk_call_and_answers_unchanged(monkeypatc
         ],
         output_format=KwExtractPayload,
     )
+
+    monkeypatch.setenv("WORKER_SHARED_SECRET", SECRET)
+    sent: list[httpx.Request] = []
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(answer, sent)))
+    after = post_kw_extract(pdf)
+
+    (reference,) = pre_port
+    (request,) = sent
+    assert (request.method, request.url) == (reference.method, reference.url)
+    assert request.content == reference.content
     assert after.status_code == before.status_code == 200
     assert after.json() == before.json()
 
@@ -275,7 +305,9 @@ def test_two_documents_become_two_document_blocks_in_order_then_the_prompt():
         document_block("JVBERi0x"),
         {"type": "text", "text": "p"},
     ]
-    assert sdk.kwargs["output_format"] is Schema
+    assert sdk.kwargs["output_config"] == {
+        "format": {"schema": anthropic.transform_schema(Schema), "type": "json_schema"}
+    }
     assert sdk.kwargs["max_tokens"] == 100
     assert "thinking" not in sdk.kwargs
 

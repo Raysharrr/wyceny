@@ -242,8 +242,10 @@ test.describe("Z-3 treść ksiąg wieczystych — krok 1 @gluszyna", () => {
     await expect(werdykt).toBeVisible({ timeout: 30_000 });
     // Nazwy po polsku, nigdy klasy walidatora — baner czyta go rzeczoznawca.
     await expect(werdykt).toContainText(
-      "niezgodności: udział w nieruchomości wspólnej, cyfra kontrolna numeru księgi gruntu",
+      "coś się nie zgadza: udział w nieruchomości wspólnej, cyfra kontrolna numeru księgi gruntu",
     );
+    // Pierwsze zdanie mówi, że baner nie blokuje (zgłoszenie rzeczoznawczyni 25.09).
+    await expect(werdykt).toContainText("To ostrzeżenie — nie blokuje zatwierdzenia operatu.");
     await expect(werdykt).not.toContainText("pole_niezgodne");
     // Werdykt jest OSTRZEŻENIEM, nie blokadą: treść mimo niego weszła.
     await expect(page.locator("#kw-lokalu")).not.toHaveValue("");

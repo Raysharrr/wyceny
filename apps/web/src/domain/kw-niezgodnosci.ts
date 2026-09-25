@@ -85,7 +85,9 @@ export function nazwyNiezgodnosci(bledy: Niezgodnosc[], ksiega: KartaKsiegi): st
 
 export type PoleKarty = "kwLokalu" | "kwGruntu" | "nrLokalu" | "udzial" | "rep";
 
-const CYFRA = "Cyfra kontrolna nie zgadza się z numerem."; // makieta 4
+// Podpis stoi pod polem numeru, ale mówi o numerze z PRZEPISANEJ treści —
+// wartość w polu może być poprawna (zgłoszenie rzeczoznawczyni 25.09).
+const CYFRA = "Numer w przepisanej treści ma błędną cyfrę kontrolną.";
 // NOWY TEKST (do akceptacji w PR) — makieta 4 pokazuje tylko udział i cyfrę kontrolną.
 const PODPIS: Record<string, [PoleKarty, string]> = {
   "kw_cyfra_kontrolna:numerKsiegi": ["kwLokalu", CYFRA],

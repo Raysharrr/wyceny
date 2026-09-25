@@ -292,6 +292,8 @@ const ENCUMBRANCE_OPTIONS = [
  * problem the app can solve — it is a decision the appraiser has to state, and
  * the operat prints it in §2, §3, §8.2 and §10.1. `podstawa` is required in
  * both variants, which is why it sits inside this block rather than beside it.
+ * A variant with an empty basis blocks approval (`encumbranceDecisionNeeded`),
+ * so the block says so under the field — the appraiser's report of 25.09.
  */
 function EncumbranceChoice({
   value,
@@ -300,6 +302,7 @@ function EncumbranceChoice({
   value: { wariant?: string | null; podstawa?: string } | null | undefined;
   onChange: (value: { wariant: string | null; podstawa: string }) => void;
 }) {
+  const brakPodstawy = !!value?.wariant && !(value.podstawa ?? "").trim();
   return (
     <div
       data-testid="kw-encumbrance"
@@ -335,15 +338,21 @@ function EncumbranceChoice({
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor="kw-encumbrance-podstawa" className="text-sm">
-          Podstawa
+          Podstawa (wymagana)
         </label>
         <textarea
           id="kw-encumbrance-podstawa"
+          aria-required="true"
           className={textareaClass}
           placeholder="np. Zgodnie z poleceniem Zleceniodawcy obciążenie nie zostaje uwzględnione, ponieważ …"
           value={value?.podstawa ?? ""}
           onChange={(e) => onChange({ wariant: value?.wariant ?? null, podstawa: e.target.value })}
         />
+        {brakPodstawy ? (
+          <span className="text-xs text-[var(--amber)]">
+            Bez podstawy nie zatwierdzisz operatu.
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -440,8 +449,9 @@ const TRANSCRIBE_FAILED_TEXT: Record<string, string> = {
   // Ścieżka aktu czyta wyłącznie plik — akt nie ma działów do przepisania (F7).
   kw_kanal_niedozwolony:
     "Wklejona treść nie dotyczy aktu notarialnego — na tej ścieżce wgraj plik PDF aktu.", // NOWY TEKST (do akceptacji w PR)
+  // Zatwierdzony przez usera 25.09 (HANDOFF kw-banner-fix, Z3): obejście zamiast skutku.
   kw_transkrypcja_ucieta:
-    "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
+    "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości. Wklej z przeglądarki KW tylko wpisy dotyczące przedmiotowego lokalu: działki, budynek, jego wiersz na listach lokali oraz działy III i IV.",
   kw_transkrypcja_nieczytelna:
     "Nie udało się przepisać treści działów z tego pliku — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
   kw_transkrypcja_blad:
@@ -682,8 +692,9 @@ function KwPdfPanel({
 /**
  * Werdykt sprawdzenia treści — czytany z MIGAWKI (`kw.transkrypcja`), nie ze
  * stanu sekcji, więc wraca z każdym otwarciem szkicu, dopóki treść nie zostanie
- * przepisana na nowo. To ostrzeżenie, nie blokada (ADR-021 reg. 5): treść jest
- * zapisana, a operat zacytuje to, co w karcie zostanie.
+ * przepisana na nowo. To ostrzeżenie, nie blokada (ADR-021 reg. 5), i baner
+ * mówi to pierwszym zdaniem: treść jest zapisana, a do operatu trafi w obecnej
+ * postaci — chyba że rzeczoznawca wklei lub wgra księgę ponownie.
  */
 function KwWerdyktBanner({
   book,
@@ -698,9 +709,11 @@ function KwWerdyktBanner({
   return (
     <AutoBanner kind="warn">
       <span data-testid={`kw-werdykt-${book}`}>
-        Przepisano {liczbaDzialow(dzialow)}, ale sprawdzenie treści nie wypadło pomyślnie —
-        niezgodności: <b>{nazwyNiezgodnosci(werdykt.bledy, book).join(", ")}</b>. Porównaj pola i
-        treść z księgą i popraw, co trzeba — operat zacytuje to, co tu zostanie.
+        <b>To ostrzeżenie — nie blokuje zatwierdzenia operatu.</b> Przepisano{" "}
+        {liczbaDzialow(dzialow)}, ale w przepisanej treści coś się nie zgadza:{" "}
+        <b>{nazwyNiezgodnosci(werdykt.bledy, book).join(", ")}</b>. Porównaj te miejsca z księgą.
+        Jeśli się zgadzają, zostaw treść bez zmian; jeśli nie, wklej lub wgraj księgę ponownie. Do
+        operatu trafi treść w obecnej postaci.
       </span>
     </AutoBanner>
   );

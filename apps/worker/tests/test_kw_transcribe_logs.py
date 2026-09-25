@@ -122,11 +122,13 @@ def test_successful_transcription_logs_counters_only(monkeypatch, capsys):
     assert done[0]["walidacja_bledy"] == [{"klasa": "pole_niezgodne:numerLokalu", "dzial": "I-O"}]
 
 
-def test_model_answer_failing_schema_validation_leaks_nothing(monkeypatch, capsys):
-    """JSON cut at max_tokens: pydantic's ValidationError inside the SDK quotes the
-    model's text — here, the first half of the book with its persons."""
+@pytest.mark.parametrize("stop_reason", ["max_tokens", "end_turn"])
+def test_model_answer_failing_schema_validation_leaks_nothing(monkeypatch, capsys, stop_reason):
+    """Half the book as the model's text — with its persons. Cut at max_tokens it
+    is reported as a truncation without being parsed; ended normally, pydantic's
+    ValidationError quotes it, and the adapter must swallow that unquoted."""
     book = json.dumps(sample_tresc(), ensure_ascii=False)
-    cut = message([{"type": "text", "text": book[: len(book) * 2 // 3]}], stop_reason="max_tokens")
+    cut = message([{"type": "text", "text": book[: len(book) * 2 // 3]}], stop_reason=stop_reason)
     assert leaked(cut["content"][0]["text"])  # the answer really carries the values
     monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(cut)))
 

@@ -133,9 +133,10 @@ class TranscriptionFailed(Exception):
     @property
     def code(self) -> str:
         stop_reason = self.result.stop_reason
-        # Only a stop_reason the API reported is a known truncation. INVALID_OUTPUT
-        # hides it: JSON cut at max_tokens AND a refusal written as text both fail
-        # the SDK's validation — so neither may claim the book is too large.
+        # Only a stop_reason the API reported is a known truncation: the adapter
+        # passes "max_tokens" through without parsing the cut JSON. INVALID_OUTPUT
+        # is an answer that ended normally and still fails the schema — a refusal
+        # written as text among them — so it may not claim the book is too large.
         if stop_reason == "max_tokens":
             return "kw_transkrypcja_ucieta"
         if stop_reason in ("refusal", INVALID_OUTPUT):

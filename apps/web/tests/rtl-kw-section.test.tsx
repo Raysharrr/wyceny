@@ -534,7 +534,40 @@ describe("KwSection", () => {
         .getAllByRole("radio")
         .map((r) => r.textContent),
     ).toEqual(["Wartość z uwzględnieniem obciążenia", "Wartość bez uwzględnienia obciążenia"]);
-    expect(within(choice).getByLabelText("Podstawa")).toBeDefined();
+    expect(within(choice).getByLabelText("Podstawa (wymagana)")).toBeDefined();
+  });
+
+  /**
+   * Zgłoszenie rzeczoznawczyni 25.09: zatwierdzenie blokował boks B-07
+   * (wariant wybrany, „Podstawa” pusta), a nic w boksie tego nie mówiło.
+   * Podpowiedź stoi tylko przy połowie decyzji z wariantem — reguła blokady
+   * (`encumbranceDecisionNeeded`) się nie zmienia.
+   */
+  it("B-07: „Podstawa” jest wymagana, a przy wariancie bez podstawy boks mówi, że zatwierdzenie stoi", async () => {
+    const hint = "Bez podstawy nie zatwierdzisz operatu.";
+    render(<Harness kw={dzialyZTresci(transcribedBook()) as Partial<FormInput["kw"]>} />);
+    const choice = screen.getByTestId("kw-encumbrance");
+    const podstawa = within(choice).getByLabelText("Podstawa (wymagana)");
+    expect(podstawa.getAttribute("aria-required")).toBe("true");
+    // Brak wariantu — bez podpowiedzi, także gdy podstawa już jest wpisana.
+    expect(within(choice).queryByText(hint)).toBeNull();
+    await userEvent.type(podstawa, "Zgodnie z poleceniem Zleceniodawcy.");
+    expect(within(choice).queryByText(hint)).toBeNull();
+    await userEvent.clear(podstawa);
+
+    // Wariant + pusta podstawa — jest, w kolorze nagłówka boksu.
+    await userEvent.click(
+      within(choice).getByRole("radio", { name: "Wartość bez uwzględnienia obciążenia" }),
+    );
+    expect(within(choice).getByText(hint).className).toContain("text-[var(--amber)]");
+
+    // Same spacje to wciąż pusta podstawa (`podstawa.trim()`).
+    await userEvent.type(podstawa, "   ");
+    expect(within(choice).getByText(hint)).toBeDefined();
+
+    // Wariant + podstawa — znika.
+    await userEvent.type(podstawa, "Zgodnie z poleceniem Zleceniodawcy.");
+    expect(within(choice).queryByText(hint)).toBeNull();
   });
 
   /**
@@ -886,13 +919,13 @@ describe("KwSection — kanały (makiety 1, 2, 6)", () => {
     expect(pole.className).toContain("border-[var(--amber)]");
     expect(
       within(screen.getByTestId("kw-book-grunt")).getByText(
-        "Cyfra kontrolna nie zgadza się z numerem.",
+        "Numer w przepisanej treści ma błędną cyfrę kontrolną.",
       ),
     ).toBeDefined();
     // Karta lokalu ma swój własny werdykt — tu żadnego, więc żadnych podpisów.
     expect(
       within(screen.getByTestId("kw-book-lokal")).queryByText(
-        "Cyfra kontrolna nie zgadza się z numerem.",
+        "Numer w przepisanej treści ma błędną cyfrę kontrolną.",
       ),
     ).toBeNull();
   });
@@ -1315,7 +1348,10 @@ describe("KwSection — full-form wiring", () => {
     await uploadOdpis(user);
 
     const warn = await screen.findByTestId("kw-transcribe-warn");
-    expect(warn.textContent).toContain("zbyt obszerna");
+    // Z3 kw-banner-fix: mówi, CO wkleić zamiast całej księgi.
+    expect(warn.textContent).toContain(
+      "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości. Wklej z przeglądarki KW tylko wpisy dotyczące przedmiotowego lokalu: działki, budynek, jego wiersz na listach lokali oraz działy III i IV.",
+    );
     expect(screen.queryByText(/Nie udało się odczytać pól z pliku/)).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
@@ -1499,7 +1535,7 @@ describe("KwSection — full-form wiring", () => {
     // fikstura workera ma go w każdym dziale, więc pytanie o obciążenie staje.
     await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
     await user.type(
-      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa (wymagana)"),
       "Zgodnie z poleceniem Zleceniodawcy.",
     );
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
@@ -1575,7 +1611,7 @@ describe("KwSection — full-form wiring", () => {
     await fillRequiredExceptKw(user);
     await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
     await user.type(
-      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa (wymagana)"),
       "Zgodnie z poleceniem Zleceniodawcy.",
     );
 
@@ -1687,7 +1723,7 @@ describe("KwSection — full-form wiring", () => {
     await fillRequiredExceptKw(user);
     await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
     await user.type(
-      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa (wymagana)"),
       "Zgodnie z poleceniem Zleceniodawcy.",
     );
 
@@ -2235,12 +2271,17 @@ describe("KwSection — full-form wiring", () => {
     render(<SubjectForm valuationId="val-werdykt" defaults={stored} />);
     const baner = screen.getByTestId("kw-werdykt-lokal");
     expect(baner.textContent).toBe(
-      "Przepisano 5 działów, ale sprawdzenie treści nie wypadło pomyślnie — niezgodności: cyfra kontrolna numeru księgi gruntu, udział w nieruchomości wspólnej. Porównaj pola i treść z księgą i popraw, co trzeba — operat zacytuje to, co tu zostanie.",
+      "To ostrzeżenie — nie blokuje zatwierdzenia operatu. Przepisano 5 działów, ale w przepisanej treści coś się nie zgadza: cyfra kontrolna numeru księgi gruntu, udział w nieruchomości wspólnej. Porównaj te miejsca z księgą. Jeśli się zgadzają, zostaw treść bez zmian; jeśli nie, wklej lub wgraj księgę ponownie. Do operatu trafi treść w obecnej postaci.",
     );
+    // Pogrubione: że to nie blokada, i gdzie patrzeć.
+    expect([...baner.querySelectorAll("b")].map((b) => b.textContent)).toEqual([
+      "To ostrzeżenie — nie blokuje zatwierdzenia operatu.",
+      "cyfra kontrolna numeru księgi gruntu, udział w nieruchomości wspólnej",
+    ]);
     // F-13: klasy, nigdy wartości z księgi.
     expect(baner.textContent).not.toContain(tresc.polaDodatkowe.udzial!);
     expect(screen.getByText("W dziale I-Sp księga podaje inny udział.")).toBeDefined();
-    expect(screen.getByText("Cyfra kontrolna nie zgadza się z numerem.")).toBeDefined();
+    expect(screen.getByText("Numer w przepisanej treści ma błędną cyfrę kontrolną.")).toBeDefined();
     expect(screen.getByText("Zbadana")).toBeDefined(); // ostrzeżenie, nie blokada
   });
 
