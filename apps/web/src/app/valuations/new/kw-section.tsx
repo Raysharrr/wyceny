@@ -682,8 +682,9 @@ function KwPdfPanel({
 /**
  * Werdykt sprawdzenia treści — czytany z MIGAWKI (`kw.transkrypcja`), nie ze
  * stanu sekcji, więc wraca z każdym otwarciem szkicu, dopóki treść nie zostanie
- * przepisana na nowo. To ostrzeżenie, nie blokada (ADR-021 reg. 5): treść jest
- * zapisana, a operat zacytuje to, co w karcie zostanie.
+ * przepisana na nowo. To ostrzeżenie, nie blokada (ADR-021 reg. 5), i baner
+ * mówi to pierwszym zdaniem: treść jest zapisana, a do operatu trafi w obecnej
+ * postaci — chyba że rzeczoznawca wklei lub wgra księgę ponownie.
  */
 function KwWerdyktBanner({
   book,
@@ -698,9 +699,11 @@ function KwWerdyktBanner({
   return (
     <AutoBanner kind="warn">
       <span data-testid={`kw-werdykt-${book}`}>
-        Przepisano {liczbaDzialow(dzialow)}, ale sprawdzenie treści nie wypadło pomyślnie —
-        niezgodności: <b>{nazwyNiezgodnosci(werdykt.bledy, book).join(", ")}</b>. Porównaj pola i
-        treść z księgą i popraw, co trzeba — operat zacytuje to, co tu zostanie.
+        <b>To ostrzeżenie — nie blokuje zatwierdzenia operatu.</b> Przepisano{" "}
+        {liczbaDzialow(dzialow)}, ale w przepisanej treści coś się nie zgadza:{" "}
+        <b>{nazwyNiezgodnosci(werdykt.bledy, book).join(", ")}</b>. Porównaj te miejsca z księgą.
+        Jeśli się zgadzają, zostaw treść bez zmian; jeśli nie, wklej lub wgraj księgę ponownie. Do
+        operatu trafi treść w obecnej postaci.
       </span>
     </AutoBanner>
   );

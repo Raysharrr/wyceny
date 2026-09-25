@@ -886,13 +886,13 @@ describe("KwSection — kanały (makiety 1, 2, 6)", () => {
     expect(pole.className).toContain("border-[var(--amber)]");
     expect(
       within(screen.getByTestId("kw-book-grunt")).getByText(
-        "Cyfra kontrolna nie zgadza się z numerem.",
+        "Numer w przepisanej treści ma błędną cyfrę kontrolną.",
       ),
     ).toBeDefined();
     // Karta lokalu ma swój własny werdykt — tu żadnego, więc żadnych podpisów.
     expect(
       within(screen.getByTestId("kw-book-lokal")).queryByText(
-        "Cyfra kontrolna nie zgadza się z numerem.",
+        "Numer w przepisanej treści ma błędną cyfrę kontrolną.",
       ),
     ).toBeNull();
   });
@@ -2235,12 +2235,17 @@ describe("KwSection — full-form wiring", () => {
     render(<SubjectForm valuationId="val-werdykt" defaults={stored} />);
     const baner = screen.getByTestId("kw-werdykt-lokal");
     expect(baner.textContent).toBe(
-      "Przepisano 5 działów, ale sprawdzenie treści nie wypadło pomyślnie — niezgodności: cyfra kontrolna numeru księgi gruntu, udział w nieruchomości wspólnej. Porównaj pola i treść z księgą i popraw, co trzeba — operat zacytuje to, co tu zostanie.",
+      "To ostrzeżenie — nie blokuje zatwierdzenia operatu. Przepisano 5 działów, ale w przepisanej treści coś się nie zgadza: cyfra kontrolna numeru księgi gruntu, udział w nieruchomości wspólnej. Porównaj te miejsca z księgą. Jeśli się zgadzają, zostaw treść bez zmian; jeśli nie, wklej lub wgraj księgę ponownie. Do operatu trafi treść w obecnej postaci.",
     );
+    // Pogrubione: że to nie blokada, i gdzie patrzeć.
+    expect([...baner.querySelectorAll("b")].map((b) => b.textContent)).toEqual([
+      "To ostrzeżenie — nie blokuje zatwierdzenia operatu.",
+      "cyfra kontrolna numeru księgi gruntu, udział w nieruchomości wspólnej",
+    ]);
     // F-13: klasy, nigdy wartości z księgi.
     expect(baner.textContent).not.toContain(tresc.polaDodatkowe.udzial!);
     expect(screen.getByText("W dziale I-Sp księga podaje inny udział.")).toBeDefined();
-    expect(screen.getByText("Cyfra kontrolna nie zgadza się z numerem.")).toBeDefined();
+    expect(screen.getByText("Numer w przepisanej treści ma błędną cyfrę kontrolną.")).toBeDefined();
     expect(screen.getByText("Zbadana")).toBeDefined(); // ostrzeżenie, nie blokada
   });
 

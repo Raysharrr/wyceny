@@ -86,7 +86,7 @@ describe("podpisyPol — bursztynowy podpis pod polem (makieta 4)", () => {
       ]),
     ).toEqual({
       udzial: "W dziale I-Sp księga podaje inny udział.",
-      kwGruntu: "Cyfra kontrolna nie zgadza się z numerem.",
+      kwGruntu: "Numer w przepisanej treści ma błędną cyfrę kontrolną.",
     });
   });
 });
