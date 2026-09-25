@@ -165,8 +165,8 @@ def test_no_parsed_output_is_an_error_with_a_code_never_partial_content(
 
 
 def test_only_a_real_truncation_is_called_too_large(monkeypatch):
-    """A refusal written as plain text fails the SDK's schema validation and comes
-    back as INVALID_OUTPUT — it must not tell the appraiser the book is too large."""
+    """A refusal written as plain text fails the adapter's schema validation and
+    comes back as INVALID_OUTPUT — it must not tell the appraiser the book is too large."""
     refusal = message([{"type": "text", "text": "Nie mogę pomóc."}], stop_reason="refusal")
     monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(refusal)))
     resp = post(mint())
@@ -176,6 +176,21 @@ def test_only_a_real_truncation_is_called_too_large(monkeypatch):
 
     use_llm(monkeypatch, LlmResult(None, "max_tokens", 14440, 16000))
     resp = post(mint())
+    assert resp.json()["code"] == "kw_transkrypcja_ucieta"
+    assert "obszerna" in resp.json()["detail"]
+
+
+def test_json_cut_at_max_tokens_by_the_real_sdk_is_called_too_large(monkeypatch):
+    """Z3 proof 3: the adapter's own result for JSON cut at max_tokens — not a
+    hand-made `LlmResult` — is a truncation, end to end."""
+    cut = message([{"type": "text", "text": '{"naglowek": {"numerKs'}], stop_reason="max_tokens")
+    with pytest.raises(kw_transcribe.TranscriptionFailed) as failed:
+        kw_transcribe.transcribe(AnthropicAdapter(sdk_answering(cut)), ["JVBERg=="], None)
+    assert failed.value.code == "kw_transkrypcja_ucieta"
+
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(cut)))
+    resp = post(mint())
+    assert resp.status_code == 422
     assert resp.json()["code"] == "kw_transkrypcja_ucieta"
     assert "obszerna" in resp.json()["detail"]
 

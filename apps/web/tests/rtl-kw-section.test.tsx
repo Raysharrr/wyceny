@@ -1345,7 +1345,10 @@ describe("KwSection — full-form wiring", () => {
     await uploadOdpis(user);
 
     const warn = await screen.findByTestId("kw-transcribe-warn");
-    expect(warn.textContent).toContain("zbyt obszerna");
+    // Z3 kw-banner-fix: mówi, CO wkleić zamiast całej księgi.
+    expect(warn.textContent).toContain(
+      "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości. Wklej z przeglądarki KW tylko wpisy dotyczące przedmiotowego lokalu: działki, budynek, jego wiersz na listach lokali oraz działy III i IV.",
+    );
     expect(screen.queryByText(/Nie udało się odczytać pól z pliku/)).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));

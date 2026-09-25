@@ -13,9 +13,9 @@ import anthropic
 import pydantic
 from pydantic import BaseModel
 
-# `stop_reason` for text the SDK could not validate against the schema. The SDK
-# validates INSIDE `messages.parse`, so JSON cut at max_tokens raises there and
-# the response (with its real stop_reason and usage) is lost to the caller.
+# `stop_reason` for an answer that ended without hitting max_tokens but whose
+# text does not validate against the schema — a refusal written as text among
+# them. JSON cut at max_tokens is never this: it keeps the API's "max_tokens".
 INVALID_OUTPUT = "invalid_output"
 
 
@@ -88,23 +88,38 @@ class AnthropicAdapter:
         client = self._client or anthropic.Anthropic()  # ANTHROPIC_API_KEY from worker env
         # `thinking` omitted when None: the model's own default applies.
         extra = {} if thinking is None else {"thinking": thinking}
+        # `create`, not `messages.parse`: parse validates the text INSIDE the SDK,
+        # so JSON cut at max_tokens raised there and the real stop_reason and
+        # usage were lost. The request body is the one parse sends, byte for byte
+        # (test_llm, on the wire): parse merges `output_format` into this same
+        # `output_config`, keys in this order.
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            **extra,
+            messages=[{"role": "user", "content": content}],
+            output_config={
+                "format": {"schema": anthropic.transform_schema(schema), "type": "json_schema"}
+            },
+        )
+        usage = dict(
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+        if response.stop_reason == "max_tokens":
+            # Cut JSON is not parsed at all: the book is too large, not unreadable.
+            return LlmResult(parsed=None, stop_reason="max_tokens", **usage)
         try:
-            response = client.messages.parse(
-                model=model,
-                max_tokens=max_tokens,
-                **extra,
-                messages=[{"role": "user", "content": content}],
-                output_format=schema,
-            )
+            # Every text block, as parse did; the first one is the answer.
+            parsed = [
+                schema.model_validate_json(block.text)
+                for block in response.content
+                if block.type == "text"
+            ]
         except pydantic.ValidationError:
             # Deliberately not chained or logged: pydantic's message quotes the
             # model's text, which for a KW transcription is the book itself.
-            return LlmResult(
-                parsed=None, stop_reason=INVALID_OUTPUT, input_tokens=0, output_tokens=0
-            )
+            return LlmResult(parsed=None, stop_reason=INVALID_OUTPUT, **usage)
         return LlmResult(
-            parsed=response.parsed_output,
-            stop_reason=response.stop_reason,
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
+            parsed=parsed[0] if parsed else None, stop_reason=response.stop_reason, **usage
         )

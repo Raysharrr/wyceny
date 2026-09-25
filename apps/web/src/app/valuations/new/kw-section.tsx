@@ -449,8 +449,9 @@ const TRANSCRIBE_FAILED_TEXT: Record<string, string> = {
   // Ścieżka aktu czyta wyłącznie plik — akt nie ma działów do przepisania (F7).
   kw_kanal_niedozwolony:
     "Wklejona treść nie dotyczy aktu notarialnego — na tej ścieżce wgraj plik PDF aktu.", // NOWY TEKST (do akceptacji w PR)
+  // Zatwierdzony przez usera 25.09 (HANDOFF kw-banner-fix, Z3): obejście zamiast skutku.
   kw_transkrypcja_ucieta:
-    "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
+    "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości. Wklej z przeglądarki KW tylko wpisy dotyczące przedmiotowego lokalu: działki, budynek, jego wiersz na listach lokali oraz działy III i IV.",
   kw_transkrypcja_nieczytelna:
     "Nie udało się przepisać treści działów z tego pliku — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
   kw_transkrypcja_blad:
