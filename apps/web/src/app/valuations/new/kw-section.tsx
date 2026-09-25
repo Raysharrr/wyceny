@@ -292,6 +292,8 @@ const ENCUMBRANCE_OPTIONS = [
  * problem the app can solve — it is a decision the appraiser has to state, and
  * the operat prints it in §2, §3, §8.2 and §10.1. `podstawa` is required in
  * both variants, which is why it sits inside this block rather than beside it.
+ * A variant with an empty basis blocks approval (`encumbranceDecisionNeeded`),
+ * so the block says so under the field — the appraiser's report of 25.09.
  */
 function EncumbranceChoice({
   value,
@@ -300,6 +302,7 @@ function EncumbranceChoice({
   value: { wariant?: string | null; podstawa?: string } | null | undefined;
   onChange: (value: { wariant: string | null; podstawa: string }) => void;
 }) {
+  const brakPodstawy = !!value?.wariant && !(value.podstawa ?? "").trim();
   return (
     <div
       data-testid="kw-encumbrance"
@@ -335,15 +338,21 @@ function EncumbranceChoice({
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor="kw-encumbrance-podstawa" className="text-sm">
-          Podstawa
+          Podstawa (wymagana)
         </label>
         <textarea
           id="kw-encumbrance-podstawa"
+          aria-required="true"
           className={textareaClass}
           placeholder="np. Zgodnie z poleceniem Zleceniodawcy obciążenie nie zostaje uwzględnione, ponieważ …"
           value={value?.podstawa ?? ""}
           onChange={(e) => onChange({ wariant: value?.wariant ?? null, podstawa: e.target.value })}
         />
+        {brakPodstawy ? (
+          <span className="text-xs text-[var(--amber)]">
+            Bez podstawy nie zatwierdzisz operatu.
+          </span>
+        ) : null}
       </div>
     </div>
   );

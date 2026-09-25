@@ -534,7 +534,37 @@ describe("KwSection", () => {
         .getAllByRole("radio")
         .map((r) => r.textContent),
     ).toEqual(["Wartość z uwzględnieniem obciążenia", "Wartość bez uwzględnienia obciążenia"]);
-    expect(within(choice).getByLabelText("Podstawa")).toBeDefined();
+    expect(within(choice).getByLabelText("Podstawa (wymagana)")).toBeDefined();
+  });
+
+  /**
+   * Zgłoszenie rzeczoznawczyni 25.09: zatwierdzenie blokował boks B-07
+   * (wariant wybrany, „Podstawa” pusta), a nic w boksie tego nie mówiło.
+   * Podpowiedź stoi tylko przy połowie decyzji z wariantem — reguła blokady
+   * (`encumbranceDecisionNeeded`) się nie zmienia.
+   */
+  it("B-07: „Podstawa” jest wymagana, a przy wariancie bez podstawy boks mówi, że zatwierdzenie stoi", async () => {
+    const hint = "Bez podstawy nie zatwierdzisz operatu.";
+    render(<Harness kw={dzialyZTresci(transcribedBook()) as Partial<FormInput["kw"]>} />);
+    const choice = screen.getByTestId("kw-encumbrance");
+    const podstawa = within(choice).getByLabelText("Podstawa (wymagana)");
+    expect(podstawa.getAttribute("aria-required")).toBe("true");
+    // Brak wariantu — bez podpowiedzi.
+    expect(within(choice).queryByText(hint)).toBeNull();
+
+    // Wariant + pusta podstawa — jest, w kolorze nagłówka boksu.
+    await userEvent.click(
+      within(choice).getByRole("radio", { name: "Wartość bez uwzględnienia obciążenia" }),
+    );
+    expect(within(choice).getByText(hint).className).toContain("text-[var(--amber)]");
+
+    // Same spacje to wciąż pusta podstawa (`podstawa.trim()`).
+    await userEvent.type(podstawa, "   ");
+    expect(within(choice).getByText(hint)).toBeDefined();
+
+    // Wariant + podstawa — znika.
+    await userEvent.type(podstawa, "Zgodnie z poleceniem Zleceniodawcy.");
+    expect(within(choice).queryByText(hint)).toBeNull();
   });
 
   /**
@@ -1499,7 +1529,7 @@ describe("KwSection — full-form wiring", () => {
     // fikstura workera ma go w każdym dziale, więc pytanie o obciążenie staje.
     await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
     await user.type(
-      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa (wymagana)"),
       "Zgodnie z poleceniem Zleceniodawcy.",
     );
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
@@ -1575,7 +1605,7 @@ describe("KwSection — full-form wiring", () => {
     await fillRequiredExceptKw(user);
     await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
     await user.type(
-      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa (wymagana)"),
       "Zgodnie z poleceniem Zleceniodawcy.",
     );
 
@@ -1687,7 +1717,7 @@ describe("KwSection — full-form wiring", () => {
     await fillRequiredExceptKw(user);
     await wklejIPrzepisz(user, "lokalu", tekstZakladek(tresc));
     await user.type(
-      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa"),
+      within(await screen.findByTestId("kw-encumbrance")).getByLabelText("Podstawa (wymagana)"),
       "Zgodnie z poleceniem Zleceniodawcy.",
     );
 
