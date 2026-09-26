@@ -26,6 +26,23 @@ APP = Path(__file__).resolve().parents[1] / "app"
 client = TestClient(main.app)
 
 
+# Dzisiejszy prompt karty lokalu, zamrożony (F-W5): karta lokalu nie zmienia się o bajt.
+PROMPT_PRZED = """Załączone dokumenty lub tekst to treść księgi wieczystej z przeglądarki eKW lub e-odpisu (działy I-O, I-Sp, II, III, IV); każda zakładka lub strona może powtarzać nagłówek „TREŚĆ KSIĘGI WIECZYSTEJ NR …” — to jedna księga, nagłówek przepisz raz. Gdy tekst ma wiersze `etykieta | wartość | nr podstawy`, kolumny są rozdzielone znakiem „|”: pierwsza to etykieta rubryki, środkowe to jej wartości, ostatnia to „Nr podstawy wpisu”.
+Przepisz PEŁNĄ treść wszystkich działów do schematu — dosłownie, znak w znak: bez poprawiania, skracania, streszczania i bez pomijania osób fizycznych (imiona, nazwiska, imiona rodziców i PESEL przepisz tak, jak są w dokumencie; to materiał do operatu szacunkowego).
+
+Zasady:
+- naglowek: z nagłówka wydruku — numer księgi, „STAN Z DNIA” z pierwszej strony, sąd, wydział, rodzaj księgi (np. „LOKAL STANOWIĄCY ODRĘBNĄ NIERUCHOMOŚĆ”).
+- dzialy: każdy dział osobno, w kolejności z dokumentu. Dział oznaczony „BRAK WPISÓW” → brakWpisow=true, puste tabele i dokumenty.
+- tabele: każda tabela działu; naglowek = tytuł tabeli (np. „Lokal”, „Właściciele”) albo null, gdy tabela nie ma tytułu.
+- wpisy: grupa wierszy otwarta wierszem „Lp. N.” (lp="N"); gdy tabela nie ma takiego wiersza — jeden wpis z lp=null. nrPodstawyWpisu = wartość z prawej kolumny „Nr podstawy wpisu” tego wpisu.
+- rubryki: każdy wiersz tabeli. nazwa = pełna etykieta z lewej kolumny łącznie z opisem w nawiasie; lp = numer z komórki „Lp. N.” w tym wierszu albo null; wartosci = komórki wartości od lewej do prawej, każda jako osobny string. Gdy w jednym wierszu stoi kilka etykiet obok siebie (np. Ulica | Numer budynku | Numer lokalu), utwórz osobną rubrykę dla każdej etykiety z jej wartością. Wiersz będący tylko podtytułem (np. „Wierzyciel hipoteczny”) → rubryka z pustą listą wartosci.
+- Wiersz „Lp. N.” otwierający wpis (z komórką „---”) NIE jest rubryką — jego numer trafia wyłącznie do lp wpisu; nigdy nie zwracaj rubryki z wartosci ["---"].
+- Tekst łamany w komórce na kilka linii łącz pojedynczą spacją. Zachowaj wielkość liter, interpunkcję, spacje wokół „/”, rodzaj kresek („–” vs „-”) i zera wiodące.
+- dokumenty: sekcja „DOKUMENTY BĘDĄCE PODSTAWĄ WPISU / DANE O WNIOSKU” danego działu (także gdy powtarza się w kilku działach). dokument = linia z danymi dokumentu; dokumentOpisPol = opis pól w nawiasie pod nią; wniosek = linia „DZ. KW./…”; wniosekOpisPol = opis pól w nawiasie pod nią.
+- polaDodatkowe: numerLokalu (dział I-O), kwLokalu (nagłówek), kwGruntu (dział I-O „Przyłączenie”), udzial (dział I-Sp, wielkość udziału), powierzchniaUzytkowa (dział I-O, z jednostką jak w dokumencie), podstawaNabycia = dokument z działu II będący podstawą wpisu właściciela, rozbity na tytulAktu, repA, dataAktu (RRRR-MM-DD), notariusz (imię i nazwisko), siedzibaNotariusza. Null, gdy pola nie ma.
+Nie dodawaj niczego, czego nie ma w dokumencie."""
+
+
 def sample() -> dict:
     return json.loads(FIXTURE.read_text())
 
@@ -101,7 +118,7 @@ def test_transcription_of_the_synthetic_book_comes_back_verbatim(monkeypatch):
             text=None,
             prompt=kw_transcribe.PROMPT,
             schema=KsiegaTresc,
-            max_tokens=16000,
+            max_tokens=32000,
             thinking={"type": "adaptive"},
         )
     ]
@@ -156,7 +173,7 @@ def test_persons_are_not_scrubbed(monkeypatch):
 def test_no_parsed_output_is_an_error_with_a_code_never_partial_content(
     monkeypatch, stop_reason, status, code
 ):
-    use_llm(monkeypatch, LlmResult(None, stop_reason, 14440, 16000))
+    use_llm(monkeypatch, LlmResult(None, stop_reason, 14440, 32000))
     resp = post(mint())
     assert resp.status_code == status
     body = resp.json()
@@ -182,7 +199,7 @@ def test_only_a_real_truncation_is_called_too_large(monkeypatch):
     assert resp.json()["code"] == "kw_transkrypcja_nieczytelna"
     assert "obszerna" not in resp.json()["detail"]
 
-    use_llm(monkeypatch, LlmResult(None, "max_tokens", 14440, 16000))
+    use_llm(monkeypatch, LlmResult(None, "max_tokens", 14440, 32000))
     resp = post(mint())
     assert resp.json()["code"] == "kw_transkrypcja_ucieta"
     assert "obszerna" in resp.json()["detail"]
@@ -304,9 +321,98 @@ def test_transcription_code_does_not_import_anthropic():
 
 
 def test_prompt_excludes_separator_rows_and_never_asks_to_omit_persons():
-    assert '["---"]' in kw_transcribe.PROMPT
-    assert "bez pomijania osób fizycznych" in kw_transcribe.PROMPT
-    assert "POMIJAJ" not in kw_transcribe.PROMPT
+    lokal = kw_transcribe.prompt_dla("lokal", None)
+    assert '["---"]' in lokal
+    assert "bez pomijania osób fizycznych" in lokal
+    assert "POMIJAJ" not in lokal
+    grunt = kw_transcribe.prompt_dla("grunt", kw_transcribe.KluczeLokalu(KW, NR))
+    assert '["---"]' in grunt
+    assert "osoby fizyczne tak, jak są w dokumencie" in grunt
+    assert "POMIJAJ" not in grunt
+
+
+# --- prompts per card (ADR-024 R1) -------------------------------------------------
+
+KW = sample()["naglowek"]["numerKsiegi"]  # numer z fikstury (F-9)
+NR = sample()["polaDodatkowe"]["numerLokalu"]
+
+
+def test_lokal_prompt_is_todays_prompt_byte_for_byte():
+    assert kw_transcribe.prompt_dla("lokal", None) == PROMPT_PRZED
+    assert kw_transcribe.prompt_dla("lokal", kw_transcribe.KluczeLokalu(KW, NR)) == PROMPT_PRZED
+    assert kw_transcribe.PROMPT == PROMPT_PRZED
+
+
+def _selektywny(lokal_io: str, lokal_ii: str, klucze: str) -> str:
+    """The spike's construction (spike.py `prompt_selektywny`): today's prompt with
+    the full-scope paragraph replaced."""
+    return PROMPT_PRZED.replace(
+        kw_transcribe.PELNA,
+        kw_transcribe.SELEKTYWNA.format(lokal_io=lokal_io, lokal_ii=lokal_ii, klucze=klucze),
+    )
+
+
+def test_land_prompt_with_both_keys_is_the_spikes_prompt():
+    assert kw_transcribe.prompt_dla("grunt", kw_transcribe.KluczeLokalu(KW, NR)) == _selektywny(
+        "przepisz tylko wiersz przedmiotowego lokalu",
+        "przepisz tylko wpis przedmiotowego lokalu",
+        f"Przedmiotowy lokal: numer księgi wieczystej lokalu {KW}, numer lokalu {NR}. "
+        "Wiersz lub wpis należy do przedmiotowego lokalu tylko wtedy, gdy zawiera ten numer księgi.",
+    )
+
+
+def test_land_prompt_with_the_book_number_only_names_no_unit_number():
+    prompt = kw_transcribe.prompt_dla("grunt", kw_transcribe.KluczeLokalu(KW, None))
+    assert prompt == _selektywny(
+        "przepisz tylko wiersz przedmiotowego lokalu",
+        "przepisz tylko wpis przedmiotowego lokalu",
+        f"Przedmiotowy lokal: numer księgi wieczystej lokalu {KW}. "
+        "Wiersz lub wpis należy do przedmiotowego lokalu tylko wtedy, gdy zawiera ten numer księgi.",
+    )
+    assert "None" not in prompt
+
+
+def test_land_prompt_without_keys_skips_every_unit_list():
+    assert kw_transcribe.prompt_dla("grunt", None) == _selektywny(
+        "nie przepisuj żadnego wiersza",
+        "nie przepisuj żadnego wpisu",
+        "Przedmiotowy lokal nie jest znany — pomiń wszystkie wiersze list lokali.",
+    )
+
+
+def test_selective_paragraph_is_the_spikes_verbatim():
+    # wiki-repo tools/spike/2026-09-25-kw-grunt-selektywnie/spike.py `SELEKTYWNA` —
+    # jedyny zmierzony tekst (keyed 3/3 PASS).
+    assert kw_transcribe.SELEKTYWNA.startswith(
+        "To księga NIERUCHOMOŚCI GRUNTOWEJ, z której wyodrębniono lokale."
+    )
+    assert kw_transcribe.SELEKTYWNA.endswith(
+        "- polaDodatkowe: to księga gruntu — wszystkie pola null."
+    )
+    assert "osoby fizyczne tak, jak są w dokumencie" in kw_transcribe.SELEKTYWNA
+    assert "POMIJAJ" not in kw_transcribe.prompt_dla("grunt", None)
+    # SHA-256 tekstu `SELEKTYWNA` ze spike'u (repo wiki nie jest dostępne w CI):
+    # każda zmiana akapitu to nowy, niezmierzony prompt.
+    assert hashlib.sha256(kw_transcribe.SELEKTYWNA.encode()).hexdigest() == (
+        "27c74540d30e4156e811341ad38d5f67d7970ac4ae561afa02e6d61dccbf0bdb"
+    )
+
+
+def test_both_cards_share_the_first_line_and_the_rules():
+    for prompt in (
+        kw_transcribe.prompt_dla("lokal", None),
+        kw_transcribe.prompt_dla("grunt", None),
+    ):
+        assert prompt.startswith(kw_transcribe.NAGLOWEK_PROMPTU + "\n")
+        assert prompt.endswith("\n\n" + kw_transcribe.ZASADY)
+
+
+def test_zakres_follows_the_card():
+    assert kw_transcribe.ZAKRES == {"lokal": "pelna", "grunt": "przedmiotowy_lokal"}
+
+
+def test_one_limit_for_both_cards():
+    assert kw_transcribe.MAX_TOKENS == 32000
 
 
 # --- transcribe: PDFs and/or a pasted book through one prompt (ADR-021) -----------
@@ -325,7 +431,7 @@ def test_transcribe_forwards_documents_and_text_to_the_port_unchanged():
             text="DZIAŁ I-O\nNumer działki | 217/4 | 1",
             prompt=kw_transcribe.PROMPT,
             schema=KsiegaTresc,
-            max_tokens=16000,
+            max_tokens=32000,
             thinking={"type": "adaptive"},
         )
     ]
@@ -340,7 +446,7 @@ def test_transcribe_with_text_only_sends_no_documents():
 
 
 def test_transcribe_without_a_parsed_answer_raises_with_the_code():
-    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 16000))
+    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 32000))
     with pytest.raises(kw_transcribe.TranscriptionFailed) as failed:
         kw_transcribe.transcribe(fake, ["JVBERg=="], None)
     assert failed.value.code == "kw_transkrypcja_ucieta"
