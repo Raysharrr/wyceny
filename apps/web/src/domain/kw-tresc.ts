@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 /**
- * Full content of the five sections of a unit's land-register book (I-O, I-Sp,
- * II, III, IV) transcribed by the worker's POST /kw-transcribe — mirrors
- * `KsiegaTresc` in apps/worker/app/kw_transcribe.py 1:1. Every value is the eKW
+ * Content of the five sections of a land-register book (I-O, I-Sp, II, III, IV)
+ * transcribed by the worker's POST /kw-transcribe — a unit's book in full, a
+ * land book selectively down to the subject unit (ADR-024). `ksiegaTrescSchema`
+ * mirrors `KsiegaTresc` in apps/worker/app/kw_transcribe.py 1:1 — the MODEL's
+ * output schema, without `zakres`, which the worker sets. Every value is the eKW
  * text verbatim, as a string (unit numbers like "NN BUD NN", shares with spaces
  * around "/"). Carries persons' data on purpose (ADR-018 "Zmiana 15.09"): it
  * never goes to a log.
@@ -46,6 +48,11 @@ const dzialSchema = z.object({
   dokumenty: z.array(dokumentPodstawySchema),
 });
 
+/** Zakres treści (ADR-024): księga lokalu w całości, księga gruntu do przedmiotowego lokalu. */
+export const zakresSchema = z.enum(["pelna", "przedmiotowy_lokal"]);
+export type Zakres = z.infer<typeof zakresSchema>;
+
+/** Lustro schematu WYJŚCIA MODELU (`KsiegaTresc` workera) — bez `zakres`. */
 export const ksiegaTrescSchema = z.object({
   naglowek: z.object({
     numerKsiegi: z.string(),
@@ -73,12 +80,23 @@ export const ksiegaTrescSchema = z.object({
   }),
 });
 
-export type KsiegaTresc = z.infer<typeof ksiegaTrescSchema>;
+/**
+ * Treść w migawce (`kw.tresc`, `kwGrunt.tresc`): `zakres` nullish WYŁĄCZNIE do
+ * odczytu migawek sprzed ADR-024 (brak = operat bez zdania o zakresie). Nowy
+ * zapis zawsze ma `zakres` z workera.
+ */
+export const ksiegaTrescMigawkiSchema = ksiegaTrescSchema.extend({
+  zakres: zakresSchema.nullish(),
+});
+
+export type KsiegaTresc = z.infer<typeof ksiegaTrescMigawkiSchema>;
 
 /**
  * Czy nagłówek nazywa księgę GRUNTOWĄ. Ta sama reguła, co `is_land_book`
  * w `apps/worker/app/kw_validate.py` (PR #77, 1f20f8c) — i musi nią zostać:
  * web i worker mają jednakowo rozstrzygać, których pól księga w ogóle ma.
+ * Walidator workera od ADR-024 uznaje za księgę gruntu także treść z karty
+ * gruntu bez rodzaju w nagłówku; ta funkcja czyta sam nagłówek.
  * eKW pisze rodzaj na trzy sposoby („NIERUCHOMOŚĆ GRUNTOWA", „GRUNT ODDANY
  * W UŻYTKOWANIE WIECZYSTE" i ten sam z budynkiem), więc wspólnym rdzeniem
  * jest „GRUNT", a nie „GRUNTOW". Żaden rodzaj lokalowy nie zawiera „GRUNT",
@@ -100,8 +118,12 @@ export const kwWalidacjaSchema = z.object({
 
 export type KwWalidacja = z.infer<typeof kwWalidacjaSchema>;
 
-/** The /kw-transcribe 200 body: the content, flat, next to its verdict. */
+/**
+ * The /kw-transcribe 200 body: the content, flat, its scope and its verdict.
+ * `zakres` WYMAGANY — worker bez niego to drift kontraktu (F-S1).
+ */
 export const kwTranscribeResponseSchema = ksiegaTrescSchema.extend({
+  zakres: zakresSchema,
   walidacja: kwWalidacjaSchema,
 });
 

@@ -315,12 +315,17 @@ def test_anything_that_is_not_a_land_book_keeps_the_unit_rules(rodzaj):
     has measured them yet, so they keep every rule and any mismatch shows up as a
     visible `ok: false` rather than as rules quietly not running. The composite
     kind „GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE I BUDYNEK…" names the land, so it
-    goes to the reduced set instead — the two lists do not collide."""
+    goes to the reduced set instead — the two lists do not collide.
+
+    Since ADR-024 the land fixture carries the subject unit's row from the unit
+    list in I-O, whose „Numer lokalu" the unit rule reads as the book's own unit
+    number — one more false positive on the same side."""
     doc = grunt()
     doc["naglowek"]["rodzajKsiegi"] = rodzaj
     assert klasy(doc) == {
         ("pole_niezgodne:kwGruntu", None),
         ("pole_niezgodne:kwLokalu", None),
+        ("pole_niezgodne:numerLokalu", "I-O"),
     }
 
 
@@ -380,10 +385,18 @@ def test_land_book_wrong_check_digit():
 
 
 def test_land_book_rep_a_absent_from_section_ii():
+    """The selective land book has `polaDodatkowe` all null (ADR-024); the rule is
+    still the reduced set's, so the deed is put back by hand — the core of the
+    owner's deed in II, one digit off."""
     doc = grunt()
-    pn = doc["polaDodatkowe"]["podstawaNabycia"]
-    pn["repA"] = pn["repA"].replace("/", "1/")
+    rep = re.search(r"\d+/\d+", dzial(doc, "II")["dokumenty"][0]["dokument"]).group()
+    doc["polaDodatkowe"]["podstawaNabycia"] = {
+        **sample()["polaDodatkowe"]["podstawaNabycia"],
+        "repA": rep.replace("/", "1/"),
+    }
     assert klasy(doc) == {("pole_niezgodne:repA", "II")}
+    doc["polaDodatkowe"]["podstawaNabycia"]["repA"] = rep  # control: the deed as written
+    assert klasy(doc) == set()
 
 
 def test_land_book_brak_wpisow_inconsistent():

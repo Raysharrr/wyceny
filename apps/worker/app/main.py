@@ -689,11 +689,27 @@ def _transcribe_error(code: str) -> JSONResponse:
 
 
 class KwTranscribeResponse(kw_transcribe.KsiegaTresc):
-    """The book's content, flat, plus the deterministic verdict. The endpoint never
-    rejects on a failed verdict and web stores the content whatever it says
-    (ADR-021): the verdict is a standing warning in step 1 and in the preview."""
+    """The book's content, flat, plus its scope and the deterministic verdict.
+    `zakres` is set here from the card, never by the model (ADR-024 pkt 3: it is
+    not in the model's schema). The endpoint never rejects on a failed verdict
+    and web stores the content whatever it says (ADR-021): the verdict is a
+    standing warning in step 1 and in the preview."""
 
+    zakres: kw_transcribe.Zakres
     walidacja: kw_validate.Walidacja
+
+
+KARTY: tuple[kw_transcribe.Karta, ...] = ("lokal", "grunt")
+
+
+def _klucze(kw_lokalu: str | None, nr_lokalu: str | None) -> kw_transcribe.KluczeLokalu | None:
+    """Keys as typed on the unit card: trimmed, never format-checked (user decision
+    26.09 — a wrong number costs a warning, not a refusal; `tekst` is free user
+    text in the same prompt already), never logged. No KW number, no keys: the
+    number decides which row is the subject unit's."""
+    kw = kw_lokalu.strip() if kw_lokalu else ""
+    nr = nr_lokalu.strip() if nr_lokalu else ""
+    return kw_transcribe.KluczeLokalu(kw, nr or None) if kw else None
 
 
 @app.post("/kw-transcribe", response_model=KwTranscribeResponse)
@@ -704,14 +720,25 @@ def kw_transcribe_book(
     file: UploadFile | None = File(default=None),
     tekst: str | None = Form(default=None),
     token: str = Form(...),
+    karta: str | None = Form(default=None),
+    kw_lokalu: str | None = Form(default=None),
+    nr_lokalu: str | None = Form(default=None),
 ):
-    """Full content of the five sections of a book (ADR-021): from one or more eKW
+    """Content of the five sections of a book (ADR-021): from one or more eKW
     printouts (`files`, one per tab, or an e-odpis), from the text pasted out of
-    the tabs (`tekst`), or both. Persons' data stays in the answer and NEVER
+    the tabs (`tekst`), or both. `karta` says which card of step 1 asks: a unit's
+    book comes back in full, a land book selectively down to the subject unit
+    named by `kw_lokalu`/`nr_lokalu`, or with every unit list skipped when there
+    are no keys (ADR-024). Persons' data stays in the answer and NEVER
     reaches a log: only counters and error classes are logged, never `str(exc)`
     — pydantic and SDK messages can quote the model's text. Neither the files
     nor the paste are ever persisted."""
     _require_token(token)
+    # Checked here, never as a Literal in the signature: FastAPI's 422 echoes the
+    # input (F-13), and an unknown card is a programming error of the web anyway.
+    if karta not in KARTY:
+        raise HTTPException(status_code=422, detail="Brak rodzaju karty księgi (lokal albo grunt).")
+    klucze = _klucze(kw_lokalu, nr_lokalu) if karta == "grunt" else None
     uploads = ([file] if file is not None else []) + files  # a new list: `files` is a default
     # FastAPI already binds an empty `tekst` to None; whitespace is "nothing" too.
     text = tekst if tekst is not None and tekst.strip() else None
@@ -752,11 +779,19 @@ def kw_transcribe_book(
     kanal = "+".join(
         name for name, used in (("pdf", bool(documents)), ("tekst", text is not None)) if used
     )
-    counters = dict(kanal=kanal, plikow=len(documents), bytes=total, tekst_bajtow=text_bytes)
+    counters = dict(
+        kanal=kanal,
+        plikow=len(documents),
+        bytes=total,
+        tekst_bajtow=text_bytes,
+        karta=karta,
+        # Which keys, never their values (F-13).
+        klucze="brak" if klucze is None else ("kw+nr" if klucze.nr_lokalu else "kw"),
+    )
 
     started = time.monotonic()
     try:
-        result = kw_transcribe.transcribe(kw_llm(), documents, text)
+        result = kw_transcribe.transcribe(kw_llm(), documents, text, karta=karta, klucze=klucze)
     except kw_transcribe.TranscriptionFailed as exc:
         logger.error(
             "kw_transcribe_failed",
@@ -781,10 +816,12 @@ def kw_transcribe_book(
     # File bytes and the paste are never persisted or logged: they die with this request.
 
     tresc = result.parsed
+    zakres = kw_transcribe.ZAKRES[karta]
     walidacja = kw_validate.validate(tresc)
     logger.info(
         "kw_transcribe_done",
         **counters,
+        zakres=zakres,
         ms=round((time.monotonic() - started) * 1000),
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
@@ -794,7 +831,7 @@ def kw_transcribe_book(
         # Classes and section codes only — `kw_validate` never puts a value in them.
         walidacja_bledy=walidacja.bledy,
     )
-    return KwTranscribeResponse(**tresc.model_dump(), walidacja=walidacja)
+    return KwTranscribeResponse(**tresc.model_dump(), zakres=zakres, walidacja=walidacja)
 
 
 # --- T-13: cooperative register import (S2a) --------------------------------

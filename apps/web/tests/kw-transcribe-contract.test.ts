@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ksiegaTrescSchema, kwTranscribeResponseSchema } from "@/domain/kw-tresc";
+import {
+  ksiegaTrescMigawkiSchema,
+  ksiegaTrescSchema,
+  kwTranscribeResponseSchema,
+} from "@/domain/kw-tresc";
 import { transcribeKw } from "@/lib/kw-transcribe-client";
 
 // The worker's own fixture — the same file its endpoint test asserts the wire
@@ -14,6 +18,15 @@ const WORKER_FIXTURE = path.join(
   "tests",
   "fixtures",
   "kw_transcribe_sample.json",
+);
+
+const GRUNT_FIXTURE = path.join(
+  process.cwd(),
+  "..",
+  "worker",
+  "tests",
+  "fixtures",
+  "kw_transcribe_grunt_sample.json",
 );
 
 function workerSample(): Record<string, unknown> {
@@ -33,7 +46,35 @@ describe("kw-transcribe contract (worker fixture ↔ KsiegaTresc)", () => {
   it("KsiegaTresc is the content without the verdict (what inputs.kw.tresc stores)", () => {
     const { walidacja, ...tresc } = workerSample();
     expect(walidacja).toBeDefined();
-    expect(ksiegaTrescSchema.parse(tresc)).toEqual(tresc);
+    expect(tresc.zakres).toBe("pelna");
+    expect(ksiegaTrescMigawkiSchema.parse(tresc)).toEqual(tresc);
+  });
+
+  it.each([
+    ["lokal", "pelna", WORKER_FIXTURE],
+    ["grunt", "przedmiotowy_lokal", GRUNT_FIXTURE],
+  ] as const)("fikstura %s: odpowiedź 1:1 ze schematem, zakres %s", (_karta, zakres, plik) => {
+    const wire = JSON.parse(readFileSync(plik, "utf8"));
+    expect(kwTranscribeResponseSchema.parse(wire)).toEqual(wire);
+    expect(wire.zakres).toBe(zakres);
+  });
+
+  it("odpowiedź bez `zakres` to drift kontraktu (F-S1)", () => {
+    const { zakres, ...bez } = workerSample();
+    expect(zakres).toBeDefined();
+    expect(kwTranscribeResponseSchema.safeParse(bez).success).toBe(false);
+  });
+
+  it("schemat modelu nie zna `zakres` — o zakresie nie decyduje model", () => {
+    const { walidacja, ...tresc } = workerSample();
+    expect(walidacja).toBeDefined();
+    expect(ksiegaTrescSchema.parse(tresc)).not.toHaveProperty("zakres");
+  });
+
+  it("migawka sprzed ADR-024 (bez `zakres`) nadal się parsuje", () => {
+    const { walidacja, zakres, ...stara } = workerSample();
+    expect([walidacja, zakres].every(Boolean)).toBe(true);
+    expect(ksiegaTrescMigawkiSchema.parse(stara)).toEqual(stara);
   });
 
   it("an error with and without a section parses; a value-free class is a plain string", () => {

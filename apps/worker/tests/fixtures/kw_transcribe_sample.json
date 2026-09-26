@@ -350,6 +350,7 @@
       "siedzibaNotariusza": "POZNAŃ"
     }
   },
+  "zakres": "pelna",
   "walidacja": {
     "ok": true,
     "bledy": []

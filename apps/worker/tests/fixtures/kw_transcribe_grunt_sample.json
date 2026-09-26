@@ -41,6 +41,20 @@
               ]
             }
           ]
+        },
+        {
+          "naglowek": "Informacja o wyodrębnionych lokalach",
+          "wpisy": [
+            {
+              "lp": "1",
+              "nrPodstawyWpisu": "4",
+              "rubryki": [
+                {"nazwa": "Numer księgi wieczystej lokalu", "lp": null, "wartosci": ["PO1P/00271836/3"]},
+                {"nazwa": "Numer lokalu", "lp": null, "wartosci": ["24"]},
+                {"nazwa": "Przeznaczenie lokalu", "lp": null, "wartosci": ["LOKAL MIESZKALNY"]}
+              ]
+            }
+          ]
         }
       ],
       "dokumenty": [
@@ -49,6 +63,13 @@
           "dokument": "WYPIS Z REJESTRU GRUNTÓW I WYRYS Z MAPY EWIDENCYJNEJ; 2011-05-04; PREZYDENT MIASTA POZNANIA; POZNAŃ",
           "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
           "wniosek": "DZ. KW./PO2P/14402/11/1; 2011-05-16 11:02:41; 2011-06-01 08:47:10; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        },
+        {
+          "nrPodstawyWpisu": "4",
+          "dokument": "AKT NOTARIALNY, UMOWA USTANOWIENIA ODRĘBNEJ WŁASNOŚCI LOKALU I SPRZEDAŻY; 15.06.2020; NOTARIUSZ EWA SOKOŁOWSKA-PRZYBYLAK, REP. A NR 3406/2020; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO2P/21876/20/1; 2020-06-19 10:12:44; 2020-07-08 08:31:02; NIE; ---",
           "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
         }
       ]
@@ -78,6 +99,21 @@
             }
           ]
         }
+     ,
+        {
+          "naglowek": "Właściciele wyodrębnionych lokali",
+          "wpisy": [
+            {
+              "lp": "2",
+              "nrPodstawyWpisu": "4",
+              "rubryki": [
+                {"nazwa": "Numer księgi wieczystej lokalu", "lp": null, "wartosci": ["PO1P/00271836/3"]},
+                {"nazwa": "Numer lokalu", "lp": null, "wartosci": ["24"]},
+                {"nazwa": "Wielkość udziału", "lp": null, "wartosci": ["3817 / 5294410"]}
+              ]
+            }
+          ]
+        }
       ],
       "dokumenty": [
         {
@@ -85,6 +121,13 @@
           "dokument": "AKT NOTARIALNY, UMOWA SPRZEDAŻY; 07.11.2019; NOTARIUSZ EWA SOKOŁOWSKA-PRZYBYLAK, REP. A NR 8123/2019; POZNAŃ",
           "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
           "wniosek": "DZ. KW./PO2P/40917/19/1; 2019-11-12 13:20:05; 2019-12-03 09:15:44; NIE; ---",
+          "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
+        },
+        {
+          "nrPodstawyWpisu": "4",
+          "dokument": "AKT NOTARIALNY, UMOWA USTANOWIENIA ODRĘBNEJ WŁASNOŚCI LOKALU I SPRZEDAŻY; 15.06.2020; NOTARIUSZ EWA SOKOŁOWSKA-PRZYBYLAK, REP. A NR 3406/2020; POZNAŃ",
+          "dokumentOpisPol": "(rodzaj dokumentu, data sporządzenia, oznaczenie organu / notariusza, siedziba)",
+          "wniosek": "DZ. KW./PO2P/21876/20/1; 2020-06-19 10:12:44; 2020-07-08 08:31:02; NIE; ---",
           "wniosekOpisPol": "(rodzaj i numer dziennika, chwila wpływu, chwila wpisu, wpis przeniesiony z księgi prowadzonej w formie papierowej, karty)"
         }
       ]
@@ -136,13 +179,8 @@
     "kwGruntu": null,
     "udzial": null,
     "powierzchniaUzytkowa": null,
-    "podstawaNabycia": {
-      "tytulAktu": "UMOWA SPRZEDAŻY",
-      "repA": "8123/2019",
-      "dataAktu": "2019-11-07",
-      "notariusz": "EWA SOKOŁOWSKA-PRZYBYLAK",
-      "siedzibaNotariusza": "POZNAŃ"
-    }
+    "podstawaNabycia": null
   },
+  "zakres": "przedmiotowy_lokal",
   "walidacja": {"ok": true, "bledy": []}
 }

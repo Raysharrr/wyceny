@@ -28,6 +28,7 @@ client = TestClient(main.app)
 def sample_tresc() -> dict:
     doc = json.loads(FIXTURE.read_text())
     doc.pop("walidacja")
+    doc.pop("zakres")  # set by the worker from the card, not a value of the book
     return doc
 
 
@@ -54,7 +55,13 @@ def book_values(node) -> set[str]:
     return set()
 
 
-FORBIDDEN = book_values(sample_tresc())
+# The unit's keys the land card sends (ADR-024) — values of the book too, and
+# the prompt names them. The unit number is short ("24" is also a substring of
+# timestamps), so it is forbidden as a JSON value, never as a substring.
+KW_TEST = sample_tresc()["naglowek"]["numerKsiegi"]
+NR_TEST = sample_tresc()["polaDodatkowe"]["numerLokalu"]
+FORBIDDEN = book_values(sample_tresc()) | {KW_TEST, f'"{NR_TEST}"'}
+KLUCZE = {"karta": "grunt", "kw_lokalu": KW_TEST, "nr_lokalu": NR_TEST}
 
 
 def mint() -> str:
@@ -68,10 +75,12 @@ def secret_env(monkeypatch):
     monkeypatch.setenv("WORKER_SHARED_SECRET", SECRET)
 
 
-def post():
+def post(**form: str):
+    """The land card with both keys unless `form` says otherwise — the request
+    that carries the most values."""
     return client.post(
         "/kw-transcribe",
-        data={"token": mint()},
+        data={"token": mint(), **KLUCZE, **form},
         files={"file": ("kw.pdf", b"%PDF-1.4 ksiega", "application/pdf")},
     )
 
@@ -105,6 +114,10 @@ def test_forbidden_set_covers_persons_pesels_kw_numbers_and_rep_a():
     assert {p for p in osoby if len(p) >= 5} <= FORBIDDEN
 
 
+def test_forbidden_set_covers_the_keys():
+    assert {KW_TEST, f'"{NR_TEST}"'} <= FORBIDDEN
+
+
 def test_successful_transcription_logs_counters_only(monkeypatch, capsys):
     tresc = KsiegaTresc.model_validate(sample_tresc())
     tresc.polaDodatkowe.numerLokalu = "0" + (tresc.polaDodatkowe.numerLokalu or "")  # verdict fails
@@ -120,6 +133,41 @@ def test_successful_transcription_logs_counters_only(monkeypatch, capsys):
     assert done[0]["dzialy"] == 5
     assert done[0]["walidacja_ok"] is False
     assert done[0]["walidacja_bledy"] == [{"klasa": "pole_niezgodne:numerLokalu", "dzial": "I-O"}]
+
+
+@pytest.mark.parametrize(
+    ("form", "karta", "zakres", "klucze"),
+    [
+        ({}, "grunt", "przedmiotowy_lokal", "kw+nr"),
+        ({"nr_lokalu": ""}, "grunt", "przedmiotowy_lokal", "kw"),
+        ({"kw_lokalu": "", "nr_lokalu": ""}, "grunt", "przedmiotowy_lokal", "brak"),
+        ({"karta": "lokal"}, "lokal", "pelna", "brak"),
+    ],
+)
+def test_done_line_names_the_card_scope_and_which_keys(
+    monkeypatch, capsys, form, karta, zakres, klucze
+):
+    fake = FakeLlmClient(LlmResult(KsiegaTresc.model_validate(sample_tresc()), "end_turn", 1, 1))
+    monkeypatch.setattr(main, "kw_llm", lambda: fake)
+
+    assert post(**form).status_code == 200
+
+    log = log_text(capsys.readouterr().out)
+    assert leaked(log) == []
+    (done,) = [json.loads(line) for line in log.splitlines() if '"kw_transcribe_done"' in line]
+    assert (done["karta"], done["zakres"], done["klucze"]) == (karta, zakres, klucze)
+
+
+def test_failed_line_names_the_card_and_which_keys(monkeypatch, capsys):
+    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 32000))
+    monkeypatch.setattr(main, "kw_llm", lambda: fake)
+
+    assert post().status_code == 422
+
+    log = log_text(capsys.readouterr().out)
+    assert leaked(log) == []
+    (failed,) = [json.loads(line) for line in log.splitlines() if '"kw_transcribe_failed"' in line]
+    assert (failed["karta"], failed["klucze"]) == ("grunt", "kw+nr")
 
 
 @pytest.mark.parametrize("stop_reason", ["max_tokens", "end_turn"])
@@ -174,7 +222,7 @@ def pasted_book() -> str:
 
 
 def post_text(text: str):
-    return client.post("/kw-transcribe", data={"token": mint(), "tekst": text})
+    return client.post("/kw-transcribe", data={"token": mint(), "tekst": text, **KLUCZE})
 
 
 def test_the_paste_carries_the_forbidden_values():
@@ -236,7 +284,7 @@ def test_pdf_and_paste_together_log_the_mixed_channel(monkeypatch, capsys):
 
     resp = client.post(
         "/kw-transcribe",
-        data={"token": mint(), "tekst": pasted_book()},
+        data={"token": mint(), "tekst": pasted_book(), **KLUCZE},
         files=[("files", ("kw.pdf", pdf, "application/pdf"))],
     )
 

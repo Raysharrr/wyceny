@@ -1,8 +1,10 @@
-"""Full transcription of the five sections of a land-register book (I-O, I-Sp,
-II, III, IV) — a unit's or the land's — from one or more eKW printout PDFs, from
-the text pasted out of the eKW browser tabs, or both (ADR-021; spikes
-tools/spike/2026-09-15-kw-pelne-dzialy and 2026-09-21-kw-wklej-tekst, PASS on
-claude-opus-5). Operat §8.2 as the appraiser pastes it.
+"""Transcription of the five sections of a land-register book (I-O, I-Sp, II,
+III, IV) from one or more eKW printout PDFs, from the text pasted out of the eKW
+browser tabs, or both (ADR-021; spikes tools/spike/2026-09-15-kw-pelne-dzialy
+and 2026-09-21-kw-wklej-tekst, PASS on claude-opus-5). Operat §8.2 as the
+appraiser pastes it. A unit's book in full; a land book selectively — the land
+in full, from the unit lists only the subject unit, keyed by the unit card
+(ADR-024; spike tools/spike/2026-09-25-kw-grunt-selektywnie).
 
 A separate call next to `/kw-extract`, which stays as it is. Persons' data stays
 in on purpose (user decision 15.09, ADR-018 "Zmiana 15.09"): no `scrub_extract`
@@ -216,16 +218,18 @@ class TranscriptionFailed(Exception):
         return "kw_transkrypcja_blad"
 
 
-def transcribe(llm: LlmClient, pdfs: list[str], text: str | None) -> LlmResult:
+def transcribe(
+    llm: LlmClient, pdfs: list[str], text: str | None, *, karta: Karta, klucze: KluczeLokalu | None
+) -> LlmResult:
     """The model's transcription of the book read from `pdfs` (base64, in the
-    order uploaded), from `text` (the pasted tabs) or both. Raises
-    `TranscriptionFailed` when there is none; the returned result always has
-    `parsed`."""
+    order uploaded), from `text` (the pasted tabs) or both — in full for a unit's
+    book, selectively for a land book (ADR-024). Raises `TranscriptionFailed`
+    when there is none; the returned result always has `parsed`."""
     result = llm.parse(
         model=TRANSCRIBE_MODEL,
         documents=pdfs,
         text=text,
-        prompt=PROMPT,
+        prompt=prompt_dla(karta, klucze),
         schema=KsiegaTresc,
         max_tokens=MAX_TOKENS,
         thinking={"type": "adaptive"},
