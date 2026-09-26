@@ -51,8 +51,13 @@ const TEMPLATE = path.join(process.cwd(), "templates", "operat-szablon.docx");
  * Głuszyna PR-2 (ADR-021): slot tabeli działów księgi gruntu po jej protokole
  * (`tabela_dzialow("ksiega_gruntu_wiersze")`), zdania ścieżki bez treści pod
  * `{^ma_tresc_gruntu}`.
+ *
+ * ADR-024: zdanie o ograniczonym zakresie między protokołem a tabelą księgi
+ * gruntu, `{#zakres_ograniczony_gruntu}`. Generator z wiki a23642e (gałąź
+ * PR #98, decyzja koordynatora 26.09); rozpakowany `word/document.xml` różni
+ * się od poprzedniej binarki wyłącznie trzema wstawionymi akapitami.
  */
-const TEMPLATE_SHA256 = "74e30cd825e7f369dfcdd3a72f8c5d4b2c4c6406ed585857584ef1d7b02b92df";
+const TEMPLATE_SHA256 = "6dbdd2e3e28012bdb87b34b103c5f6507f24710fdd95c9c0cfd1c9af6654aac9";
 
 function templateXml(): string {
   const zip = new PizZip(fs.readFileSync(TEMPLATE));
@@ -288,6 +293,9 @@ const REQUIRED_PLACEHOLDERS = [
   "{/ma_tresc_gruntu}",
   "{#ksiega_gruntu_wiersze}",
   "{/ksiega_gruntu_wiersze}",
+  // ADR-024: zdanie o zakresie przed tabelą gruntu.
+  "{#zakres_ograniczony_gruntu}",
+  "{/zakres_ograniczony_gruntu}",
   "{kol1}",
   "{kol2}",
   "{kol3}",
