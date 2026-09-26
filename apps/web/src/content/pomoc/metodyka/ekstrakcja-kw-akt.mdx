@@ -1,4 +1,4 @@
-Numer księgi wieczystej, udział w nieruchomości wspólnej, sąd i wydział, treść działów III i IV oraz powierzchnia użytkowa mogą pochodzić z wgranego dokumentu — aktu notarialnego albo odpisu księgi wieczystej. Z PDF-a **księgi lokalu** odczytujemy dodatkowo pełną treść pięciu działów, którą operat cytuje w §8.2. Odczytuje je model językowy, a nie parser formatu, więc ta strona mówi nie tylko, co z dokumentu wyciągamy, ale przede wszystkim czego z niego nie wyciągamy i jaki status ma wynik. Mechanizm żyje w workerze (`apps/worker/app/kw.py`, `apps/worker/app/kw_transcribe.py`, `apps/worker/app/kw_validate.py`, `apps/worker/app/main.py`).
+Numer księgi wieczystej, udział w nieruchomości wspólnej, sąd i wydział, treść działów III i IV oraz powierzchnia użytkowa mogą pochodzić z wgranego dokumentu — aktu notarialnego albo odpisu księgi wieczystej. Treść pięciu działów obu ksiąg — z PDF-a albo z tekstu wklejonego z przeglądarki KW — przepisujemy dodatkowo do §8.2 operatu: księgę lokalu w całości, księgę gruntu wybiórczo (grunt i przedmiotowy lokal, ADR-024). Odczytuje je model językowy, a nie parser formatu, więc ta strona mówi nie tylko, co z dokumentu wyciągamy, ale przede wszystkim czego z niego nie wyciągamy i jaki status ma wynik. Mechanizm żyje w workerze (`apps/worker/app/kw.py`, `apps/worker/app/kw_transcribe.py`, `apps/worker/app/kw_validate.py`, `apps/worker/app/main.py`).
 
 Uwaga na jedno rozróżnienie, które wraca niżej kilka razy: **odczyt pól** i **przepisanie pełnej treści działów** to dwa osobne wywołania o różnych zasadach. Pierwsze celowo pomija dane osób; drugie celowo je zachowuje.
 
@@ -10,7 +10,7 @@ Od ADR-021 (21.09.2026) treść obu ksiąg — lokalu i gruntu — żyje w jedne
 
 ## Przepisanie pełnej treści działów
 
-Wgranie PDF-a **księgi lokalu** uruchamia dwa niezależne odczyty tego samego pliku: dotychczasowy odczyt pól i osobne przepisanie pełnej treści pięciu działów (I-O, I-Sp, II, III, IV) — tego, co w operacie Anety stanowi §8.2. To drugie wywołanie idzie na mocniejszy model i trwa dłużej, do około dwóch minut; karta pokazuje wtedy jedną linię o obu odczytach naraz i czeka, aż wrócą oba.
+Wgranie PDF-a **księgi lokalu** uruchamia dwa niezależne odczyty tego samego pliku: dotychczasowy odczyt pól i osobne przepisanie pełnej treści pięciu działów (I-O, I-Sp, II, III, IV) — tego, co w operacie Anety stanowi §8.2. To drugie wywołanie idzie na mocniejszy model i trwa dłużej, do około dwóch minut; karta pokazuje wtedy jedną linię o obu odczytach naraz i czeka, aż wrócą oba. Tekst wklejony z przeglądarki KW i każda treść na karcie księgi gruntu idą wyłącznie do przepisania — bez odczytu pól. Księgę gruntu przepisujemy wybiórczo i trwa to do trzech minut (niżej).
 
 Treść przepisujemy **znak w znak**: zachowujemy wielkość liter, interpunkcję, spacje wokół ukośnika w udziale, rodzaj kresek i zera wiodące. Nic nie jest skracane ani streszczane. **Dane osób fizycznych** — imiona, nazwiska, imiona rodziców, numery PESEL — przepisujemy tak, jak stoją w księdze, bo operat biura je zawiera (decyzja z 15.09.2026). To wyjątek: dotyczy wyłącznie pełnej treści działów i wyłącznie danych wyceny. Do logów aplikacji nie trafia z tej treści nic — ani jedna wartość, wyłącznie liczniki i nazwy klas błędów.
 
@@ -22,17 +22,17 @@ Numer repertorium i tytuł aktu bywają zwracane raz z prefiksem („REP. A NR �
 
 Przepisana treść przechodzi zestaw **deterministycznych** sprawdzeń (nie ocenia ich model, tylko kod):
 
-Część z nich zależy od **rodzaju księgi**, który walidator czyta z nagłówka. Pola lokalowe — numer lokalu, udział, numer księgi gruntu i cyfra kontrolna tego numeru — istnieją wyłącznie w księdze lokalu: księga gruntu nie ma czego nimi opisywać ani na co wskazywać. Dla księgi gruntu te sprawdzenia są więc pomijane, a pola nie są z niej wypełniane.
+Część z nich zależy od **rodzaju księgi**, który walidator czyta z nagłówka **albo z karty**: treść z karty księgi gruntu jest księgą gruntu także wtedy, gdy nagłówek nie podaje rodzaju. Pola lokalowe — numer lokalu, udział, numer księgi gruntu i cyfra kontrolna tego numeru — istnieją wyłącznie w księdze lokalu: księga gruntu nie ma czego nimi opisywać ani na co wskazywać. Dla księgi gruntu te sprawdzenia są więc pomijane, a pola nie są z niej wypełniane.
 
 Zawsze, w obu księgach:
 
 - **cyfra kontrolna numeru własnego księgi** — tego z nagłówka przepisanej księgi,
 - **suma kontrolna PESEL** każdego jedenastocyfrowego ciągu w treści,
-- **spójność oznaczeń „brak wpisów”**: dział oznaczony „BRAK WPISÓW” nie może zawierać tabel,
+- **spójność oznaczeń „brak wpisów”**: dział oznaczony „BRAK WPISÓW” nie może zawierać tabel, a dział bez tabel musi być tak oznaczony — z jednym wyjątkiem: pusty dział II księgi gruntu przepisanej wybiórczo nie jest niespójnością (listę właścicieli lokali pomijamy celowo),
 - **spójność rubryk**: wiersz otwierający wpis nie może zostać zapisany jako rubryka,
 - **komplet działów** — pięć, nie mniej,
 - **numer Rep. A** z dokumentem podstawy wpisu w dziale II,
-- **rodzaj księgi wobec karty**, na którą treść wklejono: księga gruntowa na karcie księgi lokalu (i odwrotnie) to niezgodność. Tego jednego nie sprawdza walidator, tylko sama aplikacja — worker widzi rodzaj księgi, ale nie wie, do której karty treść trafiła. Nagłówek bez rodzaju nie daje niezgodności: rodzaju nie zgadujemy.
+- **rodzaj księgi wobec karty**, na którą treść wklejono: księga gruntowa na karcie księgi lokalu (i odwrotnie) to niezgodność. Tę jedną regułę stawia aplikacja, nie walidator workera. Nagłówek bez rodzaju nie daje niezgodności: rodzaju nie zgadujemy.
 
 Tylko w księdze lokalu:
 
@@ -47,7 +47,19 @@ Nieudane przepisanie treści przy udanym odczycie pól też kończy się ostrze�
 
 Przepisana treść trafia do operatu bez Twojej dodatkowej akceptacji w kroku 1 — **miejscem jej przeglądu jest podgląd operatu w kroku 7**. Tam widać ją dokładnie tak, jak trafi do wydanego dokumentu, i tam należy ją porównać z księgą przed zatwierdzeniem. Nie ma osobnego ekranu do przeglądania samych działów.
 
-**Księga gruntu przechodzi tę samą drogę.** Walidator rozpoznaje rodzaj księgi po nagłówku — wystarczy, że nazwa rodzaju zawiera słowo „grunt”, bo eKW zapisuje go na kilka sposobów. Dla księgi gruntowej pomijane są reguły lokalowe (numer lokalu, udział, numer księgi gruntu wraz z jego cyfrą kontrolną, potrójna zgodność numerów); zostają cyfra kontrolna numeru własnego, PESEL, spójność „brak wpisów”, rubryki i Rep. A. Z księgi gruntu nie wypełniamy też trzech pól lokalowych karty: model wpisuje w nie, co w takiej księdze znajdzie — w jednej ze zmierzonych ksiąg obszar działki z działu I-O jako numer księgi gruntu — a operat wydrukowałby to jako numer księgi macierzystej.
+**Księga gruntu przechodzi tę samą drogę.** Walidator uznaje treść za księgę gruntu, gdy przyszła z karty księgi gruntu albo gdy nazwa rodzaju w nagłówku zawiera słowo „grunt” (eKW zapisuje go na kilka sposobów). Dla księgi gruntowej pomijane są reguły lokalowe (numer lokalu, udział, numer księgi gruntu wraz z jego cyfrą kontrolną, potrójna zgodność numerów); zostają cyfra kontrolna numeru własnego, PESEL, spójność „brak wpisów”, rubryki i Rep. A. Dochodzi jedna reguła: gdy karta lokalu podała numer księgi lokalu, dział II przepisanej księgi gruntu musi go zawierać — inaczej baner wymienia „brak wiersza przedmiotowego lokalu w dziale II”. Z księgi gruntu nie wypełniamy też trzech pól lokalowych karty: model wpisuje w nie, co w takiej księdze znajdzie — w jednej ze zmierzonych ksiąg obszar działki z działu I-O jako numer księgi gruntu — a operat wydrukowałby to jako numer księgi macierzystej.
+
+## Księga gruntu — przepisywana wybiórczo (ADR-024)
+
+Księgi gruntu budynku z wieloma lokalami nie da się przepisać w całości: listy lokali w działach I-O i II mają po wierszu na każdy lokal, a rzeczoznawcy i tak nie cytują w operacie obcych lokali. Dlatego karta księgi gruntu przepisuje grunt w całości (nagłówek, działki, obszar, budynki, dział I-Sp, III i IV), a z list lokali tylko wiersz **przedmiotowego lokalu**.
+
+Który lokal jest przedmiotowy, program wie z karty księgi lokalu: wysyła razem z treścią numer księgi lokalu i — gdy jest — numer lokalu. Wiersz należy do przedmiotowego lokalu tylko wtedy, gdy zawiera ten numer księgi. Przy własności lokalu bez numeru księgi lokalu przepisanie gruntu jest zablokowane („Najpierw przepisz księgę lokalu — z niej program wie, który lokal przepisać.”). Przy lokalu deweloperskim numeru nie ma i nie jest potrzebny: list lokali program nie przepisuje wcale. Treść gruntu pamięta numer, dla którego ją przepisano; gdy numer księgi lokalu się potem zmieni, karta gruntu ostrzega: „Księgę gruntu przepisano dla innego lokalu. Przepisz ją ponownie.”.
+
+Zakres przepisania zapisuje się w samej treści (`zakres`: `pelna` dla księgi lokalu, `przedmiotowy_lokal` dla księgi gruntu). Ustala go worker z karty, nigdy model. Walidator zna kartę i zakres: pusty dział II takiej księgi nie jest niespójnością, a gdy karta lokalu podała numer księgi lokalu, brak tego numeru w dziale II jest niezgodnością „brak wiersza przedmiotowego lokalu w dziale II” — ostrzeżeniem, nie blokadą.
+
+Przy treści przepisanej wybiórczo operat drukuje w §8.2, między protokołem badania księgi gruntu a jej tabelą, zdanie z praktyki biura: „Z uwagi na obszerność zapisów księgi wieczystej w protokole zawarto wpisy dotyczące jedynie przedmiotowej nieruchomości.”.
+
+Przepisanie obu ksiąg idzie strumieniowo, z limitem 24 tys. tokenów odpowiedzi. Największa zmierzona księga gruntu zajęła około 14 tys. (razem z rozumowaniem modelu), więc limit ma zapas.
 
 ## Jakie dokumenty przyjmujemy
 
@@ -127,6 +139,6 @@ Odmowy są trzy i różnią się tym, co da się z nimi zrobić:
 - **błąd odczytu** — na przykład chwilowa niedostępność modelu; tu ponowienie ma sens i aplikacja je proponuje,
 - **odmowa autoryzacji** — token wygasł albo nie przeszedł weryfikacji; ponieważ wystawiany jest tuż przed wysyłką, w praktyce zdarza się to tylko przy bardzo długim wysyłaniu pliku.
 
-Przepisanie treści działów ma własne, osobne niepowodzenia — **treść zbyt obszerna**, **treść nieczytelna dla modelu** i **błąd wywołania** — opisane wyżej przy walidatorach. Żadne z nich nie unieważnia odczytu pól: jeśli pola się odczytały, zostają, a zmienia się tylko to, że operat opisze działy zamiast je zacytować.
+Przepisanie treści działów ma własne, osobne niepowodzenia — **treść zbyt obszerna**, **treść nieczytelna dla modelu** i **błąd wywołania** — opisane wyżej przy walidatorach. Żadne z nich nie unieważnia odczytu pól: jeśli pola się odczytały, zostają, a zmienia się tylko to, że na karcie lokalu z PDF-a operat opisze działy zamiast je zacytować. Na karcie księgi gruntu i przy wklejonej treści pól z pliku nie ma — bez przepisanej treści księga zostaje **Do zbadania**.
 
 W każdym z tych przypadków treść trzeba podać jeszcze raz — drugim sposobem albo tym samym. Same pola karty pozostają edytowalne i to, co w nich wpiszesz, jest pełnoprawnym wejściem do operatu (jak każda dana od rzeczoznawcy, nie wymaga potwierdzania) — ale bez przepisanej treści księga zostaje **Do zbadania** i krok 7 nie wypuści operatu.
