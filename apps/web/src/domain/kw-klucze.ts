@@ -68,8 +68,7 @@ export function kwLokaluZmieniony(
  * nowego liczenia.
  */
 export function trescGruntuDlaInnegoLokalu(
-  kwGrunt:
-    (Pick<KwGruntSnapshot, "tresc"> & { kluczeLokalu?: KluczeLokalu | null }) | null | undefined,
+  kwGrunt: Pick<KwGruntSnapshot, "tresc" | "kluczeLokalu"> | null | undefined,
   biezace: KluczeLokalu | null,
 ): boolean {
   return (

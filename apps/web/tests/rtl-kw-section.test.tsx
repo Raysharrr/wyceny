@@ -67,7 +67,7 @@ import { transcribeKw } from "@/lib/kw-transcribe-client";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { step1DefaultsFromInputs } from "@/lib/subject-form";
 import { assignSubjectProvenance } from "@/lib/assign-provenance";
-import { ksiegaTrescSchema, type KsiegaTresc } from "@/domain/kw-tresc";
+import { ksiegaTrescMigawkiSchema, ksiegaTrescSchema, type KsiegaTresc } from "@/domain/kw-tresc";
 import { dzialyZTresci } from "@/domain/kw-z-tresci";
 import { localToday } from "@/app/valuations/new/kw-section";
 
@@ -100,6 +100,29 @@ function transcribedBook(): KsiegaTresc {
   // the content alone, so the fixture is stripped the same way the client is.
   delete wire.walidacja;
   return ksiegaTrescSchema.parse(wire);
+}
+
+/**
+ * Syntetyczna księga GRUNTU workera (ADR-024: selektywna, z wierszem lokalu z
+ * fikstury lokalu), czytana w miejscu jak `transcribedBook`. Schemat MIGAWKI,
+ * nie modelu: `zakres` jedzie w `tresc` i ma przeżyć formularz.
+ */
+function gruntBook(): KsiegaTresc {
+  const wire = JSON.parse(
+    readFileSync(
+      path.join(
+        process.cwd(),
+        "..",
+        "worker",
+        "tests",
+        "fixtures",
+        "kw_transcribe_grunt_sample.json",
+      ),
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
+  delete wire.walidacja;
+  return ksiegaTrescMigawkiSchema.parse(wire);
 }
 
 const OK_EXTRACT = {
@@ -654,13 +677,21 @@ describe("KwSection", () => {
         seed={
           {
             kw: { source: "ekw_reczne", deweloperski: false, kwLokalu: "AB1C/1/9" },
-            kwGrunt: { source: "ekw_reczne", nrKsiegi: "AB1C/2/7" },
+            // ADR-024: klucze lokalu żyją W migawce gruntu, więc znikają razem z nią.
+            kwGrunt: {
+              source: "ekw_reczne",
+              nrKsiegi: "AB1C/2/7",
+              kluczeLokalu: { kwLokalu: "AB1C/1/9", nrLokalu: "24" },
+            },
             encumbranceTreatment: { wariant: "bez_uwzglednienia", podstawa: "Polecenie." },
           } as Partial<FormInput>
         }
       />,
     );
     expect(JSON.parse(screen.getByTestId("kw-json").textContent || "null")).not.toBeNull();
+    expect(
+      JSON.parse(screen.getByTestId("kwgrunt-json").textContent || "null")?.kluczeLokalu,
+    ).toBeDefined();
 
     await user.click(
       screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
@@ -671,6 +702,37 @@ describe("KwSection", () => {
         expect(JSON.parse(screen.getByTestId(id).textContent || "null")).toBeNull();
       }
     });
+  });
+
+  it("ADR-024: zmiana sposobu karty gruntu zdejmuje migawkę razem z kluczami lokalu", async () => {
+    const user = userEvent.setup();
+    render(
+      <StateHarness
+        seed={
+          {
+            kw: { source: "ekw_reczne", deweloperski: false, kwLokalu: "AB1C/1/9" },
+            kwGrunt: {
+              source: "ekw_wklej",
+              nrKsiegi: "AB1C/2/7",
+              dataBadania: "2026-09-26",
+              dzial3: null,
+              dzial4: null,
+              kluczeLokalu: { kwLokalu: "AB1C/1/9", nrLokalu: "24" },
+            },
+          } as Partial<FormInput>
+        }
+      />,
+    );
+    const grunt = () => JSON.parse(screen.getByTestId("kwgrunt-json").textContent || "null");
+    expect(grunt()?.kluczeLokalu).toEqual({ kwLokalu: "AB1C/1/9", nrLokalu: "24" });
+    await user.click(
+      within(screen.getByRole("radiogroup", { name: "Źródło danych księgi gruntu" })).getByRole(
+        "radio",
+        { name: "Wgraj PDF" },
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Zmień sposób i usuń dane" }));
+    await waitFor(() => expect(grunt()).toBeNull());
   });
 
   /**
@@ -1512,6 +1574,81 @@ describe("KwSection — full-form wiring", () => {
       { kw?: { tresc?: unknown } },
     ];
     expect(payload.kw?.tresc).toEqual(tresc);
+  });
+
+  /**
+   * ADR-024: klucze lokalu i `tresc.zakres` księgi gruntu muszą przeżyć
+   * `inputs → defaults → schema → save` w TRYBIE EDYCJI — zgubione po cichu
+   * gaszą T4 (klucze) i zdanie T7 w §8.2 (zakres). Asercja na CAŁEJ migawce.
+   */
+  it("tryb edycji: kluczeLokalu i tresc.zakres księgi gruntu przeżywają ponowne wejście i zapis (S2)", async () => {
+    const lokal = transcribedBook();
+    const tresc = gruntBook();
+    expect(tresc.zakres).toBe("przedmiotowy_lokal");
+    const kwGrunt = {
+      source: "ekw_wklej" as const,
+      nrKsiegi: tresc.naglowek.numerKsiegi,
+      dataBadania: "2026-09-26",
+      dzial3: dzialyZTresci(tresc).dzial3,
+      dzial4: dzialyZTresci(tresc).dzial4,
+      sad: tresc.naglowek.sad,
+      wydzial: tresc.naglowek.wydzial,
+      tresc,
+      transkrypcja: {
+        ok: true,
+        bledy: [],
+        kanal: "tekst" as const,
+        plikow: 0,
+        at: "2026-09-26T10:00:00.000Z",
+      },
+      kluczeLokalu: {
+        kwLokalu: lokal.naglowek.numerKsiegi,
+        nrLokalu: lokal.polaDodatkowe.numerLokalu,
+      },
+    };
+    const stored = {
+      ...step1DefaultsFromInputs({
+        address: "ul. Kościelna 33, Poznań",
+        area: 69.56,
+        purpose: "sprzedaz",
+        propertyRight: "wlasnosc_lokalu",
+        kwNumber: lokal.naglowek.numerKsiegi,
+        client: "Jan Kowalski",
+        inputs: {
+          kw: {
+            source: "ekw_wklej",
+            kwLokalu: lokal.naglowek.numerKsiegi,
+            kwGruntu: tresc.naglowek.numerKsiegi,
+            kwInne: [],
+            deweloperski: false,
+            powUzytkowaKw: 44.23,
+            udzial: null,
+            sad: null,
+            wydzial: null,
+            dataDokumentu: null,
+            dzial3: { wpisy: false, tresc: [] },
+            dzial4: { wpisy: false, tresc: [] },
+            dataBadania: "2026-09-26",
+            nrLokalu: lokal.polaDodatkowe.numerLokalu,
+          },
+          kwGrunt,
+        },
+      } as unknown as Parameters<typeof step1DefaultsFromInputs>[0]),
+      inspectionDate: "2026-09-26",
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+
+    const user = userEvent.setup();
+    render(<SubjectForm valuationId="val-klucze" defaults={stored} />);
+    // Ten sam numer KW lokalu co przy przepisaniu — T4 nie ma prawa się zapalić.
+    expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
+    const [, payload] = vi.mocked(saveSubjectAction).mock.calls[0] as unknown as [
+      string,
+      { kwGrunt?: unknown },
+    ];
+    expect(payload.kwGrunt).toEqual(kwGrunt);
   });
 
   /**

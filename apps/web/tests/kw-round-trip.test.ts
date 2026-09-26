@@ -14,7 +14,7 @@ import {
   type KwGruntSnapshot,
   type KwSnapshot,
 } from "@/domain/kw-snapshot";
-import { ksiegaTrescSchema } from "@/domain/kw-tresc";
+import { ksiegaTrescMigawkiSchema, ksiegaTrescSchema } from "@/domain/kw-tresc";
 import { planOdczytuKw, step1DefaultsFromInputs } from "@/lib/subject-form";
 
 function ksiega() {
@@ -26,6 +26,25 @@ function ksiega() {
   ) as Record<string, unknown>;
   delete wire.walidacja;
   return ksiegaTrescSchema.parse(wire);
+}
+
+/** Księga gruntu z `zakres` — schemat MIGAWKI, bo to on niesie zakres przez formularz (ADR-024). */
+function ksiegaGruntu() {
+  const wire = JSON.parse(
+    readFileSync(
+      path.join(
+        process.cwd(),
+        "..",
+        "worker",
+        "tests",
+        "fixtures",
+        "kw_transcribe_grunt_sample.json",
+      ),
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
+  delete wire.walidacja;
+  return ksiegaTrescMigawkiSchema.parse(wire);
 }
 
 const WERDYKT = {
@@ -64,8 +83,9 @@ const GRUNT: Required<KwGruntSnapshot> = {
   dzial4: { wpisy: false, tresc: [] },
   sad: "Sąd Rejonowy w Testowie",
   wydzial: "I Wydział Ksiąg Wieczystych",
-  tresc: ksiega(),
+  tresc: ksiegaGruntu(),
   transkrypcja: { ...WERDYKT, ok: true, bledy: [], kanal: "pdf", plikow: 3 },
+  kluczeLokalu: { kwLokalu: "AB1C/1/9", nrLokalu: "24" },
 };
 
 function przezFormularz() {
@@ -87,8 +107,9 @@ describe("round-trip migawek KW: inputs → defaults → schema → normalize", 
     expect(normalizeKw(parsed.kw!)).toEqual(KW);
   });
 
-  it("księga gruntu wraca w całości — sąd, wydział, treść, werdykt", () => {
+  it("księga gruntu wraca w całości — sąd, wydział, treść z zakresem, werdykt, klucze lokalu", () => {
     const parsed = przezFormularz();
+    expect(GRUNT.tresc?.zakres).toBe("przedmiotowy_lokal");
     expect(normalizeKwGrunt(parsed.kwGrunt!)).toEqual(GRUNT);
   });
 
@@ -117,6 +138,7 @@ describe("round-trip migawek KW: inputs → defaults → schema → normalize", 
       wydzial: null,
       tresc: null,
       transkrypcja: null,
+      kluczeLokalu: null,
     });
     expect(step1Schema.safeParse({ ...defaults, subject: undefined }).success).toBe(true);
   });

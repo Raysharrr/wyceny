@@ -711,13 +711,15 @@ describe("every to_verify a legacy draft can hold has a step that clears it (T8)
     expect(after.kw).toEqual({ ...examined.kw, tresc: null, transkrypcja: null });
     // Karta gruntu wraca przez `coerceLegacyKwGrunt`, więc migawka sprzed
     // ADR-021 dostaje cztery jawne null-e — tak samo jak księga lokalu
-    // dostała je przy ADR-018. Dane zapisane wcześniej zostają nietknięte.
+    // dostała je przy ADR-018 — a od ADR-024 piąty: `kluczeLokalu`. Dane
+    // zapisane wcześniej zostają nietknięte.
     expect(after.kwGrunt).toEqual({
       ...examined.kwGrunt,
       sad: null,
       wydzial: null,
       tresc: null,
       transkrypcja: null,
+      kluczeLokalu: null,
     });
     expect(after.encumbranceTreatment).toEqual(examined.encumbranceTreatment);
   });

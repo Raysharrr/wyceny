@@ -11,6 +11,7 @@
  * The last three fields are optional: drafts saved before ADR-018 carry a
  * snapshot without them and are read back unmigrated.
  */
+import type { KluczeLokalu } from "./kw-klucze";
 import type { KsiegaTresc } from "./kw-tresc";
 
 export type KwDzialSnapshot = { wpisy: boolean; tresc: string[] };
@@ -81,10 +82,10 @@ export type KwSnapshot = {
 
 /**
  * Księga gruntu w kształcie księgi lokalu (ADR-021, refaktor R2): te same
- * kanały, ta sama treść, ten sam werdykt. Cztery ostatnie pola są OPCJONALNE,
+ * kanały, ta sama treść, ten sam werdykt. Pięć ostatnich pól jest OPCJONALNYCH,
  * bo model dokumentu czyta `inputs.kwGrunt` prosto z bazy — migawki sprzed
- * ADR-021 ich nie mają; `coerceLegacyKwGrunt` (`Required<>`) wymusza ich
- * wyliczenie na granicy formularza.
+ * ADR-021 (i sprzed ADR-024) ich nie mają; `coerceLegacyKwGrunt` (`Required<>`)
+ * wymusza ich wyliczenie na granicy formularza.
  */
 export type KwGruntSnapshot = {
   source: Exclude<KwSource, "akt">;
@@ -96,6 +97,12 @@ export type KwGruntSnapshot = {
   wydzial?: string | null;
   tresc?: KsiegaTresc | null;
   transkrypcja?: KwWerdykt | null;
+  /**
+   * Klucze lokalu WYSŁANE z tą transkrypcją (ADR-024) — po nich T4 poznaje, że
+   * karta lokalu zmieniła numer KW po przepisaniu gruntu. `null` = przepisano
+   * bez kluczy (deweloperski); brak = migawka sprzed ADR-024, tylko odczyt.
+   */
+  kluczeLokalu?: KluczeLokalu | null;
 };
 
 /**
