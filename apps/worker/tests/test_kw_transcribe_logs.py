@@ -160,7 +160,7 @@ def test_done_line_names_the_card_scope_and_which_keys(
 
 
 def test_failed_line_names_the_card_and_which_keys(monkeypatch, capsys):
-    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 32000))
+    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 24000))
     monkeypatch.setattr(main, "kw_llm", lambda: fake)
 
     assert post().status_code == 422

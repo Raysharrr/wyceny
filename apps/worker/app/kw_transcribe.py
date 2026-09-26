@@ -22,10 +22,14 @@ from pydantic import BaseModel, Field
 from app.llm import INVALID_OUTPUT, LlmClient, LlmResult
 
 TRANSCRIBE_MODEL = os.environ.get("LLM_KW_TRANSCRIBE_MODEL", "claude-opus-5")
-# 32k for both cards, streamed (SDK refuses non-stream above ~21k); billed on
-# tokens used: a unit's book (~4.9k) costs what it did at 16k, a land book gets
-# the headroom the spike asked for (12–25 % left at 16k, thinking included).
-MAX_TOKENS = 32000
+# 24k for both cards, streamed (SDK refuses non-stream above ~21k); billed on
+# tokens used, so a unit's book (~4.9k) costs what it did at 16k. The ceiling is
+# Railway's edge: a request with no data transferred is closed after 5 minutes
+# (docs "Edge Traffic"), and /kw-transcribe sends nothing until it is done. The
+# slowest rate measured, ~98 tok/s with prefill (spike 140 s / 13.7k), puts 24k
+# at ~245 s < 300 s, so even a runaway answer comes back as a truncation; the
+# largest land book measured (13.7k, thinking included) keeps ~1.75x headroom.
+MAX_TOKENS = 24000
 
 Karta = Literal["lokal", "grunt"]
 Zakres = Literal["pelna", "przedmiotowy_lokal"]

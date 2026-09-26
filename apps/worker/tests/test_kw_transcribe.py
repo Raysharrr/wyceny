@@ -145,7 +145,7 @@ def test_transcription_of_the_synthetic_book_comes_back_verbatim(monkeypatch):
             text=None,
             prompt=kw_transcribe.PROMPT,
             schema=KsiegaTresc,
-            max_tokens=32000,
+            max_tokens=24000,
             thinking={"type": "adaptive"},
         )
     ]
@@ -200,7 +200,7 @@ def test_persons_are_not_scrubbed(monkeypatch):
 def test_no_parsed_output_is_an_error_with_a_code_never_partial_content(
     monkeypatch, stop_reason, status, code
 ):
-    use_llm(monkeypatch, LlmResult(None, stop_reason, 14440, 32000))
+    use_llm(monkeypatch, LlmResult(None, stop_reason, 14440, 24000))
     resp = post(mint())
     assert resp.status_code == status
     body = resp.json()
@@ -226,7 +226,7 @@ def test_only_a_real_truncation_is_called_too_large(monkeypatch):
     assert resp.json()["code"] == "kw_transkrypcja_nieczytelna"
     assert "obszerna" not in resp.json()["detail"]
 
-    use_llm(monkeypatch, LlmResult(None, "max_tokens", 14440, 32000))
+    use_llm(monkeypatch, LlmResult(None, "max_tokens", 14440, 24000))
     resp = post(mint())
     assert resp.json()["code"] == "kw_transkrypcja_ucieta"
     assert "obszerna" in resp.json()["detail"]
@@ -322,7 +322,7 @@ def test_kw_transcribe_of_a_land_book_sends_the_selective_prompt_on_the_wire(mon
     (reference,) = pre_port
     (request,) = sent
     assert request.content == reference.content
-    assert json.loads(request.content)["max_tokens"] == 32000
+    assert json.loads(request.content)["max_tokens"] == 24000
 
 
 def test_json_cut_at_max_tokens_by_the_real_sdk_is_called_too_large(monkeypatch):
@@ -479,7 +479,7 @@ def test_zakres_follows_the_card():
 
 
 def test_one_limit_for_both_cards():
-    assert kw_transcribe.MAX_TOKENS == 32000
+    assert kw_transcribe.MAX_TOKENS == 24000
 
 
 # --- transcribe: PDFs and/or a pasted book through one prompt (ADR-021) -----------
@@ -502,7 +502,7 @@ def test_transcribe_forwards_documents_and_text_to_the_port_unchanged():
             text="DZIAŁ I-O\nNumer działki | 217/4 | 1",
             prompt=kw_transcribe.PROMPT,
             schema=KsiegaTresc,
-            max_tokens=32000,
+            max_tokens=24000,
             thinking={"type": "adaptive"},
         )
     ]
@@ -517,7 +517,7 @@ def test_transcribe_with_text_only_sends_no_documents():
 
 
 def test_transcribe_without_a_parsed_answer_raises_with_the_code():
-    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 32000))
+    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 24000))
     with pytest.raises(kw_transcribe.TranscriptionFailed) as failed:
         kw_transcribe.transcribe(fake, ["JVBERg=="], None, karta="lokal", klucze=None)
     assert failed.value.code == "kw_transkrypcja_ucieta"
@@ -704,7 +704,7 @@ def test_land_card_with_keys_answers_the_fixture_with_its_scope(monkeypatch):
     assert resp.json() == grunt_sample()
     (call,) = fake.calls
     assert call["prompt"] == kw_transcribe.prompt_dla("grunt", kw_transcribe.KluczeLokalu(KW, NR))
-    assert call["max_tokens"] == 32000
+    assert call["max_tokens"] == 24000
 
 
 def test_unit_card_ignores_keys_and_answers_full_scope(monkeypatch):
@@ -760,7 +760,7 @@ def test_missing_or_unknown_card_is_422_without_echo(monkeypatch, karta):
 
 @pytest.mark.parametrize(
     "result",
-    [LlmResult(None, "max_tokens", 1, 32000), LlmResult(None, INVALID_OUTPUT, 1, 1)],
+    [LlmResult(None, "max_tokens", 1, 24000), LlmResult(None, INVALID_OUTPUT, 1, 1)],
 )
 def test_error_bodies_never_carry_the_keys(monkeypatch, result):
     use_llm(monkeypatch, result)
