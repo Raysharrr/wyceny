@@ -58,6 +58,9 @@ export function nazwaNiezgodnosci(b: Niezgodnosc, ksiega: KartaKsiegi): string {
       return `pusta rubryka w dziale ${b.dzial ?? "?"}`;
     case "dzialy_niekompletne":
       return `brak działu ${b.dzial ?? "?"}`;
+    // T5 — zatwierdzony przez usera 26.09 (ADR-024). Klasa bez wartości (F-13).
+    case "brak_wiersza_lokalu":
+      return "brak wiersza przedmiotowego lokalu w dziale II";
     default:
       return b.klasa;
   }
