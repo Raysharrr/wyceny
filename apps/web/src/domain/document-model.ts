@@ -676,6 +676,12 @@ export type DocumentModel = {
   /** Księga gruntu ma te same kanały i tę samą tabelę (ADR-021 reg. 6) — pusta lista i `false`, gdy nie było transkrypcji. */
   ksiega_gruntu_wiersze: KsiegaRow[];
   ma_tresc_gruntu: boolean;
+  /**
+   * §8.2: zdanie o ograniczonym zakresie między protokołem a tabelą księgi
+   * gruntu — gdy treść przepisano do przedmiotowego lokalu (ADR-024);
+   * migawka sprzed ADR-024 = false.
+   */
+  zakres_ograniczony_gruntu: boolean;
   /** §8.2's sentences for the manual path — used when there is no transcription to quote. */
   dzial3_opis: string;
   dzial4_opis: string;
@@ -1179,6 +1185,7 @@ export function buildDocumentModel(
     ma_tresc_lokalu: kw?.tresc != null,
     ksiega_gruntu_wiersze: wierszeKsiegi(kwGrunt, opts?.preview === true, "grunt"),
     ma_tresc_gruntu: kwGrunt?.tresc != null,
+    zakres_ograniczony_gruntu: kwGrunt?.tresc?.zakres === "przedmiotowy_lokal",
     dzial3_opis: dzialOpis(kw?.dzial3, "Dział III"),
     dzial4_opis: dzialOpis(kw?.dzial4, "Dział IV"),
     dzial3_opis_gruntu: dzialOpis(kwGrunt?.dzial3, "Dział III"),

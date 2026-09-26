@@ -14,7 +14,7 @@ import {
   syntheticDocumentInput,
   AUTOR_TESTOWY,
 } from "./fixtures/document-model-fixture";
-import { wycena1409Anon } from "./fixtures/wycena-1409-anon";
+import { trescSyntetycznejKsiegiGruntu, wycena1409Anon } from "./fixtures/wycena-1409-anon";
 
 /**
  * KR.2 — the operat's KW facts, at the MODEL level (the rendered §8.2 belongs
@@ -807,5 +807,49 @@ describe("werdykt ok:false — marker TYLKO w podglądzie (spec §3.4)", () => {
       },
     });
     expect(model.ksiega_lokalu_wiersze[0].kol1).toBe(transcribedBook().dzialy[0].tytul);
+  });
+});
+
+describe("zakres_ograniczony_gruntu — §8.2 says the land book was transcribed selectively (ADR-024, T7)", () => {
+  // The worker's own selective land book, read in place with `zakres` kept
+  // ("przedmiotowy_lokal" — the land card always transcribes selectively).
+  const bezZakresu = (): KsiegaTresc => {
+    const tresc = trescSyntetycznejKsiegiGruntu();
+    delete tresc.zakres;
+    return tresc;
+  };
+  const z = (zakres: "pelna" | "przedmiotowy_lokal" | undefined): KwGruntSnapshot => ({
+    ...EXAMINED_GRUNT,
+    tresc: zakres ? { ...bezZakresu(), zakres } : bezZakresu(),
+  });
+
+  it("fixture of the land card carries the scope the worker set", () => {
+    expect(trescSyntetycznejKsiegiGruntu().zakres).toBe("przedmiotowy_lokal");
+  });
+
+  it("land book transcribed down to the subject unit → the sentence", () => {
+    const model = modelOf({ kw: EXAMINED_LOKAL, kwGrunt: z("przedmiotowy_lokal") });
+    expect(model.zakres_ograniczony_gruntu).toBe(true);
+  });
+
+  it("full / snapshot from before ADR-024 without a scope / no transcription → no sentence", () => {
+    expect(modelOf({ kw: EXAMINED_LOKAL, kwGrunt: z("pelna") }).zakres_ograniczony_gruntu).toBe(
+      false,
+    );
+    expect(modelOf({ kw: EXAMINED_LOKAL, kwGrunt: z(undefined) }).zakres_ograniczony_gruntu).toBe(
+      false,
+    );
+    expect(
+      modelOf({ kw: EXAMINED_LOKAL, kwGrunt: { ...EXAMINED_GRUNT, tresc: null } })
+        .zakres_ograniczony_gruntu,
+    ).toBe(false);
+    expect(modelOf({ kw: EXAMINED_LOKAL }).zakres_ograniczony_gruntu).toBe(false);
+  });
+
+  it("a selective scope on the LOKAL book never prints the land-book sentence", () => {
+    const model = modelOf({
+      kw: { ...EXAMINED_LOKAL, tresc: { ...bezZakresu(), zakres: "przedmiotowy_lokal" } },
+    });
+    expect(model.zakres_ograniczony_gruntu).toBe(false);
   });
 });
