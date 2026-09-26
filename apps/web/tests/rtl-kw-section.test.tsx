@@ -67,9 +67,9 @@ import { transcribeKw } from "@/lib/kw-transcribe-client";
 import { mintKwUploadToken } from "@/app/actions/mint-kw-token";
 import { step1DefaultsFromInputs } from "@/lib/subject-form";
 import { assignSubjectProvenance } from "@/lib/assign-provenance";
-import { ksiegaTrescSchema, type KsiegaTresc } from "@/domain/kw-tresc";
+import { ksiegaTrescMigawkiSchema, ksiegaTrescSchema, type KsiegaTresc } from "@/domain/kw-tresc";
 import { dzialyZTresci } from "@/domain/kw-z-tresci";
-import { localToday } from "@/app/valuations/new/kw-section";
+import { localToday, tekstPorazki } from "@/app/valuations/new/kw-section";
 
 /** Migawki odczytane z wywołania akcji — luźno typowane, bo akcja jest atrapą. */
 type KwSnapshotLike = {
@@ -100,6 +100,29 @@ function transcribedBook(): KsiegaTresc {
   // the content alone, so the fixture is stripped the same way the client is.
   delete wire.walidacja;
   return ksiegaTrescSchema.parse(wire);
+}
+
+/**
+ * Syntetyczna księga GRUNTU workera (ADR-024: selektywna, z wierszem lokalu z
+ * fikstury lokalu), czytana w miejscu jak `transcribedBook`. Schemat MIGAWKI,
+ * nie modelu: `zakres` jedzie w `tresc` i ma przeżyć formularz.
+ */
+function gruntBook(): KsiegaTresc {
+  const wire = JSON.parse(
+    readFileSync(
+      path.join(
+        process.cwd(),
+        "..",
+        "worker",
+        "tests",
+        "fixtures",
+        "kw_transcribe_grunt_sample.json",
+      ),
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
+  delete wire.walidacja;
+  return ksiegaTrescMigawkiSchema.parse(wire);
 }
 
 const OK_EXTRACT = {
@@ -654,13 +677,21 @@ describe("KwSection", () => {
         seed={
           {
             kw: { source: "ekw_reczne", deweloperski: false, kwLokalu: "AB1C/1/9" },
-            kwGrunt: { source: "ekw_reczne", nrKsiegi: "AB1C/2/7" },
+            // ADR-024: klucze lokalu żyją W migawce gruntu, więc znikają razem z nią.
+            kwGrunt: {
+              source: "ekw_reczne",
+              nrKsiegi: "AB1C/2/7",
+              kluczeLokalu: { kwLokalu: "AB1C/1/9", nrLokalu: "24" },
+            },
             encumbranceTreatment: { wariant: "bez_uwzglednienia", podstawa: "Polecenie." },
           } as Partial<FormInput>
         }
       />,
     );
     expect(JSON.parse(screen.getByTestId("kw-json").textContent || "null")).not.toBeNull();
+    expect(
+      JSON.parse(screen.getByTestId("kwgrunt-json").textContent || "null")?.kluczeLokalu,
+    ).toBeDefined();
 
     await user.click(
       screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
@@ -671,6 +702,37 @@ describe("KwSection", () => {
         expect(JSON.parse(screen.getByTestId(id).textContent || "null")).toBeNull();
       }
     });
+  });
+
+  it("ADR-024: zmiana sposobu karty gruntu zdejmuje migawkę razem z kluczami lokalu", async () => {
+    const user = userEvent.setup();
+    render(
+      <StateHarness
+        seed={
+          {
+            kw: { source: "ekw_reczne", deweloperski: false, kwLokalu: "AB1C/1/9" },
+            kwGrunt: {
+              source: "ekw_wklej",
+              nrKsiegi: "AB1C/2/7",
+              dataBadania: "2026-09-26",
+              dzial3: null,
+              dzial4: null,
+              kluczeLokalu: { kwLokalu: "AB1C/1/9", nrLokalu: "24" },
+            },
+          } as Partial<FormInput>
+        }
+      />,
+    );
+    const grunt = () => JSON.parse(screen.getByTestId("kwgrunt-json").textContent || "null");
+    expect(grunt()?.kluczeLokalu).toEqual({ kwLokalu: "AB1C/1/9", nrLokalu: "24" });
+    await user.click(
+      within(screen.getByRole("radiogroup", { name: "Źródło danych księgi gruntu" })).getByRole(
+        "radio",
+        { name: "Wgraj PDF" },
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Zmień sposób i usuń dane" }));
+    await waitFor(() => expect(grunt()).toBeNull());
   });
 
   /**
@@ -1165,6 +1227,10 @@ describe("KwSection — full-form wiring", () => {
     const user = userEvent.setup();
     render(<SubjectForm />);
     await fillRequiredExceptKw(user);
+    // ADR-024: grunt rusza, zanim lokal wróci, więc numer KW lokalu musi już
+    // stać na karcie (inaczej przycisk gruntu jest nieaktywny, T1). Ten sam,
+    // który za chwilę przyniesie odczyt lokalu — żeby nie wywołać T4.
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), trescLokalu.naglowek.numerKsiegi);
     await wklejIPrzepisz(user, "lokalu", tekstZakladek(trescLokalu));
     await wklejIPrzepisz(user, "gruntu", tekstZakladek(trescGruntu));
     await waitFor(() =>
@@ -1318,8 +1384,9 @@ describe("KwSection — full-form wiring", () => {
     // Kontrola pozytywna reguły rodzaju: właściwa księga na właściwej karcie
     // nie daje niezgodności, więc zostaje zielona linia i żadnego banera.
     expect(screen.queryByTestId("kw-werdykt-grunt")).toBeNull();
-    expect(screen.getByTestId("kw-transcribe-status").textContent).toContain(
-      "sprawdzenie treści wypadło pomyślnie",
+    // T3b (ADR-024): numer KW lokalu wpisany, numeru lokalu brak.
+    expect(screen.getByTestId("kw-transcribe-status").textContent).toBe(
+      "✓ Przepisano 5 działów (I-O, I-Sp, II, III, IV), z list lokali tylko przedmiotowy lokal. Sprawdzenie treści wypadło pomyślnie.",
     );
     await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
     await waitFor(() => expect(createDraft).toHaveBeenCalled());
@@ -1512,6 +1579,81 @@ describe("KwSection — full-form wiring", () => {
       { kw?: { tresc?: unknown } },
     ];
     expect(payload.kw?.tresc).toEqual(tresc);
+  });
+
+  /**
+   * ADR-024: klucze lokalu i `tresc.zakres` księgi gruntu muszą przeżyć
+   * `inputs → defaults → schema → save` w TRYBIE EDYCJI — zgubione po cichu
+   * gaszą T4 (klucze) i zdanie T7 w §8.2 (zakres). Asercja na CAŁEJ migawce.
+   */
+  it("tryb edycji: kluczeLokalu i tresc.zakres księgi gruntu przeżywają ponowne wejście i zapis (S2)", async () => {
+    const lokal = transcribedBook();
+    const tresc = gruntBook();
+    expect(tresc.zakres).toBe("przedmiotowy_lokal");
+    const kwGrunt = {
+      source: "ekw_wklej" as const,
+      nrKsiegi: tresc.naglowek.numerKsiegi,
+      dataBadania: "2026-09-26",
+      dzial3: dzialyZTresci(tresc).dzial3,
+      dzial4: dzialyZTresci(tresc).dzial4,
+      sad: tresc.naglowek.sad,
+      wydzial: tresc.naglowek.wydzial,
+      tresc,
+      transkrypcja: {
+        ok: true,
+        bledy: [],
+        kanal: "tekst" as const,
+        plikow: 0,
+        at: "2026-09-26T10:00:00.000Z",
+      },
+      kluczeLokalu: {
+        kwLokalu: lokal.naglowek.numerKsiegi,
+        nrLokalu: lokal.polaDodatkowe.numerLokalu,
+      },
+    };
+    const stored = {
+      ...step1DefaultsFromInputs({
+        address: "ul. Kościelna 33, Poznań",
+        area: 69.56,
+        purpose: "sprzedaz",
+        propertyRight: "wlasnosc_lokalu",
+        kwNumber: lokal.naglowek.numerKsiegi,
+        client: "Jan Kowalski",
+        inputs: {
+          kw: {
+            source: "ekw_wklej",
+            kwLokalu: lokal.naglowek.numerKsiegi,
+            kwGruntu: tresc.naglowek.numerKsiegi,
+            kwInne: [],
+            deweloperski: false,
+            powUzytkowaKw: 44.23,
+            udzial: null,
+            sad: null,
+            wydzial: null,
+            dataDokumentu: null,
+            dzial3: { wpisy: false, tresc: [] },
+            dzial4: { wpisy: false, tresc: [] },
+            dataBadania: "2026-09-26",
+            nrLokalu: lokal.polaDodatkowe.numerLokalu,
+          },
+          kwGrunt,
+        },
+      } as unknown as Parameters<typeof step1DefaultsFromInputs>[0]),
+      inspectionDate: "2026-09-26",
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+
+    const user = userEvent.setup();
+    render(<SubjectForm valuationId="val-klucze" defaults={stored} />);
+    // Ten sam numer KW lokalu co przy przepisaniu — T4 nie ma prawa się zapalić.
+    expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+
+    await waitFor(() => expect(saveSubjectAction).toHaveBeenCalled());
+    const [, payload] = vi.mocked(saveSubjectAction).mock.calls[0] as unknown as [
+      string,
+      { kwGrunt?: unknown },
+    ];
+    expect(payload.kwGrunt).toEqual(kwGrunt);
   });
 
   /**
@@ -2519,6 +2661,8 @@ describe("KwSection — full-form wiring", () => {
     const user = userEvent.setup();
     render(<SubjectForm />);
     await fillRequiredExceptKw(user);
+    // ADR-024: przy własności grunt przepisuje się dopiero z numerem KW lokalu.
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/9");
     await wklejIPrzepisz(user, "gruntu", tekstZakladek(tresc));
     await screen.findByTestId("kw-werdykt-grunt");
     await user.click(
@@ -2531,5 +2675,434 @@ describe("KwSection — full-form wiring", () => {
     expect(screen.queryByTestId("kw-werdykt-grunt")).toBeNull();
     expect((document.getElementById("kwg-nr") as HTMLInputElement).value).toBe("");
     expect(screen.getAllByText("Do zbadania")).toHaveLength(2);
+  });
+
+  // -------------------------------------------------------------------------
+  // ADR-024 — karta i klucze lokalu w żądaniu przepisania księgi (S3).
+  // Numery wyłącznie z fikstur workera, czytanych w miejscu (F-9).
+  // -------------------------------------------------------------------------
+  const gruntOk = () => ({
+    kind: "ok" as const,
+    tresc: gruntBook(),
+    walidacja: { ok: true, bledy: [] },
+  });
+
+  it("M1: karta gruntu wysyła klucze z karty lokalu i zapisuje TE SAME klucze przy migawce", async () => {
+    const lokal = transcribedBook();
+    const klucze = {
+      kwLokalu: lokal.naglowek.numerKsiegi,
+      nrLokalu: lokal.polaDodatkowe.numerLokalu!,
+    };
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), klucze.kwLokalu);
+    await user.type(screen.getByLabelText("Numer lokalu"), klucze.nrLokalu);
+    await wklejIPrzepisz(user, "gruntu", tekstZakladek(gruntBook()));
+    await waitFor(() => expect(transcribeKw).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(transcribeKw).mock.calls[0][0]).toMatchObject({ karta: "grunt", klucze });
+    await screen.findByText(/Przepisano 5 działów/);
+
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const { kwGrunt } = vi.mocked(createDraft).mock.calls[0][0] as {
+      kwGrunt: { kluczeLokalu?: unknown; tresc?: { zakres?: unknown } };
+    };
+    expect(kwGrunt.kluczeLokalu).toEqual(klucze);
+    expect(kwGrunt.tresc?.zakres).toBe("przedmiotowy_lokal");
+  });
+
+  it("M4: szkic sprzed ADR-018 z numerem tylko w kwNumber — klucz jedzie z kwNumber (tryb edycji)", async () => {
+    const lokal = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const stored = {
+      ...step1DefaultsFromInputs({
+        address: "ul. Kościelna 33, Poznań",
+        area: 69.56,
+        purpose: "sprzedaz",
+        propertyRight: "wlasnosc_lokalu",
+        kwNumber: lokal.naglowek.numerKsiegi,
+        client: "Jan Kowalski",
+        inputs: null,
+      } as unknown as Parameters<typeof step1DefaultsFromInputs>[0]),
+      inspectionDate: "2026-09-26",
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+    const user = userEvent.setup();
+    render(<SubjectForm valuationId="val-m4" defaults={stored} />);
+    expect(within(kartaKsiegi("grunt")).queryByTestId("kw-grunt-zablokowane")).toBeNull();
+    await wklejIPrzepisz(user, "gruntu", tekstZakladek(gruntBook()));
+    await waitFor(() => expect(transcribeKw).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(transcribeKw).mock.calls[0][0]).toMatchObject({
+      karta: "grunt",
+      klucze: { kwLokalu: lokal.naglowek.numerKsiegi, nrLokalu: null },
+    });
+  });
+
+  it("M5: lokal deweloperski — karta gruntu przepisuje bez kluczy i zapisuje kluczeLokalu: null", async () => {
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await user.click(screen.getByLabelText(/Lokal bez własnej KW/));
+    await wklejIPrzepisz(user, "gruntu", tekstZakladek(gruntBook()));
+    await waitFor(() => expect(transcribeKw).toHaveBeenCalledTimes(1));
+    const args = vi.mocked(transcribeKw).mock.calls[0][0];
+    expect(args.karta).toBe("grunt");
+    expect(args.klucze).toBeNull();
+    await screen.findByText(/Przepisano 5 działów/);
+
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const { kwGrunt } = vi.mocked(createDraft).mock.calls[0][0] as {
+      kwGrunt: { kluczeLokalu?: unknown };
+    };
+    expect(kwGrunt).toHaveProperty("kluczeLokalu", null);
+  });
+
+  it("M7: karta lokalu wysyła kartę „lokal” i żadnych kluczy — także przy numerze na karcie", async () => {
+    const lokal = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc: lokal,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), lokal.naglowek.numerKsiegi);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(lokal));
+    await waitFor(() => expect(transcribeKw).toHaveBeenCalledTimes(1));
+    const args = vi.mocked(transcribeKw).mock.calls[0][0];
+    expect(args.karta).toBe("lokal");
+    expect(args).not.toHaveProperty("klucze");
+  });
+
+  // -------------------------------------------------------------------------
+  // ADR-024 — UI karty gruntu: T1, T2, T3a–c, T4, T6/T6w (S4). Teksty
+  // DOSŁOWNIE ze specu §7, zatwierdzone przez usera 26.09.
+  // -------------------------------------------------------------------------
+  const T1 = "Najpierw przepisz księgę lokalu — z niej program wie, który lokal przepisać.";
+  const T2 = "⏳ Przepisuję księgę gruntu (może potrwać do trzech minut)…";
+  const T4 = "Księgę gruntu przepisano dla innego lokalu. Przepisz ją ponownie.";
+  const T6 =
+    "Nie udało się przepisać treści księgi z tego pliku — spróbuj ponownie albo wklej treść z przeglądarki KW.";
+  const T6W = "Nie udało się przepisać wklejonej treści — spróbuj ponownie albo wgraj PDF.";
+  const T3 = (listy: string) =>
+    `✓ Przepisano 5 działów (I-O, I-Sp, II, III, IV), ${listy}. Sprawdzenie treści wypadło pomyślnie.`;
+
+  const przyciskGruntu = () =>
+    within(kartaKsiegi("grunt")).getByRole("button", { name: "Przepisz treść księgi" });
+  const wklejGrunt = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(
+      within(kartaKsiegi("grunt")).getByRole("textbox", { name: "Treść z przeglądarki KW" }),
+    );
+    await user.paste(tekstZakladek(gruntBook()));
+  };
+  const kluczeZFikstury = () => {
+    const lokal = transcribedBook();
+    return { kwLokalu: lokal.naglowek.numerKsiegi, nrLokalu: lokal.polaDodatkowe.numerLokalu! };
+  };
+
+  it("M2: pusta karta lokalu — przycisk gruntu nieaktywny z T1; numer KW lokalu go odblokowuje", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await wklejGrunt(user);
+    expect((przyciskGruntu() as HTMLButtonElement | HTMLInputElement).disabled).toBe(true);
+    expect(within(kartaKsiegi("grunt")).getByTestId("kw-grunt-zablokowane").textContent).toBe(T1);
+    // Pole wklejania zostaje czynne — treść wolno przygotować wcześniej.
+    expect(
+      (
+        within(kartaKsiegi("grunt")).getByRole("textbox", { name: "Treść z przeglądarki KW" }) as
+          HTMLButtonElement | HTMLInputElement
+      ).disabled,
+    ).toBe(false);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), kluczeZFikstury().kwLokalu);
+    expect((przyciskGruntu() as HTMLButtonElement | HTMLInputElement).disabled).toBe(false);
+    expect(screen.queryByTestId("kw-grunt-zablokowane")).toBeNull();
+    // I z powrotem: wyczyszczony numer znów blokuje — reaktywnie, bez przeładowania.
+    await user.clear(screen.getByLabelText("Numer księgi lokalu"));
+    expect((przyciskGruntu() as HTMLButtonElement | HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByTestId("kw-grunt-zablokowane").textContent).toBe(T1);
+    expect(transcribeKw).not.toHaveBeenCalled();
+  });
+
+  it("M2 kanał PDF: „Odczytaj i przepisz księgę” nieaktywny z T1, wybór plików czynny", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    const grunt = kartaKsiegi("grunt");
+    await user.click(within(grunt).getByRole("radio", { name: "Wgraj PDF" }));
+    const input = within(grunt).getByTestId("kwg-file-input") as HTMLInputElement;
+    expect((input as HTMLButtonElement | HTMLInputElement).disabled).toBe(false);
+    await user.upload(input, new File(["%PDF-1.4 fake"], "grunt.pdf", { type: "application/pdf" }));
+    expect(
+      (
+        within(grunt).getByRole("button", { name: "Odczytaj i przepisz księgę" }) as
+          HTMLButtonElement | HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect(within(grunt).getByTestId("kw-grunt-zablokowane").textContent).toBe(T1);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), kluczeZFikstury().kwLokalu);
+    expect(
+      (
+        within(grunt).getByRole("button", { name: "Odczytaj i przepisz księgę" }) as
+          HTMLButtonElement | HTMLInputElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  it("M6: spółdzielcze — karty gruntu nie ma, więc nie ma blokady ani T1", async () => {
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.click(
+      screen.getByRole("radio", { name: "Spółdzielcze własnościowe prawo do lokalu" }),
+    );
+    expect(screen.queryByTestId("kw-book-grunt")).toBeNull();
+    expect(screen.queryByTestId("kw-grunt-zablokowane")).toBeNull();
+  });
+
+  it.each([
+    ["M1", "oba klucze", T3("z list lokali tylko lokal nr 24")],
+    ["M3", "sam numer KW", T3("z list lokali tylko przedmiotowy lokal")],
+    ["M5", "deweloperski", T3("bez list lokali")],
+  ] as const)("%s: status ok karty gruntu (%s)", async (_m, wariant, tekst) => {
+    const klucze = kluczeZFikstury();
+    expect(klucze.nrLokalu).toBe("24"); // T3a niesie numer lokalu z fikstury
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    if (wariant === "deweloperski") {
+      await user.click(screen.getByLabelText(/Lokal bez własnej KW/));
+    } else {
+      await user.type(screen.getByLabelText("Numer księgi lokalu"), klucze.kwLokalu);
+      if (wariant === "oba klucze") {
+        await user.type(screen.getByLabelText("Numer lokalu"), klucze.nrLokalu);
+      }
+    }
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    const status = await within(kartaKsiegi("grunt")).findByTestId("kw-transcribe-status");
+    await waitFor(() => expect(status.textContent).toBe(tekst));
+  });
+
+  it("T2: loading karty gruntu; karta lokalu zostaje przy swoim tekście", async () => {
+    vi.mocked(transcribeKw).mockImplementation(() => new Promise(() => {}) as never);
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), kluczeZFikstury().kwLokalu);
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    const status = await within(kartaKsiegi("grunt")).findByTestId("kw-transcribe-status");
+    expect(status.textContent).toBe(T2);
+    // W trakcie przepisywania przycisk nieaktywny z powodu `zajete`, bez T1.
+    expect((przyciskGruntu() as HTMLButtonElement | HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByTestId("kw-grunt-zablokowane")).toBeNull();
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(transcribedBook()));
+    expect(
+      (await within(kartaKsiegi("lokal")).findByTestId("kw-transcribe-status")).textContent,
+    ).toBe("⏳ Przepisuję pełną treść działów księgi (może potrwać do dwóch minut)…");
+  });
+
+  it("M8: zmiana numeru księgi lokalu po przepisaniu gruntu → T4, a zatwierdzenie kroku nie jest blokowane", async () => {
+    const klucze = kluczeZFikstury();
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), klucze.kwLokalu);
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    await within(kartaKsiegi("grunt")).findByTestId("kw-transcribe-status");
+    expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
+
+    // Ten sam numer innym zapisem (małe litery, odstępy przy „/”) — to nie zmiana.
+    const pole = screen.getByLabelText("Numer księgi lokalu");
+    await user.clear(pole);
+    await user.type(pole, klucze.kwLokalu.toLowerCase().replaceAll("/", " / "));
+    expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
+
+    await user.clear(pole);
+    await user.type(pole, "AB1C/1/8");
+    expect(within(kartaKsiegi("grunt")).getByTestId("kw-grunt-inny-lokal").textContent).toBe(T4);
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+  });
+
+  it("M8: zmiana samego numeru lokalu po przepisaniu gruntu → bez T4", async () => {
+    const klucze = kluczeZFikstury();
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), klucze.kwLokalu);
+    await user.type(screen.getByLabelText("Numer lokalu"), klucze.nrLokalu);
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    await within(kartaKsiegi("grunt")).findByTestId("kw-transcribe-status");
+    await user.clear(screen.getByLabelText("Numer lokalu"));
+    await user.type(screen.getByLabelText("Numer lokalu"), "25");
+    expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
+    await user.clear(screen.getByLabelText("Numer lokalu"));
+    expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
+  });
+
+  it("R1: wariant T3 czyta klucze z MIGAWKI — zmiana numeru lokalu po przepisaniu nie zmienia statusu", async () => {
+    const klucze = kluczeZFikstury();
+    expect(klucze.nrLokalu).toBe("24");
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), klucze.kwLokalu);
+    await user.type(screen.getByLabelText("Numer lokalu"), klucze.nrLokalu);
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    const status = await within(kartaKsiegi("grunt")).findByTestId("kw-transcribe-status");
+    await waitFor(() => expect(status.textContent).toBe(T3("z list lokali tylko lokal nr 24")));
+    await user.clear(screen.getByLabelText("Numer lokalu"));
+    await user.type(screen.getByLabelText("Numer lokalu"), "25");
+    // Status mówi, co PRZEPISANO (lokal 24), a nie co dziś stoi w polu.
+    expect(within(kartaKsiegi("grunt")).getByTestId("kw-transcribe-status").textContent).toBe(
+      T3("z list lokali tylko lokal nr 24"),
+    );
+  });
+
+  it("klucze liczone PRZED wysłaniem: zmiana numeru w trakcie przepisywania daje T4 po powrocie (S3)", async () => {
+    const klucze = kluczeZFikstury();
+    let oddaj!: (v: ReturnType<typeof gruntOk>) => void;
+    vi.mocked(transcribeKw).mockImplementation(
+      () => new Promise((r) => (oddaj = r as typeof oddaj)) as never,
+    );
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), klucze.kwLokalu);
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    await waitFor(() => expect(transcribeKw).toHaveBeenCalledTimes(1));
+    const pole = screen.getByLabelText("Numer księgi lokalu");
+    await user.clear(pole);
+    await user.type(pole, "AB1C/1/8");
+    oddaj(gruntOk());
+    expect((await screen.findByTestId("kw-grunt-inny-lokal")).textContent).toBe(T4);
+  });
+
+  it("M5→M1: grunt przepisany bez kluczy (deweloperski), potem karta lokalu z numerem → T4", async () => {
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.click(screen.getByLabelText(/Lokal bez własnej KW/));
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    await within(kartaKsiegi("grunt")).findByTestId("kw-transcribe-status");
+    await user.click(screen.getByLabelText(/Lokal bez własnej KW/));
+    // Karta lokalu pusta: kluczy nie było i nie ma — ostrzeżenia brak, a T1 nie
+    // stoi, bo panel gruntu jest schowany (treść jest, przycisku nie ma).
+    expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
+    expect(screen.queryByTestId("kw-grunt-zablokowane")).toBeNull();
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), kluczeZFikstury().kwLokalu);
+    expect(screen.getByTestId("kw-grunt-inny-lokal").textContent).toBe(T4);
+    // „Wklej ponownie” otwiera panel — przycisk aktywny, bo numer już jest.
+    await user.click(within(kartaKsiegi("grunt")).getByRole("button", { name: "Wklej ponownie" }));
+    await wklejGrunt(user);
+    expect((przyciskGruntu() as HTMLButtonElement | HTMLInputElement).disabled).toBe(false);
+  });
+
+  it("T1 tylko przy panelu: numer wyczyszczony po przepisaniu gruntu daje T4, a T1 dopiero po „Wklej ponownie”", async () => {
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), kluczeZFikstury().kwLokalu);
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    await within(kartaKsiegi("grunt")).findByTestId("kw-transcribe-status");
+    await user.clear(screen.getByLabelText("Numer księgi lokalu"));
+    expect(screen.getByTestId("kw-grunt-inny-lokal").textContent).toBe(T4);
+    expect(screen.queryByTestId("kw-grunt-zablokowane")).toBeNull();
+    await user.click(within(kartaKsiegi("grunt")).getByRole("button", { name: "Wklej ponownie" }));
+    // Z wklejoną treścią — nieaktywny przez blokadę, nie przez puste pole.
+    await wklejGrunt(user);
+    expect((przyciskGruntu() as HTMLButtonElement | HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByTestId("kw-grunt-zablokowane").textContent).toBe(T1);
+  });
+
+  it("M9: stara migawka gruntu (bez zakresu i kluczy) w trybie edycji — inny numer lokalu nie daje T4", async () => {
+    const tresc = transcribedBook(); // schemat modelu: bez `zakres`, jak migawka sprzed ADR-024
+    tresc.naglowek.rodzajKsiegi = "NIERUCHOMOŚĆ GRUNTOWA";
+    const stored = {
+      ...step1DefaultsFromInputs({
+        address: "ul. Kościelna 33, Poznań",
+        area: 69.56,
+        purpose: "sprzedaz",
+        propertyRight: "wlasnosc_lokalu",
+        kwNumber: "AB1C/1/8",
+        client: "Jan Kowalski",
+        inputs: {
+          kwGrunt: {
+            source: "ekw_wklej",
+            nrKsiegi: tresc.naglowek.numerKsiegi,
+            dataBadania: "2026-09-15",
+            dzial3: dzialyZTresci(tresc).dzial3,
+            dzial4: dzialyZTresci(tresc).dzial4,
+            tresc,
+          },
+        },
+      } as unknown as Parameters<typeof step1DefaultsFromInputs>[0]),
+      inspectionDate: "2026-09-15",
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+    const user = userEvent.setup();
+    render(<SubjectForm valuationId="val-m9" defaults={stored} />);
+    expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
+    await user.clear(screen.getByLabelText("Numer księgi lokalu"));
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), "AB1C/1/7");
+    expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
+  });
+
+  it("T6w na karcie gruntu i T6w na karcie lokalu przy wklejeniu; T6 na karcie gruntu przy PDF", async () => {
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "error",
+      code: "kw_transkrypcja_nieczytelna",
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), kluczeZFikstury().kwLokalu);
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    expect(
+      (await within(kartaKsiegi("grunt")).findByTestId("kw-transcribe-warn")).textContent,
+    ).toBe(T6W);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(transcribedBook()));
+    expect(
+      (await within(kartaKsiegi("lokal")).findByTestId("kw-transcribe-warn")).textContent,
+    ).toBe(T6W);
+    const grunt = kartaKsiegi("grunt");
+    await user.click(within(grunt).getByRole("radio", { name: "Wgraj PDF" }));
+    await user.upload(
+      within(grunt).getByTestId("kwg-file-input") as HTMLInputElement,
+      new File(["%PDF-1.4 fake"], "grunt.pdf", { type: "application/pdf" }),
+    );
+    await user.click(within(grunt).getByRole("button", { name: "Odczytaj i przepisz księgę" }));
+    await waitFor(() =>
+      expect(within(grunt).getByTestId("kw-transcribe-warn").textContent).toBe(T6),
+    );
+  });
+
+  it.each([
+    ["kw_transkrypcja_nieczytelna", "grunt", "odpis_kw", T6],
+    ["kw_transkrypcja_blad", "grunt", "odpis_kw", T6],
+    ["kw_transkrypcja_nieczytelna", "grunt", "ekw_wklej", T6W],
+    ["kw_transkrypcja_blad", "grunt", "ekw_wklej", T6W],
+    ["kw_transkrypcja_nieczytelna", "lokal", "ekw_wklej", T6W],
+    ["kw_transkrypcja_blad", "lokal", "ekw_wklej", T6W],
+  ] as const)("tekstPorazki: %s na karcie %s kanałem %s", (code, book, kanal, tekst) =>
+    expect(tekstPorazki(code, book, kanal)).toBe(tekst),
+  );
+
+  it("tekstPorazki: karta lokalu z PDF-a i odmowy sprzed sieci — teksty bez zmian", () => {
+    expect(tekstPorazki("kw_transkrypcja_nieczytelna", "lokal", "odpis_kw")).toBe(
+      "Nie udało się przepisać treści działów z tego pliku — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
+    );
+    expect(tekstPorazki("kw_transkrypcja_blad", "lokal", "odpis_kw")).toContain(
+      "odczytane pola zostają",
+    );
+    expect(tekstPorazki("kw_transkrypcja_ucieta", "grunt", "ekw_wklej")).toContain("zbyt obszerna");
+    expect(tekstPorazki("kw_plik_nie_pdf", "grunt", "odpis_kw")).toBe("Wgraj plik PDF.");
   });
 });

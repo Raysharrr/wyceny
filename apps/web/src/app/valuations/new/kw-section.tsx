@@ -14,6 +14,12 @@ import { AutoBanner } from "@/components/wizard/auto-banner";
 import { SectionCard } from "@/components/wizard/section-card";
 import { cn } from "@/lib/utils";
 import { parseCoopNumber } from "@/domain/coop-import";
+import {
+  kluczeLokalu,
+  przepisanieGruntuZablokowane,
+  trescGruntuDlaInnegoLokalu,
+  type KluczeLokalu,
+} from "@/domain/kw-klucze";
 import { nazwyNiezgodnosci, podpisyPol, type PoleKarty } from "@/domain/kw-niezgodnosci";
 import { kwRequirements } from "@/domain/kw-requirements";
 import type { KwWerdykt } from "@/domain/kw-snapshot";
@@ -452,11 +458,51 @@ const TRANSCRIBE_FAILED_TEXT: Record<string, string> = {
   // Zatwierdzony przez usera 25.09 (HANDOFF kw-banner-fix, Z3): obejście zamiast skutku.
   kw_transkrypcja_ucieta:
     "Treść księgi jest zbyt obszerna, żeby przepisać ją w całości. Wklej z przeglądarki KW tylko wpisy dotyczące przedmiotowego lokalu: działki, budynek, jego wiersz na listach lokali oraz działy III i IV.",
+  // Te dwa — WYŁĄCZNIE karta lokalu z PDF-a; resztę rozstrzyga `tekstPorazki` (ADR-024).
   kw_transkrypcja_nieczytelna:
     "Nie udało się przepisać treści działów z tego pliku — operat opisze działy na podstawie wpisanych pól, bez pełnej treści.",
   kw_transkrypcja_blad:
     "Nie udało się przepisać treści działów — odczytane pola zostają, a operat opisze działy bez pełnej treści. Wgraj plik ponownie, jeśli chcesz mieć w operacie treść księgi.",
 };
+
+// Teksty karty gruntu (ADR-024, spec §7) — zatwierdzone przez usera 26.09 (ADR-024).
+const T1_GRUNT_ZABLOKOWANY =
+  "Najpierw przepisz księgę lokalu — z niej program wie, który lokal przepisać.";
+const T2_GRUNT_W_TOKU = "⏳ Przepisuję księgę gruntu (może potrwać do trzech minut)…";
+const T4_INNY_LOKAL = "Księgę gruntu przepisano dla innego lokalu. Przepisz ją ponownie.";
+const T6_PLIK =
+  "Nie udało się przepisać treści księgi z tego pliku — spróbuj ponownie albo wklej treść z przeglądarki KW.";
+// Zatwierdzony przez usera 26.09 (ADR-024) — T6 dla wklejenia, obie karty.
+const T6_WKLEJ = "Nie udało się przepisać wklejonej treści — spróbuj ponownie albo wgraj PDF.";
+
+/**
+ * Tekst porażki. Dawne zdania o „działach na podstawie wpisanych pól" są
+ * prawdziwe WYŁĄCZNIE na karcie lokalu z PDF-a (tam `/kw-extract` daje działy
+ * III i IV); na karcie gruntu i przy wklejeniu treści tych pól nie ma i księga
+ * zostaje do zbadania (review #94 R2, ADR-024).
+ */
+export function tekstPorazki(code: string, book: KwBookUi, kanal: KwKanalUi): string {
+  const nieudana = code === "kw_transkrypcja_nieczytelna" || code === "kw_transkrypcja_blad";
+  if (nieudana && kanal === "ekw_wklej") return T6_WKLEJ;
+  if (nieudana && book === "grunt") return T6_PLIK;
+  return TRANSCRIBE_FAILED_TEXT[code] ?? TRANSCRIBE_FAILED_TEXT.kw_transkrypcja_blad;
+}
+
+/**
+ * T3a–T3c: co z list lokali weszło do treści gruntu. Wariant wybierają klucze
+ * zapisane PRZY migawce (`kwGrunt.kluczeLokalu`), nie stan karty lokalu — status
+ * mówi o tym, co przepisano, a nie o tym, co dziś stoi w polach.
+ */
+function statusOkGruntu(dzialy: string[], klucze: KluczeLokalu | null | undefined): string {
+  const przepisano = `✓ Przepisano ${liczbaDzialow(dzialy.length)} (${dzialy.join(", ")})`;
+  // T3a, T3b, T3c — zatwierdzone przez usera 26.09 (ADR-024).
+  const listy = klucze?.nrLokalu
+    ? `z list lokali tylko lokal nr ${klucze.nrLokalu}`
+    : klucze
+      ? "z list lokali tylko przedmiotowy lokal"
+      : "bez list lokali";
+  return `${przepisano}, ${listy}. Sprawdzenie treści wypadło pomyślnie.`;
+}
 
 /**
  * Jak poszło przepisanie. Od makiety 3 stan `ok` MÓWI — wymienia przepisane
@@ -465,33 +511,52 @@ const TRANSCRIBE_FAILED_TEXT: Record<string, string> = {
  * albo przepisanie się udało, ale walidator zgłosił niezgodności — wtedy mówi
  * baner werdyktu, który stoi PRZY migawce i przeżywa wyjście z kroku 1.
  */
-function KwTranscribeStatus({ state }: { state: KwTranscribeState }) {
+function KwTranscribeStatus({
+  state,
+  book,
+  kanal,
+  klucze,
+}: {
+  state: KwTranscribeState;
+  book: KwBookUi;
+  kanal: KwKanalUi;
+  klucze?: KluczeLokalu | null;
+}) {
   switch (state.status) {
     case "idle":
       return null;
     case "ok":
       return (
         <p data-testid="kw-transcribe-status" className="text-sm text-muted-foreground">
-          ✓ Przepisano {liczbaDzialow(state.dzialy.length)} ({state.dzialy.join(", ")}) —
-          sprawdzenie treści wypadło pomyślnie. Pola poniżej wypełniono z księgi.
+          {book === "grunt" ? (
+            statusOkGruntu(state.dzialy, klucze)
+          ) : (
+            <>
+              ✓ Przepisano {liczbaDzialow(state.dzialy.length)} ({state.dzialy.join(", ")}) —
+              sprawdzenie treści wypadło pomyślnie. Pola poniżej wypełniono z księgi.
+            </>
+          )}
         </p>
       );
     case "loading":
       return (
         <p data-testid="kw-transcribe-status" className="text-sm text-muted-foreground">
-          ⏳ Przepisuję pełną treść działów księgi (może potrwać do dwóch minut)…
+          {book === "grunt"
+            ? T2_GRUNT_W_TOKU
+            : "⏳ Przepisuję pełną treść działów księgi (może potrwać do dwóch minut)…"}
         </p>
       );
-    // `warn`, not `error`: the file WAS read — the mockup's error banner ("Nie
-    // udało się odczytać pliku PDF księgi") would be a false statement here.
-    // What is left is the manual path's consequence, so it gets the manual
-    // path's weight (spec §12a: warn = "wymaga uwagi, decyzja rzeczoznawcy").
+    // `warn`, nie `error`: treści nie ma, ale karta nie jest w stanie awarii —
+    // rzeczoznawca decyduje, czy przepisać jeszcze raz, tym samym kanałem czy
+    // drugim (spec §12a: warn = „wymaga uwagi, decyzja rzeczoznawcy”). Ścieżki
+    // ręcznego wpisywania działów nie ma od ADR-021, więc tekst nie obiecuje
+    // jej skutków: co mówi, rozstrzyga `tekstPorazki` według kodu, karty i
+    // kanału — odmowa pliku przed wysłaniem, wklejenie (T6w), PDF na karcie
+    // gruntu (T6) albo PDF na karcie lokalu, gdzie pola z `/kw-extract` zostają.
     case "failed":
       return (
         <AutoBanner kind="warn">
-          <span data-testid="kw-transcribe-warn">
-            {TRANSCRIBE_FAILED_TEXT[state.code] ?? TRANSCRIBE_FAILED_TEXT.kw_transkrypcja_blad}
-          </span>
+          <span data-testid="kw-transcribe-warn">{tekstPorazki(state.code, book, kanal)}</span>
         </AutoBanner>
       );
   }
@@ -737,6 +802,9 @@ function KwKanalPanel({
   onTekst,
   onFiles,
   fetchBar,
+  zablokowane = false,
+  innyLokal = false,
+  klucze,
 }: {
   book: KwBookUi;
   kanal: KwKanalUi;
@@ -747,6 +815,16 @@ function KwKanalPanel({
   onFiles: (files: File[]) => void;
   /** Pasek odczytu PÓL — ma go wyłącznie karta lokalu (`/kw-extract`). */
   fetchBar?: React.ReactNode;
+  /**
+   * Karta gruntu przy własności bez numeru KW lokalu (decyzja usera 26.09):
+   * przycisk nieaktywny + T1. Pole wklejania i wybór plików zostają czynne —
+   * treść wolno przygotować, zanim przepisze się księgę lokalu.
+   */
+  zablokowane?: boolean;
+  /** T4: treść gruntu przepisano dla innego numeru KW lokalu (ostrzeżenie, nie blokada). */
+  innyLokal?: boolean;
+  /** Klucze zapisane przy migawce gruntu — wybierają wariant T3. */
+  klucze?: KluczeLokalu | null;
 }) {
   const [ponownie, setPonownie] = useState(false);
   /**
@@ -771,13 +849,25 @@ function KwKanalPanel({
     <>
       {panel ? (
         kanal === "odpis_kw" ? (
-          <KwPdfPanel book={book} onFiles={onFiles} disabled={zajete} />
+          <KwPdfPanel book={book} onFiles={onFiles} disabled={zajete || zablokowane} />
         ) : (
-          <KwWklejPanel book={book} onTekst={onTekst} disabled={zajete} />
+          <KwWklejPanel book={book} onTekst={onTekst} disabled={zajete || zablokowane} />
         )
       ) : null}
+      {/* T1 tylko przy panelu, bo tylko tam stoi nieaktywny przycisk; przy
+          schowanym panelu zmianę numeru lokalu zgłasza T4 poniżej. */}
+      {panel && zablokowane ? (
+        <p data-testid="kw-grunt-zablokowane" className="text-xs text-muted-foreground">
+          {T1_GRUNT_ZABLOKOWANY}
+        </p>
+      ) : null}
       {fetchBar}
-      <KwTranscribeStatus state={transcribe} />
+      <KwTranscribeStatus state={transcribe} book={book} kanal={kanal} klucze={klucze} />
+      {innyLokal ? (
+        <AutoBanner kind="warn">
+          <span data-testid="kw-grunt-inny-lokal">{T4_INNY_LOKAL}</span>
+        </AutoBanner>
+      ) : null}
       <KwWerdyktBanner book={book} werdykt={werdykt} dzialow={tresc?.dzialy.length ?? 0} />
       {panel ? null : (
         <div className="flex">
@@ -938,6 +1028,13 @@ export function KwSection(props: KwSectionProps) {
     propertyRight,
     kw as Parameters<typeof kwRequirements>[1],
     kwGrunt as Parameters<typeof kwRequirements>[2],
+  );
+  // ADR-024: z wartości OBSERWOWANYCH, więc blokada (T1) i ostrzeżenie (T4)
+  // reagują na każdą zmianę karty lokalu bez przeładowania.
+  const zablokowaneGrunt = przepisanieGruntuZablokowane(propertyRight, kw, kwNumber);
+  const innyLokal = trescGruntuDlaInnegoLokalu(
+    kwGrunt as Parameters<typeof trescGruntuDlaInnegoLokalu>[0],
+    kluczeLokalu(kw, kwNumber),
   );
   // Only the setter: switching back to własność clears the basement, so a box
   // ticked under the coop right never rides hidden into an ownership valuation.
@@ -1476,6 +1573,9 @@ export function KwSection(props: KwSectionProps) {
                   werdykt={kwGrunt?.transkrypcja}
                   onTekst={props.grunt.onTekst}
                   onFiles={props.grunt.onFiles}
+                  zablokowane={zablokowaneGrunt}
+                  innyLokal={innyLokal}
+                  klucze={kwGrunt?.kluczeLokalu}
                 />
               </div>
               <div

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_SUBJECT, isEmptySubject, proposalToSubjectValues } from "../src/lib/subject-form";
+import {
+  EMPTY_SUBJECT,
+  coerceLegacyKwGrunt,
+  isEmptySubject,
+  proposalToSubjectValues,
+} from "../src/lib/subject-form";
 
 const proposal = {
   parcel: {
@@ -111,5 +116,19 @@ describe("subject.pietro (FH.2)", () => {
 
   it("parter (0) liczy się jako wypełniony przedmiot", () => {
     expect(isEmptySubject({ ...EMPTY_SUBJECT, pietro: 0 })).toBe(false);
+  });
+});
+
+describe("coerceLegacyKwGrunt (ADR-024)", () => {
+  it("przenosi kluczeLokalu, a stara migawka dostaje jawne null", () => {
+    const klucze = { kwLokalu: "KW-A", nrLokalu: "24" };
+    expect(coerceLegacyKwGrunt({ source: "ekw_wklej", kluczeLokalu: klucze }).kluczeLokalu).toEqual(
+      klucze,
+    );
+    // `null` = przepisano bez kluczy (deweloperski) — to też wartość, nie brak.
+    expect(
+      coerceLegacyKwGrunt({ source: "ekw_wklej", kluczeLokalu: null }).kluczeLokalu,
+    ).toBeNull();
+    expect(coerceLegacyKwGrunt({ source: "ekw_wklej" }).kluczeLokalu).toBeNull();
   });
 });

@@ -505,6 +505,10 @@ export const kwGruntSchema = z.object({
   wydzial: z.string().nullish(),
   tresc: ksiegaTrescMigawkiSchema.nullish(),
   transkrypcja: kwWerdyktSchema.nullish(),
+  // Klucze lokalu wysłane z transkrypcją gruntu (ADR-024, T4). Nullish jak w
+  // typie: migawka sprzed ADR-024 ich nie ma, a pole pominięte tutaj ginęłoby
+  // po cichu przy każdym zapisie kroku 1.
+  kluczeLokalu: z.object({ kwLokalu: z.string(), nrLokalu: z.string().nullable() }).nullish(),
 });
 
 /** Mirrors `EncumbranceTreatment` — the appraiser's call on a dział III entry (ADR-018 reg. 6). */

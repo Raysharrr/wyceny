@@ -171,6 +171,9 @@ export function coerceLegacyKwGrunt(kwGrunt: Partial<KwGruntSnapshot>): Required
     wydzial: kwGrunt.wydzial ?? null,
     tresc: kwGrunt.tresc ?? null,
     transkrypcja: kwGrunt.transkrypcja ?? null,
+    // ADR-024: klucze, z którymi przepisano grunt. Zgubione tutaj — T4 milknie
+    // po ponownym wejściu w krok 1, choć karta lokalu ma już inny numer.
+    kluczeLokalu: kwGrunt.kluczeLokalu ?? null,
   };
 }
 

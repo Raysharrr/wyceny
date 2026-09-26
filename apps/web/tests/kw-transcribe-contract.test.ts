@@ -101,7 +101,7 @@ describe("kw-transcribe contract (worker fixture ↔ KsiegaTresc)", () => {
   });
 });
 
-describe("transcribeKw — multipart: files[] i/lub tekst, nigdy stare `file`", () => {
+describe("transcribeKw — multipart: files[] i/lub tekst, karta, klucze; nigdy stare `file`", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   function przechwycFetch() {
@@ -123,6 +123,7 @@ describe("transcribeKw — multipart: files[] i/lub tekst, nigdy stare `file`", 
       files: [pdf("a.pdf"), pdf("b.pdf"), pdf("c.pdf")],
       token: "t",
       workerUrl: "http://w",
+      karta: "lokal",
     });
     expect(wynik.kind).toBe("ok");
     expect(calls[0].getAll("files")).toHaveLength(3);
@@ -137,9 +138,50 @@ describe("transcribeKw — multipart: files[] i/lub tekst, nigdy stare `file`", 
       tekst: "DZIAŁ I-O - OZNACZENIE NIERUCHOMOŚCI\nUlica | TESTOWA | 1",
       token: "t",
       workerUrl: "http://w",
+      karta: "lokal",
     });
     expect(calls[0].getAll("files")).toHaveLength(0);
     expect(calls[0].get("tekst")).toContain("Ulica | TESTOWA | 1");
+  });
+
+  // Kontrakt ADR-024 §3.1: `karta` wymagana zawsze (bez niej worker odpowiada
+  // 422), klucze wyłącznie podane, a `nr_lokalu` wyłącznie niepusty — pusty
+  // string byłby dla workera „numerem lokalu", którego nie ma w żadnym wierszu.
+  it("karta jedzie zawsze; klucze tylko podane, nr lokalu tylko niepusty", async () => {
+    const calls = przechwycFetch();
+    await transcribeKw({ tekst: "x", token: "t", workerUrl: "http://w", karta: "lokal" });
+    expect(calls[0].get("karta")).toBe("lokal");
+    expect(calls[0].get("kw_lokalu")).toBeNull();
+    expect(calls[0].get("nr_lokalu")).toBeNull();
+    await transcribeKw({
+      tekst: "x",
+      token: "t",
+      workerUrl: "http://w",
+      karta: "grunt",
+      klucze: { kwLokalu: "KW-A", nrLokalu: "24" },
+    });
+    expect(calls[1].get("karta")).toBe("grunt");
+    expect(calls[1].get("kw_lokalu")).toBe("KW-A");
+    expect(calls[1].get("nr_lokalu")).toBe("24");
+    await transcribeKw({
+      tekst: "x",
+      token: "t",
+      workerUrl: "http://w",
+      karta: "grunt",
+      klucze: { kwLokalu: "KW-A", nrLokalu: null },
+    });
+    expect(calls[2].get("kw_lokalu")).toBe("KW-A");
+    expect(calls[2].get("nr_lokalu")).toBeNull();
+    await transcribeKw({
+      tekst: "x",
+      token: "t",
+      workerUrl: "http://w",
+      karta: "grunt",
+      klucze: null,
+    });
+    expect(calls[3].get("karta")).toBe("grunt");
+    expect(calls[3].get("kw_lokalu")).toBeNull();
+    expect(calls[3].get("nr_lokalu")).toBeNull();
   });
 
   it("413 (worker: tekst za długi, bez echa treści) i 422 bez kodu zapadają w klasę ogólną", async () => {
@@ -147,7 +189,9 @@ describe("transcribeKw — multipart: files[] i/lub tekst, nigdy stare `file`", 
       "fetch",
       vi.fn(async () => new Response("{}", { status: 413 })),
     );
-    expect(await transcribeKw({ tekst: "x", token: "t", workerUrl: "http://w" })).toEqual({
+    expect(
+      await transcribeKw({ tekst: "x", token: "t", workerUrl: "http://w", karta: "lokal" }),
+    ).toEqual({
       kind: "error",
       code: "kw_transkrypcja_blad",
     });
