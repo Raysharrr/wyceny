@@ -2669,4 +2669,105 @@ describe("KwSection — full-form wiring", () => {
     expect((document.getElementById("kwg-nr") as HTMLInputElement).value).toBe("");
     expect(screen.getAllByText("Do zbadania")).toHaveLength(2);
   });
+
+  // -------------------------------------------------------------------------
+  // ADR-024 — karta i klucze lokalu w żądaniu przepisania księgi (S3).
+  // Numery wyłącznie z fikstur workera, czytanych w miejscu (F-9).
+  // -------------------------------------------------------------------------
+  const gruntOk = () => ({
+    kind: "ok" as const,
+    tresc: gruntBook(),
+    walidacja: { ok: true, bledy: [] },
+  });
+
+  it("M1: karta gruntu wysyła klucze z karty lokalu i zapisuje TE SAME klucze przy migawce", async () => {
+    const lokal = transcribedBook();
+    const klucze = {
+      kwLokalu: lokal.naglowek.numerKsiegi,
+      nrLokalu: lokal.polaDodatkowe.numerLokalu!,
+    };
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), klucze.kwLokalu);
+    await user.type(screen.getByLabelText("Numer lokalu"), klucze.nrLokalu);
+    await wklejIPrzepisz(user, "gruntu", tekstZakladek(gruntBook()));
+    await waitFor(() => expect(transcribeKw).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(transcribeKw).mock.calls[0][0]).toMatchObject({ karta: "grunt", klucze });
+    await screen.findByText(/Przepisano 5 działów/);
+
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const { kwGrunt } = vi.mocked(createDraft).mock.calls[0][0] as {
+      kwGrunt: { kluczeLokalu?: unknown; tresc?: { zakres?: unknown } };
+    };
+    expect(kwGrunt.kluczeLokalu).toEqual(klucze);
+    expect(kwGrunt.tresc?.zakres).toBe("przedmiotowy_lokal");
+  });
+
+  it("M4: szkic sprzed ADR-018 z numerem tylko w kwNumber — klucz jedzie z kwNumber (tryb edycji)", async () => {
+    const lokal = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const stored = {
+      ...step1DefaultsFromInputs({
+        address: "ul. Kościelna 33, Poznań",
+        area: 69.56,
+        purpose: "sprzedaz",
+        propertyRight: "wlasnosc_lokalu",
+        kwNumber: lokal.naglowek.numerKsiegi,
+        client: "Jan Kowalski",
+        inputs: null,
+      } as unknown as Parameters<typeof step1DefaultsFromInputs>[0]),
+      inspectionDate: "2026-09-26",
+    } as unknown as Parameters<typeof SubjectForm>[0]["defaults"];
+    const user = userEvent.setup();
+    render(<SubjectForm valuationId="val-m4" defaults={stored} />);
+    expect(within(kartaKsiegi("grunt")).queryByTestId("kw-grunt-zablokowane")).toBeNull();
+    await wklejIPrzepisz(user, "gruntu", tekstZakladek(gruntBook()));
+    await waitFor(() => expect(transcribeKw).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(transcribeKw).mock.calls[0][0]).toMatchObject({
+      karta: "grunt",
+      klucze: { kwLokalu: lokal.naglowek.numerKsiegi, nrLokalu: null },
+    });
+  });
+
+  it("M5: lokal deweloperski — karta gruntu przepisuje bez kluczy i zapisuje kluczeLokalu: null", async () => {
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await user.click(screen.getByLabelText(/Lokal bez własnej KW/));
+    await wklejIPrzepisz(user, "gruntu", tekstZakladek(gruntBook()));
+    await waitFor(() => expect(transcribeKw).toHaveBeenCalledTimes(1));
+    const args = vi.mocked(transcribeKw).mock.calls[0][0];
+    expect(args.karta).toBe("grunt");
+    expect(args.klucze).toBeNull();
+    await screen.findByText(/Przepisano 5 działów/);
+
+    await user.click(screen.getByRole("button", { name: /dane się zgadzają — dalej/i }));
+    await waitFor(() => expect(createDraft).toHaveBeenCalled());
+    const { kwGrunt } = vi.mocked(createDraft).mock.calls[0][0] as {
+      kwGrunt: { kluczeLokalu?: unknown };
+    };
+    expect(kwGrunt).toHaveProperty("kluczeLokalu", null);
+  });
+
+  it("M7: karta lokalu wysyła kartę „lokal” i żadnych kluczy — także przy numerze na karcie", async () => {
+    const lokal = transcribedBook();
+    vi.mocked(transcribeKw).mockResolvedValue({
+      kind: "ok",
+      tresc: lokal,
+      walidacja: { ok: true, bledy: [] },
+    });
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await fillRequiredExceptKw(user);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), lokal.naglowek.numerKsiegi);
+    await wklejIPrzepisz(user, "lokalu", tekstZakladek(lokal));
+    await waitFor(() => expect(transcribeKw).toHaveBeenCalledTimes(1));
+    const args = vi.mocked(transcribeKw).mock.calls[0][0];
+    expect(args.karta).toBe("lokal");
+    expect(args).not.toHaveProperty("klucze");
+  });
 });

@@ -114,14 +114,17 @@ export function podpisyPol(bledy: Niezgodnosc[]): Partial<Record<PoleKarty, stri
 }
 
 /**
- * Niezgodność, której worker zobaczyć nie może: on zna tylko rodzaj księgi
- * z nagłówka, a na KTÓRĄ kartę treść wklejono, wie wyłącznie web. Bez tej
- * reguły księga gruntu wklejona na kartę lokalu wraca z `ok:true` (worker
- * pomija dla niej reguły lokalowe, 1f20f8c) i nic nie ostrzega rzeczoznawcy.
+ * Rodzaj księgi z nagłówka wobec karty, na którą treść wklejono. Od ADR-024
+ * worker zna kartę (pole `karta`), ale tej reguły nie stawia — przeniesienie
+ * jej do walidatora odroczono (R4, spec §12), więc zostaje w webie decyzją
+ * zakresu. Bez niej księga gruntu wklejona na kartę lokalu wraca z `ok:true`
+ * (worker pomija dla niej reguły lokalowe, 1f20f8c) i nic nie ostrzega
+ * rzeczoznawcy.
  *
  * Rodzaju NIE ZGADUJEMY: nagłówek bez rodzaju (albo pusty) nie daje
- * niezgodności — tak samo jak worker nie uznaje go za księgę gruntu.
- * Werdykt zostaje ostrzeżeniem, nie blokadą (ADR-021 reg. 5).
+ * niezgodności — na karcie gruntu worker i tak traktuje taką treść jako księgę
+ * gruntu, a na karcie lokalu jako księgę lokalu. Werdykt zostaje ostrzeżeniem,
+ * nie blokadą (ADR-021 reg. 5).
  */
 export function rodzajNiezgodny(tresc: KsiegaTresc, karta: KartaKsiegi): Niezgodnosc | null {
   const rodzaj = tresc.naglowek.rodzajKsiegi?.trim();
