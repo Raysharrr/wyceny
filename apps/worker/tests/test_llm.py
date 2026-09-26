@@ -6,7 +6,9 @@ import ast
 import base64
 import hashlib
 import hmac
+import json
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -29,12 +31,71 @@ class Schema(BaseModel):
     a: str
 
 
-def sdk_answering(body: dict, sent: list[httpx.Request] | None = None) -> anthropic.Anthropic:
-    """The real SDK, answering `body` to every request; `sent` collects the requests."""
+def sse(body: dict) -> bytes:
+    """`message(...)` as the API's event stream. A text block arrives as one
+    `text_delta`; any other block (thinking, in these tests) whole in its
+    `content_block_start` — the SDK takes the start block as the snapshot."""
+    out: list[str] = []
+
+    def event(name: str, data: dict) -> None:
+        out.append(f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n")
+
+    start = {
+        **body,
+        "content": [],
+        "stop_reason": None,
+        "usage": {"input_tokens": body["usage"]["input_tokens"], "output_tokens": 0},
+    }
+    event("message_start", {"type": "message_start", "message": start})
+    for i, block in enumerate(body["content"]):
+        text = block["type"] == "text"
+        opening = {"type": "text", "text": ""} if text else block
+        event(
+            "content_block_start",
+            {"type": "content_block_start", "index": i, "content_block": opening},
+        )
+        if text:
+            event(
+                "content_block_delta",
+                {
+                    "type": "content_block_delta",
+                    "index": i,
+                    "delta": {"type": "text_delta", "text": block["text"]},
+                },
+            )
+        event("content_block_stop", {"type": "content_block_stop", "index": i})
+    event(
+        "message_delta",
+        {
+            "type": "message_delta",
+            "delta": {"stop_reason": body["stop_reason"], "stop_sequence": None},
+            "usage": {"output_tokens": body["usage"]["output_tokens"]},
+        },
+    )
+    event("message_stop", {"type": "message_stop"})
+    return "".join(out).encode()
+
+
+def sdk_streaming(body: dict, sent: list[httpx.Request] | None = None) -> anthropic.Anthropic:
+    """The real SDK, streaming `body` to every request; `sent` collects the requests."""
 
     def answer(request: httpx.Request) -> httpx.Response:
         if sent is not None:
             sent.append(request)
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, content=sse(body))
+
+    transport = httpx.MockTransport(answer)
+    return anthropic.Anthropic(
+        api_key="test-key", http_client=httpx.Client(transport=transport), max_retries=0
+    )
+
+
+def sdk_answering_json(body: dict, sent: list[httpx.Request]) -> anthropic.Anthropic:
+    """The real SDK answering `body` as plain JSON — only to build the pre-port
+    `messages.parse` request the stream is compared with; the adapter never gets it."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
         return httpx.Response(200, json=body)
 
     transport = httpx.MockTransport(answer)
@@ -108,7 +169,7 @@ def test_on_the_kw_path_only_the_adapter_imports_anthropic():
 
 
 def test_success_carries_parsed_output_and_usage():
-    result = parse_with(sdk_answering(message([{"type": "text", "text": '{"a": "x"}'}])))
+    result = parse_with(sdk_streaming(message([{"type": "text", "text": '{"a": "x"}'}])))
     assert result == LlmResult(
         parsed=Schema(a="x"), stop_reason="end_turn", input_tokens=11, output_tokens=7
     )
@@ -116,13 +177,13 @@ def test_success_carries_parsed_output_and_usage():
 
 def test_max_tokens_spent_before_any_text_is_explicit_in_the_result():
     thinking_only = [{"type": "thinking", "thinking": "", "signature": "sig"}]
-    result = parse_with(sdk_answering(message(thinking_only, stop_reason="max_tokens")))
+    result = parse_with(sdk_streaming(message(thinking_only, stop_reason="max_tokens")))
     assert result.parsed is None
     assert result.stop_reason == "max_tokens"
 
 
 def test_refusal_is_explicit_in_the_result():
-    result = parse_with(sdk_answering(message([], stop_reason="refusal")))
+    result = parse_with(sdk_streaming(message([], stop_reason="refusal")))
     assert result.parsed is None
     assert result.stop_reason == "refusal"
 
@@ -131,19 +192,21 @@ def test_refusal_written_as_text_is_invalid_output_not_an_exception():
     """A refusal with a text block fails the schema like any finished answer that
     does not fit it: INVALID_OUTPUT, never "too large" (only max_tokens is)."""
     refusal = message([{"type": "text", "text": "Nie mogę pomóc."}], stop_reason="refusal")
-    result = parse_with(sdk_answering(refusal))
+    result = parse_with(sdk_streaming(refusal))
     assert result.parsed is None
     assert result.stop_reason == INVALID_OUTPUT
 
 
-def test_text_cut_mid_json_reports_the_truncation_with_its_usage():
-    """Z3 proof 1 (HANDOFF kw-banner-fix). `messages.parse` validated the text
-    INSIDE the SDK, so JSON cut at max_tokens raised pydantic's ValidationError
-    there and the adapter could only say INVALID_OUTPUT — the book was too large,
-    the appraiser was told it was unreadable. The API's own stop_reason and usage
-    must reach the caller; no exception, no partial content."""
+def test_json_cut_at_max_tokens_over_the_stream_is_max_tokens_with_usage():
+    """Z3 proof 1 (HANDOFF kw-banner-fix), over the stream since ADR-024.
+    `messages.parse` validated the text INSIDE the SDK, so JSON cut at max_tokens
+    raised pydantic's ValidationError there and the adapter could only say
+    INVALID_OUTPUT — the book was too large, the appraiser was told it was
+    unreadable. `messages.stream(output_format=…)` would do the same inside the
+    stream. The API's own stop_reason and usage must reach the caller; no
+    exception, no partial content."""
     cut = message([{"type": "text", "text": '{"a": "tresc ksieg'}], stop_reason="max_tokens")
-    result = parse_with(sdk_answering(cut))
+    result = parse_with(sdk_streaming(cut))
     assert result == LlmResult(
         parsed=None, stop_reason="max_tokens", input_tokens=11, output_tokens=7
     )
@@ -153,7 +216,7 @@ def test_a_finished_answer_against_the_schema_is_invalid_output():
     """Z3 proof 2, negative control: green before and after the fix. Tokens are
     not asserted — before the fix the SDK's exception left none to report."""
     wrong = message([{"type": "text", "text": '{"b": "x"}'}])
-    result = parse_with(sdk_answering(wrong))
+    result = parse_with(sdk_streaming(wrong))
     assert result.parsed is None
     assert result.stop_reason == INVALID_OUTPUT
 
@@ -162,7 +225,7 @@ def test_a_finished_answer_against_the_schema_is_invalid_output():
 
 
 class RecordingSdk:
-    """Stands in for `anthropic.Anthropic()`: records the kwargs of `messages.create`
+    """Stands in for `anthropic.Anthropic()`: records the kwargs of `messages.stream`
     and answers `payload` as the model's JSON text."""
 
     def __init__(self, payload: BaseModel):
@@ -174,9 +237,10 @@ class RecordingSdk:
             usage=SimpleNamespace(input_tokens=1, output_tokens=1),
         )
 
-    def create(self, **kwargs):
+    @contextmanager
+    def stream(self, **kwargs):
         self.kwargs = kwargs
-        return self._response
+        yield SimpleNamespace(get_final_message=lambda: self._response)
 
 
 def mint() -> str:
@@ -210,10 +274,13 @@ def post_kw_extract(pdf: bytes):
 
 
 def test_kw_extract_sends_the_pre_port_request_and_answers_unchanged(monkeypatch):
-    """The adapter calls `messages.create`, not `messages.parse` (Z3 kw-banner-fix:
-    parse lost the stop_reason of cut JSON), so the pre-port call is compared where
-    it matters — on the wire: the HTTP body /kw-extract sends is byte for byte the
-    body of the `messages.parse` call main.py made before the port."""
+    """The adapter always streams (ADR-024) with `output_config`, never
+    `output_format` (Z3 kw-banner-fix: parsing inside the SDK lost the stop_reason
+    of cut JSON), so the call is compared where it matters — on the wire. The HTTP
+    body /kw-extract sends is byte for byte the body of the SDK's own
+    `messages.stream(output_format=KwExtractPayload)`, and that is the body of the
+    `messages.parse` call main.py made before the port plus `"stream": true` —
+    nothing else changed for /kw-extract."""
     monkeypatch.setenv("WORKER_SHARED_SECRET", SECRET)
     pdf = b"%PDF-1.4 regresja"
     answer = message([{"type": "text", "text": payload().model_dump_json()}])
@@ -223,9 +290,7 @@ def test_kw_extract_sends_the_pre_port_request_and_answers_unchanged(monkeypatch
     before = post_kw_extract(pdf)
     monkeypatch.undo()
 
-    # Reference request: verbatim the pre-port `messages.parse` call.
-    pre_port: list[httpx.Request] = []
-    sdk_answering(answer, pre_port).messages.parse(
+    call = dict(
         model="claude-sonnet-5",
         max_tokens=4096,
         thinking={"type": "disabled"},
@@ -247,16 +312,25 @@ def test_kw_extract_sends_the_pre_port_request_and_answers_unchanged(monkeypatch
         ],
         output_format=KwExtractPayload,
     )
+    # Reference request: the SDK's stream helper with `output_format`.
+    reference_sent: list[httpx.Request] = []
+    with sdk_streaming(answer, reference_sent).messages.stream(**call) as reference_stream:
+        reference_stream.get_final_message()
+    # The pre-port request: verbatim the `messages.parse` call main.py made.
+    pre_port: list[httpx.Request] = []
+    sdk_answering_json(answer, pre_port).messages.parse(**call)
 
     monkeypatch.setenv("WORKER_SHARED_SECRET", SECRET)
     sent: list[httpx.Request] = []
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(answer, sent)))
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(answer, sent)))
     after = post_kw_extract(pdf)
 
-    (reference,) = pre_port
+    (reference,) = reference_sent
     (request,) = sent
     assert (request.method, request.url) == (reference.method, reference.url)
     assert request.content == reference.content
+    (parsed_call,) = pre_port
+    assert request.content == parsed_call.content[:-1] + b',"stream":true}'
     assert after.status_code == before.status_code == 200
     assert after.json() == before.json()
 
@@ -264,7 +338,7 @@ def test_kw_extract_sends_the_pre_port_request_and_answers_unchanged(monkeypatch
 def test_kw_extract_without_parsed_output_is_the_same_502(monkeypatch):
     monkeypatch.setenv("WORKER_SHARED_SECRET", SECRET)
     cut = message([{"type": "text", "text": '{"docType": "akt", "kwLok'}], stop_reason="max_tokens")
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(cut)))
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(cut)))
     resp = post_kw_extract(b"%PDF-1.4 x")
     assert resp.status_code == 502
     assert resp.json()["detail"] == (
@@ -362,6 +436,20 @@ def test_nothing_to_read_is_a_programming_error_and_never_a_request():
             max_tokens=100,
         )
     assert sdk.kwargs is None
+
+
+def test_adapter_has_one_path_the_stream():
+    """F-W1 (ADR-024): one path for /kw-extract and /kw-transcribe — the stream.
+    `create` refuses max_tokens above ~21k without it; `parse` validates cut JSON
+    inside the SDK."""
+    tree = ast.parse((APP / "llm.py").read_text())
+    calls = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert "stream" in calls
+    assert not calls & {"create", "parse"}
 
 
 def test_parse_pdf_is_gone_from_the_port_and_the_adapter():

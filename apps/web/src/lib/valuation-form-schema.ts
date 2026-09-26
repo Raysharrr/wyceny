@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { COMPARABLE_SOURCES, POOL_SOURCES } from "@/domain/kcs";
 import { kwRequirements } from "@/domain/kw-requirements";
-import { ksiegaTrescSchema } from "@/domain/kw-tresc";
+import { ksiegaTrescMigawkiSchema } from "@/domain/kw-tresc";
 import { PROPERTY_RIGHTS } from "@/domain/property-right";
 import { LOKAL_FEATURE_KEYS, defaultFeatureFormValues } from "@/domain/feature-presets";
 import { definitionsFromMeasure, featureIssues, measureIssues } from "@/domain/feature-rules";
@@ -488,7 +488,7 @@ export const kwSchema = z.object({
   // The transcribed content of the five dzialy (b1-kw-read). Mirrors
   // `KwSnapshot["tresc"]`; the schema is the domain's own (`domain/kw-tresc`),
   // not a copy, so a drift in the worker's wire shape fails in ONE place.
-  tresc: ksiegaTrescSchema.nullish(),
+  tresc: ksiegaTrescMigawkiSchema.nullish(),
   // Werdykt walidacji tej transkrypcji — żyje PRZY migawce, którą ocenia
   // (ADR-021 reg. 4), więc znika razem z nią i wraca przy ponownym wejściu.
   transkrypcja: kwWerdyktSchema.nullish(),
@@ -503,7 +503,7 @@ export const kwGruntSchema = z.object({
   dzial4: kwDzialSchema.nullable(),
   sad: z.string().nullish(),
   wydzial: z.string().nullish(),
-  tresc: ksiegaTrescSchema.nullish(),
+  tresc: ksiegaTrescMigawkiSchema.nullish(),
   transkrypcja: kwWerdyktSchema.nullish(),
 });
 

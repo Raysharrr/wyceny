@@ -58,14 +58,20 @@ def other_digit(number: str) -> str:
     return number[:-1] + str((int(number[-1]) + 1) % 10)
 
 
-def klasy(doc: dict) -> set[tuple[str, str | None]]:
-    walidacja = validate(KsiegaTresc.model_validate(doc))
+def klasy(
+    doc: dict, karta: str = "lokal", zakres: str = "pelna", kw_lokalu: str | None = None
+) -> set[tuple[str, str | None]]:
+    """The verdict as (class, section). Default = the unit card in full: a test
+    that names a land book by its kind measures the header, not the card."""
+    walidacja = validate(
+        KsiegaTresc.model_validate(doc), karta=karta, zakres=zakres, kw_lokalu=kw_lokalu
+    )
     assert walidacja.ok is (walidacja.bledy == [])
     return {(b["klasa"], b.get("dzial")) for b in walidacja.bledy}
 
 
 def test_the_synthetic_book_is_valid():
-    walidacja = validate(KsiegaTresc.model_validate(sample()))
+    walidacja = validate(KsiegaTresc.model_validate(sample()), karta="lokal", zakres="pelna")
     assert walidacja.ok is True
     assert walidacja.bledy == []
 
@@ -261,7 +267,7 @@ def test_errors_carry_no_values_and_the_content_is_untouched():
     tresc = KsiegaTresc.model_validate(doc)
     before = copy.deepcopy(tresc.model_dump())
 
-    walidacja = validate(tresc)
+    walidacja = validate(tresc, karta="lokal", zakres="pelna")
 
     assert walidacja.ok is False
     assert len(walidacja.bledy) >= 3
@@ -273,7 +279,7 @@ def test_errors_carry_no_values_and_the_content_is_untouched():
 
 
 def test_the_synthetic_land_book_is_valid():
-    walidacja = validate(KsiegaTresc.model_validate(grunt()))
+    walidacja = validate(KsiegaTresc.model_validate(grunt()), karta="lokal", zakres="pelna")
     assert walidacja.ok is True
     assert walidacja.bledy == []
 
@@ -315,12 +321,17 @@ def test_anything_that_is_not_a_land_book_keeps_the_unit_rules(rodzaj):
     has measured them yet, so they keep every rule and any mismatch shows up as a
     visible `ok: false` rather than as rules quietly not running. The composite
     kind „GRUNT ODDANY W UŻYTKOWANIE WIECZYSTE I BUDYNEK…" names the land, so it
-    goes to the reduced set instead — the two lists do not collide."""
+    goes to the reduced set instead — the two lists do not collide.
+
+    Since ADR-024 the land fixture carries the subject unit's row from the unit
+    list in I-O, whose „Numer lokalu" the unit rule reads as the book's own unit
+    number — one more false positive on the same side."""
     doc = grunt()
     doc["naglowek"]["rodzajKsiegi"] = rodzaj
     assert klasy(doc) == {
         ("pole_niezgodne:kwGruntu", None),
         ("pole_niezgodne:kwLokalu", None),
+        ("pole_niezgodne:numerLokalu", "I-O"),
     }
 
 
@@ -380,10 +391,18 @@ def test_land_book_wrong_check_digit():
 
 
 def test_land_book_rep_a_absent_from_section_ii():
+    """The selective land book has `polaDodatkowe` all null (ADR-024); the rule is
+    still the reduced set's, so the deed is put back by hand — the core of the
+    owner's deed in II, one digit off."""
     doc = grunt()
-    pn = doc["polaDodatkowe"]["podstawaNabycia"]
-    pn["repA"] = pn["repA"].replace("/", "1/")
+    rep = re.search(r"\d+/\d+", dzial(doc, "II")["dokumenty"][0]["dokument"]).group()
+    doc["polaDodatkowe"]["podstawaNabycia"] = {
+        **sample()["polaDodatkowe"]["podstawaNabycia"],
+        "repA": rep.replace("/", "1/"),
+    }
     assert klasy(doc) == {("pole_niezgodne:repA", "II")}
+    doc["polaDodatkowe"]["podstawaNabycia"]["repA"] = rep  # control: the deed as written
+    assert klasy(doc) == set()
 
 
 def test_land_book_brak_wpisow_inconsistent():
@@ -403,7 +422,9 @@ def test_land_book_separator_row_as_a_rubric():
 
 
 def test_missing_sections_are_reported_one_per_code_in_book_order():
-    walidacja = validate(KsiegaTresc.model_validate(without(grunt(), "IV", "III")))
+    walidacja = validate(
+        KsiegaTresc.model_validate(without(grunt(), "IV", "III")), karta="lokal", zakres="pelna"
+    )
     assert walidacja.ok is False
     assert walidacja.bledy == [
         {"klasa": "dzialy_niekompletne", "dzial": "III"},
@@ -425,6 +446,129 @@ def test_a_unit_book_missing_a_section_reports_only_that_section(kod):
 def test_land_book_errors_carry_no_values():
     doc = grunt()
     doc["naglowek"]["numerKsiegi"] = other_digit(doc["naglowek"]["numerKsiegi"])
-    walidacja = validate(KsiegaTresc.model_validate(without(doc, "II")))
+    walidacja = validate(
+        KsiegaTresc.model_validate(without(doc, "II")), karta="lokal", zakres="pelna"
+    )
     assert walidacja.ok is False
+    assert not re.search(r"\d", json.dumps(walidacja.model_dump()))
+
+
+# --- the land card: rules by the card, scope, the subject unit's row (ADR-024) --------
+
+# The subject unit = the unit fixture's book; the land fixture lists it in I-O and II.
+KW_LOKALU = sample()["naglowek"]["numerKsiegi"]
+GRUNTU = {"karta": "grunt", "zakres": "przedmiotowy_lokal"}
+
+
+def bez_ii(doc: dict) -> dict:
+    """Section II present, empty and not marked „BRAK WPISÓW" — what a selective
+    transcription gives when the owners' list is all the section has."""
+    ii = dzial(doc, "II")
+    ii["tabele"], ii["dokumenty"], ii["brakWpisow"] = [], [], False
+    return doc
+
+
+def ii_z_wartosciami(wartosci: list[str]) -> dict:
+    """II with one row of the unit owners' list, whose KW number is `wartosci`."""
+    doc = grunt()
+    dzial(doc, "II")["tabele"] = [
+        {
+            "naglowek": "Właściciele wyodrębnionych lokali",
+            "wpisy": [
+                {
+                    "lp": "2",
+                    "nrPodstawyWpisu": "4",
+                    "rubryki": [
+                        {
+                            "nazwa": "Numer księgi wieczystej lokalu",
+                            "lp": None,
+                            "wartosci": wartosci,
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    return doc
+
+
+def test_the_selective_land_fixture_is_valid_on_the_land_card():
+    assert klasy(grunt(), **GRUNTU, kw_lokalu=KW_LOKALU) == set()
+
+
+def test_land_card_without_kind_gets_land_rules():
+    """25.09 (Aneta): the model dropped the kind of a land book and the unit-field
+    rules fired on it. On the land card the content IS a land book (ADR-024 pkt 4);
+    on the unit card the same content keeps every rule (decision 22.09)."""
+    doc = grunt()
+    doc["naglowek"]["rodzajKsiegi"] = None
+    assert klasy(doc, **GRUNTU, kw_lokalu=KW_LOKALU) == set()
+    assert {("pole_niezgodne:kwLokalu", None), ("pole_niezgodne:kwGruntu", None)} <= klasy(doc)
+
+
+def test_empty_section_ii_is_consistent_only_in_the_reduced_scope():
+    doc = bez_ii(grunt())
+    assert ("brak_wpisow_niespojny", "II") not in klasy(doc, **GRUNTU)
+    assert ("brak_wpisow_niespojny", "II") in klasy(doc, karta="grunt", zakres="pelna")
+
+
+def test_empty_section_iii_is_inconsistent_even_in_the_reduced_scope():
+    """III and IV are transcribed in full — only II's owners' list is left out."""
+    doc = grunt()
+    dzial(doc, "III")["brakWpisow"] = False
+    assert klasy(doc, **GRUNTU) == {("brak_wpisow_niespojny", "III")}
+
+
+def test_brak_wpisow_with_tables_is_inconsistent_everywhere():
+    doc = grunt()
+    dzial(doc, "II")["brakWpisow"] = True
+    assert ("brak_wpisow_niespojny", "II") in klasy(doc, **GRUNTU, kw_lokalu=KW_LOKALU)
+
+
+@pytest.mark.parametrize("zapis", ["ciągły", "z odstępami", "małe litery", "rozbity na komórki"])
+def test_subject_unit_found_in_section_ii_in_any_spelling(zapis):
+    sad, nr, cyfra = KW_LOKALU.split("/")
+    wartosci = {
+        "ciągły": [KW_LOKALU],
+        "z odstępami": [f"{sad} / {nr} / {cyfra}"],
+        "małe litery": [KW_LOKALU.lower()],
+        "rozbity na komórki": [sad, nr, cyfra],
+    }[zapis]
+    assert klasy(ii_z_wartosciami(wartosci), **GRUNTU, kw_lokalu=KW_LOKALU) == set()
+
+
+def test_subject_unit_missing_from_section_ii_is_t5():
+    """The row in I-O does not count: T5 reads II only (spec §4.6)."""
+    doc = bez_ii(grunt())
+    walidacja = validate(KsiegaTresc.model_validate(doc), **GRUNTU, kw_lokalu=KW_LOKALU)
+    assert walidacja.ok is False
+    assert walidacja.bledy == [{"klasa": "brak_wiersza_lokalu", "dzial": "II"}]
+
+
+def test_another_units_row_in_section_ii_is_t5():
+    doc = ii_z_wartosciami([other_digit(KW_LOKALU)])
+    assert klasy(doc, **GRUNTU, kw_lokalu=KW_LOKALU) == {("brak_wiersza_lokalu", "II")}
+
+
+def test_a_key_in_any_spelling_finds_the_row():
+    """The form's value is normalized the same way as the rows."""
+    sad, nr, cyfra = KW_LOKALU.split("/")
+    klucz = f" {sad.lower()} / {nr} / {cyfra} "
+    assert klasy(grunt(), **GRUNTU, kw_lokalu=klucz) == set()
+
+
+def test_no_t5_without_a_key_or_on_the_unit_card():
+    doc = bez_ii(grunt())
+    assert ("brak_wiersza_lokalu", "II") not in klasy(doc, **GRUNTU)
+    assert ("brak_wiersza_lokalu", "II") not in klasy(doc, **GRUNTU, kw_lokalu="")
+    assert ("brak_wiersza_lokalu", "II") not in klasy(doc, kw_lokalu=KW_LOKALU)
+
+
+def test_missing_section_ii_is_only_incomplete():
+    doc = without(grunt(), "II")
+    assert klasy(doc, **GRUNTU, kw_lokalu=KW_LOKALU) == {("dzialy_niekompletne", "II")}
+
+
+def test_t5_carries_no_value():
+    walidacja = validate(KsiegaTresc.model_validate(bez_ii(grunt())), **GRUNTU, kw_lokalu=KW_LOKALU)
     assert not re.search(r"\d", json.dumps(walidacja.model_dump()))

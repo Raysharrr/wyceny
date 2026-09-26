@@ -3,20 +3,31 @@
 the operat preview, never a gate (ADR-021: the paste or upload is the
 appraiser's confirmation; web stores the content whatever the verdict).
 
-Rules follow the kind of book (`naglowek.rodzajKsiegi`), and the reduced set is
-opt-in: ONLY a book whose kind names the land gets it — the check digit of the
-book's OWN number, PESEL, `brakWpisow`, separator rows, Rep. A. Out of it fall
-every rule reading a unit field, the check digits of `kwLokalu` and `kwGruntu`
-among them: in a land book those two point at nothing (they exist in a unit book
-as its pointer at itself and at its land). Every other kind, INCLUDING a missing
-one, is judged in full. The unit-field rules (`kwLokalu`, `kwGruntu`,
-`numerLokalu`, `udzial`) gave three false positives on a land book in the spike
-of 21.09 and a fourth measured E2E on 22.09 — the model wrote the plot area from
-I-O into `kwGruntu`, whose check digit then failed — but dropping them on a book
-of unknown kind would silently retire the only automatic guard of fidelity on
-today's production path — a visible false `ok: false` beats a silent gap. A book
-pasted tab by tab may lack sections: each missing one is `dzialy_niekompletne`,
-and a rule reading a section that is not there is skipped rather than cascading.
+Rules follow the kind of book, and the reduced set is opt-in: ONLY a land book
+gets it — the check digit of the book's OWN number, PESEL, `brakWpisow`,
+separator rows, Rep. A. A land book is content on the land card (ADR-024 pkt 4:
+the card says what the book is, even when the model dropped the kind from the
+header — 25.09) or a book whose kind (`naglowek.rodzajKsiegi`) names the land.
+Out of the reduced set fall every rule reading a unit field, the check digits of
+`kwLokalu` and `kwGruntu` among them: in a land book those two point at nothing
+(they exist in a unit book as its pointer at itself and at its land). On the
+unit card every other kind, INCLUDING a missing one, is judged in full. The
+unit-field rules (`kwLokalu`, `kwGruntu`, `numerLokalu`, `udzial`) gave three
+false positives on a land book in the spike of 21.09 and a fourth measured E2E
+on 22.09 — the model wrote the plot area from I-O into `kwGruntu`, whose check
+digit then failed — but dropping them on a unit-card book of unknown kind would
+silently retire the only automatic guard of fidelity — a visible false
+`ok: false` beats a silent gap (decision 22.09, unchanged for the unit card). A
+book pasted tab by tab may lack sections: each missing one is
+`dzialy_niekompletne`, and a rule reading a section that is not there is
+skipped rather than cascading.
+
+The scope (`zakres`, ADR-024) loosens one rule: a land book transcribed down to
+the subject unit leaves out section II's owners' list on purpose, so an empty II
+without „BRAK WPISÓW" is no inconsistency there. III and IV are transcribed in
+full and keep the rule. When the unit card named the subject unit's KW number,
+section II must contain it (`brak_wiersza_lokalu`, T5) — compared as the rows
+spell it, the model may split the number across cells.
 
 The verdict judges and never corrects. Error classes carry NO values (F-13) —
 they end up in logs and in the answer — only a class and, where the rule points
@@ -29,7 +40,7 @@ import re
 
 from pydantic import BaseModel
 
-from app.kw_transcribe import Dzial, KsiegaTresc
+from app.kw_transcribe import Dzial, Karta, KsiegaTresc, Zakres
 
 
 class Walidacja(BaseModel):
@@ -62,7 +73,8 @@ def is_land_book(rodzaj: str | None) -> bool:
     that one plus a building — so the shared core is „GRUNT", not „GRUNTOW": the
     middle form has no „GRUNTOWA" in it. No unit kind contains „GRUNT", so the
     test never fires the other way. A missing or unknown kind is NOT a land book
-    and keeps every rule (user decision 22.09)."""
+    by its header (user decision 22.09); on the land card `validate` treats the
+    content as a land book anyway (ADR-024 pkt 4)."""
     return rodzaj is not None and "GRUNT" in rodzaj.upper()
 
 
@@ -112,7 +124,15 @@ def _rubric_value(tresc: KsiegaTresc, kod: str, label_prefix: str) -> str | None
     return None
 
 
-def validate(tresc: KsiegaTresc) -> Walidacja:
+def _klucz(value: str) -> str:
+    """KW number compared as the rows spell it: spaces and slashes carry nothing,
+    case neither, and the model may split the number across cells."""
+    return re.sub(r"[\s/]", "", value).upper()
+
+
+def validate(
+    tresc: KsiegaTresc, *, karta: Karta, zakres: Zakres, kw_lokalu: str | None = None
+) -> Walidacja:
     bledy: list[dict[str, str]] = []
 
     def fail(klasa: str, dzial: str | None = None) -> None:
@@ -122,7 +142,9 @@ def validate(tresc: KsiegaTresc) -> Walidacja:
 
     pola = tresc.polaDodatkowe
     present = {d.kod for d in tresc.dzialy}
-    ksiega_gruntu = is_land_book(tresc.naglowek.rodzajKsiegi)
+    # ADR-024 pkt 4: content on the land card IS a land book, header or not; the
+    # unit card with no kind keeps every rule (decision 22.09 stands there).
+    ksiega_gruntu = karta == "grunt" or is_land_book(tresc.naglowek.rodzajKsiegi)
 
     for kod in DZIALY:
         if kod not in present:
@@ -173,11 +195,27 @@ def validate(tresc: KsiegaTresc) -> Walidacja:
             fail("pole_niezgodne:repA", "II")
 
     for section in tresc.dzialy:
-        if section.brakWpisow != (section.tabele == []):
+        # The owners' list of a land book is left out on purpose (ADR-024): an
+        # empty II is what "only the subject unit" gives when nobody else owns.
+        pominiete = zakres == "przedmiotowy_lokal" and section.kod == "II"
+        if section.brakWpisow and section.tabele:
+            fail("brak_wpisow_niespojny", section.kod)
+        elif not section.brakWpisow and not section.tabele and not pominiete:
             fail("brak_wpisow_niespojny", section.kod)
         for tabela in section.tabele:
             for wpis in tabela.wpisy:
                 if any([v.strip() for v in r.wartosci] == ["---"] for r in wpis.rubryki):
                     fail("rubryka_separator", section.kod)
+
+    # T5 (ADR-024 decision 4): the unit card named the subject unit, the land
+    # book's II does not list it. A missing II is already `dzialy_niekompletne`.
+    section_ii = _section(tresc, "II")
+    if karta == "grunt" and kw_lokalu and _klucz(kw_lokalu) and section_ii is not None:
+        klucz = _klucz(kw_lokalu)
+        wpisy = (wpis for tabela in section_ii.tabele for wpis in tabela.wpisy)
+        if not any(
+            klucz in _klucz("".join(v for r in wpis.rubryki for v in r.wartosci)) for wpis in wpisy
+        ):
+            fail("brak_wiersza_lokalu", "II")
 
     return Walidacja(ok=not bledy, bledy=bledy)

@@ -9,21 +9,41 @@ import json
 import time
 from pathlib import Path
 
+import anthropic
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from app import kw_transcribe, main
 from app.kw_transcribe import KsiegaTresc
+from app.kw_validate import validate
 from app.llm import INVALID_OUTPUT, AnthropicAdapter, LlmResult
 from tests.fake_llm import FakeLlmClient
-from tests.test_llm import anthropic_imports, message, sdk_answering
+from tests.test_llm import anthropic_imports, message, sdk_streaming
 from tests.test_pdf_pages import record_upload_reads
 
 SECRET = "test-secret"
 FIXTURE = Path(__file__).parent / "fixtures" / "kw_transcribe_sample.json"
+GRUNT_FIXTURE = Path(__file__).parent / "fixtures" / "kw_transcribe_grunt_sample.json"
 APP = Path(__file__).resolve().parents[1] / "app"
 client = TestClient(main.app)
+
+
+# Dzisiejszy prompt karty lokalu, zamrożony (F-W5): karta lokalu nie zmienia się o bajt.
+PROMPT_PRZED = """Załączone dokumenty lub tekst to treść księgi wieczystej z przeglądarki eKW lub e-odpisu (działy I-O, I-Sp, II, III, IV); każda zakładka lub strona może powtarzać nagłówek „TREŚĆ KSIĘGI WIECZYSTEJ NR …” — to jedna księga, nagłówek przepisz raz. Gdy tekst ma wiersze `etykieta | wartość | nr podstawy`, kolumny są rozdzielone znakiem „|”: pierwsza to etykieta rubryki, środkowe to jej wartości, ostatnia to „Nr podstawy wpisu”.
+Przepisz PEŁNĄ treść wszystkich działów do schematu — dosłownie, znak w znak: bez poprawiania, skracania, streszczania i bez pomijania osób fizycznych (imiona, nazwiska, imiona rodziców i PESEL przepisz tak, jak są w dokumencie; to materiał do operatu szacunkowego).
+
+Zasady:
+- naglowek: z nagłówka wydruku — numer księgi, „STAN Z DNIA” z pierwszej strony, sąd, wydział, rodzaj księgi (np. „LOKAL STANOWIĄCY ODRĘBNĄ NIERUCHOMOŚĆ”).
+- dzialy: każdy dział osobno, w kolejności z dokumentu. Dział oznaczony „BRAK WPISÓW” → brakWpisow=true, puste tabele i dokumenty.
+- tabele: każda tabela działu; naglowek = tytuł tabeli (np. „Lokal”, „Właściciele”) albo null, gdy tabela nie ma tytułu.
+- wpisy: grupa wierszy otwarta wierszem „Lp. N.” (lp="N"); gdy tabela nie ma takiego wiersza — jeden wpis z lp=null. nrPodstawyWpisu = wartość z prawej kolumny „Nr podstawy wpisu” tego wpisu.
+- rubryki: każdy wiersz tabeli. nazwa = pełna etykieta z lewej kolumny łącznie z opisem w nawiasie; lp = numer z komórki „Lp. N.” w tym wierszu albo null; wartosci = komórki wartości od lewej do prawej, każda jako osobny string. Gdy w jednym wierszu stoi kilka etykiet obok siebie (np. Ulica | Numer budynku | Numer lokalu), utwórz osobną rubrykę dla każdej etykiety z jej wartością. Wiersz będący tylko podtytułem (np. „Wierzyciel hipoteczny”) → rubryka z pustą listą wartosci.
+- Wiersz „Lp. N.” otwierający wpis (z komórką „---”) NIE jest rubryką — jego numer trafia wyłącznie do lp wpisu; nigdy nie zwracaj rubryki z wartosci ["---"].
+- Tekst łamany w komórce na kilka linii łącz pojedynczą spacją. Zachowaj wielkość liter, interpunkcję, spacje wokół „/”, rodzaj kresek („–” vs „-”) i zera wiodące.
+- dokumenty: sekcja „DOKUMENTY BĘDĄCE PODSTAWĄ WPISU / DANE O WNIOSKU” danego działu (także gdy powtarza się w kilku działach). dokument = linia z danymi dokumentu; dokumentOpisPol = opis pól w nawiasie pod nią; wniosek = linia „DZ. KW./…”; wniosekOpisPol = opis pól w nawiasie pod nią.
+- polaDodatkowe: numerLokalu (dział I-O), kwLokalu (nagłówek), kwGruntu (dział I-O „Przyłączenie”), udzial (dział I-Sp, wielkość udziału), powierzchniaUzytkowa (dział I-O, z jednostką jak w dokumencie), podstawaNabycia = dokument z działu II będący podstawą wpisu właściciela, rozbity na tytulAktu, repA, dataAktu (RRRR-MM-DD), notariusz (imię i nazwisko), siedzibaNotariusza. Null, gdy pola nie ma.
+Nie dodawaj niczego, czego nie ma w dokumencie."""
 
 
 def sample() -> dict:
@@ -31,7 +51,20 @@ def sample() -> dict:
 
 
 def sample_tresc() -> KsiegaTresc:
-    return KsiegaTresc.model_validate({k: v for k, v in sample().items() if k != "walidacja"})
+    return KsiegaTresc.model_validate(
+        {k: v for k, v in sample().items() if k not in ("walidacja", "zakres")}
+    )
+
+
+def grunt_sample() -> dict:
+    return json.loads(GRUNT_FIXTURE.read_text())
+
+
+def grunt_result() -> LlmResult:
+    tresc = KsiegaTresc.model_validate(
+        {k: v for k, v in grunt_sample().items() if k not in ("walidacja", "zakres")}
+    )
+    return LlmResult(parsed=tresc, stop_reason="end_turn", input_tokens=176000, output_tokens=13000)
 
 
 def mint(exp_offset: int = 300) -> str:
@@ -64,12 +97,22 @@ def post_form(
     files: list[tuple[str, bytes, str]] = (),
     tekst: str | None = None,
     file: tuple[str, bytes, str] | None = None,
+    karta: str | None = "lokal",
+    kw_lokalu: str | None = None,
+    nr_lokalu: str | None = None,
 ):
     """The endpoint's multipart form: `files` repeated per PDF, `tekst` when
-    given, `file` = the old web's single field (alias, see the endpoint)."""
+    given, `file` = the old web's single field (alias, see the endpoint), the
+    card and the unit's keys (ADR-024). Every `None` is a field not sent."""
     data = {"token": token}
-    if tekst is not None:
-        data["tekst"] = tekst
+    for name, value in (
+        ("tekst", tekst),
+        ("karta", karta),
+        ("kw_lokalu", kw_lokalu),
+        ("nr_lokalu", nr_lokalu),
+    ):
+        if value is not None:
+            data[name] = value
     parts = [("files", part) for part in files]
     if file is not None:
         parts.append(("file", file))
@@ -92,7 +135,8 @@ def test_transcription_of_the_synthetic_book_comes_back_verbatim(monkeypatch):
     pdf = b"%PDF-1.4 ksiega"
     resp = post(mint(), pdf)
     assert resp.status_code == 200
-    # The wire shape IS the fixture: KsiegaTresc + walidacja (web contract test reads it).
+    # The wire shape IS the fixture: KsiegaTresc + zakres + walidacja (web contract
+    # test and the E2E stub read it).
     assert resp.json() == sample()
     assert fake.calls == [
         dict(
@@ -101,7 +145,7 @@ def test_transcription_of_the_synthetic_book_comes_back_verbatim(monkeypatch):
             text=None,
             prompt=kw_transcribe.PROMPT,
             schema=KsiegaTresc,
-            max_tokens=16000,
+            max_tokens=24000,
             thinking={"type": "adaptive"},
         )
     ]
@@ -156,7 +200,7 @@ def test_persons_are_not_scrubbed(monkeypatch):
 def test_no_parsed_output_is_an_error_with_a_code_never_partial_content(
     monkeypatch, stop_reason, status, code
 ):
-    use_llm(monkeypatch, LlmResult(None, stop_reason, 14440, 16000))
+    use_llm(monkeypatch, LlmResult(None, stop_reason, 14440, 24000))
     resp = post(mint())
     assert resp.status_code == status
     body = resp.json()
@@ -176,30 +220,31 @@ def test_only_a_real_truncation_is_called_too_large(monkeypatch):
     """A refusal written as plain text fails the adapter's schema validation and
     comes back as INVALID_OUTPUT — it must not tell the appraiser the book is too large."""
     refusal = message([{"type": "text", "text": "Nie mogę pomóc."}], stop_reason="refusal")
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(refusal)))
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(refusal)))
     resp = post(mint())
     assert resp.status_code == 422
     assert resp.json()["code"] == "kw_transkrypcja_nieczytelna"
     assert "obszerna" not in resp.json()["detail"]
 
-    use_llm(monkeypatch, LlmResult(None, "max_tokens", 14440, 16000))
+    use_llm(monkeypatch, LlmResult(None, "max_tokens", 14440, 24000))
     resp = post(mint())
     assert resp.json()["code"] == "kw_transkrypcja_ucieta"
     assert "obszerna" in resp.json()["detail"]
 
 
 def test_kw_transcribe_sends_the_pre_port_request_byte_for_byte(monkeypatch):
-    """The adapter calls `messages.create`, not `messages.parse` (Z3 kw-banner-fix),
-    so the request is pinned on the wire, for the transcription's own shape: two
-    PDFs, a paste and adaptive thinking. The HTTP body /kw-transcribe sends is
-    byte for byte the body of `messages.parse(output_format=KsiegaTresc)`."""
+    """The adapter always streams with `output_config`, never `output_format`
+    (ADR-024; Z3 kw-banner-fix), so the request is pinned on the wire, for the
+    transcription's own shape: two PDFs, a paste and adaptive thinking. The HTTP
+    body /kw-transcribe sends is byte for byte the body of the SDK's own
+    `messages.stream(output_format=KsiegaTresc)`."""
     pdfs = [b"%PDF-1.4 dzial I-O", b"%PDF-1.4 dzial II"]
     tekst = "DZIAŁ IV\nBRAK WPISÓW"
     answer = message([{"type": "text", "text": sample_tresc().model_dump_json()}])
 
-    # Reference request: the call as `messages.parse` made it before the fix.
+    # Reference request: the SDK's stream helper with `output_format`.
     pre_port: list[httpx.Request] = []
-    sdk_answering(answer, pre_port).messages.parse(
+    with sdk_streaming(answer, pre_port).messages.stream(
         model=kw_transcribe.TRANSCRIBE_MODEL,
         max_tokens=kw_transcribe.MAX_TOKENS,
         thinking={"type": "adaptive"},
@@ -224,10 +269,11 @@ def test_kw_transcribe_sends_the_pre_port_request_byte_for_byte(monkeypatch):
             }
         ],
         output_format=KsiegaTresc,
-    )
+    ) as reference_stream:
+        reference_stream.get_final_message()
 
     sent: list[httpx.Request] = []
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(answer, sent)))
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(answer, sent)))
     resp = post_form(
         mint(),
         files=[(f"kw{i}.pdf", pdf, "application/pdf") for i, pdf in enumerate(pdfs)],
@@ -241,15 +287,55 @@ def test_kw_transcribe_sends_the_pre_port_request_byte_for_byte(monkeypatch):
     assert request.content == reference.content
 
 
+def test_kw_transcribe_of_a_land_book_sends_the_selective_prompt_on_the_wire(monkeypatch):
+    """The land card with keys: the same request shape, with the selective prompt
+    naming the subject unit in the body — pinned against the SDK's own
+    `messages.stream(output_format=KsiegaTresc)` like the unit card."""
+    tekst = "DZIAŁ II\nWłaściciele wyodrębnionych lokali | x | 4"
+    answer = message([{"type": "text", "text": grunt_result().parsed.model_dump_json()}])
+    prompt = kw_transcribe.prompt_dla("grunt", kw_transcribe.KluczeLokalu(KW, NR))
+
+    pre_port: list[httpx.Request] = []
+    with sdk_streaming(answer, pre_port).messages.stream(
+        model=kw_transcribe.TRANSCRIBE_MODEL,
+        max_tokens=kw_transcribe.MAX_TOKENS,
+        thinking={"type": "adaptive"},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"<tresc_ksiegi>\n{tekst}\n</tresc_ksiegi>"},
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ],
+        output_format=KsiegaTresc,
+    ) as reference_stream:
+        reference_stream.get_final_message()
+
+    sent: list[httpx.Request] = []
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(answer, sent)))
+    resp = post_form(mint(), tekst=tekst, karta="grunt", kw_lokalu=KW, nr_lokalu=NR)
+
+    assert resp.status_code == 200
+    assert resp.json() == grunt_sample()
+    (reference,) = pre_port
+    (request,) = sent
+    assert request.content == reference.content
+    assert json.loads(request.content)["max_tokens"] == 24000
+
+
 def test_json_cut_at_max_tokens_by_the_real_sdk_is_called_too_large(monkeypatch):
     """Z3 proof 3: the adapter's own result for JSON cut at max_tokens — not a
     hand-made `LlmResult` — is a truncation, end to end."""
     cut = message([{"type": "text", "text": '{"naglowek": {"numerKs'}], stop_reason="max_tokens")
     with pytest.raises(kw_transcribe.TranscriptionFailed) as failed:
-        kw_transcribe.transcribe(AnthropicAdapter(sdk_answering(cut)), ["JVBERg=="], None)
+        kw_transcribe.transcribe(
+            AnthropicAdapter(sdk_streaming(cut)), ["JVBERg=="], None, karta="lokal", klucze=None
+        )
     assert failed.value.code == "kw_transkrypcja_ucieta"
 
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(cut)))
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(cut)))
     resp = post(mint())
     assert resp.status_code == 422
     assert resp.json()["code"] == "kw_transkrypcja_ucieta"
@@ -302,9 +388,98 @@ def test_transcription_code_does_not_import_anthropic():
 
 
 def test_prompt_excludes_separator_rows_and_never_asks_to_omit_persons():
-    assert '["---"]' in kw_transcribe.PROMPT
-    assert "bez pomijania osób fizycznych" in kw_transcribe.PROMPT
-    assert "POMIJAJ" not in kw_transcribe.PROMPT
+    lokal = kw_transcribe.prompt_dla("lokal", None)
+    assert '["---"]' in lokal
+    assert "bez pomijania osób fizycznych" in lokal
+    assert "POMIJAJ" not in lokal
+    grunt = kw_transcribe.prompt_dla("grunt", kw_transcribe.KluczeLokalu(KW, NR))
+    assert '["---"]' in grunt
+    assert "osoby fizyczne tak, jak są w dokumencie" in grunt
+    assert "POMIJAJ" not in grunt
+
+
+# --- prompts per card (ADR-024 R1) -------------------------------------------------
+
+KW = sample()["naglowek"]["numerKsiegi"]  # numer z fikstury (F-9)
+NR = sample()["polaDodatkowe"]["numerLokalu"]
+
+
+def test_lokal_prompt_is_todays_prompt_byte_for_byte():
+    assert kw_transcribe.prompt_dla("lokal", None) == PROMPT_PRZED
+    assert kw_transcribe.prompt_dla("lokal", kw_transcribe.KluczeLokalu(KW, NR)) == PROMPT_PRZED
+    assert kw_transcribe.PROMPT == PROMPT_PRZED
+
+
+def _selektywny(lokal_io: str, lokal_ii: str, klucze: str) -> str:
+    """The spike's construction (spike.py `prompt_selektywny`): today's prompt with
+    the full-scope paragraph replaced."""
+    return PROMPT_PRZED.replace(
+        kw_transcribe.PELNA,
+        kw_transcribe.SELEKTYWNA.format(lokal_io=lokal_io, lokal_ii=lokal_ii, klucze=klucze),
+    )
+
+
+def test_land_prompt_with_both_keys_is_the_spikes_prompt():
+    assert kw_transcribe.prompt_dla("grunt", kw_transcribe.KluczeLokalu(KW, NR)) == _selektywny(
+        "przepisz tylko wiersz przedmiotowego lokalu",
+        "przepisz tylko wpis przedmiotowego lokalu",
+        f"Przedmiotowy lokal: numer księgi wieczystej lokalu {KW}, numer lokalu {NR}. "
+        "Wiersz lub wpis należy do przedmiotowego lokalu tylko wtedy, gdy zawiera ten numer księgi.",
+    )
+
+
+def test_land_prompt_with_the_book_number_only_names_no_unit_number():
+    prompt = kw_transcribe.prompt_dla("grunt", kw_transcribe.KluczeLokalu(KW, None))
+    assert prompt == _selektywny(
+        "przepisz tylko wiersz przedmiotowego lokalu",
+        "przepisz tylko wpis przedmiotowego lokalu",
+        f"Przedmiotowy lokal: numer księgi wieczystej lokalu {KW}. "
+        "Wiersz lub wpis należy do przedmiotowego lokalu tylko wtedy, gdy zawiera ten numer księgi.",
+    )
+    assert "None" not in prompt
+
+
+def test_land_prompt_without_keys_skips_every_unit_list():
+    assert kw_transcribe.prompt_dla("grunt", None) == _selektywny(
+        "nie przepisuj żadnego wiersza",
+        "nie przepisuj żadnego wpisu",
+        "Przedmiotowy lokal nie jest znany — pomiń wszystkie wiersze list lokali.",
+    )
+
+
+def test_selective_paragraph_is_the_spikes_verbatim():
+    # wiki-repo tools/spike/2026-09-25-kw-grunt-selektywnie/spike.py `SELEKTYWNA` —
+    # jedyny zmierzony tekst (keyed 3/3 PASS).
+    assert kw_transcribe.SELEKTYWNA.startswith(
+        "To księga NIERUCHOMOŚCI GRUNTOWEJ, z której wyodrębniono lokale."
+    )
+    assert kw_transcribe.SELEKTYWNA.endswith(
+        "- polaDodatkowe: to księga gruntu — wszystkie pola null."
+    )
+    assert "osoby fizyczne tak, jak są w dokumencie" in kw_transcribe.SELEKTYWNA
+    assert "POMIJAJ" not in kw_transcribe.prompt_dla("grunt", None)
+    # SHA-256 tekstu `SELEKTYWNA` ze spike'u (repo wiki nie jest dostępne w CI):
+    # każda zmiana akapitu to nowy, niezmierzony prompt.
+    assert hashlib.sha256(kw_transcribe.SELEKTYWNA.encode()).hexdigest() == (
+        "27c74540d30e4156e811341ad38d5f67d7970ac4ae561afa02e6d61dccbf0bdb"
+    )
+
+
+def test_both_cards_share_the_first_line_and_the_rules():
+    for prompt in (
+        kw_transcribe.prompt_dla("lokal", None),
+        kw_transcribe.prompt_dla("grunt", None),
+    ):
+        assert prompt.startswith(kw_transcribe.NAGLOWEK_PROMPTU + "\n")
+        assert prompt.endswith("\n\n" + kw_transcribe.ZASADY)
+
+
+def test_zakres_follows_the_card():
+    assert kw_transcribe.ZAKRES == {"lokal": "pelna", "grunt": "przedmiotowy_lokal"}
+
+
+def test_one_limit_for_both_cards():
+    assert kw_transcribe.MAX_TOKENS == 24000
 
 
 # --- transcribe: PDFs and/or a pasted book through one prompt (ADR-021) -----------
@@ -313,7 +488,11 @@ def test_prompt_excludes_separator_rows_and_never_asks_to_omit_persons():
 def test_transcribe_forwards_documents_and_text_to_the_port_unchanged():
     fake = FakeLlmClient(ok_result())
     result = kw_transcribe.transcribe(
-        fake, ["JVBERg==", "JVBERi0x"], "DZIAŁ I-O\nNumer działki | 217/4 | 1"
+        fake,
+        ["JVBERg==", "JVBERi0x"],
+        "DZIAŁ I-O\nNumer działki | 217/4 | 1",
+        karta="lokal",
+        klucze=None,
     )
     assert result is fake.result
     assert fake.calls == [
@@ -323,7 +502,7 @@ def test_transcribe_forwards_documents_and_text_to_the_port_unchanged():
             text="DZIAŁ I-O\nNumer działki | 217/4 | 1",
             prompt=kw_transcribe.PROMPT,
             schema=KsiegaTresc,
-            max_tokens=16000,
+            max_tokens=24000,
             thinking={"type": "adaptive"},
         )
     ]
@@ -331,16 +510,16 @@ def test_transcribe_forwards_documents_and_text_to_the_port_unchanged():
 
 def test_transcribe_with_text_only_sends_no_documents():
     fake = FakeLlmClient(ok_result())
-    kw_transcribe.transcribe(fake, [], "DZIAŁ IV\nBRAK WPISÓW")
+    kw_transcribe.transcribe(fake, [], "DZIAŁ IV\nBRAK WPISÓW", karta="lokal", klucze=None)
     (call,) = fake.calls
     assert call["documents"] == []
     assert call["text"] == "DZIAŁ IV\nBRAK WPISÓW"
 
 
 def test_transcribe_without_a_parsed_answer_raises_with_the_code():
-    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 16000))
+    fake = FakeLlmClient(LlmResult(None, "max_tokens", 1, 24000))
     with pytest.raises(kw_transcribe.TranscriptionFailed) as failed:
-        kw_transcribe.transcribe(fake, ["JVBERg=="], None)
+        kw_transcribe.transcribe(fake, ["JVBERg=="], None, karta="lokal", klucze=None)
     assert failed.value.code == "kw_transkrypcja_ucieta"
 
 
@@ -507,3 +686,134 @@ def test_an_empty_file_does_not_block_a_paste(monkeypatch):
     fake = use_llm(monkeypatch, ok_result())
     assert post_form(mint(), tekst="DZIAŁ IV\nBRAK WPISÓW").status_code == 200
     assert fake.calls[0]["documents"] == []
+
+
+# --- contract: card, keys, scope (ADR-024, spec §3) ---------------------------------
+
+
+def test_land_card_with_keys_answers_the_fixture_with_its_scope(monkeypatch):
+    fake = use_llm(monkeypatch, grunt_result())
+    resp = post_form(
+        mint(),
+        files=[("g.pdf", PDF, "application/pdf")],
+        karta="grunt",
+        kw_lokalu=KW,
+        nr_lokalu=NR,
+    )
+    assert resp.status_code == 200
+    assert resp.json() == grunt_sample()
+    (call,) = fake.calls
+    assert call["prompt"] == kw_transcribe.prompt_dla("grunt", kw_transcribe.KluczeLokalu(KW, NR))
+    assert call["max_tokens"] == 24000
+
+
+def test_unit_card_ignores_keys_and_answers_full_scope(monkeypatch):
+    fake = use_llm(monkeypatch, ok_result())
+    resp = post_form(
+        mint(),
+        files=[("k.pdf", PDF, "application/pdf")],
+        karta="lokal",
+        kw_lokalu=KW,
+        nr_lokalu=NR,
+    )
+    assert resp.json()["zakres"] == "pelna"
+    assert fake.calls[0]["prompt"] == kw_transcribe.PROMPT
+
+
+def test_land_card_without_keys_skips_unit_lists(monkeypatch):
+    fake = use_llm(monkeypatch, grunt_result())
+    resp = post_form(mint(), tekst="DZIAŁ II\nx", karta="grunt")
+    assert resp.json()["zakres"] == "przedmiotowy_lokal"
+    assert fake.calls[0]["prompt"] == kw_transcribe.prompt_dla("grunt", None)
+
+
+def test_land_card_with_the_book_number_only_sends_no_unit_number(monkeypatch):
+    fake = use_llm(monkeypatch, grunt_result())
+    post_form(mint(), tekst="DZIAŁ II\nx", karta="grunt", kw_lokalu=f"  {KW} ", nr_lokalu="  ")
+    assert fake.calls[0]["prompt"] == kw_transcribe.prompt_dla(
+        "grunt", kw_transcribe.KluczeLokalu(KW, None)
+    )
+
+
+def test_unit_number_without_a_book_number_is_no_key(monkeypatch):
+    fake = use_llm(monkeypatch, grunt_result())
+    post_form(mint(), tekst="DZIAŁ II\nx", karta="grunt", nr_lokalu=NR)
+    assert fake.calls[0]["prompt"] == kw_transcribe.prompt_dla("grunt", None)
+
+
+def test_a_malformed_key_is_passed_as_is_without_422(monkeypatch):
+    fake = use_llm(monkeypatch, grunt_result())
+    resp = post_form(mint(), tekst="DZIAŁ II\nx", karta="grunt", kw_lokalu="  zly-numer  ")
+    assert resp.status_code == 200
+    assert "numer księgi wieczystej lokalu zly-numer." in fake.calls[0]["prompt"]
+
+
+@pytest.mark.parametrize("karta", [None, "", "dzialka"])
+def test_missing_or_unknown_card_is_422_without_echo(monkeypatch, karta):
+    fake = use_llm(monkeypatch, ok_result())
+    resp = post_form(mint(), tekst="DZIAŁ II\nx", karta=karta, kw_lokalu=KW, nr_lokalu=NR)
+    assert resp.status_code == 422
+    assert resp.json() == {"detail": "Brak rodzaju karty księgi (lokal albo grunt)."}
+    assert KW not in resp.text and (not karta or karta not in resp.text)
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "result",
+    [LlmResult(None, "max_tokens", 1, 24000), LlmResult(None, INVALID_OUTPUT, 1, 1)],
+)
+def test_error_bodies_never_carry_the_keys(monkeypatch, result):
+    use_llm(monkeypatch, result)
+    resp = post_form(mint(), tekst="DZIAŁ II\nx", karta="grunt", kw_lokalu=KW, nr_lokalu=NR)
+    assert resp.status_code == 422
+    assert KW not in resp.text and f'"{NR}"' not in resp.text
+
+
+def test_error_body_of_a_failing_call_never_carries_the_keys(monkeypatch):
+    class Quoting:
+        def parse(self, **kwargs):
+            raise ValueError(kwargs["prompt"])  # the prompt names the keys
+
+    monkeypatch.setattr(main, "kw_llm", lambda: Quoting())
+    resp = post_form(mint(), tekst="DZIAŁ II\nx", karta="grunt", kw_lokalu=KW, nr_lokalu=NR)
+    assert resp.status_code == 502
+    assert KW not in resp.text and f'"{NR}"' not in resp.text
+
+
+def test_the_model_never_sees_a_scope_field():  # F-W2
+    assert "zakres" not in json.dumps(anthropic.transform_schema(KsiegaTresc))
+    assert "zakres" in main.KwTranscribeResponse.model_fields
+
+
+@pytest.mark.parametrize(
+    ("plik", "karta", "z_kluczem"), [(FIXTURE, "lokal", False), (GRUNT_FIXTURE, "grunt", True)]
+)
+def test_fixture_verdicts_are_what_the_validator_says(plik, karta, z_kluczem):  # F-W4
+    d = json.loads(plik.read_text())
+    tresc = KsiegaTresc.model_validate(
+        {k: v for k, v in d.items() if k not in ("walidacja", "zakres")}
+    )
+    assert d["zakres"] == kw_transcribe.ZAKRES[karta]
+    kw = KW if z_kluczem else None
+    walidacja = validate(tresc, karta=karta, zakres=d["zakres"], kw_lokalu=kw)
+    assert walidacja.model_dump() == d["walidacja"]
+
+
+def test_the_endpoint_judges_the_land_book_by_the_card_and_the_key(monkeypatch):
+    """The unit's number sent, the land book's II without it: T5 in the answer, the
+    content still returned (ADR-021 reg. 5 — a warning, not a refusal)."""
+    use_llm(monkeypatch, grunt_result())
+    resp = post_form(
+        mint(), tekst="DZIAŁ II\nx", karta="grunt", kw_lokalu=other_digit_kw(), nr_lokalu=NR
+    )
+    assert resp.status_code == 200
+    assert resp.json()["walidacja"] == {
+        "ok": False,
+        "bledy": [{"klasa": "brak_wiersza_lokalu", "dzial": "II"}],
+    }
+    assert resp.json()["dzialy"] == grunt_sample()["dzialy"]
+
+
+def other_digit_kw() -> str:
+    """The subject unit's KW number with another check digit — some other unit."""
+    return KW[:-1] + str((int(KW[-1]) + 1) % 10)
