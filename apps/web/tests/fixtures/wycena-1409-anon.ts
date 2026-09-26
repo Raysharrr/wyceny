@@ -9,7 +9,7 @@ import type {
   KwGruntSnapshot,
   KwSnapshot,
 } from "../../src/domain/kw-snapshot";
-import { ksiegaTrescSchema, type KsiegaTresc } from "../../src/domain/kw-tresc";
+import { ksiegaTrescMigawkiSchema, type KsiegaTresc } from "../../src/domain/kw-tresc";
 import type { Candidate } from "../../src/domain/sample-selection";
 import {
   FEATURE_PRESETS,
@@ -254,7 +254,7 @@ export function trescSyntetycznejKsiegi(): KsiegaTresc {
     ),
   ) as Record<string, unknown>;
   delete wire.walidacja;
-  return ksiegaTrescSchema.parse(wire);
+  return ksiegaTrescMigawkiSchema.parse(wire);
 }
 
 /**
@@ -262,6 +262,10 @@ export function trescSyntetycznejKsiegi(): KsiegaTresc {
  * fikstury workera (`kw_transcribe_grunt_sample.json`, spółka jako właściciel,
  * bez osób), tak samo jak fikstura księgi lokalu i z tego samego powodu: jej
  * numery mają kształt KW z poprawną cyfrą kontrolną.
+ *
+ * Obie funkcje parsują schematem MIGAWKI, nie modelu: `zakres` z odpowiedzi
+ * workera zostaje w treści tak, jak zapisuje go formularz — inaczej zdanie T7
+ * w §8.2 (ADR-024) nigdy by się w tej fiksturze nie pojawiło.
  */
 export function trescSyntetycznejKsiegiGruntu(): KsiegaTresc {
   const wire = JSON.parse(
@@ -278,7 +282,7 @@ export function trescSyntetycznejKsiegiGruntu(): KsiegaTresc {
     ),
   ) as Record<string, unknown>;
   delete wire.walidacja;
-  return ksiegaTrescSchema.parse(wire);
+  return ksiegaTrescMigawkiSchema.parse(wire);
 }
 
 const PROSE_TEXT: Record<ProseSection, string> = {

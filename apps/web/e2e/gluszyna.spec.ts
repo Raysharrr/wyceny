@@ -11,6 +11,7 @@ import {
   ksiegaZAtrapy,
   rubrykaZAtrapy,
   tekstZakladek,
+  zadaniaTranskrypcji,
 } from "./support/kw-transcribe-route";
 
 /**
@@ -73,6 +74,28 @@ function docxText(plik: string): string {
   return execFileSync("unzip", ["-p", plik, "word/document.xml"])
     .toString("utf8")
     .replace(/<[^>]+>/g, "");
+}
+
+/** T7 (ADR-024, zatwierdzony przez usera 26.09) — dosłownie jak w szablonie. */
+const T7 =
+  "Z uwagi na obszerność zapisów księgi wieczystej w protokole zawarto wpisy " +
+  "dotyczące jedynie przedmiotowej nieruchomości.";
+
+/**
+ * §8.2 (ADR-024): zdanie o zakresie księgi gruntu stoi RAZ, po protokole badania
+ * księgi gruntu i przed pierwszym działem jej tabeli — więc nie w części księgi
+ * lokalu, która kończy się przed protokołem gruntu.
+ */
+function expectT7PoProtokoleGruntu(tekst: string, gdzie: string) {
+  const p = plasko(tekst);
+  expect(p.split(T7).length - 1, `${gdzie}: T7 dokładnie raz`).toBe(1);
+  const lokalowej = p.indexOf("badania księgi wieczystej nieruchomości lokalowej");
+  const gruntowej = p.indexOf("badania księgi wieczystej nieruchomości gruntowej");
+  const zdanie = p.indexOf(T7);
+  const tabelaGruntu = gruntowej + p.slice(gruntowej).search(/DZIAŁ I-O [-–]/);
+  expect(gruntowej, `${gdzie}: protokół gruntu po protokole lokalu`).toBeGreaterThan(lokalowej);
+  expect(zdanie, `${gdzie}: T7 po protokole gruntu`).toBeGreaterThan(gruntowej);
+  expect(tabelaGruntu, `${gdzie}: T7 przed tabelą gruntu`).toBeGreaterThan(zdanie);
 }
 
 /** Import arkusza A przez KREATOR, w osobnym kontekście — jak w bloku spółdzielczym. */
@@ -343,7 +366,7 @@ test.describe("Z-3 tabele działów w §8.2 @gluszyna", () => {
   // Zatwierdzenie i render DOCX→PDF po stronie workera — jeden jawny budżet.
   test.setTimeout(180_000);
 
-  test("CL-13: §8.2 cytuje obie księgi; werdykt `ok:false` jest markerem w podglądzie i znika z wydanego operatu", async ({
+  test("CL-13: §8.2 cytuje obie księgi ze zdaniem o zakresie księgi gruntu; werdykt `ok:false` jest markerem w podglądzie i znika z wydanego operatu", async ({
     page,
   }) => {
     // Ścieżka WŁASNOŚCIOWA, bo tylko ona ma dwie księgi (szkic spółdzielczy nie
@@ -364,16 +387,24 @@ test.describe("Z-3 tabele działów w §8.2 @gluszyna", () => {
     await page.getByTestId("kw-wklej-lokal").fill(tekstZakladek(undefined, "lokal"));
     await page.getByTestId("kw-przepisz-lokal").click();
     await expect(page.getByTestId("kw-werdykt-lokal")).toBeVisible({ timeout: 30_000 });
+    // Numery bez KSZTAŁTU numeru księgi — F-9 nie wpuszcza takiego literału do
+    // repozytorium, a §8.2 i tak cytuje je dosłownie (tak samo robi smoke).
+    // Numer księgi lokalu PRZED księgą gruntu (ADR-024): karta gruntu przepisuje
+    // wybiórczo po tym numerze, a wpisany później wywołałby T4.
+    await page.locator("#kw-lokalu").fill("KW-TEST-82-LOKAL");
     await atrapaTranskrypcji(page, "ok", "grunt");
     await page.getByTestId("kw-wklej-grunt").fill(tekstZakladek(undefined, "grunt"));
     await page.getByTestId("kw-przepisz-grunt").click();
     await expect(
       page.getByTestId("kw-book-grunt").getByTestId("kw-transcribe-status"),
     ).toContainText("Przepisano 5 działów", { timeout: 30_000 });
+    expect(
+      zadaniaTranskrypcji(page)
+        .filter((z) => z.karta === "grunt")
+        .at(-1),
+    ).toMatchObject({ kwLokalu: "KW-TEST-82-LOKAL" });
+    await expect(page.getByTestId("kw-grunt-inny-lokal")).toHaveCount(0);
 
-    // Numery bez KSZTAŁTU numeru księgi — F-9 nie wpuszcza takiego literału do
-    // repozytorium, a §8.2 i tak cytuje je dosłownie (tak samo robi smoke).
-    await page.locator("#kw-lokalu").fill("KW-TEST-82-LOKAL");
     await page.locator("#kw-gruntu").fill("KW-TEST-82-GRUNT");
     await page.locator("#kwg-nr").fill("KW-TEST-82-GRUNT");
     await page
@@ -435,6 +466,8 @@ test.describe("Z-3 tabele działów w §8.2 @gluszyna", () => {
       "[PODGLĄD: SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE] niezgodności: " +
         "udział w nieruchomości wspólnej, cyfra kontrolna numeru księgi gruntu",
     );
+    // ADR-024: księga gruntu przepisana wybiórczo — T7 między protokołem a tabelą.
+    expectT7PoProtokoleGruntu(podglad, "podgląd");
 
     // WYDANY OPERAT: te same tabele, bez markera — ostrzeżenie widział rzeczoznawca.
     await page.getByTestId("approve-button").click();
@@ -451,6 +484,7 @@ test.describe("Z-3 tabele działów w §8.2 @gluszyna", () => {
     expect(xml.match(/DZIAŁ I-O [-–]/g), "§8.2 wydanego operatu: dwie tabele").toHaveLength(2);
     expect(xml).toContain("badania księgi wieczystej nieruchomości gruntowej");
     expect(plasko(xml)).not.toContain("SPRAWDZENIE TREŚCI NIE WYPADŁO POMYŚLNIE");
+    expectT7PoProtokoleGruntu(xml, "wydany operat");
   });
 });
 
