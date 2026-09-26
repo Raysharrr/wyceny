@@ -56,6 +56,14 @@ export default defineConfig({
       dependencies: ["setup"],
       use: { storageState: STORAGE_STATE },
     },
+    // ADR-024 — księga gruntu przepisywana wybiórczo: macierz praw do lokalu
+    // (M1, M5, M6, M8). Ta sama sesja rzeczoznawcy co bloki wyżej.
+    {
+      name: "ksiega-gruntu",
+      testMatch: /ksiega-gruntu-selektywna\.spec\.ts/,
+      dependencies: ["setup"],
+      use: { storageState: STORAGE_STATE },
+    },
     // Manual, never in CI: zrzuty stanów karty KW do opisu PR (ADR-021).
     // Atrapa `/kw-transcribe` siedzi w przeglądarce (`page.route`), więc nie
     // trzeba już osobnego serwera ani zmiennej środowiskowej — patrz

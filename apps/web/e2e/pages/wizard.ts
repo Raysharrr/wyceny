@@ -1,5 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { atrapaTranskrypcji, tekstZakladek } from "../support/kw-transcribe-route";
+import {
+  atrapaTranskrypcji,
+  tekstZakladek,
+  zadaniaTranskrypcji,
+} from "../support/kw-transcribe-route";
 
 /** Step 1 of `/valuations/new` — only the fields the cooperative block touches. */
 export class SubjectStep {
@@ -75,23 +79,32 @@ export class SubjectStep {
    * Badanie obu ksiąg, bez którego krok 7 nie wypuści operatu (B-06). Od
    * ADR-021 badaniem jest PRZEPISANIE treści — ścieżki ręcznej nie ma — więc
    * wklejamy „zakładki” i przepisujemy je przez atrapę `/kw-transcribe`.
-   * Numery z argumentów NADPISUJĄ te z atrapy po przepisaniu: testy odwołują
-   * się do nich w kroku 7.
+   *
+   * Kolejność jak u rzeczoznawcy po ADR-024: księga lokalu → jej numer (z
+   * argumentu, bo testy odwołują się do niego w kroku 7) → księga gruntu, która
+   * dostaje ten numer jako klucz lokalu. Numer nadpisany PO gruncie dałby T4
+   * („przepisano dla innego lokalu”). Numer gruntu z argumentu — na końcu.
    */
   async examineBooks(o: { kwLokalu: string; kwGruntu: string }) {
+    // Atrapa wybiera księgę po polu `karta` żądania: karta gruntu dostaje
+    // syntetyczną księgę GRUNTOWĄ, karta lokalu — lokalową.
+    await atrapaTranskrypcji(this.page, "ok");
     for (const book of ["lokal", "grunt"] as const) {
-      // Atrapa per karta: karta gruntu dostaje syntetyczną księgę GRUNTOWĄ,
-      // karta lokalu — lokalową. Podanie księgi lokalu na kartę gruntu daje
-      // słusznie niezgodność „rodzaj księgi", werdykt `ok:false` i zielona
-      // linia „Przepisano 5 działów" w ogóle się nie pojawia.
-      await atrapaTranskrypcji(this.page, "ok", book);
       await this.page.getByTestId(`kw-wklej-${book}`).fill(tekstZakladek(undefined, book));
       await this.page.getByTestId(`kw-przepisz-${book}`).click();
+      // Karta gruntu: T3a też zaczyna się od „Przepisano 5 działów”.
       await expect(
         this.page.getByTestId(`kw-book-${book}`).getByTestId("kw-transcribe-status"),
       ).toContainText("Przepisano 5 działów", { timeout: 30_000 });
+      if (book === "lokal") await this.page.locator("#kw-lokalu").fill(o.kwLokalu);
     }
-    await this.page.locator("#kw-lokalu").fill(o.kwLokalu);
+    await expect(this.page.getByTestId("kw-grunt-inny-lokal")).toHaveCount(0);
+    // Karta gruntu wysłała klucz z karty lokalu (ADR-024) — ten wpisany wyżej.
+    expect(
+      zadaniaTranskrypcji(this.page)
+        .filter((z) => z.karta === "grunt")
+        .at(-1),
+    ).toMatchObject({ kwLokalu: o.kwLokalu });
     await this.page.locator("#kw-gruntu").fill(o.kwGruntu);
     await this.page.locator("#kwg-nr").fill(o.kwGruntu);
     // Syntetyczna księga ma wpisy w dziale III, więc B-07 pyta, czy wartość je
