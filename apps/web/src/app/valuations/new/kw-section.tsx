@@ -546,10 +546,13 @@ function KwTranscribeStatus({
             : "⏳ Przepisuję pełną treść działów księgi (może potrwać do dwóch minut)…"}
         </p>
       );
-    // `warn`, not `error`: the file WAS read — the mockup's error banner ("Nie
-    // udało się odczytać pliku PDF księgi") would be a false statement here.
-    // What is left is the manual path's consequence, so it gets the manual
-    // path's weight (spec §12a: warn = "wymaga uwagi, decyzja rzeczoznawcy").
+    // `warn`, nie `error`: treści nie ma, ale karta nie jest w stanie awarii —
+    // rzeczoznawca decyduje, czy przepisać jeszcze raz, tym samym kanałem czy
+    // drugim (spec §12a: warn = „wymaga uwagi, decyzja rzeczoznawcy”). Ścieżki
+    // ręcznego wpisywania działów nie ma od ADR-021, więc tekst nie obiecuje
+    // jej skutków: co mówi, rozstrzyga `tekstPorazki` według kodu, karty i
+    // kanału — odmowa pliku przed wysłaniem, wklejenie (T6w), PDF na karcie
+    // gruntu (T6) albo PDF na karcie lokalu, gdzie pola z `/kw-extract` zostają.
     case "failed":
       return (
         <AutoBanner kind="warn">

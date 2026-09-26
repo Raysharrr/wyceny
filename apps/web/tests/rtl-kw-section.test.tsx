@@ -2945,6 +2945,26 @@ describe("KwSection — full-form wiring", () => {
     expect(screen.queryByTestId("kw-grunt-inny-lokal")).toBeNull();
   });
 
+  it("R1: wariant T3 czyta klucze z MIGAWKI — zmiana numeru lokalu po przepisaniu nie zmienia statusu", async () => {
+    const klucze = kluczeZFikstury();
+    expect(klucze.nrLokalu).toBe("24");
+    vi.mocked(transcribeKw).mockResolvedValue(gruntOk());
+    const user = userEvent.setup();
+    render(<SubjectForm />);
+    await user.type(screen.getByLabelText("Numer księgi lokalu"), klucze.kwLokalu);
+    await user.type(screen.getByLabelText("Numer lokalu"), klucze.nrLokalu);
+    await wklejGrunt(user);
+    await user.click(przyciskGruntu());
+    const status = await within(kartaKsiegi("grunt")).findByTestId("kw-transcribe-status");
+    await waitFor(() => expect(status.textContent).toBe(T3("z list lokali tylko lokal nr 24")));
+    await user.clear(screen.getByLabelText("Numer lokalu"));
+    await user.type(screen.getByLabelText("Numer lokalu"), "25");
+    // Status mówi, co PRZEPISANO (lokal 24), a nie co dziś stoi w polu.
+    expect(within(kartaKsiegi("grunt")).getByTestId("kw-transcribe-status").textContent).toBe(
+      T3("z list lokali tylko lokal nr 24"),
+    );
+  });
+
   it("klucze liczone PRZED wysłaniem: zmiana numeru w trakcie przepisywania daje T4 po powrocie (S3)", async () => {
     const klucze = kluczeZFikstury();
     let oddaj!: (v: ReturnType<typeof gruntOk>) => void;

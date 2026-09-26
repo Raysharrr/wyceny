@@ -34,7 +34,7 @@ Checklista: `docs/superpowers/review/2026-09-21-gluszyna/CHECKLISTA.md` w wiki-r
 
 ## Macierz praw do lokalu — ADR-024 (spec §9)
 
-Każdy wiersz ma test domeny (`tests/kw-klucze.test.ts`) i scenariusz RTL albo E2E z numerem wiersza w tytule.
+Każdy wiersz ma test jednostkowy i scenariusz RTL albo E2E z numerem wiersza w tytule. Test jednostkowy to test domeny (`tests/kw-klucze.test.ts`) dla wszystkich wierszy poza M7: karta lokalu nie liczy kluczy, więc M7 pokrywa test kontraktu multipart (`tests/kw-transcribe-contract.test.ts` — „karta jedzie zawsze; klucze tylko podane…”).
 
 | M   | Przypadek                                                          | E2E                                                                       | RTL / domena                                                                                              |
 | --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
