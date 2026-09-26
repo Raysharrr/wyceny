@@ -135,17 +135,39 @@ test("wizard full flow: 12 transactions → approve → Zatwierdzony + PDF", asy
 });
 
 /**
+ * Dwie reguły karty gruntu w jednym przebiegu.
+ *
+ * M2 (ADR-024, decyzja usera 26.09): przy własności i pustej karcie lokalu
+ * przepisanie gruntu jest ZABLOKOWANE — program nie wie, który wiersz list
+ * lokali przepisać. Przycisk nieaktywny, pod nim T1; pole wklejania czynne.
+ *
  * Wariant NEGATYWNY reguły rodzaju księgi (S3d): księga LOKALU wklejona na
  * kartę gruntu. Poza testami RTL ta ścieżka nie miała pokrycia — a to właśnie
  * ona przewróciła smoke, gdy atrapa podawała obu kartom tę samą księgę.
  * Werdykt jest OSTRZEŻENIEM, nie blokadą (ADR-021 reg. 5): treść zostaje,
  * baner nazywa niezgodność, zielonej linii nie ma.
  */
-test("karta gruntu ostrzega, gdy wklejono na nią księgę lokalu", async ({ page }) => {
+test("M2 + karta gruntu ostrzega, gdy wklejono na nią księgę lokalu", async ({ page }) => {
   await login(page);
+  // Jawnie „lokal” dla OBU kart: karta gruntu ma dostać złą księgę.
   await atrapaTranskrypcji(page, "ok", "lokal");
   await page.goto("/valuations/new");
   await page.getByTestId("kw-wklej-grunt").fill(tekstZakladek(undefined, "lokal"));
+
+  // M2: karta lokalu pusta — przycisk gruntu nieaktywny, T1 pod panelem.
+  await expect(page.getByTestId("kw-przepisz-grunt")).toBeDisabled();
+  await expect(page.getByTestId("kw-grunt-zablokowane")).toHaveText(
+    "Najpierw przepisz księgę lokalu — z niej program wie, który lokal przepisać.",
+  );
+
+  // Księga lokalu przepisana — jej numer odblokowuje kartę gruntu.
+  await page.getByTestId("kw-wklej-lokal").fill(tekstZakladek(undefined, "lokal"));
+  await page.getByTestId("kw-przepisz-lokal").click();
+  await expect(page.getByTestId("kw-book-lokal").getByTestId("kw-transcribe-status")).toContainText(
+    "Przepisano 5 działów",
+    { timeout: 30_000 },
+  );
+  await expect(page.getByTestId("kw-grunt-zablokowane")).toHaveCount(0);
   await page.getByTestId("kw-przepisz-grunt").click();
 
   const karta = page.getByTestId("kw-book-grunt");

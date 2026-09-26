@@ -29,6 +29,7 @@ import {
   polaZTresci,
 } from "@/domain/kw-z-tresci";
 import { rodzajNiezgodny, type KartaKsiegi } from "@/domain/kw-niezgodnosci";
+import { kluczeLokalu } from "@/domain/kw-klucze";
 import { jestKsiegaGruntu } from "@/domain/kw-tresc";
 import { MAX_TEKST_BAJTOW } from "@/domain/kw-wklej";
 import type { KwSnapshot, KwWerdykt } from "@/domain/kw-snapshot";
@@ -361,9 +362,11 @@ export function SubjectForm({
     karta: KartaKsiegi,
   ): KwWerdykt | null => {
     if (t.kind !== "ok") return null;
-    // Reguła, której worker postawić nie może: on widzi rodzaj księgi, ale nie
-    // kartę, na którą ją wklejono. Dokłada się do werdyktu workera, nie
-    // zastępuje go — obie listy niezgodności trafiają do jednego banera.
+    // Reguła „rodzaj księgi vs karta” zostaje w webie: worker zna kartę (pole
+    // `karta`, ADR-024), ale przeniesienie tej reguły do walidatora odroczono
+    // (R4) — to decyzja zakresu, nie niewiedza workera. Dokłada się do werdyktu
+    // workera, nie zastępuje go — obie listy niezgodności trafiają do jednego
+    // banera.
     const rodzaj = rodzajNiezgodny(t.tresc, karta);
     return {
       ok: t.walidacja.ok && rodzaj == null,
@@ -410,6 +413,10 @@ export function SubjectForm({
     if (book === "lokal") lastKwWejscie.current = wejscie;
     if (czytaPola) setKwState({ status: "loading" });
     setTranscribe({ status: transcribes ? "loading" : "idle" });
+    // Klucze liczone TERAZ, przed pierwszym `await` — i te same zapisane przy
+    // migawce: zmiana karty lokalu w trakcie przepisywania ma dać T4, nie
+    // zniknąć (ADR-024). Karta lokalu kluczy nie wysyła.
+    const klucze = book === "grunt" ? kluczeLokalu(getValues("kw"), getValues("kwNumber")) : null;
 
     const minted = await mintKwUploadToken();
     if (seq !== seqRef.current) return; // stale — a switch/retry owns the section now
@@ -439,6 +446,8 @@ export function SubjectForm({
             ...(wejscie.kanal === "pdf" ? { files: wejscie.files } : { tekst: wejscie.tekst }),
             token: minted.token,
             workerUrl: WORKER_URL,
+            karta: book,
+            ...(book === "grunt" ? { klucze } : {}),
           })
         : null,
     ]);
@@ -472,6 +481,8 @@ export function SubjectForm({
           ...dzialyZTresci(tresc),
           tresc,
           transkrypcja: werdykt,
+          // Po `...dotychczas`: klucze WYSŁANE z tą treścią, nie te sprzed niej.
+          kluczeLokalu: klucze,
         },
         { shouldDirty: true },
       );

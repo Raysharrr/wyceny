@@ -9,7 +9,7 @@ import type { Page } from "@playwright/test";
  *
  * Treść to syntetyczne księgi workera (fikcyjne osoby, poprawne cyfry
  * kontrolne), czytane W MIEJSCU: numery KW nie mogą stać literałem w pliku
- * śledzonym (F-9). KSIĘGI SĄ DWIE i karta wybiera swoją. Do S3d obu kartom
+ * śledzonym (F-9). KSIĘGI SĄ DWIE i karta wybiera swoją (pole `karta`). Do S3d obu kartom
  * wystarczała księga lokalu, bo nikt nie patrzył na rodzaj księgi; odkąd web
  * sprawdza rodzaj wobec karty, podanie księgi lokalu na kartę gruntu daje —
  * słusznie — niezgodność „rodzaj księgi", werdykt `ok:false` i zniknięcie
@@ -82,19 +82,73 @@ export function tekstZakladek(
     .join("\n\n");
 }
 
+/** Jedno żądanie `/kw-transcribe` widziane przez atrapę — pola kontraktu ADR-024 §3.1. */
+export type ZadanieTranskrypcji = {
+  karta: string | null;
+  kwLokalu: string | null;
+  nrLokalu: string | null;
+};
+
+// Lista per strona i PRZEŻYWA `unroute`: test przełączający atrapę między
+// kartami ma widzieć wszystkie żądania, nie tylko te od ostatniego przełączenia.
+const zadania = new WeakMap<Page, ZadanieTranskrypcji[]>();
+
+/** Żądania zebrane przez atrapę na tej stronie, w kolejności wysłania. */
+export function zadaniaTranskrypcji(page: Page): ZadanieTranskrypcji[] {
+  return zadania.get(page) ?? [];
+}
+
+/** Wartość jednego pola multipart — tylko pola tekstowe kontraktu, nigdy treść PDF. */
+function poleMultipart(cialo: string, nazwa: string): string | null {
+  const m = cialo.match(new RegExp(`name="${nazwa}"\r\n\r\n([^\r]*)\r\n`));
+  return m ? m[1]! : null;
+}
+
 /**
- * `karta` wybiera księgę, którą atrapa odda — nie to, czego strona zażąda:
- * żądania obu kart wyglądają tak samo, więc rozstrzyga kolejność wywołań.
- * Każde zdejmuje poprzednią trasę, żeby przełączenie księgi między kartami
- * było przełączeniem, a nie warstwą na warstwie.
+ * Atrapa wybiera księgę po polu multipart `karta` — tym samym, po którym
+ * prawdziwy worker wybiera prompt i `zakres` (ADR-024) — więc przepływ lokal →
+ * grunt nie zależy od kolejności wywołań. Jawny argument `karta` wygrywa: CL-11
+ * i smoke celowo podają jednej karcie księgę drugiej.
+ *
+ * Kontrakt atrapa pilnuje sama, jak worker: brak `karta` → 422 (stary web,
+ * który jej nie wysyła, pada głośno, zamiast dostać księgę), a klucze lokalu
+ * przy karcie lokalu → 422 (web wysyła je wyłącznie z karty gruntu). Czy
+ * karta gruntu dostała klucze, których wymaga macierz praw — sprawdzają testy
+ * na liście `zadaniaTranskrypcji(page)`.
  */
 export async function atrapaTranskrypcji(
   page: Page,
   wariant: WariantAtrapy = "ok",
-  karta: KartaAtrapy = "lokal",
+  karta?: KartaAtrapy,
 ): Promise<void> {
+  if (!zadania.has(page)) zadania.set(page, []);
   await page.unroute("**/kw-transcribe");
   await page.route("**/kw-transcribe", async (route) => {
+    // utf8, bo pola tekstowe niosą polskie znaki; pliki PDF w E2E są atrapami.
+    const cialo = route.request().postDataBuffer()?.toString("utf8") ?? "";
+    const zadanie: ZadanieTranskrypcji = {
+      karta: poleMultipart(cialo, "karta"),
+      kwLokalu: poleMultipart(cialo, "kw_lokalu"),
+      nrLokalu: poleMultipart(cialo, "nr_lokalu"),
+    };
+    zadania.get(page)!.push(zadanie);
+    const kartaZadania = zadanie.karta;
+    if (kartaZadania !== "lokal" && kartaZadania !== "grunt") {
+      await route.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Brak rodzaju karty księgi (lokal albo grunt)." }),
+      });
+      return;
+    }
+    if (kartaZadania === "lokal" && (zadanie.kwLokalu != null || zadanie.nrLokalu != null)) {
+      await route.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Atrapa: klucze lokalu przy karcie lokalu." }),
+      });
+      return;
+    }
     if (wariant === "blad") {
       await route.fulfill({
         status: 502,
@@ -103,7 +157,7 @@ export async function atrapaTranskrypcji(
       });
       return;
     }
-    const ksiega = ksiegaZAtrapy(karta);
+    const ksiega = ksiegaZAtrapy(karta ?? kartaZadania);
     const walidacja =
       wariant === "ok"
         ? { ok: true, bledy: [] }

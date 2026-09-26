@@ -1,16 +1,21 @@
+import type { KluczeLokalu } from "@/domain/kw-klucze";
+import type { KartaKsiegi } from "@/domain/kw-niezgodnosci";
 import type { KsiegaTresc, KwWalidacja } from "@/domain/kw-tresc";
 import { kwTranscribeResponseSchema } from "@/domain/kw-tresc";
 
 /**
  * Browser-side client for the worker's POST /kw-transcribe (b1-kw-read,
  * ADR-021) — the same road, the same token and the same worker as
- * `kw-extract-client.ts`. Transcribes the five dzialy in full out of one or
- * many PDFs, or out of the text pasted from the eKW browser; `/kw-extract`
- * reads its handful of fields from the first PDF only.
+ * `kw-extract-client.ts`. Transcribes the five dzialy out of one or many PDFs,
+ * or out of the text pasted from the eKW browser: the unit's book in full, the
+ * land book selectively — the land in full, and from the unit lists only the
+ * row the unit's keys point at (ADR-024). `/kw-extract` reads its handful of
+ * fields from the first PDF only.
  *
  * Two calls rather than one because the spike measured them as different jobs:
  * the field read runs on the cheaper model, the transcription needs
- * claude-opus-5 and about a minute. The caller fires both against ONE minted
+ * claude-opus-5 and up to two minutes for a unit's book, three for a land
+ * book (ADR-024). The caller fires both against ONE minted
  * token and writes the snapshot once, after both settle.
  *
  * NOTHING from the response may be logged — it carries persons' names and
@@ -63,12 +68,22 @@ export async function transcribeKw(args: {
   tekst?: string;
   token: string;
   workerUrl: string;
+  /** Która karta przepisuje — worker wymaga jej zawsze (bez niej 422, ADR-024). */
+  karta: KartaKsiegi;
+  /** Klucze przedmiotowego lokalu; znaczą coś tylko przy `karta: "grunt"`. */
+  klucze?: KluczeLokalu | null;
 }): Promise<KwTranscribeResult> {
   const form = new FormData();
   // Pole POWTARZANE, nie `files[]` — FastAPI czyta `list[UploadFile]` po nazwie.
   for (const file of args.files ?? []) form.append("files", file);
   if (args.tekst != null && args.tekst !== "") form.set("tekst", args.tekst);
   form.set("token", args.token);
+  form.set("karta", args.karta);
+  if (args.klucze) {
+    form.set("kw_lokalu", args.klucze.kwLokalu);
+    // Numer lokalu tylko niepusty: worker szuka wtedy wiersza po samym numerze KW.
+    if (args.klucze.nrLokalu) form.set("nr_lokalu", args.klucze.nrLokalu);
+  }
 
   let response: Response;
   try {

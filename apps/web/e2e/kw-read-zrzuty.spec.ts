@@ -132,3 +132,147 @@ test("6. transkrypcja nie doszła — ostrzeżenie, pola puste", async ({ page }
   await expect(page.locator("#kw-nr-lokalu")).toHaveValue("");
   await zrzutKarty(page, "07-blad-transkrypcji.png");
 });
+
+// ---------------------------------------------------------------------------
+// ADR-024 — stany karty „Księga gruntu” (T1–T6w ze specu §7) do opisu PR.
+// ---------------------------------------------------------------------------
+
+/** Kadr na samą kartę gruntu. */
+async function zrzutGruntu(page: Page, plik: string) {
+  await page.getByTestId("kw-book-grunt").screenshot({ path: `e2e-zrzuty/${plik}` });
+}
+
+/** Księga lokalu przepisana przez atrapę — jej numer i numer lokalu są kluczami gruntu. */
+async function przepiszLokal(page: Page) {
+  await page.getByTestId("kw-wklej-lokal").fill(tekstZakladek(undefined, "lokal"));
+  await page.getByTestId("kw-przepisz-lokal").click();
+  await expect(page.getByTestId("kw-book-lokal").getByTestId("kw-transcribe-status")).toContainText(
+    "Przepisano",
+    { timeout: 30_000 },
+  );
+}
+
+async function przepiszGrunt(page: Page) {
+  await page.getByTestId("kw-wklej-grunt").fill(tekstZakladek(undefined, "grunt"));
+  await page.getByTestId("kw-przepisz-grunt").click();
+}
+
+test("10. karta gruntu zablokowana — pusta karta lokalu (T1, M2)", async ({ page }) => {
+  await page.goto("/valuations/new");
+  await page.getByTestId("kw-wklej-grunt").fill(tekstZakladek(undefined, "grunt"));
+  await expect(page.getByTestId("kw-grunt-zablokowane")).toBeVisible();
+  await expect(page.getByTestId("kw-przepisz-grunt")).toBeDisabled();
+  await zrzutGruntu(page, "10-grunt-t1-zablokowana.png");
+});
+
+test("11. karta gruntu w trakcie przepisywania (T2)", async ({ page }) => {
+  await atrapaTranskrypcji(page);
+  await page.goto("/valuations/new");
+  await przepiszLokal(page);
+  // Odpowiedź gruntu wstrzymana do zrobienia zrzutu — stan „loading” trwa.
+  let zwolnij!: () => void;
+  const wstrzymana = new Promise<void>((r) => (zwolnij = r));
+  await page.route("**/kw-transcribe", async (route) => {
+    await wstrzymana;
+    await route.abort();
+  });
+  await przepiszGrunt(page);
+  await expect(page.getByTestId("kw-book-grunt").getByTestId("kw-transcribe-status")).toContainText(
+    "Przepisuję księgę gruntu",
+  );
+  await zrzutGruntu(page, "11-grunt-t2-w-toku.png");
+  zwolnij();
+});
+
+test("12. przepisano — T3a (oba klucze), T4 po zmianie numeru księgi lokalu", async ({ page }) => {
+  await atrapaTranskrypcji(page);
+  await page.goto("/valuations/new");
+  await przepiszLokal(page);
+  await przepiszGrunt(page);
+  await expect(page.getByTestId("kw-book-grunt").getByTestId("kw-transcribe-status")).toContainText(
+    "z list lokali tylko lokal nr",
+    { timeout: 30_000 },
+  );
+  await zrzutGruntu(page, "12-grunt-t3a.png");
+  await page.locator("#kw-lokalu").fill("KW-TEST-INNY");
+  await expect(page.getByTestId("kw-grunt-inny-lokal")).toBeVisible();
+  await zrzutGruntu(page, "15-grunt-t4-inny-lokal.png");
+});
+
+test("13. przepisano — T3b (sam numer KW lokalu)", async ({ page }) => {
+  await atrapaTranskrypcji(page);
+  await page.goto("/valuations/new");
+  await page.locator("#kw-lokalu").fill("KW-TEST-LOKAL");
+  await przepiszGrunt(page);
+  await expect(page.getByTestId("kw-book-grunt").getByTestId("kw-transcribe-status")).toContainText(
+    "z list lokali tylko przedmiotowy lokal",
+    { timeout: 30_000 },
+  );
+  await zrzutGruntu(page, "13-grunt-t3b.png");
+});
+
+test("14. przepisano — T3c (lokal deweloperski, bez kluczy)", async ({ page }) => {
+  await atrapaTranskrypcji(page);
+  await page.goto("/valuations/new");
+  await page.getByLabel(/Lokal bez własnej KW/).check();
+  await przepiszGrunt(page);
+  await expect(page.getByTestId("kw-book-grunt").getByTestId("kw-transcribe-status")).toContainText(
+    "bez list lokali",
+    { timeout: 30_000 },
+  );
+  await zrzutGruntu(page, "14-grunt-t3c.png");
+});
+
+test("16. T5 w banerze werdyktu — brak wiersza przedmiotowego lokalu w dziale II", async ({
+  page,
+}) => {
+  await atrapaTranskrypcji(page);
+  await page.goto("/valuations/new");
+  await przepiszLokal(page);
+  // Werdykt, którego fikstura nie da (jej wiersz lokalu jest na miejscu).
+  await page.unroute("**/kw-transcribe");
+  await page.route("**/kw-transcribe", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...ksiegaZAtrapy("grunt"),
+        walidacja: { ok: false, bledy: [{ klasa: "brak_wiersza_lokalu", dzial: "II" }] },
+      }),
+    }),
+  );
+  await przepiszGrunt(page);
+  await expect(page.getByTestId("kw-werdykt-grunt")).toContainText(
+    "brak wiersza przedmiotowego lokalu w dziale II",
+    { timeout: 30_000 },
+  );
+  await zrzutGruntu(page, "16-grunt-t5-baner.png");
+});
+
+test("17. porażka — T6 (PDF) i T6w (wklejenie) na karcie gruntu", async ({ page }) => {
+  await atrapaTranskrypcji(page);
+  await page.goto("/valuations/new");
+  await przepiszLokal(page);
+  await atrapaTranskrypcji(page, "blad");
+  await przepiszGrunt(page);
+  await expect(page.getByTestId("kw-book-grunt").getByTestId("kw-transcribe-warn")).toContainText(
+    "Nie udało się przepisać wklejonej treści",
+    { timeout: 30_000 },
+  );
+  await zrzutGruntu(page, "17-grunt-t6w-wklejenie.png");
+  await page.getByTestId("kw-book-grunt").getByRole("radio", { name: "Wgraj PDF" }).click();
+  await page.getByTestId("kwg-file-input").setInputFiles({
+    name: "grunt.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.alloc(8 * 1024, 32),
+  });
+  await page
+    .getByTestId("kw-book-grunt")
+    .getByRole("button", { name: "Odczytaj i przepisz księgę" })
+    .click();
+  await expect(page.getByTestId("kw-book-grunt").getByTestId("kw-transcribe-warn")).toContainText(
+    "z tego pliku",
+    { timeout: 30_000 },
+  );
+  await zrzutGruntu(page, "18-grunt-t6-pdf.png");
+});

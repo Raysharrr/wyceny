@@ -71,6 +71,16 @@ describe("nazwaNiezgodnosci — słownik po polsku (spec §6), nazwa zależna od
     ).toEqual(["numer PESEL w dziale II", "cyfra kontrolna numeru księgi gruntu"]);
   });
 
+  it("T5: brak wiersza przedmiotowego lokalu w dziale II — ta sama nazwa w banerze i w markerze podglądu (ADR-024)", () => {
+    const t5 = { klasa: "brak_wiersza_lokalu", dzial: "II" };
+    expect(nazwaNiezgodnosci(t5, "grunt")).toBe("brak wiersza przedmiotowego lokalu w dziale II");
+    expect(nazwyNiezgodnosci([t5, { klasa: "dzialy_niekompletne", dzial: "IV" }], "grunt")).toEqual(
+      ["brak wiersza przedmiotowego lokalu w dziale II", "brak działu IV"],
+    );
+    // Bez podpisu pod polem (spec §5.4) — to niezgodność treści, nie pola karty.
+    expect(podpisyPol([t5])).toEqual({});
+  });
+
   it("nieznana klasa wraca dosłownie — lepiej surowy kod niż zmyślona nazwa", () => {
     expect(nazwaNiezgodnosci({ klasa: "cos_nowego:x" }, "lokal")).toBe("cos_nowego:x");
   });
@@ -92,9 +102,10 @@ describe("podpisyPol — bursztynowy podpis pod polem (makieta 4)", () => {
 });
 
 /**
- * Niezgodności, których worker zobaczyć nie może: zna rodzaj księgi, nie zna
- * karty. Reguła rodzaju to ta sama funkcja `jestKsiegaGruntu`, co odcina pola
- * lokalowe — i ten sam próg, co `is_land_book` w workerze.
+ * Niezgodność rodzaju księgi wobec karty — reguła webu: worker zna kartę od
+ * ADR-024, ale przeniesienie tej reguły do walidatora odroczono (R4). Reguła
+ * rodzaju to ta sama funkcja `jestKsiegaGruntu`, co odcina pola lokalowe — i ten
+ * sam próg, co `is_land_book` w workerze.
  */
 describe("rodzajNiezgodny — karta kontra rodzaj księgi (E2E koordynatora 22.09)", () => {
   const tresc = (rodzajKsiegi: string | null): KsiegaTresc =>
