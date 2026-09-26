@@ -15,7 +15,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, get_args
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -699,7 +699,7 @@ class KwTranscribeResponse(kw_transcribe.KsiegaTresc):
     walidacja: kw_validate.Walidacja
 
 
-KARTY: tuple[kw_transcribe.Karta, ...] = ("lokal", "grunt")
+KARTY: tuple[kw_transcribe.Karta, ...] = get_args(kw_transcribe.Karta)
 
 
 def _klucze(kw_lokalu: str | None, nr_lokalu: str | None) -> kw_transcribe.KluczeLokalu | None:

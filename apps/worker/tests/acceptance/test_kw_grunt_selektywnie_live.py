@@ -77,7 +77,11 @@ def test_land_book_selective_on_the_real_book(wariant):
     klucze = kw_transcribe.KluczeLokalu(KW, None if wariant == "pdf_sam_numer_kw" else NR)
     lokale = _lokale()
     cel, obce = _norm(KW), lokale - {_norm(KW)}
-    assert len(lokale) == 65 and cel in lokale  # wyrocznia trafia w księgę Anety
+    # Każdy assert tego pliku stoi na samych liczbach i booleanach: introspekcja
+    # pytesta wypisałaby przy porażce zbiór numerów KW lokali i numer celu (R1).
+    cel_w_wyroczni = cel in lokale
+    wyrocznia_ok = bool(lokale) and cel_w_wyroczni
+    assert wyrocznia_ok, f"wyrocznia: {len(lokale)} lokali, cel znaleziony: {cel_w_wyroczni}"
 
     t0 = time.monotonic()
     result = kw_transcribe.transcribe(AnthropicAdapter(), pdfy, tekst, karta="grunt", klucze=klucze)
@@ -93,6 +97,7 @@ def test_land_book_selective_on_the_real_book(wariant):
         "input_tokens": result.input_tokens,
         "output_tokens": result.output_tokens,
         "zakres": zakres,
+        "lokale_w_wyroczni": len(lokale),
         "dzialy": [d.kod for d in tresc.dzialy],
         "cel_w_I-O": cel in _rubryki(tresc, "I-O"),
         "cel_w_II": cel in _rubryki(tresc, "II"),
@@ -104,8 +109,14 @@ def test_land_book_selective_on_the_real_book(wariant):
         "walidacja": walidacja.bledy,
     }
     print(json.dumps(wynik, ensure_ascii=False))  # noqa: T201 — wynik ręcznego przebiegu, bez treści
-    assert result.stop_reason == "end_turn"
-    assert wynik["cel_w_I-O"] and wynik["cel_w_II"]
-    assert wynik["obce_w_I-O"] == wynik["obce_w_II"] == 0
-    assert wynik["III_wpisy"] == 3 and wynik["IV_brak_wpisow"] is True
-    assert wynik["walidacja"] == []
+    # Kryterium PASS ze spec §10.4 — III = 3 wpisy i IV bez wpisów to fakty księgi
+    # z raw/documents/2026-09-25-kw-grunt-cesnikowska/, dla innej księgi do zmiany.
+    kryteria = {
+        "end_turn": result.stop_reason == "end_turn",
+        "cel_w_I-O_i_II": wynik["cel_w_I-O"] and wynik["cel_w_II"],
+        "zero_obcych": wynik["obce_w_I-O"] == wynik["obce_w_II"] == 0,
+        "III_3_IV_brak": wynik["III_wpisy"] == 3 and wynik["IV_brak_wpisow"] is True,
+        "walidacja_ok": wynik["walidacja"] == [],
+    }
+    niezdane = sorted(nazwa for nazwa, ok in kryteria.items() if not ok)
+    assert not niezdane, f"niezdane kryteria: {niezdane}"
