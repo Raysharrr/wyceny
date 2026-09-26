@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from app import kw_transcribe, main
 from app.kw_transcribe import KsiegaTresc
+from app.kw_validate import validate
 from app.llm import INVALID_OUTPUT, AnthropicAdapter, LlmResult
 from tests.fake_llm import FakeLlmClient
 from tests.test_llm import anthropic_imports, message, sdk_streaming
@@ -782,3 +783,37 @@ def test_error_body_of_a_failing_call_never_carries_the_keys(monkeypatch):
 def test_the_model_never_sees_a_scope_field():  # F-W2
     assert "zakres" not in json.dumps(anthropic.transform_schema(KsiegaTresc))
     assert "zakres" in main.KwTranscribeResponse.model_fields
+
+
+@pytest.mark.parametrize(
+    ("plik", "karta", "z_kluczem"), [(FIXTURE, "lokal", False), (GRUNT_FIXTURE, "grunt", True)]
+)
+def test_fixture_verdicts_are_what_the_validator_says(plik, karta, z_kluczem):  # F-W4
+    d = json.loads(plik.read_text())
+    tresc = KsiegaTresc.model_validate(
+        {k: v for k, v in d.items() if k not in ("walidacja", "zakres")}
+    )
+    assert d["zakres"] == kw_transcribe.ZAKRES[karta]
+    kw = KW if z_kluczem else None
+    walidacja = validate(tresc, karta=karta, zakres=d["zakres"], kw_lokalu=kw)
+    assert walidacja.model_dump() == d["walidacja"]
+
+
+def test_the_endpoint_judges_the_land_book_by_the_card_and_the_key(monkeypatch):
+    """The unit's number sent, the land book's II without it: T5 in the answer, the
+    content still returned (ADR-021 reg. 5 — a warning, not a refusal)."""
+    use_llm(monkeypatch, grunt_result())
+    resp = post_form(
+        mint(), tekst="DZIAŁ II\nx", karta="grunt", kw_lokalu=other_digit_kw(), nr_lokalu=NR
+    )
+    assert resp.status_code == 200
+    assert resp.json()["walidacja"] == {
+        "ok": False,
+        "bledy": [{"klasa": "brak_wiersza_lokalu", "dzial": "II"}],
+    }
+    assert resp.json()["dzialy"] == grunt_sample()["dzialy"]
+
+
+def other_digit_kw() -> str:
+    """The subject unit's KW number with another check digit — some other unit."""
+    return KW[:-1] + str((int(KW[-1]) + 1) % 10)

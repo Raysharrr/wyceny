@@ -124,7 +124,8 @@ def test_successful_transcription_logs_counters_only(monkeypatch, capsys):
     fake = FakeLlmClient(LlmResult(tresc, "end_turn", 14440, 4909))
     monkeypatch.setattr(main, "kw_llm", lambda: fake)
 
-    assert post().status_code == 200
+    # The unit's book on its own card; the keys ride along and are ignored there.
+    assert post(karta="lokal").status_code == 200
 
     text = log_text(capsys.readouterr().out)
     assert leaked(text) == []

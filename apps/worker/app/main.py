@@ -817,7 +817,9 @@ def kw_transcribe_book(
 
     tresc = result.parsed
     zakres = kw_transcribe.ZAKRES[karta]
-    walidacja = kw_validate.validate(tresc)
+    walidacja = kw_validate.validate(
+        tresc, karta=karta, zakres=zakres, kw_lokalu=klucze.kw_lokalu if klucze else None
+    )
     logger.info(
         "kw_transcribe_done",
         **counters,
