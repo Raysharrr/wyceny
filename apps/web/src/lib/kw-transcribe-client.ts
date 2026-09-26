@@ -14,7 +14,8 @@ import { kwTranscribeResponseSchema } from "@/domain/kw-tresc";
  *
  * Two calls rather than one because the spike measured them as different jobs:
  * the field read runs on the cheaper model, the transcription needs
- * claude-opus-5 and about a minute. The caller fires both against ONE minted
+ * claude-opus-5 and up to two minutes for a unit's book, three for a land
+ * book (ADR-024). The caller fires both against ONE minted
  * token and writes the snapshot once, after both settle.
  *
  * NOTHING from the response may be logged — it carries persons' names and
