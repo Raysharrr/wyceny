@@ -1,8 +1,9 @@
 """Port for the LLM calls that read KW documents (user decision 15.09: KW code
 never calls the Anthropic SDK directly — only through `LlmClient`).
 
-One method (`parse`: PDFs and/or a text, ADR-021), one adapter. A second adapter and moving the prose call behind this
-port are ADR-021 (spec §11), not this file's business. This is the only
+One method (`parse`: PDFs and/or a text, ADR-021), one adapter, one path to the
+API — `messages.stream` (ADR-024). A second adapter and moving the prose call
+behind this port are ADR-021 (spec §11), not this file's business. This is the only
 `import anthropic` on the KW path; the prose call in main.py keeps its own.
 """
 
@@ -88,12 +89,15 @@ class AnthropicAdapter:
         client = self._client or anthropic.Anthropic()  # ANTHROPIC_API_KEY from worker env
         # `thinking` omitted when None: the model's own default applies.
         extra = {} if thinking is None else {"thinking": thinking}
-        # `create`, not `messages.parse`: parse validates the text INSIDE the SDK,
-        # so JSON cut at max_tokens raised there and the real stop_reason and
-        # usage were lost. The request body is the one parse sends, byte for byte
-        # (test_llm, on the wire): parse merges `output_format` into this same
-        # `output_config`, keys in this order.
-        response = client.messages.create(
+        # Always the stream (ADR-024): the SDK refuses a non-streamed request whose
+        # max_tokens implies more than ten minutes (~21k tokens for this model), and
+        # one path is simpler than two. `output_config`, never `output_format`:
+        # with `output_format` the SDK parses the text inside the stream, and JSON
+        # cut at max_tokens would raise there, losing the real stop_reason (#94).
+        # The request body is the SDK's own `stream(output_format=…)` body, byte
+        # for byte (test_llm, on the wire): it merges `output_format` into this
+        # same `output_config`, keys in this order.
+        with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
             **extra,
@@ -101,7 +105,8 @@ class AnthropicAdapter:
             output_config={
                 "format": {"schema": anthropic.transform_schema(schema), "type": "json_schema"}
             },
-        )
+        ) as stream:
+            response = stream.get_final_message()
         usage = dict(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,

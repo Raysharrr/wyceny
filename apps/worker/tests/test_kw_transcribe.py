@@ -17,7 +17,7 @@ from app import kw_transcribe, main
 from app.kw_transcribe import KsiegaTresc
 from app.llm import INVALID_OUTPUT, AnthropicAdapter, LlmResult
 from tests.fake_llm import FakeLlmClient
-from tests.test_llm import anthropic_imports, message, sdk_answering
+from tests.test_llm import anthropic_imports, message, sdk_streaming
 from tests.test_pdf_pages import record_upload_reads
 
 SECRET = "test-secret"
@@ -176,7 +176,7 @@ def test_only_a_real_truncation_is_called_too_large(monkeypatch):
     """A refusal written as plain text fails the adapter's schema validation and
     comes back as INVALID_OUTPUT — it must not tell the appraiser the book is too large."""
     refusal = message([{"type": "text", "text": "Nie mogę pomóc."}], stop_reason="refusal")
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(refusal)))
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(refusal)))
     resp = post(mint())
     assert resp.status_code == 422
     assert resp.json()["code"] == "kw_transkrypcja_nieczytelna"
@@ -189,17 +189,18 @@ def test_only_a_real_truncation_is_called_too_large(monkeypatch):
 
 
 def test_kw_transcribe_sends_the_pre_port_request_byte_for_byte(monkeypatch):
-    """The adapter calls `messages.create`, not `messages.parse` (Z3 kw-banner-fix),
-    so the request is pinned on the wire, for the transcription's own shape: two
-    PDFs, a paste and adaptive thinking. The HTTP body /kw-transcribe sends is
-    byte for byte the body of `messages.parse(output_format=KsiegaTresc)`."""
+    """The adapter always streams with `output_config`, never `output_format`
+    (ADR-024; Z3 kw-banner-fix), so the request is pinned on the wire, for the
+    transcription's own shape: two PDFs, a paste and adaptive thinking. The HTTP
+    body /kw-transcribe sends is byte for byte the body of the SDK's own
+    `messages.stream(output_format=KsiegaTresc)`."""
     pdfs = [b"%PDF-1.4 dzial I-O", b"%PDF-1.4 dzial II"]
     tekst = "DZIAŁ IV\nBRAK WPISÓW"
     answer = message([{"type": "text", "text": sample_tresc().model_dump_json()}])
 
-    # Reference request: the call as `messages.parse` made it before the fix.
+    # Reference request: the SDK's stream helper with `output_format`.
     pre_port: list[httpx.Request] = []
-    sdk_answering(answer, pre_port).messages.parse(
+    with sdk_streaming(answer, pre_port).messages.stream(
         model=kw_transcribe.TRANSCRIBE_MODEL,
         max_tokens=kw_transcribe.MAX_TOKENS,
         thinking={"type": "adaptive"},
@@ -224,10 +225,11 @@ def test_kw_transcribe_sends_the_pre_port_request_byte_for_byte(monkeypatch):
             }
         ],
         output_format=KsiegaTresc,
-    )
+    ) as reference_stream:
+        reference_stream.get_final_message()
 
     sent: list[httpx.Request] = []
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(answer, sent)))
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(answer, sent)))
     resp = post_form(
         mint(),
         files=[(f"kw{i}.pdf", pdf, "application/pdf") for i, pdf in enumerate(pdfs)],
@@ -246,10 +248,10 @@ def test_json_cut_at_max_tokens_by_the_real_sdk_is_called_too_large(monkeypatch)
     hand-made `LlmResult` — is a truncation, end to end."""
     cut = message([{"type": "text", "text": '{"naglowek": {"numerKs'}], stop_reason="max_tokens")
     with pytest.raises(kw_transcribe.TranscriptionFailed) as failed:
-        kw_transcribe.transcribe(AnthropicAdapter(sdk_answering(cut)), ["JVBERg=="], None)
+        kw_transcribe.transcribe(AnthropicAdapter(sdk_streaming(cut)), ["JVBERg=="], None)
     assert failed.value.code == "kw_transkrypcja_ucieta"
 
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(cut)))
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(cut)))
     resp = post(mint())
     assert resp.status_code == 422
     assert resp.json()["code"] == "kw_transkrypcja_ucieta"

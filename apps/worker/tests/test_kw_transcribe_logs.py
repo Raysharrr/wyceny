@@ -18,7 +18,7 @@ from app import main
 from app.kw_transcribe import KsiegaTresc
 from app.llm import AnthropicAdapter, LlmResult
 from tests.fake_llm import FakeLlmClient
-from tests.test_llm import message, sdk_answering
+from tests.test_llm import message, sdk_streaming
 
 SECRET = "test-secret"
 FIXTURE = Path(__file__).parent / "fixtures" / "kw_transcribe_sample.json"
@@ -130,7 +130,7 @@ def test_model_answer_failing_schema_validation_leaks_nothing(monkeypatch, capsy
     book = json.dumps(sample_tresc(), ensure_ascii=False)
     cut = message([{"type": "text", "text": book[: len(book) * 2 // 3]}], stop_reason=stop_reason)
     assert leaked(cut["content"][0]["text"])  # the answer really carries the values
-    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_answering(cut)))
+    monkeypatch.setattr(main, "kw_llm", lambda: AnthropicAdapter(sdk_streaming(cut)))
 
     resp = post()
 
